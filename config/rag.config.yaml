@@ -1,0 +1,51 @@
+# HTTP server settings for the backend API.
+server:
+  # Port used by Express when running npm run dev/start.
+  port: 3010
+
+# ChromaDB vector store connection and collection settings.
+chroma:
+  # Base URL of the running ChromaDB service.
+  url: http://localhost:8000
+  # Collection name used for indexing and retrieval.
+  collection: ozelge-rag
+
+# Ollama model and generation settings.
+ollama:
+  # Base URL of the local Ollama API.
+  baseUrl: http://localhost:11434
+  # Chat model used to generate final RAG answers.
+  chatModel: gemma3:4b-cloud
+  # Embedding model used for indexing documents and embedding queries.
+  embeddingModel: bge-m3
+  # Maximum context window requested from the chat model.
+  numCtx: 1024
+  # Maximum number of output tokens requested from the chat model.
+  numPredict: 128
+
+# Source dataset and indexing scope.
+data:
+  # JSON file containing the raw ozelge records.
+  ozelgeDataPath: data/ozelge_veri.json
+  # Number of source records to index from the beginning of the dataset.
+  indexSampleSize: 100
+
+# RAG retrieval and answer-generation behavior.
+rag:
+  # Character chunk size used when splitting documents for indexing.
+  chunkSize: 1000
+  # Character overlap between adjacent chunks.
+  chunkOverlap: 200
+  # Number of similar chunks retrieved for each user question.
+  retrievalK: 5
+  # Maximum time allowed for a RAG answer generation request.
+  timeoutMs: 90000
+
+# Startup/readiness checks for dependencies and model inference.
+readiness:
+  # Maximum time allowed for each readiness dependency check.
+  timeoutMs: 30000
+  # Text used by the embedding smoke test.
+  embeddingProbeText: readiness probe
+  # Text used by the chat generation smoke test.
+  chatProbeText: hazirlik kontrolu

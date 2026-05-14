@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vanilla RAG Test Console</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f6f8;
+        --surface: #ffffff;
+        --surface-soft: #f8fafc;
+        --line: #d7dde5;
+        --line-strong: #aeb8c5;
+        --ink: #17202a;
+        --muted: #5d6b7a;
+        --accent: #0f766e;
+        --accent-strong: #0b5f59;
+        --danger: #b42318;
+        --warn: #9a6700;
+        --ok: #146c43;
+        --code: #111827;
+        --code-ink: #eef2f7;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+      }
+
+      main {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 28px 0 40px;
+      }
+
+      header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 18px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 1.75rem;
+        line-height: 1.15;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        font-size: 0.95rem;
+        line-height: 1.2;
+      }
+
+      h3 {
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+
+      code {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 2px 6px;
+        background: var(--surface-soft);
+        color: var(--ink);
+        font-family: "Cascadia Code", Consolas, monospace;
+        font-size: 0.85em;
+      }
+
+      .subtitle {
+        margin-top: 6px;
+        color: var(--muted);
+        max-width: 680px;
+        line-height: 1.5;
+      }
+
+      .statusbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 5px 10px;
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 0.85rem;
+        white-space: nowrap;
+      }
+
+      .pill.ok {
+        border-color: rgba(20, 108, 67, 0.28);
+        color: var(--ok);
+      }
+
+      .pill.warn {
+        border-color: rgba(154, 103, 0, 0.3);
+        color: var(--warn);
+      }
+
+      .pill.fail {
+        border-color: rgba(180, 35, 24, 0.3);
+        color: var(--danger);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(300px, 390px) 1fr;
+        gap: 16px;
+        align-items: start;
+      }
+
+      .stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 13px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .panel-body {
+        padding: 14px;
+      }
+
+      .actions {
+        display: grid;
+        gap: 8px;
+      }
+
+      .action-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .endpoint {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--muted);
+        font-family: "Cascadia Code", Consolas, monospace;
+        font-size: 0.84rem;
+      }
+
+      button {
+        min-height: 36px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: 8px 11px;
+        background: var(--accent);
+        color: #ffffff;
+        font: inherit;
+        font-size: 0.92rem;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: var(--accent-strong);
+      }
+
+      button.secondary {
+        border-color: var(--line-strong);
+        background: var(--surface);
+        color: var(--ink);
+      }
+
+      button.secondary:hover {
+        background: var(--surface-soft);
+      }
+
+      button.danger {
+        background: var(--danger);
+      }
+
+      .action-button {
+        display: grid;
+        gap: 2px;
+        text-align: left;
+        line-height: 1.15;
+      }
+
+      .action-button small {
+        font-family: "Cascadia Code", Consolas, monospace;
+        font-size: 0.72rem;
+        font-weight: 500;
+        opacity: 0.82;
+      }
+
+      button:disabled {
+        cursor: wait;
+        opacity: 0.65;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 148px;
+        resize: vertical;
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        padding: 12px;
+        font: inherit;
+        line-height: 1.45;
+        color: var(--ink);
+        background: #ffffff;
+      }
+
+      textarea:focus,
+      button:focus-visible {
+        outline: 3px solid rgba(15, 118, 110, 0.22);
+        outline-offset: 2px;
+      }
+
+      .button-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .result-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+        gap: 16px;
+      }
+
+      .answer {
+        min-height: 180px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        background: var(--surface-soft);
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+
+      .meta {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .meta-row {
+        display: grid;
+        grid-template-columns: 110px 1fr;
+        gap: 10px;
+        font-size: 0.9rem;
+      }
+
+      .meta-label {
+        color: var(--muted);
+      }
+
+      pre {
+        min-height: 360px;
+        max-height: 620px;
+        margin: 0;
+        overflow: auto;
+        border-radius: 8px;
+        padding: 14px;
+        background: var(--code);
+        color: var(--code-ink);
+        font-family: "Cascadia Code", Consolas, monospace;
+        font-size: 0.82rem;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .sources {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .source {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px;
+        background: #ffffff;
+      }
+
+      .source-title {
+        margin-bottom: 6px;
+        font-weight: 700;
+        font-size: 0.9rem;
+      }
+
+      .source-text {
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.45;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      @media (max-width: 900px) {
+        header,
+        .layout,
+        .result-grid {
+          grid-template-columns: 1fr;
+        }
+
+        header {
+          display: grid;
+        }
+
+        .statusbar {
+          justify-content: flex-start;
+        }
+      }
+
+      @media (max-width: 520px) {
+        main {
+          width: min(100% - 20px, 1180px);
+          padding-top: 18px;
+        }
+
+        .button-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .action-row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Vanilla RAG Test Console</h1>
+          <p class="subtitle">
+            Simple manual test UI to exercise backend endpoints from the browser.
+          </p>
+        </div>
+        <div class="statusbar" aria-live="polite">
+          <span id="status-pill" class="pill">Idle</span>
+          <span class="pill">Origin: <code id="origin-label"></code></span>
+        </div>
+      </header>
+
+      <div class="layout">
+        <aside class="stack">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Service Controls</h2>
+            </div>
+            <div class="panel-body actions">
+              <div class="action-row">
+                <span class="endpoint">GET /</span>
+                <button data-endpoint="/">Run</button>
+              </div>
+              <div class="action-row">
+                <span class="endpoint">GET /health</span>
+                <button data-endpoint="/health">Run</button>
+              </div>
+              <div class="action-row">
+                <span class="endpoint">GET /ready</span>
+                <button data-endpoint="/ready">Summary</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Readiness</h2>
+            </div>
+            <div class="panel-body actions">
+              <div class="action-row">
+                <span class="endpoint">GET /ready?details=true</span>
+                <button data-endpoint="/ready?details=true">Details</button>
+              </div>
+              <div class="action-row">
+                <span class="endpoint">GET /ready?strict=true</span>
+                <button data-endpoint="/ready?strict=true">Strict</button>
+              </div>
+              <div class="action-row">
+                <span class="endpoint">GET /ready?details=true&amp;strict=true</span>
+                <button data-endpoint="/ready?details=true&amp;strict=true">Full</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Query</h2>
+            </div>
+            <div class="panel-body">
+              <textarea id="question" spellcheck="false">How is rental income taxed for a residential property rented for tourism purposes?</textarea>
+              <div class="button-grid">
+                <button id="retrieve-button" class="action-button">
+                  <span>Retrieve Sources</span>
+                  <small>POST /rag/retrieve</small>
+                </button>
+                <button id="ask-button" class="action-button">
+                  <span>Generate Answer</span>
+                  <small>POST /rag/query</small>
+                </button>
+                <button id="invalid-button" class="danger action-button">
+                  <span>Invalid Request</span>
+                  <small>POST /rag/query</small>
+                </button>
+                <button id="clear-button" class="secondary">Clear</button>
+              </div>
+            </div>
+          </section>
+        </aside>
+
+        <section class="stack">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Result</h2>
+              <span id="request-label" class="muted">No requests yet</span>
+            </div>
+            <div class="panel-body result-grid">
+              <div>
+                <h3>Readable Output</h3>
+                <div id="answer" class="answer">Ready.</div>
+                <div id="meta" class="meta"></div>
+                <div id="sources" class="sources"></div>
+              </div>
+              <div>
+                <h3>Raw JSON</h3>
+                <pre id="output">Ready.</pre>
+              </div>
+            </div>
+          </section>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const output = document.getElementById("output");
+      const answer = document.getElementById("answer");
+      const meta = document.getElementById("meta");
+      const sources = document.getElementById("sources");
+      const questionInput = document.getElementById("question");
+      const retrieveButton = document.getElementById("retrieve-button");
+      const askButton = document.getElementById("ask-button");
+      const invalidButton = document.getElementById("invalid-button");
+      const clearButton = document.getElementById("clear-button");
+      const statusPill = document.getElementById("status-pill");
+      const requestLabel = document.getElementById("request-label");
+      const originLabel = document.getElementById("origin-label");
+
+      originLabel.textContent = window.location.origin;
+
+      function setBusy(isBusy) {
+        document.querySelectorAll("button").forEach((button) => {
+          button.disabled = isBusy;
+        });
+      }
+
+      function setStatus(kind, text) {
+        statusPill.className = `pill ${kind || ""}`.trim();
+        statusPill.textContent = text;
+      }
+
+      function setOutput(value) {
+        output.textContent = value;
+      }
+
+      function resetReadable() {
+        answer.textContent = "Ready.";
+        meta.replaceChildren();
+        sources.replaceChildren();
+      }
+
+      function addMeta(label, value) {
+        const row = document.createElement("div");
+        row.className = "meta-row";
+
+        const labelNode = document.createElement("span");
+        labelNode.className = "meta-label";
+        labelNode.textContent = label;
+
+        const valueNode = document.createElement("span");
+        valueNode.textContent = value;
+
+        row.append(labelNode, valueNode);
+        meta.append(row);
+      }
+
+      function truncate(value, maxLength = 280) {
+        if (!value) {
+          return "";
+        }
+
+        return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+      }
+
+      function renderSources(sourceList = []) {
+        sources.replaceChildren();
+
+        sourceList.slice(0, 4).forEach((source, index) => {
+          const item = document.createElement("article");
+          item.className = "source";
+
+            const title = document.createElement("div");
+            title.className = "source-title";
+            title.textContent = [
+              `Source ${index + 1}`,
+              source.tarih,
+              source.konu,
+            ].filter(Boolean).join(" | ");
+
+          const text = document.createElement("div");
+          text.className = "source-text";
+          text.textContent = truncate(source.content || source.pageContent || "");
+
+          item.append(title, text);
+          sources.append(item);
+        });
+      }
+
+      function renderReadable(endpoint, status, body) {
+        meta.replaceChildren();
+        sources.replaceChildren();
+        requestLabel.textContent = `${status} ${endpoint}`;
+
+        addMeta("HTTP", String(status));
+
+        if (body?.answer) {
+          answer.textContent = body.answer;
+          addMeta("Sources", `${body.sources?.length || 0} chunk`);
+          renderSources(body.sources);
+          return;
+        }
+
+        if (Array.isArray(body?.sources)) {
+          answer.textContent = `${body.sourceCount ?? body.sources.length} sources returned.`;
+          addMeta("Question", body.question || "-");
+          addMeta("Retrieval K", String(body.k ?? "-"));
+          renderSources(body.sources);
+          return;
+        }
+
+        if (body?.ready !== undefined) {
+          answer.textContent = body.overallSummary || body.querySummary || "Readiness result received.";
+          addMeta("Ready", String(body.ready));
+          addMeta("Query", String(body.queryReady));
+          addMeta("Index", String(body.indexReady));
+          addMeta("Blocker", (body.blockerCodes || []).join(", ") || "-");
+          addMeta("Warning", (body.warningCodes || []).join(", ") || "-");
+          return;
+        }
+
+        if (body?.error) {
+          answer.textContent = body.message || body.error;
+          addMeta("Error", body.error);
+          return;
+        }
+
+        answer.textContent = body?.message || body?.status || "Request completed.";
+      }
+
+      async function showJson(endpoint, response) {
+        const text = await response.text();
+        let parsed = null;
+
+        try {
+          parsed = JSON.parse(text);
+          setOutput(JSON.stringify({ status: response.status, body: parsed }, null, 2));
+        } catch {
+          setOutput(`status: ${response.status}\n\n${text}`);
+        }
+
+        renderReadable(endpoint, response.status, parsed);
+        setStatus(response.ok ? "ok" : "fail", response.ok ? "Success" : "Error");
+      }
+
+      async function runRequest(endpoint, options = {}) {
+        const method = options.method || "GET";
+        requestLabel.textContent = `${method} ${endpoint}`;
+        answer.textContent = "Request in progress...";
+        meta.replaceChildren();
+        sources.replaceChildren();
+        setOutput(`Running ${method} ${endpoint} ...`);
+        setStatus("warn", "Working");
+        setBusy(true);
+
+        try {
+          const response = await fetch(endpoint, options);
+          await showJson(endpoint, response);
+        } catch (error) {
+          answer.textContent = "Failed to send request.";
+          setOutput(String(error));
+          setStatus("fail", "Connection error");
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function runGet(endpoint) {
+        await runRequest(endpoint);
+      }
+
+      function readQuestion() {
+        return questionInput.value.trim();
+      }
+
+      async function runQuery() {
+        const question = readQuestion();
+        if (!question) {
+          answer.textContent = "Question field is empty.";
+          setStatus("fail", "Missing question");
+          return;
+        }
+
+        await runRequest("/rag/query", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ question }),
+        });
+      }
+
+      async function runRetrieve() {
+        const question = readQuestion();
+        if (!question) {
+          answer.textContent = "Question field is empty.";
+          setStatus("fail", "Missing question");
+          return;
+        }
+
+        await runRequest("/rag/retrieve", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ question }),
+        });
+      }
+
+      async function runInvalidQuery() {
+        await runRequest("/rag/query", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ question: "   " }),
+        });
+      }
+
+      document.querySelectorAll("[data-endpoint]").forEach((button) => {
+        button.addEventListener("click", () => runGet(button.dataset.endpoint));
+      });
+
+      retrieveButton.addEventListener("click", runRetrieve);
+      askButton.addEventListener("click", runQuery);
+      invalidButton.addEventListener("click", runInvalidQuery);
+      clearButton.addEventListener("click", () => {
+        requestLabel.textContent = "No requests yet";
+        resetReadable();
+        setOutput("Ready.");
+        setStatus("", "Idle");
+      });
+    </script>
+  </body>
+</html>

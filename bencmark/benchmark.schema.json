@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "benchmark.schema.json",
+  "title": "Ozelge Question Answer Benchmark",
+  "description": "Schema for storing benchmark question-answer pairs linked to ozelge documents from data/ozelge_veri.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ozelgeler"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "description": "Version of this benchmark data format.",
+      "default": "1.0.0"
+    },
+    "datasetName": {
+      "type": "string",
+      "description": "Optional human-readable name for the benchmark dataset.",
+      "minLength": 1
+    },
+    "sourceFile": {
+      "type": "string",
+      "description": "Optional source data file path, for example data/ozelge_veri.json.",
+      "minLength": 1
+    },
+    "ozelgeler": {
+      "type": "array",
+      "description": "Ozelge documents with one or more benchmark question-answer pairs.",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/ozelgeBenchmarkItem"
+      },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "ozelgeBenchmarkItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ozelgeId",
+        "questions"
+      ],
+      "properties": {
+        "ozelgeId": {
+          "type": "string",
+          "description": "Identifier of the ozelge document. Prefer evrakOid from data/ozelge_veri.json.",
+          "minLength": 1
+        },
+        "sayi": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Optional sayi value from the ozelge source document."
+        },
+        "tarih": {
+          "type": "string",
+          "description": "Optional ozelge date from the source document, usually formatted as YYYYMMDD.",
+          "pattern": "^[0-9]{8}$"
+        },
+        "konu": {
+          "type": "string",
+          "description": "Optional subject/title of the ozelge.",
+          "minLength": 1
+        },
+        "questions": {
+          "type": "array",
+          "description": "Question-answer pairs derived from this ozelge.",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/questionAnswerPair"
+          }
+        }
+      }
+    },
+    "questionAnswerPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questionText",
+        "answerText"
+      ],
+      "properties": {
+        "questionId": {
+          "type": "string",
+          "description": "Optional stable identifier for this question-answer pair.",
+          "minLength": 1
+        },
+        "questionText": {
+          "type": "string",
+          "description": "Question text for the benchmark item.",
+          "minLength": 1
+        },
+        "answerText": {
+          "type": "string",
+          "description": "Expected answer text for the benchmark item.",
+          "minLength": 1
+        },
+        "answerSource": {
+          "type": "string",
+          "description": "Optional source span, quote, paragraph reference, or note explaining where the answer came from.",
+          "minLength": 1
+        },
+        "tags": {
+          "type": "array",
+          "description": "Optional labels such as tax type, topic, difficulty, or retrieval category.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

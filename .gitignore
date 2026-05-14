@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.chroma/
+.rag_index/
+chroma_data/
+npm-debug.log*
+*.log

@@ -5,3 +5,20 @@ dist/
 chroma_data/
 npm-debug.log*
 *.log
+data/ozelge_veri.json
+# Environment variables
+.env
+.env.*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Coverage directory
+coverage/

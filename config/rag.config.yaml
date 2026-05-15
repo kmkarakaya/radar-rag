@@ -14,8 +14,8 @@ chroma:
 ollama:
   # Base URL of the local Ollama API.
   baseUrl: http://localhost:11434
-  # Chat model used to generate final RAG answers.
-  chatModel: gemma3:4b-cloud
+  # Chat model used to generate final RAG answers. gemma3:4b-cloud
+  chatModel: gemma3:4b
   # Embedding model used for indexing documents and embedding queries.
   embeddingModel: bge-m3
   # Maximum context window requested from the chat model.

@@ -151,18 +151,71 @@ Yapilacaklar:
 ### 6. Chunking ve ingestion kalitesi temel seviyede
 
 Sorun:
-- Veri sadece `pdfText` uzerinden aliniyor.
+- Ingestion akisi `src/index.ts` icinde tek bir JSON dosyasina ve o dosyanin ozelge semasina dogrudan bagli.
+- Veri kaynagi `config.data.ozelgeDataPath` altindaki tek bir dosyadan okunuyor; JSON array disindaki formatlar desteklenmiyor.
+- Dokuman icerigi sadece `pdfText` alanindan aliniyor; `evrakOid`, `sayi`, `tarih`, `konu` alanlari da dogrudan bu veri semasina gore map ediliyor.
+- `src/server.ts` readiness ve operator mesajlari da `non-empty pdfText` varsayimina bagli; yani ingestion kisiti sadece index script'inde degil, operasyonel yuzeyde de gorunur durumda.
 - Metin normalization, OCR artigi temizleme, tekrarli whitespace temizligi, header/footer ayiklama gibi adimlar yok.
 - Her chunk sadece temel metadata tasiyor.
 
 Neden onemli:
+- Bugunku haliyle repo baska bir kullanicinin kendi veri klasorunu koyup dogrudan indexleyebilecegi bir vanilla RAG backend degil; ozelge JSON semasina uyarlama gerektiriyor.
+- Vanilla RAG tarafinda beklenen taban yetenek, ingestion katmaninin kaynak formattan olabildigince ayrismis olmasi ve farkli dosya tiplerini ortak `Document` modeline cevirebilmesidir.
+- LangChain tarafinda bunun dogal yolu `DocumentLoader` soyutlamasini kullanmak; loader'lar ortak `load()` / `loadAndSplit()` arayuzu verir ve PDF, CSV, JSON, JSONL, text, DOCX gibi farkli kaynaklara ayni ingestion zinciriyle baglanmayi kolaylastirir.
 - Ozelge gibi yapisal belgelerde girdi kalitesi retrieval kalitesini dogrudan etkiler.
 - Kirik veya gereksiz metinler embedding kalitesini dusurur.
 
 Yapilacaklar:
+- Ingestion akisinin alan-adina bagli kismini ayir:
+  - `loadOzelgeRecords()` / `toDocuments()` ikilisini daha genel bir `loadSourceDocuments()` abstraction'ina donustur.
+  - Ozelge JSON mapping'i genel pipeline'in icinde degil, ayri bir adapter olarak konumlansin.
+- LangChain `DocumentLoader` tabanli bir ingestion katmani tasarla:
+  - Dosya tipi secimine gore loader kullanan bir katman ekle.
+  - Baslangic icin en az su formatlari degerlendir: `txt`, `md`, `pdf`, `json`, `jsonl`, `csv`, `docx`.
+  - Tek dosya ve klasor ingestion senaryolarini ayir; gerekirse `DirectoryLoader` veya `MultiFileLoader` benzeri bir kompozisyon kullan.
+- JSON ingestion icin sema bagimliligini config'e tasi:
+  - `contentField`, `idField` ve `metadataFields` benzeri ayarlar dusun.
+  - Mumkunse nested alanlar icin JSON pointer/path semantigi belirle.
+  - Boylece kullanici kendi JSON dosyasini kod degistirmeden esleyebilsin.
+- Ingestion sonucu uretilen ortak `Document` contract'ini netlestir:
+  - `pageContent`
+  - normalize edilmis metadata
+  - `sourceType`, `sourcePath`, `documentId`, `chunkIndex` gibi alanlar
 - Indexleme oncesi basit bir text normalization katmani ekle.
 - Sayfa numarasi, belge bolumu, paragraf tipi gibi ek metadata alanlarini dusun.
 - Ayni belge icindeki tekrar eden veya asiri kisa chunk'lari filtrele.
+- Readiness ve operator mesajlarini sema-ozel dilden kurtar:
+  - `non-empty pdfText` yerine `indexable document content` dili kullan.
+  - `DATA_FILE_UNREADABLE` ve `NO_INDEXABLE_DOCUMENTS` mesaji, loader / source config mantigina gore yeniden yazilsin.
+- CLI ve config yuzeyini ingestion acisindan genislet:
+  - `data.sourcePath` veya `data.sourcePaths`
+  - `data.sourceType` veya otomatik extension tabanli tespit
+  - `data.loaderOptions`
+  - `data.indexSampleSize` semantiginin loader-based ingestion ile uyumunu netlestir
+- Testleri bu yeni capability etrafinda ekle:
+  - Farkli dosya tiplerinden `Document` uretimi
+  - Yanlis JSON field mapping durumunda anlasilir hata
+  - Bos klasor / unsupported extension / bozuk dosya senaryolari
+  - Readiness mesajlarinin `pdfText` gibi source-specific alan adlarina bagli olmamasi
+
+### 6.1. Ingestion capability'si vanilla RAG beklentisinin gerisinde
+
+Sorun:
+- Repo retrieval ve generation tarafinda calisiyor olsa da ingestion capability'si halen tek dataset, tek sema ve tek dosya formatina yakin.
+- Kullanici kendi veri klasorunu repoya koydugunda "hangi dosyalar destekleniyor, nasil parse ediliyor, metadata nasil cikariliyor" sorularina sistem seviyesinde cevap yok.
+
+Neden onemli:
+- Vanilla RAG'in pratikte tekrar kullanilabilir olmasi icin en kritik unsur, veri kaynagini modele degil `Document` katmanina standartlastirmasidir.
+- Ingestion esnek degilse repo sadece mevcut veri seti icin calisan bir demo olarak kalir.
+
+Yapilacaklar:
+- README ve mimari dokumanda desteklenen ingestion kaynaklarini acik listele.
+- "Supported loaders" ve "custom JSON mapping" bolumu ekle.
+- Ornek veri klasoru yapilari ver:
+  - tek JSON dosyasi
+  - klasorde birden fazla PDF/TXT/DOCX dosyasi
+  - mixed-source ingestion icin gelecek plan
+- Ilk hedefte hangi formatlar resmi olarak desteklenecek, hangileri backlog'da kalacak bunu netlestir.
 
 ### 7. Re-index akisinin tamamini resetlemesi yikici bir davranis
 

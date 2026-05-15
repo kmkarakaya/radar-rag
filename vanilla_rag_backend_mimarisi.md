@@ -296,12 +296,22 @@ Girdi:
 Başarılı çıktı:
 
 - `answer: string`
-- `sources: Array<{ ozelgeId?, sayi?, tarih?, konu?, content }>`
+- `distanceScoreThreshold: number`
+- `sources: Array<{ ozelgeId?, sayi?, tarih?, konu?, distanceScore?, content }>`
 
 Örnek hata durumları:
 
 - `400`: body geçersizse veya `question` boşsa
-- `500`: retrieval, model çağrısı veya başka backend hatası oluşursa
+- `422`: retrieval eşiği altında chunk kalmazsa (`NO_RELEVANT_CONTEXT`) veya retrieved chunk'lar cevap üretmeye yetmezse (`ANSWER_NOT_IN_RETRIEVED_CONTEXT`)
+- `502`: model boş cevap dönerse (`EMPTY_MODEL_RESPONSE`) veya yasaklı fallback answer dönerse (`DISALLOWED_FALLBACK_ANSWER`)
+- `500`: beklenmeyen başka backend hatası oluşursa
+
+Önemli not:
+
+- `POST /rag/retrieve` tarafında chunk bulunması, `POST /rag/query` tarafında mutlaka cevap üretileceği anlamına gelmez.
+- Retrieval katmanı konuya yakın chunk'lar bulabilir; ancak bu chunk'lar sorunun istediği spesifik olguyu veya sayısal eşiği içermeyebilir.
+- Bu durumda `POST /rag/query`, başarı yerine `ANSWER_NOT_IN_RETRIEVED_CONTEXT` döner.
+- Bu hata payload'ı artık retrieval'ın tamamen boş olmadığını göstermek için kompakt `retrievedSources` özeti de içerir.
 
 Bu endpoint, repodaki asıl ürün endpoint'idir. Vanilla RAG backend hedefi açısından en kritik API yüzeyi budur.
 
@@ -331,12 +341,14 @@ Başarılı çıktı:
 
 - `question: string`
 - `k: number`
+- `distanceScoreThreshold: number`
 - `sourceCount: number`
-- `sources: Array<{ ozelgeId?, sayi?, tarih?, konu?, content }>`
+- `sources: Array<{ ozelgeId?, sayi?, tarih?, konu?, distanceScore?, content }>`
 
 Örnek hata durumları:
 
 - `400`: body geçersizse, `question` boşsa veya `k` geçersizse
+- `422`: `retrievalDistanceThreshold` altında hiç chunk kalmazsa (`NO_RELEVANT_CONTEXT`)
 - `500`: retrieval veya vector store erişiminde backend hatası oluşursa
 
 Bu endpoint ürün akışının zorunlu parçası değildir; esas görevi retrieval kalitesini generation'dan bağımsız gözlemlemeyi kolaylaştırmaktır.
@@ -367,11 +379,18 @@ Bu fonksiyon sırayla şunları yapar:
 
 1. `retrieveSources(question, retrievalK)` ile retrieval yardımcı fonksiyonunu çağırır.
 2. Bu yardımcı fonksiyon vector store bağlantısını kurar.
-3. `similaritySearch(question, retrievalK)` ile benzer dokümanları getirir.
-4. Gelen `Document` nesnelerini `sources` formatına çevirir.
-5. Retrieved chunk'ları system prompt içinde düzenler.
-6. Soruyu `HumanMessage`, bağlamı `SystemMessage` olarak modele verir.
-7. Model cevabını string'e çevirip istemciye döndürür.
+3. `similaritySearchWithScore(question, retrievalK)` ile benzer dokümanları distance score ile birlikte getirir.
+4. Sonuçları artan `distanceScore` sırasına dizer ve `retrievalDistanceThreshold` üstündekileri eler.
+5. Query tarafında model context bütçesine sığacak kadar chunk seçilir.
+6. Retrieved chunk'lar system prompt içinde düzenlenir.
+7. Soruyu `HumanMessage`, bağlamı `SystemMessage` olarak modele verir.
+8. Model cevabı backend kontratına göre doğrulanır; grounded cevap yoksa string fallback yerine typed hata üretilir.
+
+Burada retrieval ile answerability farklı problemler olarak ele alınır:
+
+- Retrieval başarılı olabilir ve yine de cevap üretilemeyebilir.
+- Özellikle "en az kaç TL", "hangi tarih", "kaç gün" gibi spesifik factoid sorularda, topically yakın chunk'lar bulunup yine de kanıt yetersiz kalabilir.
+- Bu durumda backend retrieval'ı başarılı, generation sonucunu ise kontrata göre yetersiz sayar.
 
 Bu, Vanilla RAG'in textbook akışına uygundur.
 
@@ -392,9 +411,17 @@ Bu ne anlama gelir:
 
 - MMR yok.
 - Reranker yok.
-- Score threshold yok.
+- Distance threshold var.
 - Metadata filter yok.
 - Query rewriting yok.
+
+Burada önemli ayrım şudur:
+
+- Retrieval sonuçları `distanceScore` ile birlikte döner.
+- Daha küçük score daha yakın chunk anlamına gelir.
+- `rag.retrievalDistanceThreshold` üstündeki chunk'lar hem `/rag/retrieve` hem `/rag/query` için elenir.
+- Hiç chunk kalmazsa backend bunu başarı değil, `NO_RELEVANT_CONTEXT` hatası olarak ele alır.
+- Chunk bulunması tek başına answerability garantisi vermez; `POST /rag/query` gerekli olgusal kanıt yoksa `ANSWER_NOT_IN_RETRIEVED_CONTEXT` üretebilir.
 
 Bu eksikler Vanilla RAG'in "yanlış" olduğu anlamına gelmez. Sadece bu repo retrieval tarafında baseline seviyededir.
 
@@ -415,8 +442,14 @@ Repodaki implementasyon:
 Prompt tasarımı:
 
 - Modelden sadece retrieved context kullanarak cevap vermesi istenir.
-- Bağlamda cevap yoksa belirli bir fallback cümlesi dönmesi istenir.
+- Bağlam yetersizse kullanıcıya gösterilecek fallback cümlesi değil, sadece backend'in anlayacağı internal bir sinyal dönmesi istenir.
 - Retrieved context içindeki talimatları takip etmemesi açıkça söylenir.
+
+Önemli mimari karar:
+
+- Backend, kullanıcıya sahte veya placeholder answer dönmez.
+- "Cevap yok" kararı JSON hata kontratı olarak API katmanında temsil edilir.
+- Böylece modelin fallback üretmesi ürün davranışı değil, kontrat ihlali sayılır.
 
 Bu, temel bir backend-side RAG prompt güvenlik katmanıdır.
 
@@ -472,12 +505,13 @@ Bir istemci `POST /rag/query` çağırdığında bu repoda şu olay zinciri çal
 2. Zod, `question` alanının boş olmayan bir string olduğunu doğrular.
 3. `answerQuestion(question)` çağrılır.
 4. `createVectorStore()` ile Chroma koleksiyonuna erişim sağlanır.
-5. `similaritySearch(question, k)` ile ilgili chunk'lar çekilir.
-6. Retrieved chunk'lar `sources` dizisine map edilir.
-7. Bu chunk'lar prompt içinde birleştirilir.
-8. Soru + system prompt, `ChatOllama` modeline verilir.
-9. Model cevabı alınır.
-10. `{ answer, sources }` JSON cevabı API katmanı üzerinden istemciye döner.
+5. `similaritySearchWithScore(question, k)` ile ilgili chunk'lar çekilir.
+6. Chunk'lar `distanceScore` alanı ile sıralanır ve threshold üstündekiler elenir.
+7. Hiç chunk kalmazsa `422 NO_RELEVANT_CONTEXT` hatası döner.
+8. Model context bütçesine sığacak kadar chunk prompt içinde birleştirilir.
+9. Soru + system prompt, `ChatOllama` modeline verilir.
+10. Model cevabı alınır ve boş cevap / yasaklı fallback / no-answer sinyali backend tarafından doğrulanır.
+11. Başarılıysa `{ answer, distanceScoreThreshold, sources }` JSON cevabı döner; başarısızsa typed hata üretilir.
 
 Bu akışta backend'in görevi, retrieval ile LLM arasında bir bağlam kontratı oluşturmaktır.
 
@@ -691,7 +725,7 @@ Vanilla RAG backend'te en azından şu görünürlük faydalıdır:
 - retrieval latency
 - generation latency
 
-Repoda temel loglar var, fakat retrieval kalite gözlemi için yeterli telemetry yok.
+Repoda temel loglar ve query hata payload'larinda kompakt `retrievedSources` ozeti var; buna ragmen retrieval kalite gozlemi icin yeterli telemetry yok.
 
 ### 11.4 Readiness katmanı var, ama gerçek RAG akışını bire bir garanti etmiyor
 

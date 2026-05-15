@@ -82,8 +82,39 @@ Invoke-RestMethod -Uri http://localhost:3010/rag/query -Method Post -ContentType
 - `GET /ready?details=true`: Detaylı readiness çıktısı
 - `GET /ready?strict=true`: Readiness sonucunu HTTP status koduna da yansıtır
 - `GET /ready?details=true&strict=true`: Detaylı readiness + strict HTTP status
-- `POST /rag/retrieve`: Sadece retrieval sonucu
-- `POST /rag/query`: Retrieval + generation
+- `POST /rag/retrieve`: Sadece retrieval sonucu. `distanceScore` daha kucuk oldugunda chunk sorguya daha yakindir. Uygun chunk kalmazsa `422 NO_RELEVANT_CONTEXT` doner.
+- `POST /rag/query`: Retrieval + generation. Backend fake fallback answer donmez; grounded cevap yoksa structured hata doner.
+
+## Response ve Hata Semantigi
+
+`POST /rag/retrieve` basarili oldugunda su alanlari dondurur:
+
+- `question`
+- `k`
+- `distanceScoreThreshold`
+- `sourceCount`
+- `sources[]` (`distanceScore` dahil)
+
+`POST /rag/query` basarili oldugunda su alanlari dondurur:
+
+- `answer`
+- `distanceScoreThreshold`
+- `sources[]`
+
+Bu backend bilincli olarak kullaniciya placeholder veya fallback answer dondurmez. Query/retrieve akislarinda baglam yetersizse veya model kontrati bozulursa JSON hata dondurulur.
+
+Onemli ayrim:
+
+- `POST /rag/retrieve` chunk bulmus olabilir.
+- Buna ragmen `POST /rag/query`, sorunun istedigi somut bilgiyi bu chunk'larda grounded olarak bulamazsa `422 ANSWER_NOT_IN_RETRIEVED_CONTEXT` donebilir.
+- Bu durumda sorun retrieval'in tamamen bos donmesi degil, bulunan chunk'larin soruyu kanitlamaya yetmemesidir.
+
+Baslica hata kodlari:
+
+- `NO_RELEVANT_CONTEXT` (`422`): `retrievalDistanceThreshold` altinda hic chunk kalmadi.
+- `ANSWER_NOT_IN_RETRIEVED_CONTEXT` (`422`): Retrieval kaynaklari bulundu ama model, bu kaynaklardan grounded cevap uretemedi. Hata detayinda `retrievedSources` ozeti de bulunur.
+- `EMPTY_MODEL_RESPONSE` (`502`): Chat model bos cevap dondu.
+- `DISALLOWED_FALLBACK_ANSWER` (`502`): Model yasakli fallback metni dondu; backend bunu hata sayar.
 
 ## Günlük Kullanım
 
@@ -98,6 +129,7 @@ Invoke-RestMethod -Uri http://localhost:3010/rag/query -Method Post -ContentType
 - `rag.chunkSize`
 - `rag.chunkOverlap`
 - `chroma.collection`
+- `chroma.distanceMetric`
 - embedding modeli
 
 Şu alanlar değişirse backend'i yeniden başlatman yeterlidir:
@@ -106,7 +138,10 @@ Invoke-RestMethod -Uri http://localhost:3010/rag/query -Method Post -ContentType
 - `ollama.numCtx`
 - `ollama.numPredict`
 - `rag.retrievalK`
+- `rag.retrievalDistanceThreshold`
 - `rag.timeoutMs`
+
+Not: `chroma.distanceMetric` mevcut koleksiyona geriye donuk uygulanmaz. Bu alan degisirse koleksiyonu yeniden olusturup `npm.cmd run index` calistirmak gerekir.
 
 ## ChromaDB Verisi
 

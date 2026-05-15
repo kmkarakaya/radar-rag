@@ -427,7 +427,7 @@
               <h2>Query</h2>
             </div>
             <div class="panel-body">
-              <textarea id="question" spellcheck="false">How is rental income taxed for a residential property rented for tourism purposes?</textarea>
+              <textarea id="question" spellcheck="false">Turizm amacıyla kiraya verilen bir konutun kira geliri nasıl vergilendirilir?</textarea>
               <div class="button-grid">
                 <button id="retrieve-button" class="action-button">
                   <span>Retrieve Sources</span>
@@ -537,13 +537,16 @@
           const item = document.createElement("article");
           item.className = "source";
 
-            const title = document.createElement("div");
-            title.className = "source-title";
-            title.textContent = [
-              `Source ${index + 1}`,
-              source.tarih,
-              source.konu,
-            ].filter(Boolean).join(" | ");
+          const title = document.createElement("div");
+          title.className = "source-title";
+          title.textContent = [
+            `Source ${index + 1}`,
+            typeof source.distanceScore === "number"
+              ? `distance=${source.distanceScore.toFixed(6)}`
+              : undefined,
+            source.tarih,
+            source.konu,
+          ].filter(Boolean).join(" | ");
 
           const text = document.createElement("div");
           text.className = "source-text";
@@ -572,6 +575,7 @@
           answer.textContent = `${body.sourceCount ?? body.sources.length} sources returned.`;
           addMeta("Question", body.question || "-");
           addMeta("Retrieval K", String(body.k ?? "-"));
+          addMeta("Distance", "Lower distanceScore means a closer match.");
           renderSources(body.sources);
           return;
         }

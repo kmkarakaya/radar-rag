@@ -9,6 +9,7 @@ import {
   checkChromaHealth,
   checkEmbeddingHealth,
   checkOllamaHealth,
+  isRagQueryError,
   retrieveSources,
   type ChromaHealthDetails,
   type ChatGenerationHealthDetails,
@@ -612,12 +613,28 @@ app.post("/rag/retrieve", async (req, res) => {
 
   try {
     console.log(`[server] ${new Date().toISOString()} POST /rag/retrieve`);
-    const sources = await retrieveSources(parsed.data.question, parsed.data.k);
+    const retrieval = await retrieveSources(parsed.data.question, parsed.data.k);
+
+    if (retrieval.sources.length === 0) {
+      res.status(422).json({
+        error: "RAG retrieve failed",
+        code: "NO_RELEVANT_CONTEXT",
+        message: `No retrieved chunks remained under the configured distance threshold (${retrieval.distanceScoreThreshold}).`,
+        details: {
+          question: parsed.data.question,
+          retrievalK: parsed.data.k ?? config.retrievalK,
+          distanceScoreThreshold: retrieval.distanceScoreThreshold,
+        },
+      });
+      return;
+    }
+
     res.json({
       question: parsed.data.question,
       k: parsed.data.k ?? config.retrievalK,
-      sourceCount: sources.length,
-      sources,
+      distanceScoreThreshold: retrieval.distanceScoreThreshold,
+      sourceCount: retrieval.sources.length,
+      sources: retrieval.sources,
     });
   } catch (error) {
     console.error(error);
@@ -644,6 +661,17 @@ app.post("/rag/query", async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error(error);
+
+    if (isRagQueryError(error)) {
+      res.status(error.statusCode).json({
+        error: "RAG query failed",
+        code: error.code,
+        message: error.message,
+        details: error.details,
+      });
+      return;
+    }
+
     res.status(500).json({
       error: "RAG query failed",
       message: error instanceof Error ? error.message : "Unknown error",

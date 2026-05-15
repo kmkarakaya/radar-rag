@@ -12,6 +12,7 @@ const configSchema = z.object({
   chroma: z.object({
     url: z.string().url(),
     collection: z.string().trim().min(1),
+    distanceMetric: z.enum(["l2", "cosine", "ip"]),
   }),
   ollama: z.object({
     baseUrl: z.string().url(),
@@ -28,6 +29,7 @@ const configSchema = z.object({
     chunkSize: z.number().int().positive(),
     chunkOverlap: z.number().int().nonnegative(),
     retrievalK: z.number().int().positive(),
+    retrievalDistanceThreshold: z.number().nonnegative(),
     timeoutMs: z.number().int().positive(),
   }),
   readiness: z.object({
@@ -71,6 +73,7 @@ export const config = {
   port: rawConfig.server.port,
   chromaUrl: rawConfig.chroma.url,
   chromaCollection: rawConfig.chroma.collection,
+  chromaDistanceMetric: rawConfig.chroma.distanceMetric,
   ollamaBaseUrl: rawConfig.ollama.baseUrl,
   ollamaChatModel: rawConfig.ollama.chatModel,
   ollamaEmbeddingModel: rawConfig.ollama.embeddingModel,
@@ -82,6 +85,7 @@ export const config = {
   chunkSize: rawConfig.rag.chunkSize,
   chunkOverlap: rawConfig.rag.chunkOverlap,
   retrievalK: rawConfig.rag.retrievalK,
+  retrievalDistanceThreshold: rawConfig.rag.retrievalDistanceThreshold,
   ollamaNumCtx: rawConfig.ollama.numCtx,
   ollamaNumPredict: rawConfig.ollama.numPredict,
   readyTimeoutMs: rawConfig.readiness.timeoutMs,

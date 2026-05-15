@@ -18,7 +18,7 @@ Bu nedenle ana gorevin cekirdegi tamamlanmis sayilabilir; ancak repo urunlesme, 
 ### 1. Benchmark verisi var, benchmark kosusu yok
 
 Sorun:
-- `bencmark/benchmark.json` ve `bencmark/benchmark.schema.json` repoda duruyor.
+- `benchmark/benchmark.json` ve `benchmark/benchmark.schema.json` repoda duruyor.
 - Buna ragmen `src/` altinda bu benchmark verisini kullanan herhangi bir evaluation script'i yok.
 - Yani sistemin "dogru cevap veriyor mu", "retrieval dogru chunk'i getiriyor mu" veya "degisiklikten sonra kalite dustu mu" gibi sorulara otomatik cevap verilemiyor.
 
@@ -120,16 +120,14 @@ Yapilacaklar:
 ### 5. Retrieval akisi cok minimal
 
 Sorun:
-- Su an dogrudan `similaritySearch(question, k)` calisiyor.
-- Score threshold, reranking, MMR, metadata filtering veya query expansion yok.
+- Su an temel dense retrieval akisi calisiyor.
+- Distance threshold var; buna ragmen reranking, MMR, metadata filtering veya query expansion yok.
 
 Neden onemli:
 - Vanilla RAG icin bu normaldir, ama kalite siniri da burada baslar.
 - Benzer ama baglam disi chunk'lar kolayca ust siralara cikabilir.
 
 Yapilacaklar:
-- En azindan retrieval score'larini gorunur hale getir.
-- Mumkunse `similaritySearchWithScore` benzeri bir akisla kaliteyi gozlemle.
 - Metadata ile filtreleme imkanini dusun (tarih, konu, belge id).
 - Gerekirse ikinci adim reranker eklemek icin yapiyi hazirla.
 
@@ -137,15 +135,15 @@ Yapilacaklar:
 
 Sorun:
 - Retrieval-only endpoint artik var.
-- Ancak response yuzeyi score, rank, chunk index veya daha zengin metadata gostermiyorsa debug ve benchmark icin sinirli kaliyor.
+- Response artik `distanceScore` gosteriyor; query tarafindaki `ANSWER_NOT_IN_RETRIEVED_CONTEXT` hatalari da kompakt `retrievedSources` ozeti iceriyor. Buna ragmen chunk index, filtre bilgisi veya daha zengin retrieval metadata'si halen sinirli.
 
 Neden onemli:
 - Retrieval endpoint'in asil degeri, generation'dan bagimsiz kalite gozlemi saglamasidir.
 - Hangi chunk neden ust siraya cikti sorusu cevapsiz kalirsa endpoint'in debug degeri duser.
 
 Yapilacaklar:
-- Mumkunse score bilgisini response'a ekle.
-- Her kaynak icin rank ve anlamli metadata alanlarini netlestir.
+- Her kaynak icin anlamli metadata alanlarini netlestir.
+- Gerekliyse chunk index veya source path gibi ek retrieval debug alanlarini dusun.
 - Benchmark raporu ile `POST /rag/retrieve` response seklinin uyumlu kalmasini sagla.
 
 ### 6. Chunking ve ingestion kalitesi temel seviyede
@@ -235,7 +233,7 @@ Yapilacaklar:
 ### 8. Hata siniflandirmasi ve log yapisi yetersiz
 
 Sorun:
-- Loglar faydali ama halen temel seviyede.
+- Loglar ve hata siniflandirmasi onceye gore daha iyi; query path'inde typed `422/502` hatalari ve retrieval ozeti var. Buna ragmen log yapisi halen temel seviyede.
 - Request id, latency breakdown, retrieval source ids, source count ve hata tipi gibi alanlar standardize edilmis degil.
 
 Neden onemli:
@@ -326,16 +324,6 @@ Yapilacaklar:
   - typecheck/build
   - test
   - opsiyonel benchmark smoke check
-
-### 12. `bencmark/` klasor adi hatali yazilmis
-
-Sorun:
-- Klasor adi `benchmark` yerine `bencmark`.
-- Fonksiyonel olarak calismayi bozmasa da repo profesyonelligini ve aranabilirligi dusuruyor.
-
-Yapilacaklar:
-- Klasoru `benchmark/` olarak yeniden adlandir.
-- Referanslari ve dokumani guncelle.
 
 ### 13. README teknik olarak yeterli ama kalite sinirlari daha acik yazilmali
 

@@ -9,6 +9,11 @@ chroma:
   url: http://localhost:8000
   # Collection name used for indexing and retrieval.
   collection: ozelge-rag
+  # Distance metric used when creating a new Chroma collection.
+  # Supported values: l2, cosine, ip
+  # IMPORTANT: changing this does not update an existing collection.
+  # To apply a new metric, recreate the collection and run indexing again.
+  distanceMetric: l2
 
 # Ollama model and generation settings.
 ollama:
@@ -19,7 +24,7 @@ ollama:
   # Embedding model used for indexing documents and embedding queries.
   embeddingModel: bge-m3
   # Maximum context window requested from the chat model.
-  numCtx: 1024
+  numCtx: 4096
   # Maximum number of output tokens requested from the chat model.
   numPredict: 128
 
@@ -38,6 +43,9 @@ rag:
   chunkOverlap: 200
   # Number of similar chunks retrieved for each user question.
   retrievalK: 5
+  # Maximum allowed distanceScore for retrieved chunks.
+  # Lower values are stricter; chunks above this threshold are filtered out.
+  retrievalDistanceThreshold: 0.7
   # Maximum time allowed for a RAG answer generation request.
   timeoutMs: 90000
 

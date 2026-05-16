@@ -1,17 +1,17 @@
-import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { Document } from "@langchain/core/documents";
+import { type Document } from "@langchain/core/documents";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { config } from "./config.js";
+import {
+  analyzeOzelgeIndexingSource,
+  loadSourceDocuments,
+  toDocuments as mapOzelgeRecordsToDocuments,
+} from "./ingestion/pipeline.js";
+import {
+  loadOzelgeRecords as loadOzelgeRecordsFromJson,
+  type OzelgeRecord,
+} from "./ingestion/loaders/ozelgeJsonLoader.js";
 import { createVectorStore, resetChromaCollection } from "./rag.js";
-
-export type OzelgeRecord = {
-  evrakOid?: string;
-  sayi?: number | string;
-  tarih?: string;
-  konu?: string;
-  pdfText?: string;
-};
 
 export type IndexingSourceHealthDetails = {
   dataPath: string;
@@ -23,31 +23,11 @@ export type IndexingSourceHealthDetails = {
 };
 
 export async function loadOzelgeRecords(): Promise<OzelgeRecord[]> {
-  const raw = await fs.readFile(config.ozelgeDataPath, "utf8");
-  const parsed = JSON.parse(raw) as unknown;
-
-  if (!Array.isArray(parsed)) {
-    throw new Error(`Expected ${config.ozelgeDataPath} to contain a JSON array`);
-  }
-
-  return parsed as OzelgeRecord[];
+  return loadOzelgeRecordsFromJson(config.ozelgeDataPath);
 }
 
-export function toDocuments(records: OzelgeRecord[]): Document[] {
-  return records
-    .filter((record) => typeof record.pdfText === "string" && record.pdfText.trim().length > 0)
-    .map(
-      (record, index) =>
-        new Document({
-          pageContent: record.pdfText?.trim() ?? "",
-          metadata: {
-            ozelgeId: record.evrakOid ?? `record-${index}`,
-            sayi: record.sayi ?? "",
-            tarih: record.tarih ?? "",
-            konu: record.konu ?? "",
-          },
-        }),
-    );
+export function toDocuments(records: OzelgeRecord[]) {
+  return mapOzelgeRecordsToDocuments(records);
 }
 
 export async function analyzeIndexingSource(): Promise<{
@@ -56,16 +36,7 @@ export async function analyzeIndexingSource(): Promise<{
   documents: Document[];
   sampleLimited: boolean;
 }> {
-  const records = await loadOzelgeRecords();
-  const sampledRecords = records.slice(0, config.indexSampleSize);
-  const documents = toDocuments(sampledRecords);
-
-  return {
-    records,
-    sampledRecords,
-    documents,
-    sampleLimited: sampledRecords.length < records.length,
-  };
+  return analyzeOzelgeIndexingSource(config.ozelgeDataPath, config.indexSampleSize);
 }
 
 export async function checkIndexingSourceHealth(): Promise<{
@@ -107,7 +78,8 @@ export async function checkIndexingSourceHealth(): Promise<{
 
 async function main(): Promise<void> {
   console.log(`Loading ozelge data from ${config.ozelgeDataPath}`);
-  const { records, sampledRecords, documents } = await analyzeIndexingSource();
+  const { records, sampledRecords } = await analyzeIndexingSource();
+  const documents = await loadSourceDocuments(config.ozelgeDataPath, config.indexSampleSize);
 
   console.log(`Loaded ${documents.length} documents from first ${sampledRecords.length} records`);
 

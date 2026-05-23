@@ -22,8 +22,9 @@ const configSchema = z.object({
     numPredict: z.number().int().positive(),
   }),
   data: z.object({
+    sourcePath: z.string().trim().min(1),
     ozelgeDataPath: z.string().trim().min(1),
-    indexSampleSize: z.number().int().positive(),
+    indexSampleSize: z.number().int().nonnegative(),
   }),
   rag: z.object({
     chunkSize: z.number().int().positive(),
@@ -80,6 +81,10 @@ export const config = {
   ozelgeDataPath: path.resolve(
     process.cwd(),
     rawConfig.data.ozelgeDataPath,
+  ),
+  sourcePath: path.resolve(
+    process.cwd(),
+    rawConfig.data.sourcePath,
   ),
   indexSampleSize: rawConfig.data.indexSampleSize,
   chunkSize: rawConfig.rag.chunkSize,

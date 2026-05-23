@@ -1,6 +1,6 @@
 # Vanilla RAG Backend
 
-Minimal TypeScript Express backend for a traditional LangChain RAG flow over `data/ozelge_veri.json`.
+Minimal TypeScript Express backend for a traditional LangChain RAG flow over documents in `data/`.
 
 Bu repo agentic akış değil, basit bir Vanilla RAG backend uygular.
 
@@ -21,7 +21,7 @@ Detaylı mimari ve endpoint sözleşmeleri için [vanilla_rag_backend_mimarisi.m
 Windows PowerShell:
 
 ```powershell
-cd "C:\Codes\Agentic rag"
+cd "C:\Codes\Vanilla Rag Backend"
 docker compose up -d chroma
 npm.cmd install
 ollama pull gemma3:4b-cloud
@@ -39,6 +39,47 @@ http://localhost:3010/test-frontend/
 Bu test arayüzü, endpointleri elle denemek için önerilen yoldur.
 
 `GET /ready` için kısa, detaylı ve strict varyant butonları da bu arayüzde hazırdır.
+
+## Veri Kaynakları ve Ingestion
+
+Indexleme varsayılan olarak [config/rag.config.yaml](config/rag.config.yaml) içindeki `data.sourcePath`
+değerinden yapılır. Bu değer tek bir dosyaya veya bir klasöre işaret edebilir.
+
+Varsayılan config:
+
+```yaml
+data:
+  sourcePath: data
+  ozelgeDataPath: data/ozelge_veri.json
+  indexSampleSize: 0
+```
+
+`sourcePath` klasörse, ilk sürümde sadece o klasörün içindeki dosyalar okunur; alt klasörler recursive taranmaz.
+Desteklenmeyen dosya uzantıları indexlemeyi durdurmaz, atlanır.
+
+Desteklenen kaynaklar:
+
+- `.txt` ve `.md`: LangChain `TextLoader`
+- `.pdf`: LangChain `PDFLoader`
+- `.doc`: LangChain `DocxLoader` (`type: "doc"`)
+- `.docx`: LangChain `DocxLoader` (`type: "docx"`)
+- `data.ozelgeDataPath` ile işaretlenen JSON: mevcut özelge adapter'ı
+
+Not: v1'de `.json` desteği genel JSON mapping anlamına gelmez. Sadece `data.ozelgeDataPath`
+olarak tanımlanan özelge JSON dosyası desteklenir.
+
+`data.indexSampleSize`, özelge JSON adapter'ı için kayıt örnekleme limitidir. `0` değeri limit yok
+anlamına gelir ve parse edilen tüm kayıtlar indexlenir. Dosya tabanlı `.txt`, `.md`, `.pdf`, `.doc`
+ve `.docx` kaynaklar bu limit yüzünden düşürülmez.
+
+Indexlenen her chunk şu ortak metadata alanlarını taşır:
+
+- `documentId`
+- `sourcePath`
+- `sourceType`
+- `chunkIndex`
+
+Özelge JSON kaynakları ayrıca `ozelgeId`, `sayi`, `tarih` ve `konu` alanlarını da korur.
 
 ## Test Etme
 
@@ -93,13 +134,13 @@ Invoke-RestMethod -Uri http://localhost:3010/rag/query -Method Post -ContentType
 - `k`
 - `distanceScoreThreshold`
 - `sourceCount`
-- `sources[]` (`distanceScore` dahil)
+- `sources[]` (`documentId`, `sourcePath`, `sourceType`, `chunkIndex`, `distanceScore` dahil)
 
 `POST /rag/query` basarili oldugunda su alanlari dondurur:
 
 - `answer`
 - `distanceScoreThreshold`
-- `sources[]`
+- `sources[]` (`documentId`, `sourcePath`, `sourceType`, `chunkIndex`, `distanceScore` dahil)
 
 Bu backend bilincli olarak kullaniciya placeholder veya fallback answer dondurmez. Query/retrieve akislarinda baglam yetersizse veya model kontrati bozulursa JSON hata dondurulur.
 
@@ -124,6 +165,7 @@ Baslica hata kodlari:
 
 Şu alanlar değişirse index'i yeniden oluştur:
 
+- `data.sourcePath`
 - `data.ozelgeDataPath`
 - `data.indexSampleSize`
 - `rag.chunkSize`
@@ -161,6 +203,7 @@ klasorunu sil ve tekrar `npm.cmd run index` calistir.
 - Ollama adresi varsayılan: `http://localhost:11434`
 - Varsayılan chat modeli: `gemma3:4b-cloud`
 - Varsayılan embedding modeli: `bge-m3`
+- Varsayılan indexing kaynağı: `data/`
 
 `ollama.chatModel` değişirse backend'i yeniden başlat. Embedding modeli veya chunk/index ayarları değişirse `npm.cmd run index` tekrar çalıştır.
 

@@ -1,11 +1,10 @@
 import { fileURLToPath } from "node:url";
-import { type Document } from "@langchain/core/documents";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { config } from "./config.js";
 import {
-  analyzeOzelgeIndexingSource,
-  loadSourceDocuments,
+  analyzeIndexingSource as analyzeMixedIndexingSource,
   toDocuments as mapOzelgeRecordsToDocuments,
+  type UnsupportedSourceFile,
 } from "./ingestion/pipeline.js";
 import {
   loadOzelgeRecords as loadOzelgeRecordsFromJson,
@@ -14,10 +13,13 @@ import {
 import { createVectorStore, resetChromaCollection } from "./rag.js";
 
 export type IndexingSourceHealthDetails = {
-  dataPath: string;
+  sourcePath: string;
+  fileCount?: number;
+  loadedDocumentCount?: number;
   recordCount?: number;
   sampledRecordCount?: number;
   documentCount?: number;
+  unsupportedFiles?: UnsupportedSourceFile[];
   indexSampleSize: number;
   sampleLimited: boolean;
 };
@@ -30,13 +32,12 @@ export function toDocuments(records: OzelgeRecord[]) {
   return mapOzelgeRecordsToDocuments(records);
 }
 
-export async function analyzeIndexingSource(): Promise<{
-  records: OzelgeRecord[];
-  sampledRecords: OzelgeRecord[];
-  documents: Document[];
-  sampleLimited: boolean;
-}> {
-  return analyzeOzelgeIndexingSource(config.ozelgeDataPath, config.indexSampleSize);
+export async function analyzeIndexingSource() {
+  return analyzeMixedIndexingSource({
+    sourcePath: config.sourcePath,
+    ozelgeDataPath: config.ozelgeDataPath,
+    indexSampleSize: config.indexSampleSize,
+  });
 }
 
 export async function checkIndexingSourceHealth(): Promise<{
@@ -54,10 +55,13 @@ export async function checkIndexingSourceHealth(): Promise<{
       ok: true,
       latencyMs: Date.now() - startedAt,
       details: {
-        dataPath: config.ozelgeDataPath,
-        recordCount: analysis.records.length,
-        sampledRecordCount: analysis.sampledRecords.length,
+        sourcePath: config.sourcePath,
+        fileCount: analysis.fileCount,
+        loadedDocumentCount: analysis.loadedDocumentCount,
+        recordCount: analysis.recordCount,
+        sampledRecordCount: analysis.sampledRecordCount,
         documentCount: analysis.documents.length,
+        unsupportedFiles: analysis.unsupportedFiles,
         indexSampleSize: config.indexSampleSize,
         sampleLimited: analysis.sampleLimited,
       },
@@ -68,7 +72,7 @@ export async function checkIndexingSourceHealth(): Promise<{
       latencyMs: Date.now() - startedAt,
       error: error instanceof Error ? error.message : String(error),
       details: {
-        dataPath: config.ozelgeDataPath,
+        sourcePath: config.sourcePath,
         indexSampleSize: config.indexSampleSize,
         sampleLimited: false,
       },
@@ -77,11 +81,23 @@ export async function checkIndexingSourceHealth(): Promise<{
 }
 
 async function main(): Promise<void> {
-  console.log(`Loading ozelge data from ${config.ozelgeDataPath}`);
-  const { records, sampledRecords } = await analyzeIndexingSource();
-  const documents = await loadSourceDocuments(config.ozelgeDataPath, config.indexSampleSize);
+  console.log(`Loading indexing source from ${config.sourcePath}`);
+  const analysis = await analyzeIndexingSource();
+  const documents = analysis.documents;
 
-  console.log(`Loaded ${documents.length} documents from first ${sampledRecords.length} records`);
+  console.log(
+    `Loaded ${documents.length} indexable documents from ${analysis.loadedDocumentCount} parsed source documents`,
+  );
+  for (const sourceFile of analysis.sourceFiles) {
+    console.log(
+      `- ${sourceFile.path} (${sourceFile.sourceType}): ${sourceFile.loadedDocumentCount} documents`,
+    );
+  }
+  for (const unsupportedFile of analysis.unsupportedFiles) {
+    console.warn(
+      `Skipping unsupported source ${unsupportedFile.path} (${unsupportedFile.extension}): ${unsupportedFile.reason}`,
+    );
+  }
 
   const splitter = new RecursiveCharacterTextSplitter({
     chunkSize: config.chunkSize,
@@ -103,7 +119,7 @@ async function main(): Promise<void> {
   console.log(`Indexing into Chroma collection "${config.chromaCollection}" at ${config.chromaUrl}`);
   const vectorStore = createVectorStore();
   await vectorStore.addDocuments(indexedChunks, {
-    ids: indexedChunks.map((chunk) => `${chunk.metadata.ozelgeId}-${chunk.metadata.chunkIndex}`),
+    ids: indexedChunks.map((chunk) => `${chunk.metadata.documentId}:${chunk.metadata.chunkIndex}`),
   });
 
   console.log("Indexing complete");

@@ -54,7 +54,7 @@ Yapilacaklar:
   - `config.ts`: JSON config parse, schema validation ve hatali kombinasyonlar
   - `server.ts`: bos body, invalid json, bos question, basarili query
   - `rag.ts`: `retrieveSources`, source formatting, timeout handling, model cevabi stringlestirme
-  - `index.ts`: veri dosyasi array degilse hata verme, bos `pdfText` kayitlarini eleme
+  - `index.ts`: bozuk kaynak dosyasi, bos indexable content ve multidoc loader senaryolari
 - Endpoint contract testlerini acikca ekle:
   - `POST /rag/retrieve`: basarili body
   - `POST /rag/retrieve`: invalid body
@@ -63,23 +63,18 @@ Yapilacaklar:
   - `GET /ready` ile `GET /ready?strict=true` semantik farki
 - Chroma ve Ollama bagimliliklari icin gerekirse mock katmani kur.
 
-### 3. Index varsayilan olarak tum veri yerine sadece ilk 100 kaydi kullaniyor
+### 3. Index sample semantigi netlesti, test coverage eksik
 
-Sorun:
-- `data.indexSampleSize` varsayilan olarak `100`.
-- Bu, sistemin veri setinin tamami yerine orneklem ustunde calistigi anlamina geliyor.
-- Demo icin kabul edilebilir; ama "repo hazir" demek icin bu varsayim net olarak ele alinmali.
+Yapildi:
+- `data.indexSampleSize` varsayilani `0` yapildi.
+- `0`, ozelge JSON adapter'i icin tum parse edilen kayitlari indexle anlamina geliyor.
+- Pozitif degerler sadece ozelge JSON adapter'inda ornek kayit sayisini sinirliyor.
+- Dosya tabanli `txt`, `md`, `pdf`, `doc`, `docx` kaynaklar sample limiti yuzunden index disi kalmiyor.
+- README ve `config/rag.config.yaml` bu semantigi acikliyor.
 
-Neden onemli:
-- Kullanici, veri klasorunde ne varsa indexlenecegini varsayabilir.
-- Orneklem kullanimi retrieval kalitesini sessizce dusurebilir.
-
-Yapilacaklar:
-- Varsayilan davranisi acik secik belirle:
-  - ya tam veri indexle
-  - ya da sample mode'u sadece gelistirme modu icin kullan
-- `README.md` ve `config/rag.config.json` icinde bu farki belirginlestir.
-- `data.indexSampleSize` icin `0 = tum veri` gibi daha net bir semantik dusun.
+Kalanlar:
+- `indexSampleSize = 0` ve pozitif limit davranisini unit/integration testlerle kilitle.
+- Readiness warning'lerinin sample limit aktifken ve kapaliyken dogru dondugunu test et.
 
 ### 4. Readiness endpoint'i var, ama operasyonel probe kapsami halen gelistirilmeli
 
@@ -146,74 +141,77 @@ Yapilacaklar:
 - Gerekliyse chunk index veya source path gibi ek retrieval debug alanlarini dusun.
 - Benchmark raporu ile `POST /rag/retrieve` response seklinin uyumlu kalmasini sagla.
 
-### 6. Chunking ve ingestion kalitesi temel seviyede
+### 6. Multidoc ingestion calisiyor, kalite ve genisletme isleri kaliyor
 
-Sorun:
-- Ingestion akisi `src/index.ts` icinde tek bir JSON dosyasina ve o dosyanin ozelge semasina dogrudan bagli.
-- Veri kaynagi `config.data.ozelgeDataPath` altindaki tek bir dosyadan okunuyor; JSON array disindaki formatlar desteklenmiyor.
-- Dokuman icerigi sadece `pdfText` alanindan aliniyor; `evrakOid`, `sayi`, `tarih`, `konu` alanlari da dogrudan bu veri semasina gore map ediliyor.
-- `src/server.ts` readiness ve operator mesajlari da `non-empty pdfText` varsayimina bagli; yani ingestion kisiti sadece index script'inde degil, operasyonel yuzeyde de gorunur durumda.
-- Metin normalization, OCR artigi temizleme, tekrarli whitespace temizligi, header/footer ayiklama gibi adimlar yok.
-- Her chunk sadece temel metadata tasiyor.
+Yapildi:
+- Ingestion akisi `data.sourcePath` uzerinden tek dosya veya klasor okuyabiliyor.
+- Klasor ingestion ilk surumde recursive degil; sadece dogrudan klasor icindeki dosyalari okuyor.
+- LangChain loader/adaptor akisiyle `txt`, `md`, `pdf`, `doc`, `docx` ve mevcut ozelge JSON adapter'i indexlenebiliyor.
+- Ozelge JSON mapping'i genel file loader akisi yerine ayri adapter olarak korundu.
+- Ortak document metadata contract'i eklendi: `documentId`, `sourcePath`, `sourceType`, `chunkIndex`.
+- Ozelge metadata'si korunuyor: `ozelgeId`, `sayi`, `tarih`, `konu`.
+- Indexleme oncesinde `normalizeText()` tum loader ciktilarina uygulanıyor; bos content indexlenmiyor.
+- Unsupported extension indexlemeyi durdurmuyor; analysis sonucunda `unsupportedFiles` olarak raporlaniyor.
+- Chroma id uretimi artik `documentId:chunkIndex`; ozelge disi dosyalarda `ozelgeId` beklenmiyor.
+- Readiness ve operator mesajlari `pdfText` / tek JSON dosyasi dilinden genel indexing source diline tasindi.
+- `POST /rag/retrieve` ve query kaynaklari `documentId`, `sourcePath`, `sourceType`, `chunkIndex` donduruyor.
+- `data.indexSampleSize = 0` tum parse edilen ozelge kayitlarini indexliyor; pozitif deger sadece ozelge JSON sample limitidir.
+
+Kalan sorunlar:
+- Generic JSON mapping yok; v1'de `.json` destegi sadece `data.ozelgeDataPath` ile isaretlenen mevcut ozelge adapter'i anlamina geliyor.
+- JSONL ve CSV henuz desteklenmiyor.
+- Recursive directory ingestion henuz yok.
+- Loader options config yuzeyi yok.
+- OCR artigi, header/footer ayiklama, tekrarli metin temizleme ve asiri kisa chunk filtreleme halen temel seviyede.
+- Multidoc ingestion icin otomatik unit/integration test coverage yok.
 
 Neden onemli:
-- Bugunku haliyle repo baska bir kullanicinin kendi veri klasorunu koyup dogrudan indexleyebilecegi bir vanilla RAG backend degil; ozelge JSON semasina uyarlama gerektiriyor.
-- Vanilla RAG tarafinda beklenen taban yetenek, ingestion katmaninin kaynak formattan olabildigince ayrismis olmasi ve farkli dosya tiplerini ortak `Document` modeline cevirebilmesidir.
-- LangChain tarafinda bunun dogal yolu `DocumentLoader` soyutlamasini kullanmak; loader'lar ortak `load()` / `loadAndSplit()` arayuzu verir ve PDF, CSV, JSON, JSONL, text, DOCX gibi farkli kaynaklara ayni ingestion zinciriyle baglanmayi kolaylastirir.
+- Multidoc ingestion calissa da kalite ve genisletilebilirlik testlerle kilitlenmezse kolayca regress olabilir.
+- Generic JSON/CSV/JSONL destegi olmadan her kullanicinin kendi veri semasini kod degistirmeden eslemesi mumkun degil.
 - Ozelge gibi yapisal belgelerde girdi kalitesi retrieval kalitesini dogrudan etkiler.
 - Kirik veya gereksiz metinler embedding kalitesini dusurur.
 
-Yapilacaklar:
-- Ingestion akisinin alan-adina bagli kismini ayir:
-  - `loadOzelgeRecords()` / `toDocuments()` ikilisini daha genel bir `loadSourceDocuments()` abstraction'ina donustur.
-  - Ozelge JSON mapping'i genel pipeline'in icinde degil, ayri bir adapter olarak konumlansin.
-- LangChain `DocumentLoader` tabanli bir ingestion katmani tasarla:
-  - Dosya tipi secimine gore loader kullanan bir katman ekle.
-  - Baslangic icin en az su formatlari degerlendir: `txt`, `md`, `pdf`, `json`, `jsonl`, `csv`, `docx`.
-  - Tek dosya ve klasor ingestion senaryolarini ayir; gerekirse `DirectoryLoader` veya `MultiFileLoader` benzeri bir kompozisyon kullan.
+Kalan yapilacaklar:
 - JSON ingestion icin sema bagimliligini config'e tasi:
   - `contentField`, `idField` ve `metadataFields` benzeri ayarlar dusun.
   - Mumkunse nested alanlar icin JSON pointer/path semantigi belirle.
   - Boylece kullanici kendi JSON dosyasini kod degistirmeden esleyebilsin.
-- Ingestion sonucu uretilen ortak `Document` contract'ini netlestir:
-  - `pageContent`
-  - normalize edilmis metadata
-  - `sourceType`, `sourcePath`, `documentId`, `chunkIndex` gibi alanlar
-- Indexleme oncesi basit bir text normalization katmani ekle.
+- JSONL ve CSV loader destegi ekle.
+- Recursive directory opsiyonunu config ile ac/kapat.
+- Loader options config yuzeyini tasarla.
 - Sayfa numarasi, belge bolumu, paragraf tipi gibi ek metadata alanlarini dusun.
 - Ayni belge icindeki tekrar eden veya asiri kisa chunk'lari filtrele.
-- Readiness ve operator mesajlarini sema-ozel dilden kurtar:
-  - `non-empty pdfText` yerine `indexable document content` dili kullan.
-  - `DATA_FILE_UNREADABLE` ve `NO_INDEXABLE_DOCUMENTS` mesaji, loader / source config mantigina gore yeniden yazilsin.
-- CLI ve config yuzeyini ingestion acisindan genislet:
-  - `data.sourcePath` veya `data.sourcePaths`
-  - `data.sourceType` veya otomatik extension tabanli tespit
-  - `data.loaderOptions`
-  - `data.indexSampleSize` semantiginin loader-based ingestion ile uyumunu netlestir
 - Testleri bu yeni capability etrafinda ekle:
   - Farkli dosya tiplerinden `Document` uretimi
   - Yanlis JSON field mapping durumunda anlasilir hata
   - Bos klasor / unsupported extension / bozuk dosya senaryolari
-  - Readiness mesajlarinin `pdfText` gibi source-specific alan adlarina bagli olmamasi
+  - `indexSampleSize = 0` ve pozitif sample semantigi
+  - Readiness mesajlarinin source-specific alan adlarina bagli olmamasi
 
-### 6.1. Ingestion capability'si vanilla RAG beklentisinin gerisinde
+### 6.1. Ingestion dokumani guncellendi, custom mapping dokumani eksik
 
-Sorun:
-- Repo retrieval ve generation tarafinda calisiyor olsa da ingestion capability'si halen tek dataset, tek sema ve tek dosya formatina yakin.
-- Kullanici kendi veri klasorunu repoya koydugunda "hangi dosyalar destekleniyor, nasil parse ediliyor, metadata nasil cikariliyor" sorularina sistem seviyesinde cevap yok.
+Yapildi:
+- README supported loaders ve mixed `data/` ingestion davranisini listeliyor.
+- Ilk resmi destek kapsami net: `txt`, `md`, `pdf`, `doc`, `docx`, ve mevcut ozelge JSON adapter'i.
+- `indexSampleSize = 0` semantigi README ve config yorumlarinda aciklandi.
+
+Kalan sorunlar:
+- Generic JSON mapping olmadigi icin "custom JSON mapping" bolumu henuz gercek bir ozelligi anlatamaz.
+- CSV/JSONL ve recursive directory davranislari dokumanda backlog olarak kalmali.
+- Mimari dokumanda multidoc ingestion akisi ve metadata contract'i ayrica guncellenmeli.
 
 Neden onemli:
 - Vanilla RAG'in pratikte tekrar kullanilabilir olmasi icin en kritik unsur, veri kaynagini modele degil `Document` katmanina standartlastirmasidir.
-- Ingestion esnek degilse repo sadece mevcut veri seti icin calisan bir demo olarak kalir.
+- Desteklenen formatlar ve kisitlar net kalmazsa kullanici kendi data klasorunu koydugunda yanlis beklentiye girer.
 
-Yapilacaklar:
-- README ve mimari dokumanda desteklenen ingestion kaynaklarini acik listele.
-- "Supported loaders" ve "custom JSON mapping" bolumu ekle.
+Kalan yapilacaklar:
+- Mimari dokumanda desteklenen ingestion kaynaklarini acik listele.
+- Generic JSON mapping gelince "custom JSON mapping" bolumu ekle.
 - Ornek veri klasoru yapilari ver:
   - tek JSON dosyasi
   - klasorde birden fazla PDF/TXT/DOCX dosyasi
-  - mixed-source ingestion icin gelecek plan
-- Ilk hedefte hangi formatlar resmi olarak desteklenecek, hangileri backlog'da kalacak bunu netlestir.
+  - mixed-source ingestion
+- Backlog formatlarini ayri listele: CSV, JSONL, recursive directory.
 
 ### 7. Re-index akisinin tamamini resetlemesi yikici bir davranis
 
@@ -379,15 +377,16 @@ Yapilacaklar:
 - Su hatalari daha net yakala:
   - `retrievalK` ve `numPredict` icin operasyonel ust sinir beklentileri
   - model degisikliginde gerekli restart / re-index etkilerini acik contract'a baglama
-  - `indexSampleSize` icin `0 = tum veri` gibi yeni semantik gelirse bunun validation'i
+  - `indexSampleSize` icin `0 = tum veri` semantiginin ek validation/test kapsami
 
 ## Sonraki oncelikli uygulama sirasi
 
 1. Benchmark runner ekle.
 2. Unit ve integration testlerini ekle.
-3. Full-data indexing davranisini netlestir.
-4. Retrieval observability ve request/log standardizasyonunu ekle.
-5. Readiness'i gercek RAG akisina daha yakin probe'larla guclendir.
+3. Multidoc ingestion test coverage ekle.
+4. Generic JSON mapping, CSV/JSONL ve recursive directory backlog'unu sirala.
+5. Retrieval observability ve request/log standardizasyonunu ekle.
+6. Readiness'i gercek RAG akisina daha yakin probe'larla guclendir.
 
 ## Kapanis notu
 

@@ -279,16 +279,16 @@ async function getReadinessPayload() {
   }
 
   checks.push({
-    code: dataSource.ok ? "DATA_FILE_READABLE" : "DATA_FILE_UNREADABLE",
+    code: dataSource.ok ? "INDEXING_SOURCE_READABLE" : "INDEXING_SOURCE_UNREADABLE",
     name: "Indexing data source",
     status: dataSource.ok ? "pass" : "fail",
     blocking: true,
     capabilities: ["index"],
     message: dataSource.ok
-      ? `Indexing data source is readable at ${config.ozelgeDataPath}.`
-      : `Indexing data source cannot be read at ${config.ozelgeDataPath}. ${dataSource.error ?? ""}`.trim(),
+      ? `Indexing source is readable at ${config.sourcePath}.`
+      : `Indexing source cannot be read at ${config.sourcePath}. ${dataSource.error ?? ""}`.trim(),
     details: {
-      dataPath: config.ozelgeDataPath,
+      sourcePath: config.sourcePath,
       latencyMs: dataSource.latencyMs,
       error: dataSource.error,
     },
@@ -306,26 +306,32 @@ async function getReadinessPayload() {
       blocking: true,
       capabilities: ["index"],
       message: documentCount > 0
-        ? `Indexing source contains ${documentCount} documents with non-empty pdfText in the current sample.`
-        : "Indexing source does not contain any documents with non-empty pdfText in the current sample, so indexing cannot proceed.",
+        ? `Indexing source contains ${documentCount} documents with indexable content.`
+        : "Indexing source does not contain any documents with indexable content in the current sample, so indexing cannot proceed.",
       details: {
-        dataPath: config.ozelgeDataPath,
+        sourcePath: config.sourcePath,
+        fileCount: dataSourceDetails.fileCount,
+        loadedDocumentCount: dataSourceDetails.loadedDocumentCount,
         recordCount: dataSourceDetails.recordCount,
         sampledRecordCount: dataSourceDetails.sampledRecordCount,
         documentCount,
+        unsupportedFiles: dataSourceDetails.unsupportedFiles,
         indexSampleSize: dataSourceDetails.indexSampleSize,
       },
     });
 
     if (dataSourceDetails.sampleLimited) {
+      const loadedDocumentCount = dataSourceDetails.loadedDocumentCount ?? dataSourceDetails.recordCount;
       checks.push({
         code: "INDEX_SAMPLE_LIMIT_ACTIVE",
         name: "Index sample limit",
         status: "warn",
         blocking: false,
         capabilities: ["index", "query"],
-        message: `Indexing currently uses only the first ${dataSourceDetails.sampledRecordCount} records because data.indexSampleSize is set to ${dataSourceDetails.indexSampleSize}.`,
+        message: `Indexing currently uses only the first ${dataSourceDetails.documentCount} documents because data.indexSampleSize is set to ${dataSourceDetails.indexSampleSize}.`,
         details: {
+          sourcePath: config.sourcePath,
+          loadedDocumentCount,
           recordCount: dataSourceDetails.recordCount,
           sampledRecordCount: dataSourceDetails.sampledRecordCount,
           indexSampleSize: dataSourceDetails.indexSampleSize,
@@ -451,7 +457,7 @@ async function getReadinessPayload() {
             },
       },
       dataSource: {
-        path: config.ozelgeDataPath,
+        path: config.sourcePath,
         ...dataSource,
       },
     },
@@ -477,12 +483,12 @@ function recommendedActionFor(code: string): string | undefined {
       return "Verify Ollama embedding inference is working and that the embedding model can generate vectors.";
     case "CHAT_SMOKE_FAILED":
       return "Verify Ollama chat generation can load the configured model. If Ollama reports memory allocation errors, reduce config/rag.config.yaml ollama.numCtx, ollama.numPredict, or rag.retrievalK, then restart Ollama and the backend.";
-    case "DATA_FILE_UNREADABLE":
-      return "Verify config/rag.config.yaml data.ozelgeDataPath points to a readable JSON file.";
+    case "INDEXING_SOURCE_UNREADABLE":
+      return "Verify config/rag.config.yaml data.sourcePath points to a readable file or directory.";
     case "NO_INDEXABLE_DOCUMENTS":
-      return "Verify the configured data source contains records with non-empty pdfText before running indexing.";
+      return "Verify the configured indexing source contains supported files with non-empty document content before running indexing.";
     case "INDEX_SAMPLE_LIMIT_ACTIVE":
-      return "Increase config/rag.config.yaml data.indexSampleSize if you want readiness and indexing to cover more of the source dataset.";
+      return "Increase config/rag.config.yaml data.indexSampleSize, or set it to 0, if you want indexing to cover more of the source dataset.";
     default:
       return undefined;
   }

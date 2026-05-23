@@ -5,6 +5,10 @@ import { ChromaClient, type ChromaClientArgs } from "chromadb";
 import { config } from "./config.js";
 
 export type RagSource = {
+  documentId?: string;
+  sourcePath?: string;
+  sourceType?: string;
+  chunkIndex?: number;
   ozelgeId?: string;
   sayi?: number | string;
   tarih?: string;
@@ -363,6 +367,9 @@ function formatContext(sources: RagSource[]): string {
     .map((source, index) => {
       const label = [
         `Source ${index + 1}`,
+        source.documentId ? `documentId=${source.documentId}` : undefined,
+        source.sourceType ? `sourceType=${source.sourceType}` : undefined,
+        source.sourcePath ? `sourcePath=${source.sourcePath}` : undefined,
         source.ozelgeId ? `ozelgeId=${source.ozelgeId}` : undefined,
         source.tarih ? `tarih=${source.tarih}` : undefined,
         source.konu ? `konu=${source.konu}` : undefined,
@@ -409,11 +416,19 @@ function selectSourcesForGeneration(sources: RagSource[]): RagSource[] {
 }
 
 function summarizeSourcesForError(sources: RagSource[]): Array<{
+  documentId?: string;
+  sourcePath?: string;
+  sourceType?: string;
+  chunkIndex?: number;
   ozelgeId?: string;
   konu?: string;
   distanceScore?: number;
 }> {
   return sources.map((source) => ({
+    documentId: source.documentId,
+    sourcePath: source.sourcePath,
+    sourceType: source.sourceType,
+    chunkIndex: source.chunkIndex,
     ozelgeId: source.ozelgeId,
     konu: source.konu,
     distanceScore: source.distanceScore,
@@ -459,6 +474,10 @@ export async function retrieveSources(question: string, k = config.retrievalK): 
   const sources = docsWithScores
     .sort((left, right) => left[1] - right[1])
     .map(([doc, distanceScore]) => ({
+      documentId: doc.metadata.documentId as string | undefined,
+      sourcePath: doc.metadata.sourcePath as string | undefined,
+      sourceType: doc.metadata.sourceType as string | undefined,
+      chunkIndex: doc.metadata.chunkIndex as number | undefined,
       ozelgeId: doc.metadata.ozelgeId as string | undefined,
       sayi: doc.metadata.sayi as number | string | undefined,
       tarih: doc.metadata.tarih as string | undefined,

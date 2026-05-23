@@ -30,10 +30,15 @@ ollama:
 
 # Source dataset and indexing scope.
 data:
+  # File or directory used as the indexing source.
+  # Directories are scanned one level deep for supported document files.
+  sourcePath: data
   # JSON file containing the raw ozelge records.
+  # This remains as the special adapter path for the existing ozelge dataset.
   ozelgeDataPath: data/ozelge_veri.json
-  # Number of source records to index from the beginning of the dataset.
-  indexSampleSize: 100
+  # Number of ozelge JSON records to sample; 0 means index all parsed records.
+  # File-based documents in sourcePath are not dropped by this limit.
+  indexSampleSize: 0
 
 # RAG retrieval and answer-generation behavior.
 rag:
@@ -42,10 +47,11 @@ rag:
   # Character overlap between adjacent chunks.
   chunkOverlap: 200
   # Number of similar chunks retrieved for each user question.
-  retrievalK: 5
+  # Mixed document folders need a wider candidate set than the original ozelge-only dataset.
+  retrievalK: 12
   # Maximum allowed distanceScore for retrieved chunks.
   # Lower values are stricter; chunks above this threshold are filtered out.
-  retrievalDistanceThreshold: 0.7
+  retrievalDistanceThreshold: 1.2
   # Maximum time allowed for a RAG answer generation request.
   timeoutMs: 90000
 

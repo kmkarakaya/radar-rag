@@ -12,7 +12,7 @@ import {
   type RawConfig,
   type ResolvedConfig,
 } from "../config.js";
-import { analyzeIndexingSource, runIndexing } from "../index.js";
+import { analyzeIndexingSource } from "../index.js";
 import {
   checkChatGenerationHealth,
   checkChromaHealth,
@@ -141,15 +141,11 @@ async function promptConfig(rawConfig: RawConfig): Promise<RawConfig> {
       server: {
         port: await promptNumber(rl, "server.port", rawConfig.server.port, positiveInteger),
       },
+      registry: {
+        path: await promptString(rl, "registry.path", rawConfig.registry.path),
+      },
       chroma: {
         url: await promptString(rl, "chroma.url", rawConfig.chroma.url),
-        collection: await promptString(rl, "chroma.collection", rawConfig.chroma.collection),
-        distanceMetric: await promptEnum(
-          rl,
-          "chroma.distanceMetric",
-          rawConfig.chroma.distanceMetric,
-          DISTANCE_METRICS,
-        ),
       },
       ollama: {
         baseUrl: await promptString(rl, "ollama.baseUrl", rawConfig.ollama.baseUrl),
@@ -158,32 +154,55 @@ async function promptConfig(rawConfig: RawConfig): Promise<RawConfig> {
         numCtx: await promptNumber(rl, "ollama.numCtx", rawConfig.ollama.numCtx, positiveInteger),
         numPredict: await promptNumber(rl, "ollama.numPredict", rawConfig.ollama.numPredict, positiveInteger),
       },
-      data: {
-        sourcePath: await promptString(rl, "data.sourcePath", rawConfig.data.sourcePath),
-        ozelgeDataPath: await promptString(rl, "data.ozelgeDataPath", rawConfig.data.ozelgeDataPath),
+      collectionDefaults: {
+        sourcePath: await promptString(rl, "collectionDefaults.sourcePath", rawConfig.collectionDefaults.sourcePath),
+        ozelgeDataPath: await promptString(
+          rl,
+          "collectionDefaults.ozelgeDataPath",
+          rawConfig.collectionDefaults.ozelgeDataPath,
+        ),
+        distanceMetric: await promptEnum(
+          rl,
+          "collectionDefaults.distanceMetric",
+          rawConfig.collectionDefaults.distanceMetric,
+          DISTANCE_METRICS,
+        ),
         indexSampleSize: await promptNumber(
           rl,
-          "data.indexSampleSize",
-          rawConfig.data.indexSampleSize,
+          "collectionDefaults.indexSampleSize",
+          rawConfig.collectionDefaults.indexSampleSize,
           nonNegativeInteger,
         ),
-      },
-      rag: {
-        chunkSize: await promptNumber(rl, "rag.chunkSize", rawConfig.rag.chunkSize, positiveInteger),
+        chunkSize: await promptNumber(
+          rl,
+          "collectionDefaults.chunkSize",
+          rawConfig.collectionDefaults.chunkSize,
+          positiveInteger,
+        ),
         chunkOverlap: await promptNumber(
           rl,
-          "rag.chunkOverlap",
-          rawConfig.rag.chunkOverlap,
+          "collectionDefaults.chunkOverlap",
+          rawConfig.collectionDefaults.chunkOverlap,
           nonNegativeInteger,
         ),
-        retrievalK: await promptNumber(rl, "rag.retrievalK", rawConfig.rag.retrievalK, positiveInteger),
+        retrievalK: await promptNumber(
+          rl,
+          "collectionDefaults.retrievalK",
+          rawConfig.collectionDefaults.retrievalK,
+          positiveInteger,
+        ),
         retrievalDistanceThreshold: await promptNumber(
           rl,
-          "rag.retrievalDistanceThreshold",
-          rawConfig.rag.retrievalDistanceThreshold,
+          "collectionDefaults.retrievalDistanceThreshold",
+          rawConfig.collectionDefaults.retrievalDistanceThreshold,
           nonNegativeNumber,
         ),
-        timeoutMs: await promptNumber(rl, "rag.timeoutMs", rawConfig.rag.timeoutMs, positiveInteger),
+        timeoutMs: await promptNumber(
+          rl,
+          "collectionDefaults.timeoutMs",
+          rawConfig.collectionDefaults.timeoutMs,
+          positiveInteger,
+        ),
       },
       readiness: {
         timeoutMs: await promptNumber(
@@ -230,15 +249,17 @@ function printConfigSummary(runtimeConfig: ResolvedConfig): void {
   console.log("\nConfig summary:");
   console.log(`- configPath: ${runtimeConfig.configPath}`);
   console.log(`- server.port: ${runtimeConfig.port}`);
-  console.log(`- chroma: ${runtimeConfig.chromaUrl} / ${runtimeConfig.chromaCollection}`);
+  console.log(`- registry.path: ${runtimeConfig.registryPath}`);
+  console.log(`- chroma.url: ${runtimeConfig.chromaUrl}`);
   console.log(`- ollama chat: ${runtimeConfig.ollamaChatModel}`);
   console.log(`- ollama embedding: ${runtimeConfig.ollamaEmbeddingModel}`);
-  console.log(`- data.sourcePath: ${runtimeConfig.sourcePath}`);
-  console.log(`- data.ozelgeDataPath: ${runtimeConfig.ozelgeDataPath}`);
-  console.log(`- data.indexSampleSize: ${runtimeConfig.indexSampleSize}`);
-  console.log(`- rag.chunkSize/chunkOverlap: ${runtimeConfig.chunkSize}/${runtimeConfig.chunkOverlap}`);
-  console.log(`- rag.retrievalK: ${runtimeConfig.retrievalK}`);
-  console.log(`- rag.retrievalDistanceThreshold: ${runtimeConfig.retrievalDistanceThreshold}`);
+  console.log(`- collectionDefaults.sourcePath: ${runtimeConfig.sourcePath}`);
+  console.log(`- collectionDefaults.ozelgeDataPath: ${runtimeConfig.ozelgeDataPath}`);
+  console.log(`- collectionDefaults.distanceMetric: ${runtimeConfig.chromaDistanceMetric}`);
+  console.log(`- collectionDefaults.indexSampleSize: ${runtimeConfig.indexSampleSize}`);
+  console.log(`- collectionDefaults.chunkSize/chunkOverlap: ${runtimeConfig.chunkSize}/${runtimeConfig.chunkOverlap}`);
+  console.log(`- collectionDefaults.retrievalK: ${runtimeConfig.retrievalK}`);
+  console.log(`- collectionDefaults.retrievalDistanceThreshold: ${runtimeConfig.retrievalDistanceThreshold}`);
 }
 
 async function printSourceAnalysis(runtimeConfig: ResolvedConfig): Promise<number> {
@@ -297,19 +318,6 @@ async function runDependencyChecks(runtimeConfig: ResolvedConfig): Promise<boole
   return chroma.ok && embedding.ok;
 }
 
-async function confirmIndex(runtimeConfig: ResolvedConfig): Promise<boolean> {
-  const rl = createInterface({ input, output });
-
-  try {
-    const answer = await rl.question(
-      `\nThis will reset Chroma collection "${runtimeConfig.chromaCollection}" at ${runtimeConfig.chromaUrl} and rebuild the index. Continue? (y/N): `,
-    );
-    return answer.trim().toLowerCase() === "y" || answer.trim().toLowerCase() === "yes";
-  } finally {
-    rl.close();
-  }
-}
-
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const rawConfig = parseConfig(readConfigFile(options.configPath), options.configPath);
@@ -341,25 +349,10 @@ async function main(): Promise<void> {
     throw new Error("Dependencies are not ready for indexing.");
   }
 
-  if (options.dryRun || options.skipIndex) {
-    console.log("\nIndex skipped.");
-    return;
-  }
-
-  if (!options.yes && !(await confirmIndex(runtimeConfig))) {
-    console.log("\nIndex cancelled.");
-    return;
-  }
-
-  const result = await runIndexing(runtimeConfig, {
-    log: (message) => console.log(`[index] ${message}`),
-  });
-
-  console.log("\nOnboarding complete.");
-  console.log(`- indexed source documents: ${result.sourceDocumentCount}`);
-  console.log(`- chunks: ${result.chunkCount}`);
+  console.log("\nIndex skipped. Multi-collection indexing must use the registry-backed collection job flow.");
+  console.log("Use `npm run index -- --collection-id <id>` to reindex an existing collection.");
   console.log("\nNext step:");
-  console.log("npm.cmd run dev");
+  console.log("npm run dev");
 }
 
 main().catch((error) => {

@@ -2,7 +2,8 @@ import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { ChatOllama, OllamaEmbeddings } from "@langchain/ollama";
 import { ChromaClient, type ChromaClientArgs } from "chromadb";
-import { config, type ResolvedConfig } from "./config.js";
+import { assertChromaCollectionReadable } from "./collections/chromaCollections.js";
+import { config, type DistanceMetric, type ResolvedConfig } from "./config.js";
 
 export type RagSource = {
   documentId?: string;
@@ -31,11 +32,8 @@ export type DependencyHealth = {
 
 export type ChromaHealthDetails = {
   reachable: boolean;
-  collectionName: string;
-  collectionExists: boolean;
+  collectionReadable?: boolean;
   collectionCount?: number;
-  collectionEmpty?: boolean;
-  canServeQueriesFromCollection: boolean;
 };
 
 export type OllamaHealthDetails = {
@@ -61,7 +59,12 @@ export type RagQueryErrorCode =
   | "NO_RELEVANT_CONTEXT"
   | "ANSWER_NOT_IN_RETRIEVED_CONTEXT"
   | "EMPTY_MODEL_RESPONSE"
-  | "DISALLOWED_FALLBACK_ANSWER";
+  | "DISALLOWED_FALLBACK_ANSWER"
+  | "COLLECTION_NOT_FOUND"
+  | "COLLECTION_NOT_READY"
+  | "COLLECTION_INDEXING"
+  | "COLLECTION_STORAGE_INCONSISTENT"
+  | "MODEL_BACKPRESSURE";
 
 type RagQueryErrorDetails = Record<string, unknown>;
 
@@ -108,7 +111,7 @@ function createChatModel(runtimeConfig: ResolvedConfig): ChatOllama {
   });
 }
 
-function chromaClientParams(runtimeConfig: ResolvedConfig): Omit<ChromaClientArgs, "path"> {
+export function chromaClientParams(runtimeConfig: ResolvedConfig): Omit<ChromaClientArgs, "path"> {
   const url = new URL(runtimeConfig.chromaUrl);
   return {
     host: url.hostname,
@@ -142,10 +145,6 @@ function normalizeOllamaModelName(modelName: string): string {
   return modelName.endsWith(":latest") ? modelName.slice(0, -":latest".length) : modelName;
 }
 
-function isMissingCollectionError(error: unknown): boolean {
-  return /not found|does not exist|404|could not be found/i.test(errorMessage(error));
-}
-
 function hasConfiguredModel(availableModels: string[], configuredModel: string): boolean {
   const normalizedConfiguredModel = normalizeOllamaModelName(configuredModel);
   return availableModels.some(
@@ -153,48 +152,38 @@ function hasConfiguredModel(availableModels: string[], configuredModel: string):
   );
 }
 
-export async function checkChromaHealth(runtimeConfig = config): Promise<DependencyHealth> {
+export async function checkChromaHealth(
+  runtimeConfig = config,
+  options?: { collectionName?: string },
+): Promise<DependencyHealth> {
   const startedAt = Date.now();
   const client = new ChromaClient(chromaClientParams(runtimeConfig));
   const details: ChromaHealthDetails = {
     reachable: false,
-    collectionName: runtimeConfig.chromaCollection,
-    collectionExists: false,
-    canServeQueriesFromCollection: false,
   };
 
   try {
     await withTimeout(client.heartbeat(), runtimeConfig.readyTimeoutMs, "Chroma heartbeat");
     details.reachable = true;
 
-    let collection;
-    try {
-      collection = await withTimeout(
-        client.getCollection({ name: runtimeConfig.chromaCollection }),
-        runtimeConfig.readyTimeoutMs,
-        `Chroma collection ${runtimeConfig.chromaCollection} lookup`,
-      );
-    } catch (error) {
-      if (isMissingCollectionError(error)) {
+    if (options?.collectionName) {
+      try {
+        const { count } = await assertChromaCollectionReadable({
+          name: options.collectionName,
+          runtimeConfig,
+        });
+        details.collectionReadable = true;
+        details.collectionCount = count;
+      } catch (error) {
+        details.collectionReadable = false;
         return {
-          ok: true,
+          ok: false,
           latencyMs: Date.now() - startedAt,
+          error: errorMessage(error),
           details,
         };
       }
-
-      throw error;
     }
-
-    details.collectionExists = true;
-    const collectionCount = await withTimeout(
-      collection.count(),
-      runtimeConfig.readyTimeoutMs,
-      `Chroma collection ${runtimeConfig.chromaCollection} count`,
-    );
-    details.collectionCount = collectionCount;
-    details.collectionEmpty = collectionCount === 0;
-    details.canServeQueriesFromCollection = collectionCount > 0;
 
     return {
       ok: true,
@@ -341,27 +330,16 @@ export async function checkChatGenerationHealth(runtimeConfig = config): Promise
   }
 }
 
-export function createVectorStore(runtimeConfig = config): Chroma {
+export function createVectorStore(input: {
+  collectionName: string;
+  runtimeConfig: ResolvedConfig;
+}): Chroma {
+  const runtimeConfig = input.runtimeConfig;
+
   return new Chroma(createEmbeddings(runtimeConfig), {
-    collectionName: runtimeConfig.chromaCollection,
+    collectionName: input.collectionName,
     clientParams: chromaClientParams(runtimeConfig),
-    collectionMetadata: {
-      "hnsw:space": runtimeConfig.chromaDistanceMetric,
-    },
   });
-}
-
-export async function resetChromaCollection(runtimeConfig = config): Promise<void> {
-  const client = new ChromaClient(chromaClientParams(runtimeConfig));
-
-  try {
-    await client.deleteCollection({ name: runtimeConfig.chromaCollection });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!isMissingCollectionError(message)) {
-      throw error;
-    }
-  }
 }
 
 function logStep(message: string): void {
@@ -475,10 +453,21 @@ function timeoutError(label: string, timeoutMs: number): Error {
 
 export async function retrieveSources(
   question: string,
-  k = config.retrievalK,
-  runtimeConfig = config,
+  options: {
+    collectionName: string;
+    k?: number;
+    runtimeConfig: ResolvedConfig;
+  },
 ): Promise<RetrievalResult> {
-  const vectorStore = createVectorStore(runtimeConfig);
+  const runtimeConfig = options.runtimeConfig;
+  const k = options.k ?? runtimeConfig.retrievalK;
+
+  await assertChromaCollectionReadable({ name: options.collectionName, runtimeConfig });
+
+  const vectorStore = createVectorStore({
+    collectionName: options.collectionName,
+    runtimeConfig,
+  });
   const docsWithScores = await vectorStore.similaritySearchWithScore(question, k);
 
   const sources = docsWithScores
@@ -505,17 +494,27 @@ export async function retrieveSources(
   };
 }
 
-export async function answerQuestion(question: string, runtimeConfig = config): Promise<{
+export async function answerQuestion(question: string, options: {
+  collectionName: string;
+  runtimeConfig: ResolvedConfig;
+  retrievalK?: number;
+}): Promise<{
   answer: string;
   distanceScoreThreshold: number;
   sources: RagSource[];
 }> {
+  const runtimeConfig = options.runtimeConfig;
   const startedAt = Date.now();
   const model = createChatModel(runtimeConfig);
-  logStep(`query started; model=${runtimeConfig.ollamaChatModel}; k=${runtimeConfig.retrievalK}`);
+  const k = options.retrievalK ?? runtimeConfig.retrievalK;
+  logStep(`query started; model=${runtimeConfig.ollamaChatModel}; k=${k}`);
 
   logStep("retrieval started");
-  const retrieval = await retrieveSources(question, runtimeConfig.retrievalK, runtimeConfig);
+  const retrieval = await retrieveSources(question, {
+    collectionName: options.collectionName,
+    k,
+    runtimeConfig,
+  });
   const retrievedSources = retrieval.sources;
 
   if (retrievedSources.length === 0) {

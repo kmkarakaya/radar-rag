@@ -1,6 +1,8 @@
 import { fileURLToPath } from "node:url";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { config, type ResolvedConfig } from "./config.js";
+import { startReindexJob, runIndexJob } from "./indexing/jobs.js";
+import { createSqliteCollectionRegistry } from "./collections/sqliteRegistry.js";
 import {
   analyzeIndexingSource as analyzeMixedIndexingSource,
   toDocuments as mapOzelgeRecordsToDocuments,
@@ -10,7 +12,7 @@ import {
   loadOzelgeRecords as loadOzelgeRecordsFromJson,
   type OzelgeRecord,
 } from "./ingestion/loaders/ozelgeJsonLoader.js";
-import { createVectorStore, resetChromaCollection } from "./rag.js";
+import { createVectorStore } from "./rag.js";
 
 export type IndexingSourceHealthDetails = {
   sourcePath: string;
@@ -89,63 +91,51 @@ export async function checkIndexingSourceHealth(runtimeConfig = config): Promise
 export async function runIndexing(
   runtimeConfig: ResolvedConfig = config,
   options: {
+    collectionId?: string;
     log?: (message: string) => void;
   } = {},
-): Promise<IndexingRunResult> {
+): Promise<void> {
   const log = options.log ?? console.log;
-
-  log(`Loading indexing source from ${runtimeConfig.sourcePath}`);
-  const analysis = await analyzeIndexingSource(runtimeConfig);
-  const documents = analysis.documents;
-
-  log(
-    `Loaded ${documents.length} indexable documents from ${analysis.loadedDocumentCount} parsed source documents`,
-  );
-  for (const sourceFile of analysis.sourceFiles) {
-    log(
-      `- ${sourceFile.path} (${sourceFile.sourceType}): ${sourceFile.loadedDocumentCount} documents`,
-    );
-  }
-  for (const unsupportedFile of analysis.unsupportedFiles) {
-    console.warn(
-      `Skipping unsupported source ${unsupportedFile.path} (${unsupportedFile.extension}): ${unsupportedFile.reason}`,
+  const collectionId = options.collectionId;
+  if (!collectionId) {
+    throw new Error(
+      "runIndexing now requires options.collectionId; multi-collection indexing must target an explicit logical collection.",
     );
   }
 
-  const splitter = new RecursiveCharacterTextSplitter({
-    chunkSize: runtimeConfig.chunkSize,
-    chunkOverlap: runtimeConfig.chunkOverlap,
-  });
-  const chunks = await splitter.splitDocuments(documents);
-  const indexedChunks = chunks.map((chunk, chunkIndex) => {
-    chunk.metadata = {
-      ...chunk.metadata,
-      chunkIndex,
-    };
-    return chunk;
-  });
+  log(`Starting reindex job for logical collection "${collectionId}"`);
 
-  log(`Split documents into ${indexedChunks.length} chunks`);
-  log(`Resetting Chroma collection "${runtimeConfig.chromaCollection}" at ${runtimeConfig.chromaUrl}`);
-  await resetChromaCollection(runtimeConfig);
-
-  log(`Indexing into Chroma collection "${runtimeConfig.chromaCollection}" at ${runtimeConfig.chromaUrl}`);
-  const vectorStore = createVectorStore(runtimeConfig);
-  await vectorStore.addDocuments(indexedChunks, {
-    ids: indexedChunks.map((chunk) => `${chunk.metadata.documentId}:${chunk.metadata.chunkIndex}`),
-  });
-
-  log("Indexing complete");
-
-  return {
-    sourceDocumentCount: documents.length,
-    parsedSourceDocumentCount: analysis.loadedDocumentCount,
-    chunkCount: indexedChunks.length,
+  const registry = createSqliteCollectionRegistry({ dbPath: runtimeConfig.registryPath });
+  const context = {
+    tenantId: "default",
+    userId: "local-dev",
+    requestId: "cli-reindex",
   };
+
+  try {
+    const job = await startReindexJob({ registry, collectionId, context, runtimeConfig });
+    log(`Started job ${job.id}`);
+    
+    await runIndexJob({ registry, jobId: job.id, runtimeConfig, log });
+  } finally {
+    registry.close?.();
+  }
 }
 
 async function main(): Promise<void> {
-  await runIndexing(config);
+  const collectionId = parseCollectionIdArg(process.argv.slice(2));
+  await runIndexing(config, { collectionId });
+}
+
+function parseCollectionIdArg(argv: string[]): string | undefined {
+  const collectionIdFlag = "--collection-id";
+  const index = argv.indexOf(collectionIdFlag);
+
+  if (index === -1) {
+    return undefined;
+  }
+
+  return argv[index + 1];
 }
 
 const isDirectExecution = process.argv[1] === fileURLToPath(import.meta.url);

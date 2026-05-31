@@ -6,50 +6,53 @@ import { z } from "zod";
 
 export const defaultConfigPath = path.resolve(process.cwd(), "config/rag.config.yaml");
 
+const distanceMetricSchema = z.enum(["l2", "cosine", "ip"]);
+
 export const configSchema = z.object({
   server: z.object({
     port: z.number().int().positive(),
-  }),
+  }).strict(),
+  registry: z.object({
+    path: z.string().trim().min(1),
+  }).strict(),
   chroma: z.object({
     url: z.string().url(),
-    collection: z.string().trim().min(1),
-    distanceMetric: z.enum(["l2", "cosine", "ip"]),
-  }),
+  }).strict(),
   ollama: z.object({
     baseUrl: z.string().url(),
     chatModel: z.string().trim().min(1),
     embeddingModel: z.string().trim().min(1),
     numCtx: z.number().int().positive(),
     numPredict: z.number().int().positive(),
-  }),
-  data: z.object({
+  }).strict(),
+  collectionDefaults: z.object({
     sourcePath: z.string().trim().min(1),
     ozelgeDataPath: z.string().trim().min(1),
+    distanceMetric: distanceMetricSchema,
     indexSampleSize: z.number().int().nonnegative(),
-  }),
-  rag: z.object({
     chunkSize: z.number().int().positive(),
     chunkOverlap: z.number().int().nonnegative(),
     retrievalK: z.number().int().positive(),
     retrievalDistanceThreshold: z.number().nonnegative(),
     timeoutMs: z.number().int().positive(),
-  }),
+  }).strict(),
   readiness: z.object({
     timeoutMs: z.number().int().positive(),
     embeddingProbeText: z.string().trim().min(1),
     chatProbeText: z.string().trim().min(1),
-  }),
-}).superRefine((value, ctx) => {
-  if (value.rag.chunkOverlap >= value.rag.chunkSize) {
+  }).strict(),
+}).strict().superRefine((value, ctx) => {
+  if (value.collectionDefaults.chunkOverlap >= value.collectionDefaults.chunkSize) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ["rag", "chunkOverlap"],
+      path: ["collectionDefaults", "chunkOverlap"],
       message: "chunkOverlap must be smaller than chunkSize",
     });
   }
 });
 
 export type RawConfig = z.infer<typeof configSchema>;
+export type DistanceMetric = z.infer<typeof distanceMetricSchema>;
 
 export function readConfigFile(configPath = defaultConfigPath): unknown {
   try {
@@ -79,35 +82,42 @@ export function resolveConfig(
   configPath = defaultConfigPath,
   cwd = process.cwd(),
 ) {
+  const collectionDefaults = {
+    sourcePath: path.resolve(cwd, rawConfig.collectionDefaults.sourcePath),
+    ozelgeDataPath: path.resolve(cwd, rawConfig.collectionDefaults.ozelgeDataPath),
+    distanceMetric: rawConfig.collectionDefaults.distanceMetric,
+    indexSampleSize: rawConfig.collectionDefaults.indexSampleSize,
+    chunkSize: rawConfig.collectionDefaults.chunkSize,
+    chunkOverlap: rawConfig.collectionDefaults.chunkOverlap,
+    retrievalK: rawConfig.collectionDefaults.retrievalK,
+    retrievalDistanceThreshold: rawConfig.collectionDefaults.retrievalDistanceThreshold,
+    timeoutMs: rawConfig.collectionDefaults.timeoutMs,
+  };
+
   return {
-  configPath,
-  port: rawConfig.server.port,
-  chromaUrl: rawConfig.chroma.url,
-  chromaCollection: rawConfig.chroma.collection,
-  chromaDistanceMetric: rawConfig.chroma.distanceMetric,
-  ollamaBaseUrl: rawConfig.ollama.baseUrl,
-  ollamaChatModel: rawConfig.ollama.chatModel,
-  ollamaEmbeddingModel: rawConfig.ollama.embeddingModel,
-  ozelgeDataPath: path.resolve(
-    cwd,
-    rawConfig.data.ozelgeDataPath,
-  ),
-  sourcePath: path.resolve(
-    cwd,
-    rawConfig.data.sourcePath,
-  ),
-  indexSampleSize: rawConfig.data.indexSampleSize,
-  chunkSize: rawConfig.rag.chunkSize,
-  chunkOverlap: rawConfig.rag.chunkOverlap,
-  retrievalK: rawConfig.rag.retrievalK,
-  retrievalDistanceThreshold: rawConfig.rag.retrievalDistanceThreshold,
-  ollamaNumCtx: rawConfig.ollama.numCtx,
-  ollamaNumPredict: rawConfig.ollama.numPredict,
-  readyTimeoutMs: rawConfig.readiness.timeoutMs,
-  readyEmbedProbeText: rawConfig.readiness.embeddingProbeText,
-  readyChatProbeText: rawConfig.readiness.chatProbeText,
-  ragTimeoutMs: rawConfig.rag.timeoutMs,
-};
+    configPath,
+    port: rawConfig.server.port,
+    registryPath: path.resolve(cwd, rawConfig.registry.path),
+    chromaUrl: rawConfig.chroma.url,
+    ollamaBaseUrl: rawConfig.ollama.baseUrl,
+    ollamaChatModel: rawConfig.ollama.chatModel,
+    ollamaEmbeddingModel: rawConfig.ollama.embeddingModel,
+    ollamaNumCtx: rawConfig.ollama.numCtx,
+    ollamaNumPredict: rawConfig.ollama.numPredict,
+    collectionDefaults,
+    sourcePath: collectionDefaults.sourcePath,
+    ozelgeDataPath: collectionDefaults.ozelgeDataPath,
+    indexSampleSize: collectionDefaults.indexSampleSize,
+    chunkSize: collectionDefaults.chunkSize,
+    chunkOverlap: collectionDefaults.chunkOverlap,
+    retrievalK: collectionDefaults.retrievalK,
+    retrievalDistanceThreshold: collectionDefaults.retrievalDistanceThreshold,
+    chromaDistanceMetric: collectionDefaults.distanceMetric,
+    readyTimeoutMs: rawConfig.readiness.timeoutMs,
+    readyEmbedProbeText: rawConfig.readiness.embeddingProbeText,
+    readyChatProbeText: rawConfig.readiness.chatProbeText,
+    ragTimeoutMs: collectionDefaults.timeoutMs,
+  };
 }
 
 export type ResolvedConfig = ReturnType<typeof resolveConfig>;

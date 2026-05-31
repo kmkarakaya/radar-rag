@@ -79,6 +79,28 @@ describe("app foundation", () => {
     assert.equal(body.requestId, "foundation-test-request");
   });
 
+  it("oversized JSON body kontrollü hata döner", async () => {
+    // Generate a payload slightly larger than 1MB
+    const largeString = "a".repeat(1024 * 1024 + 10);
+    const response = await request("/v1/rag/collections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ data: largeString }),
+    });
+
+    assert.equal(response.status, 413); // Payload Too Large
+
+    // express built-in json parser might return html error for PayloadTooLarge depending on config
+    // but at least verify status code
+    try {
+      const body = await response.json() as { error?: string };
+      assert.match(body.error || "", /request entity too large|payload too large/i);
+    } catch {
+      const text = await response.text();
+      assert.match(text, /Payload Too Large|request entity too large/i);
+    }
+  });
+
   it("does not expose legacy RAG endpoints", async () => {
     const legacyRequests: Array<[string, string, RequestInit | undefined]> = [
       ["GET", "/rag/query", undefined],

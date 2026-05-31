@@ -58,6 +58,30 @@ function configureApp(app: Express): void {
   app.use(express.json({ limit: "1mb" }));
 
   app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    // Check for express.json body parser errors (such as Payload Too Large or Invalid JSON)
+    if (err instanceof Error && "status" in err && typeof err.status === "number") {
+      if (err.status === 413) {
+        sendErrorResponse(res, {
+          statusCode: 413,
+          error: "Payload Too Large",
+          code: "INVALID_REQUEST_BODY",
+          message: "Request entity too large.",
+          context: res.locals.requestContext,
+        });
+        return;
+      }
+      if (err.status === 400 && err instanceof SyntaxError && "body" in err) {
+        sendErrorResponse(res, {
+          statusCode: 400,
+          error: "Invalid JSON body",
+          code: "INVALID_REQUEST_BODY",
+          message: err.message,
+          context: res.locals.requestContext,
+        });
+        return;
+      }
+    }
+
     if (err instanceof SyntaxError && "body" in err) {
       sendErrorResponse(res, {
         statusCode: 400,

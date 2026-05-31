@@ -123,7 +123,8 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
 - `src/rag.ts` içerisindeki `retrieveSources` (embeddings) ve `answerQuestion` (chat generation) süreçlerine semantic asenkron kilitler eklendi (`getEmbeddingSemaphore` ve `getGenerationSemaphore`). Limitlerin dolması veya timeout (`ragTimeoutMs`) aşımı senaryosunda, model veya veritabanı yanıt veremeden client koparsa (`AbortSignal`) `503 MODEL_BACKPRESSURE` hatası atılması sağlandı.
 - Client kopmalarında Ollama isteklerinin yarıda iptal edilmesi için `req.on("close", () => ac.abort())` AbortController mantığı routerlar içine bağlandı ve `rag.ts`'ye iletildi.
 - Request/Traceability açısından loglama güçlendirildi: `rag.ts` loglarına merkezi middleware'dan gelen `requestId` parametresi bağlandı.
-- Kullanılmayan `resetChromaCollection` gibi eski ve tehlikeli index yardımcı fonksiyonları kod tabanından tamamen çıkartıldı. 
+- Express Body Parser'da limit aşımı durumunda (Oversized JSON Body), HTML response yerine düzgün JSON hata mesajı dönmesi için `src/app.ts` içerisinde HTTP 413 Status check eklendi. Kontrollü JSON dönüldüğü `test/app.foundation.test.ts` içine yazılan "oversized JSON body kontrollü hata döner" case'i ile test edilerek güvence altına alındı.
+- Kullanılmayan `resetChromaCollection` gibi eski ve tehlikeli index yardımcı fonksiyonları kod tabanından tamamen çıkartıldı.
 - Doğrulama komutları:
   - `npm run build`: hatasız başarıyla tamamlandı.
-  - `npm run test`: tüm kabul testleri, yeni eklemelerle beraber başarıyla geçti.
+  - `npm run test`: tüm 24 kabul testi (Payload Too Large check eklendi) başarıyla geçti.

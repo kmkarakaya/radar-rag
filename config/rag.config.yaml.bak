@@ -1,0 +1,26 @@
+server:
+  port: 3010
+chroma:
+  url: http://localhost:8000
+  collection: test
+  distanceMetric: l2
+ollama:
+  baseUrl: http://localhost:11434
+  chatModel: gpt-oss:120b-cloud
+  embeddingModel: bge-m3
+  numCtx: 4096
+  numPredict: 128
+data:
+  sourcePath: data
+  ozelgeDataPath: data/ozelge_veri.json
+  indexSampleSize: 0
+rag:
+  chunkSize: 500
+  chunkOverlap: 200
+  retrievalK: 5
+  retrievalDistanceThreshold: 1
+  timeoutMs: 90000
+readiness:
+  timeoutMs: 30000
+  embeddingProbeText: readiness probe
+  chatProbeText: hazirlik kontrolu

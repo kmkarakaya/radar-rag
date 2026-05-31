@@ -2,7 +2,7 @@ import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { ChatOllama, OllamaEmbeddings } from "@langchain/ollama";
 import { ChromaClient, type ChromaClientArgs } from "chromadb";
-import { config } from "./config.js";
+import { config, type ResolvedConfig } from "./config.js";
 
 export type RagSource = {
   documentId?: string;
@@ -90,22 +90,26 @@ export function isRagQueryError(error: unknown): error is RagQueryError {
   return error instanceof RagQueryError;
 }
 
-const embeddings = new OllamaEmbeddings({
-  model: config.ollamaEmbeddingModel,
-  baseUrl: config.ollamaBaseUrl,
-});
+function createEmbeddings(runtimeConfig: ResolvedConfig): OllamaEmbeddings {
+  return new OllamaEmbeddings({
+    model: runtimeConfig.ollamaEmbeddingModel,
+    baseUrl: runtimeConfig.ollamaBaseUrl,
+  });
+}
 
-const model = new ChatOllama({
-  model: config.ollamaChatModel,
-  baseUrl: config.ollamaBaseUrl,
-  temperature: 0,
-  numCtx: config.ollamaNumCtx,
-  numPredict: config.ollamaNumPredict,
-  think: false,
-});
+function createChatModel(runtimeConfig: ResolvedConfig): ChatOllama {
+  return new ChatOllama({
+    model: runtimeConfig.ollamaChatModel,
+    baseUrl: runtimeConfig.ollamaBaseUrl,
+    temperature: 0,
+    numCtx: runtimeConfig.ollamaNumCtx,
+    numPredict: runtimeConfig.ollamaNumPredict,
+    think: false,
+  });
+}
 
-function chromaClientParams(): Omit<ChromaClientArgs, "path"> {
-  const url = new URL(config.chromaUrl);
+function chromaClientParams(runtimeConfig: ResolvedConfig): Omit<ChromaClientArgs, "path"> {
+  const url = new URL(runtimeConfig.chromaUrl);
   return {
     host: url.hostname,
     port: Number.parseInt(url.port || (url.protocol === "https:" ? "443" : "80"), 10),
@@ -149,26 +153,26 @@ function hasConfiguredModel(availableModels: string[], configuredModel: string):
   );
 }
 
-export async function checkChromaHealth(): Promise<DependencyHealth> {
+export async function checkChromaHealth(runtimeConfig = config): Promise<DependencyHealth> {
   const startedAt = Date.now();
-  const client = new ChromaClient(chromaClientParams());
+  const client = new ChromaClient(chromaClientParams(runtimeConfig));
   const details: ChromaHealthDetails = {
     reachable: false,
-    collectionName: config.chromaCollection,
+    collectionName: runtimeConfig.chromaCollection,
     collectionExists: false,
     canServeQueriesFromCollection: false,
   };
 
   try {
-    await withTimeout(client.heartbeat(), config.readyTimeoutMs, "Chroma heartbeat");
+    await withTimeout(client.heartbeat(), runtimeConfig.readyTimeoutMs, "Chroma heartbeat");
     details.reachable = true;
 
     let collection;
     try {
       collection = await withTimeout(
-        client.getCollection({ name: config.chromaCollection }),
-        config.readyTimeoutMs,
-        `Chroma collection ${config.chromaCollection} lookup`,
+        client.getCollection({ name: runtimeConfig.chromaCollection }),
+        runtimeConfig.readyTimeoutMs,
+        `Chroma collection ${runtimeConfig.chromaCollection} lookup`,
       );
     } catch (error) {
       if (isMissingCollectionError(error)) {
@@ -185,8 +189,8 @@ export async function checkChromaHealth(): Promise<DependencyHealth> {
     details.collectionExists = true;
     const collectionCount = await withTimeout(
       collection.count(),
-      config.readyTimeoutMs,
-      `Chroma collection ${config.chromaCollection} count`,
+      runtimeConfig.readyTimeoutMs,
+      `Chroma collection ${runtimeConfig.chromaCollection} count`,
     );
     details.collectionCount = collectionCount;
     details.collectionEmpty = collectionCount === 0;
@@ -207,7 +211,7 @@ export async function checkChromaHealth(): Promise<DependencyHealth> {
   }
 }
 
-export async function checkOllamaHealth(): Promise<DependencyHealth> {
+export async function checkOllamaHealth(runtimeConfig = config): Promise<DependencyHealth> {
   const startedAt = Date.now();
   const details: OllamaHealthDetails = {
     reachable: false,
@@ -218,11 +222,11 @@ export async function checkOllamaHealth(): Promise<DependencyHealth> {
   };
 
   try {
-    const response = await fetch(new URL("/api/tags", config.ollamaBaseUrl), {
+    const response = await fetch(new URL("/api/tags", runtimeConfig.ollamaBaseUrl), {
       headers: {
         accept: "application/json",
       },
-      signal: AbortSignal.timeout(config.readyTimeoutMs),
+      signal: AbortSignal.timeout(runtimeConfig.readyTimeoutMs),
     });
 
     if (!response.ok) {
@@ -243,12 +247,12 @@ export async function checkOllamaHealth(): Promise<DependencyHealth> {
     details.availableModels = (data.models ?? [])
       .map((modelInfo) => modelInfo.name ?? modelInfo.model)
       .filter((modelName): modelName is string => Boolean(modelName));
-    details.chatModelAvailable = hasConfiguredModel(details.availableModels, config.ollamaChatModel);
+    details.chatModelAvailable = hasConfiguredModel(details.availableModels, runtimeConfig.ollamaChatModel);
     details.embeddingModelAvailable = hasConfiguredModel(
       details.availableModels,
-      config.ollamaEmbeddingModel,
+      runtimeConfig.ollamaEmbeddingModel,
     );
-    details.missingModels = [config.ollamaChatModel, config.ollamaEmbeddingModel].filter(
+    details.missingModels = [runtimeConfig.ollamaChatModel, runtimeConfig.ollamaEmbeddingModel].filter(
       (modelName) => !hasConfiguredModel(details.availableModels, modelName),
     );
 
@@ -267,13 +271,14 @@ export async function checkOllamaHealth(): Promise<DependencyHealth> {
   }
 }
 
-export async function checkEmbeddingHealth(): Promise<DependencyHealth> {
+export async function checkEmbeddingHealth(runtimeConfig = config): Promise<DependencyHealth> {
   const startedAt = Date.now();
+  const embeddings = createEmbeddings(runtimeConfig);
 
   try {
     const vector = await withTimeout(
-      embeddings.embedQuery(config.readyEmbedProbeText),
-      config.readyTimeoutMs,
+      embeddings.embedQuery(runtimeConfig.readyEmbedProbeText),
+      runtimeConfig.readyTimeoutMs,
       "Embedding smoke test",
     );
     const finiteValues = vector.length > 0 && vector.every((value) => Number.isFinite(value));
@@ -282,7 +287,7 @@ export async function checkEmbeddingHealth(): Promise<DependencyHealth> {
       ok: finiteValues,
       latencyMs: Date.now() - startedAt,
       details: {
-        probeText: config.readyEmbedProbeText,
+        probeText: runtimeConfig.readyEmbedProbeText,
         vectorLength: vector.length,
         finiteValues,
       } satisfies EmbeddingHealthDetails,
@@ -294,22 +299,23 @@ export async function checkEmbeddingHealth(): Promise<DependencyHealth> {
       latencyMs: Date.now() - startedAt,
       error: errorMessage(error),
       details: {
-        probeText: config.readyEmbedProbeText,
+        probeText: runtimeConfig.readyEmbedProbeText,
       } satisfies EmbeddingHealthDetails,
     };
   }
 }
 
-export async function checkChatGenerationHealth(): Promise<DependencyHealth> {
+export async function checkChatGenerationHealth(runtimeConfig = config): Promise<DependencyHealth> {
   const startedAt = Date.now();
+  const model = createChatModel(runtimeConfig);
 
   try {
     const response = await withTimeout(
       model.invoke([
         new SystemMessage("Answer with exactly one short Turkish sentence."),
-        new HumanMessage(config.readyChatProbeText),
+        new HumanMessage(runtimeConfig.readyChatProbeText),
       ]),
-      config.readyTimeoutMs,
+      runtimeConfig.readyTimeoutMs,
       "Chat generation smoke test",
     );
     const content = contentToString(response.content).trim();
@@ -318,7 +324,7 @@ export async function checkChatGenerationHealth(): Promise<DependencyHealth> {
       ok: content.length > 0,
       latencyMs: Date.now() - startedAt,
       details: {
-        probeText: config.readyChatProbeText,
+        probeText: runtimeConfig.readyChatProbeText,
         responseLength: content.length,
       } satisfies ChatGenerationHealthDetails,
       error: content.length > 0 ? undefined : "Chat generation smoke test returned an empty response.",
@@ -329,27 +335,27 @@ export async function checkChatGenerationHealth(): Promise<DependencyHealth> {
       latencyMs: Date.now() - startedAt,
       error: errorMessage(error),
       details: {
-        probeText: config.readyChatProbeText,
+        probeText: runtimeConfig.readyChatProbeText,
       } satisfies ChatGenerationHealthDetails,
     };
   }
 }
 
-export function createVectorStore(): Chroma {
-  return new Chroma(embeddings, {
-    collectionName: config.chromaCollection,
-    clientParams: chromaClientParams(),
+export function createVectorStore(runtimeConfig = config): Chroma {
+  return new Chroma(createEmbeddings(runtimeConfig), {
+    collectionName: runtimeConfig.chromaCollection,
+    clientParams: chromaClientParams(runtimeConfig),
     collectionMetadata: {
-      "hnsw:space": config.chromaDistanceMetric,
+      "hnsw:space": runtimeConfig.chromaDistanceMetric,
     },
   });
 }
 
-export async function resetChromaCollection(): Promise<void> {
-  const client = new ChromaClient(chromaClientParams());
+export async function resetChromaCollection(runtimeConfig = config): Promise<void> {
+  const client = new ChromaClient(chromaClientParams(runtimeConfig));
 
   try {
-    await client.deleteCollection({ name: config.chromaCollection });
+    await client.deleteCollection({ name: runtimeConfig.chromaCollection });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!isMissingCollectionError(message)) {
@@ -382,22 +388,22 @@ function formatContext(sources: RagSource[]): string {
     .join("\n\n---\n\n");
 }
 
-function estimateGenerationContextCharBudget(): number {
+function estimateGenerationContextCharBudget(runtimeConfig = config): number {
   const estimatedCharsPerToken = 2;
   const reservedPromptChars = 900;
 
   return Math.max(
-    config.chunkSize,
-    config.ollamaNumCtx * estimatedCharsPerToken - reservedPromptChars,
+    runtimeConfig.chunkSize,
+    runtimeConfig.ollamaNumCtx * estimatedCharsPerToken - reservedPromptChars,
   );
 }
 
-function selectSourcesForGeneration(sources: RagSource[]): RagSource[] {
+function selectSourcesForGeneration(sources: RagSource[], runtimeConfig = config): RagSource[] {
   if (sources.length <= 1) {
     return sources;
   }
 
-  const maxContextChars = estimateGenerationContextCharBudget();
+  const maxContextChars = estimateGenerationContextCharBudget(runtimeConfig);
   const selected: RagSource[] = [];
   let usedChars = 0;
 
@@ -467,8 +473,12 @@ function timeoutError(label: string, timeoutMs: number): Error {
   return new Error(`${label} timed out after ${timeoutMs}ms.`);
 }
 
-export async function retrieveSources(question: string, k = config.retrievalK): Promise<RetrievalResult> {
-  const vectorStore = createVectorStore();
+export async function retrieveSources(
+  question: string,
+  k = config.retrievalK,
+  runtimeConfig = config,
+): Promise<RetrievalResult> {
+  const vectorStore = createVectorStore(runtimeConfig);
   const docsWithScores = await vectorStore.similaritySearchWithScore(question, k);
 
   const sources = docsWithScores
@@ -485,24 +495,27 @@ export async function retrieveSources(question: string, k = config.retrievalK): 
       distanceScore,
       content: doc.pageContent,
     }))
-    .filter((source) => (source.distanceScore ?? Number.POSITIVE_INFINITY) <= config.retrievalDistanceThreshold);
+    .filter((source) => (
+      source.distanceScore ?? Number.POSITIVE_INFINITY
+    ) <= runtimeConfig.retrievalDistanceThreshold);
 
   return {
-    distanceScoreThreshold: config.retrievalDistanceThreshold,
+    distanceScoreThreshold: runtimeConfig.retrievalDistanceThreshold,
     sources,
   };
 }
 
-export async function answerQuestion(question: string): Promise<{
+export async function answerQuestion(question: string, runtimeConfig = config): Promise<{
   answer: string;
   distanceScoreThreshold: number;
   sources: RagSource[];
 }> {
   const startedAt = Date.now();
-  logStep(`query started; model=${config.ollamaChatModel}; k=${config.retrievalK}`);
+  const model = createChatModel(runtimeConfig);
+  logStep(`query started; model=${runtimeConfig.ollamaChatModel}; k=${runtimeConfig.retrievalK}`);
 
   logStep("retrieval started");
-  const retrieval = await retrieveSources(question, config.retrievalK);
+  const retrieval = await retrieveSources(question, runtimeConfig.retrievalK, runtimeConfig);
   const retrievedSources = retrieval.sources;
 
   if (retrievedSources.length === 0) {
@@ -512,13 +525,13 @@ export async function answerQuestion(question: string): Promise<{
       422,
       {
         question,
-        retrievalK: config.retrievalK,
+        retrievalK: runtimeConfig.retrievalK,
         distanceScoreThreshold: retrieval.distanceScoreThreshold,
       },
     );
   }
 
-  const sources = selectSourcesForGeneration(retrievedSources);
+  const sources = selectSourcesForGeneration(retrievedSources, runtimeConfig);
   logStep(
     `retrieval finished; retrievedSources=${retrievedSources.length}; generationSources=${sources.length}; elapsedMs=${Date.now() - startedAt}`,
   );
@@ -536,12 +549,12 @@ export async function answerQuestion(question: string): Promise<{
 
   const controller = new AbortController();
   const timer = setTimeout(
-    () => controller.abort(timeoutError("RAG query while waiting for Ollama", config.ragTimeoutMs)),
-    config.ragTimeoutMs,
+    () => controller.abort(timeoutError("RAG query while waiting for Ollama", runtimeConfig.ragTimeoutMs)),
+    runtimeConfig.ragTimeoutMs,
   );
 
   try {
-    logStep(`ollama generation started; timeoutMs=${config.ragTimeoutMs}`);
+    logStep(`ollama generation started; timeoutMs=${runtimeConfig.ragTimeoutMs}`);
     const response = await model.invoke(
       [new SystemMessage(systemPrompt), new HumanMessage(question)],
       { signal: controller.signal },
@@ -553,11 +566,11 @@ export async function answerQuestion(question: string): Promise<{
     if (answer.length === 0) {
       throw new RagQueryError(
         "EMPTY_MODEL_RESPONSE",
-        `Chat model ${config.ollamaChatModel} returned an empty response.`,
+        `Chat model ${runtimeConfig.ollamaChatModel} returned an empty response.`,
         502,
         {
           question,
-          model: config.ollamaChatModel,
+          model: runtimeConfig.ollamaChatModel,
         },
       );
     }
@@ -584,7 +597,7 @@ export async function answerQuestion(question: string): Promise<{
         502,
         {
           question,
-          model: config.ollamaChatModel,
+          model: runtimeConfig.ollamaChatModel,
           answer,
         },
       );

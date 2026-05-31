@@ -26,7 +26,7 @@ docker compose up -d chroma
 npm.cmd install
 ollama pull gemma3:4b-cloud
 ollama pull bge-m3
-npm.cmd run index
+npm.cmd run onboard -- --yes
 npm.cmd run dev
 ```
 
@@ -39,6 +39,33 @@ http://localhost:3010/test-frontend/
 Bu test arayüzü, endpointleri elle denemek için önerilen yoldur.
 
 `GET /ready` için kısa, detaylı ve strict varyant butonları da bu arayüzde hazırdır.
+
+## Admin Onboarding
+
+Config'i elle düzenlemek ve sonra ayrı index komutu çalıştırmak yerine onboarding CLI kullanılabilir:
+
+```powershell
+npm.cmd run onboard
+```
+
+Bu komut `config/rag.config.yaml` ayarlarını terminalden gözden geçirir, source/dependency kontrollerini yapar ve onay verilirse Chroma index'ini yeniden oluşturur.
+
+Kısa modlar:
+
+```powershell
+npm.cmd run onboard -- --dry-run
+npm.cmd run onboard -- --yes
+npm.cmd run onboard -- --yes --skip-index
+```
+
+- `--dry-run`: config yazmaz ve index çalıştırmaz.
+- `--yes`: mevcut config ile prompt sormadan devam eder.
+- `--skip-index`: config/source/dependency kontrollerini yapar, index çalıştırmaz.
+
+Sadece cevap üreten dil modelini değiştirmek istersen `npm.cmd run onboard -- --skip-index`
+kullanabilirsin. `ollama.chatModel` değişikliği mevcut vector index'i bozmaz; backend'i yeniden
+başlatmak yeterlidir. `ollama.embeddingModel` değişirse re-index gerekir, çünkü Chroma'daki vector'lar
+eski embedding modeliyle üretilmiştir.
 
 ## Veri Kaynakları ve Ingestion
 
@@ -161,7 +188,37 @@ Baslica hata kodlari:
 
 - Chroma kapalıysa: `docker compose up -d chroma`
 - Backend geliştirme modu: `npm.cmd run dev`
+- Admin onboarding ve re-index: `npm.cmd run onboard`
 - Index yeniden oluşturma: `npm.cmd run index`
+
+Index çalıştırmadan config değiştirmek için onboarding'i index atlayarak çalıştır:
+
+```powershell
+npm.cmd run onboard -- --skip-index
+```
+
+Bu komut config'i güncelleyebilir, source/dependency kontrollerini yapar ve Chroma index'ini yeniden
+oluşturmaz. Backend runtime config'i başlangıçta okuduğu için config değişikliklerinden sonra backend'i
+yeniden başlat.
+
+Şu alanlar index çalıştırmadan değiştirilebilir:
+
+- `server.port`
+- `ollama.chatModel`
+- `ollama.numCtx`
+- `ollama.numPredict`
+- `rag.retrievalK`
+- `rag.retrievalDistanceThreshold`
+- `rag.timeoutMs`
+- `readiness.timeoutMs`
+- `readiness.embeddingProbeText`
+- `readiness.chatProbeText`
+
+Şu alanlar koşullu olarak index çalıştırmadan değiştirilebilir:
+
+- `chroma.url`: Hedef Chroma instance içinde aynı `chroma.collection` zaten indexlenmiş ve aynı embedding modeliyle uyumluysa index gerekmez. Yeni/boş Chroma instance'a geçiyorsan index gerekir.
+- `chroma.collection`: Hedef collection zaten dolu ve aynı embedding modeliyle uyumluysa index gerekmez. Yeni/boş collection'a geçiyorsan index gerekir.
+- `chroma.distanceMetric`: Config değiştirilebilir ama mevcut collection'a geriye dönük uygulanmaz. Yeni metriğin gerçekten uygulanması isteniyorsa collection yeniden oluşturulup index çalıştırılmalıdır.
 
 Şu alanlar değişirse index'i yeniden oluştur:
 
@@ -170,20 +227,12 @@ Baslica hata kodlari:
 - `data.indexSampleSize`
 - `rag.chunkSize`
 - `rag.chunkOverlap`
-- `chroma.collection`
-- `chroma.distanceMetric`
-- embedding modeli
+- `ollama.embeddingModel`
+- `data/` içindeki indexlenen belge içerikleri
 
-Şu alanlar değişirse backend'i yeniden başlatman yeterlidir:
-
-- `ollama.chatModel`
-- `ollama.numCtx`
-- `ollama.numPredict`
-- `rag.retrievalK`
-- `rag.retrievalDistanceThreshold`
-- `rag.timeoutMs`
-
-Not: `chroma.distanceMetric` mevcut koleksiyona geriye donuk uygulanmaz. Bu alan degisirse koleksiyonu yeniden olusturup `npm.cmd run index` calistirmak gerekir.
+Önemli ayrım: `ollama.chatModel` sadece cevap üretimini etkiler; mevcut vector index korunur.
+`ollama.embeddingModel` değişirse Chroma'daki vector'lar eski embedding modeliyle üretildiği için
+index'i yeniden oluşturmak gerekir.
 
 ## ChromaDB Verisi
 
@@ -194,7 +243,25 @@ Bu klasor `.gitignore` icindedir; indexlenmis vector store Git'e eklenmez.
 `chroma_data/` silinmedigi surece indexlenmis veri korunur.
 
 Index verisini tamamen sifirlamak istersen once Chroma'yi durdur, sonra `chroma_data/`
-klasorunu sil ve tekrar `npm.cmd run index` calistir.
+klasorunu yedege tasiyip temiz Chroma state'i ile onboarding'i tekrar calistir:
+
+```powershell
+docker compose down
+Rename-Item .\chroma_data ".\chroma_data.bak.$(Get-Date -Format yyyyMMddHHmmss)"
+docker compose up -d chroma
+npm.cmd run onboard -- --yes
+```
+
+`docker compose up -d chroma` tek basina bozuk veya eski `chroma_data/` state'ini duzeltmez.
+Asagidaki hata gorulurse Chroma container calisiyor olsa bile persisted SQLite metadata bozuk ya da
+uyumsuz olabilir:
+
+```text
+Database error: error returned from database: (code: 1) no such table: collections
+```
+
+Bu durumda yukaridaki reset akisini uygula. Kaynak belgeler `data/` icinde kaldigi icin index,
+onboarding tarafindan yeniden uretilebilir.
 
 ## İlk Kurulum Notları
 

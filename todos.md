@@ -281,6 +281,29 @@ Yapilacaklar:
   - `GET /metrics`: Prometheus veya benzeri monitoring entegrasyonu icin metrik yuzeyi
   - `GET /openapi.json` veya benzeri schema endpoint'i: API contract'ini makina-okunur hale getirmek icin
 
+### 9.2. Admin onboarding CLI eklendi, test coverage eksik
+
+Yapildi:
+- `npm run onboard` script'i eklendi.
+- CLI mevcut config'i okuyup admin'e kritik ayarlari gostererek guncellettirebiliyor.
+- Config validation, source analysis ve Chroma/Ollama dependency kontrolleri calisiyor.
+- Admin onayi veya `--yes` ile index pipeline calisiyor.
+- `--dry-run`, `--yes`, `--skip-index`, `--no-write`, `--config <path>` modlari eklendi.
+- Index reset davranisi interactive modda acik onay gerektiriyor.
+- `src/config.ts`, `src/rag.ts` ve `src/index.ts` runtime `ResolvedConfig` alabilecek sekilde refactor edildi; onboarding health/source/index adimlari ayni config degerleriyle calisiyor.
+- README'de onboarding kullanimi ve Chroma persisted state reset akisi dokumante edildi.
+- `no such table: collections` gibi bozuk/uyumsuz `chroma_data/` durumunda uygulanacak reset komutlari README'ye eklendi.
+- README'de `ollama.chatModel` degisikliginin `--skip-index` ile index calistirmadan yapilabilecegi, `ollama.embeddingModel` degisikliginde ise re-index gerektigi aciklandi.
+- `npm.cmd run build` ve `npm.cmd run onboard -- --dry-run --yes` ile onboarding dry-run akisi dogrulandi.
+
+Kalanlar:
+- Onboarding CLI icin otomatik test coverage yok.
+- Interactive modda validation hatasi olursa wizard ayni proses icinde tekrar prompt akisine donmuyor; hata verip non-zero exit ediyor. Plan bunu tekrar deneme akisi olarak tarif ediyordu.
+- `--config <path>` health/source/index asamalarinda dogru runtime config'i kullaniyor; ancak `src/rag.ts` ve `src/index.ts` import edilirken default `config/rag.config.yaml` halen eager-load ediliyor. Default config bozuksa alternatif config verilse bile CLI import asamasinda kirilabilir.
+- Config comment-preserving yazim yok; CLI canonical YAML yazar.
+- Incremental/upsert indexing onboarding kapsaminda degil.
+- Full onboarding/index reset akisi manuel olarak her calismada kosulmadi; dry-run ve skip-index modlari dogrulandi, gercek rebuild icin Chroma/Ollama hazirligi gerekir.
+
 ### 9.1. Dokumantasyon ile gercek endpoint yuzeyi arasinda tekrar drift olusabilir
 
 Sorun:
@@ -295,6 +318,27 @@ Yapilacaklar:
 - API contract'ini tek bir kaynakta toplama yaklasimi belirle.
 - Mumkunse OpenAPI veya benzeri makina-okunur bir tanim dusun.
 - En azindan release checklist'ine README + mimari dokuman + endpoint parity kontrolu ekle.
+
+### 9.3. Admin indexing endpoint
+
+Sorun:
+- Indexleme su anda bilerek HTTP endpoint degil; `npm run index` (veya `npm run onboard`) ile operasyonel komut olarak calisiyor.
+- Mevcut akis Chroma collection'i silip bastan yazdigi icin yetkisiz veya public bir endpoint olarak acilmamasi gerekiyor.
+
+Neden onemli:
+- Sistem canliya alindiginda (production), operasyon ekiplerinin veya webhook'larin yeni veri geldiginde guvenli bir sekilde indexlemeyi tetikleyebilmesi gerekir.
+- Sadece CLI uzerinden calisan bir yapi, container icinde veya remote ortamda data guncellemeyi zorlastirir.
+
+Yapilacaklar:
+- V1 icin hedef yuzeyi tanimla ve uygula:
+  - `POST /admin/index/rebuild`: auth/admin korumali, tek seferde bir job calistiran rebuild tetikleyici.
+  - `GET /admin/index/status`: running/succeeded/failed, startedAt/finishedAt, indexed chunk count ve last error bilgisi donduren endpoint.
+- Uygulama notu: `src/index.ts` icerisinde halihazirda `runIndexing()` adinda reusable bir fonksiyonumuz bulunuyor. Bu fonksiyonun etrafina "job status" (state tracking: isRunning, startedAt, error) sarmalayan ve ayni anda coklu calismayi kilitleyen (lock) bir state yoneticisi/servisi eklenmeli.
+- Kabul kriterlerini sagla:
+  - Ayni anda gelen ikinci bir rebuild istegi (zaten bir islem suruyorsa) `409 Conflict` veya `429 Too Many Requests` ile reddedilmeli.
+  - Job sonuclari bellek uzerinde (`GET /admin/index/status`) raporlanabilmeli.
+  - Indexleme durumundaki degisiklik veya hata sonuclari `/ready` endpoint'ini etkilemeli (ornek: `indexing_in_progress` statulerini eklemek).
+  - Admin endpoint'leri icin basit bir Bearer token veya API key auth mekanizmasi kurulmali.
 
 ## P2 - Gelistirici deneyimi ve repo bakimi eksikleri
 
@@ -378,6 +422,39 @@ Yapilacaklar:
   - `retrievalK` ve `numPredict` icin operasyonel ust sinir beklentileri
   - model degisikliginde gerekli restart / re-index etkilerini acik contract'a baglama
   - `indexSampleSize` icin `0 = tum veri` semantiginin ek validation/test kapsami
+
+### 15. All-in-One Deployment Paketi (Dockerization) Eksikligi
+
+Sorun:
+- Su anda `docker-compose.yml` sadece Chroma veritabanini calistiriyor.
+- Sistemin tamamini (Node.js API, Chroma ve Ollama LLM motoru) bir butun olarak dagitacak (deploy) ve calistiracak "hepsi bir arada" bir containerizasyon stratejisi yok.
+- Kullanici bu backend'i kendi sunucusunda calistirmak isterse Node.js kurmasi, Ollama'yi ayrica kurup manuel model indirmesi ve aralarindaki ag baglantilarini manuel yapmasi gerekiyor.
+
+Neden onemli:
+- Bu projenin amaci "baskalarinin alip kendi verisiyle kolayca kullanabilecegi bir RAG backend'i" sunmaktir.
+- Son kullanici icin en iyi (ve endustri standardi) deneyim, repoyu indirip tek bir `docker-compose up -d` komutuyla tum ekosistemin (veritabani, backend ve yapay zeka modeli) hazir hale gelmesidir.
+
+Yapilacaklar:
+- Proje kok dizinine Node.js uygulamasini derleyip calistiracak optimize edilmis bir `Dockerfile` ekle (multi-stage build).
+- `docker-compose.yml` dosyasini 3 servisi (Chroma, Ollama, Backend) icerecek sekilde genislet.
+- Servislerin birbiriyle `localhost` yerine Docker internal network uzerinden (ornek: `http://chroma:8000`, `http://ollama:11434`) konusmasini saglayacak environment variable yapilandirmalarini ekle.
+- Ollama servisi ayaga kalktiginda istenen dil modelini (ornek: `gemma2:2b`) manuel mudahale olmadan otomatik indirecek (pull) baslangic (entrypoint/command) script'i ekle.
+- Kullanicinin indexleyecegi verileri koymasi icin `./data:/app/data` gibi volume mapping'leri sagla ve bu "Tek tusla kurulum" adimini README dokumanina ekle.
+
+### 16. Multi-Collection (Coklu Koleksiyon) Destegi Eksikligi
+
+Sorun:
+- Sistem su anda `rag.config.yaml` icinde tanimli tek bir "default" Chroma koleksiyonu varsayimiyla calisiyor.
+- Sorgular (`POST /rag/query`) veya indexleme uclari hedef koleksiyon secmeye izin vermiyor.
+
+Neden onemli:
+- Gercek dunya RAG senaryolarinda veriler (ornek: IK belgeleri, finans raporlari, yonetmelikler) birbirine karismamalidir. Sistem farkli baglamlari (context) izole koleksiyonlarda tutabilmeli ve kullaniciya secme hakki vermelidir.
+
+Yapilacaklar:
+- `notes/multicollection.md` dosyasinda detaylandirildigi gibi RAG core metotlarini (`createVectorStore`, `answerQuestion` vb.) opsiyonel `collectionName` argumani alacak sekilde refactor et.
+- `POST /rag/query`, `POST /rag/retrieve` ve eklenecek olan admin indexleme uclarina `collection` parametresi destegi ekle.
+- Mevcut koleksiyonlari listelemek icin `GET /rag/collections` adinda yeni bir endpoint olustur.
+- Readiness (`/ready`) kontrolunu "koleksiyon yoksa sistem cokuktur" varsayimindan kurtar.
 
 ## Sonraki oncelikli uygulama sirasi
 

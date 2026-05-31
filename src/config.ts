@@ -1,11 +1,12 @@
 import path from "node:path";
 import { readFileSync } from "node:fs";
-import { parse } from "yaml";
+import { writeFile } from "node:fs/promises";
+import { parse, stringify } from "yaml";
 import { z } from "zod";
 
-const configPath = path.resolve(process.cwd(), "config/rag.config.yaml");
+export const defaultConfigPath = path.resolve(process.cwd(), "config/rag.config.yaml");
 
-const configSchema = z.object({
+export const configSchema = z.object({
   server: z.object({
     port: z.number().int().positive(),
   }),
@@ -48,7 +49,9 @@ const configSchema = z.object({
   }
 });
 
-function readRawConfig(): unknown {
+export type RawConfig = z.infer<typeof configSchema>;
+
+export function readConfigFile(configPath = defaultConfigPath): unknown {
   try {
     return parse(readFileSync(configPath, "utf8"));
   } catch (error) {
@@ -57,19 +60,26 @@ function readRawConfig(): unknown {
   }
 }
 
-const parsedConfig = configSchema.safeParse(readRawConfig());
+export function parseConfig(rawConfig: unknown, configPath = defaultConfigPath): RawConfig {
+  const parsedConfig = configSchema.safeParse(rawConfig);
 
-if (!parsedConfig.success) {
-  throw new Error(
-    `Invalid config file at ${configPath}:\n${parsedConfig.error.issues
-      .map((issue) => `- ${issue.path.join(".") || "root"}: ${issue.message}`)
-      .join("\n")}`,
-  );
+  if (!parsedConfig.success) {
+    throw new Error(
+      `Invalid config file at ${configPath}:\n${parsedConfig.error.issues
+        .map((issue) => `- ${issue.path.join(".") || "root"}: ${issue.message}`)
+        .join("\n")}`,
+    );
+  }
+
+  return parsedConfig.data;
 }
 
-const rawConfig = parsedConfig.data;
-
-export const config = {
+export function resolveConfig(
+  rawConfig: RawConfig,
+  configPath = defaultConfigPath,
+  cwd = process.cwd(),
+) {
+  return {
   configPath,
   port: rawConfig.server.port,
   chromaUrl: rawConfig.chroma.url,
@@ -79,11 +89,11 @@ export const config = {
   ollamaChatModel: rawConfig.ollama.chatModel,
   ollamaEmbeddingModel: rawConfig.ollama.embeddingModel,
   ozelgeDataPath: path.resolve(
-    process.cwd(),
+    cwd,
     rawConfig.data.ozelgeDataPath,
   ),
   sourcePath: path.resolve(
-    process.cwd(),
+    cwd,
     rawConfig.data.sourcePath,
   ),
   indexSampleSize: rawConfig.data.indexSampleSize,
@@ -98,3 +108,19 @@ export const config = {
   readyChatProbeText: rawConfig.readiness.chatProbeText,
   ragTimeoutMs: rawConfig.rag.timeoutMs,
 };
+}
+
+export type ResolvedConfig = ReturnType<typeof resolveConfig>;
+
+export function loadConfig(configPath = defaultConfigPath): ResolvedConfig {
+  return resolveConfig(parseConfig(readConfigFile(configPath), configPath), path.resolve(configPath));
+}
+
+export async function writeConfigFile(
+  rawConfig: RawConfig,
+  configPath = defaultConfigPath,
+): Promise<void> {
+  await writeFile(configPath, stringify(rawConfig), "utf8");
+}
+
+export const config = loadConfig();

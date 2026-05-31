@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { config } from "./config.js";
+import { config, type ResolvedConfig } from "./config.js";
 import {
   analyzeIndexingSource as analyzeMixedIndexingSource,
   toDocuments as mapOzelgeRecordsToDocuments,
@@ -24,6 +24,12 @@ export type IndexingSourceHealthDetails = {
   sampleLimited: boolean;
 };
 
+export type IndexingRunResult = {
+  sourceDocumentCount: number;
+  parsedSourceDocumentCount: number;
+  chunkCount: number;
+};
+
 export async function loadOzelgeRecords(): Promise<OzelgeRecord[]> {
   return loadOzelgeRecordsFromJson(config.ozelgeDataPath);
 }
@@ -32,15 +38,15 @@ export function toDocuments(records: OzelgeRecord[]) {
   return mapOzelgeRecordsToDocuments(records);
 }
 
-export async function analyzeIndexingSource() {
+export async function analyzeIndexingSource(runtimeConfig = config) {
   return analyzeMixedIndexingSource({
-    sourcePath: config.sourcePath,
-    ozelgeDataPath: config.ozelgeDataPath,
-    indexSampleSize: config.indexSampleSize,
+    sourcePath: runtimeConfig.sourcePath,
+    ozelgeDataPath: runtimeConfig.ozelgeDataPath,
+    indexSampleSize: runtimeConfig.indexSampleSize,
   });
 }
 
-export async function checkIndexingSourceHealth(): Promise<{
+export async function checkIndexingSourceHealth(runtimeConfig = config): Promise<{
   ok: boolean;
   latencyMs: number;
   error?: string;
@@ -49,20 +55,20 @@ export async function checkIndexingSourceHealth(): Promise<{
   const startedAt = Date.now();
 
   try {
-    const analysis = await analyzeIndexingSource();
+    const analysis = await analyzeIndexingSource(runtimeConfig);
 
     return {
       ok: true,
       latencyMs: Date.now() - startedAt,
       details: {
-        sourcePath: config.sourcePath,
+        sourcePath: runtimeConfig.sourcePath,
         fileCount: analysis.fileCount,
         loadedDocumentCount: analysis.loadedDocumentCount,
         recordCount: analysis.recordCount,
         sampledRecordCount: analysis.sampledRecordCount,
         documentCount: analysis.documents.length,
         unsupportedFiles: analysis.unsupportedFiles,
-        indexSampleSize: config.indexSampleSize,
+        indexSampleSize: runtimeConfig.indexSampleSize,
         sampleLimited: analysis.sampleLimited,
       },
     };
@@ -72,24 +78,31 @@ export async function checkIndexingSourceHealth(): Promise<{
       latencyMs: Date.now() - startedAt,
       error: error instanceof Error ? error.message : String(error),
       details: {
-        sourcePath: config.sourcePath,
-        indexSampleSize: config.indexSampleSize,
+        sourcePath: runtimeConfig.sourcePath,
+        indexSampleSize: runtimeConfig.indexSampleSize,
         sampleLimited: false,
       },
     };
   }
 }
 
-async function main(): Promise<void> {
-  console.log(`Loading indexing source from ${config.sourcePath}`);
-  const analysis = await analyzeIndexingSource();
+export async function runIndexing(
+  runtimeConfig: ResolvedConfig = config,
+  options: {
+    log?: (message: string) => void;
+  } = {},
+): Promise<IndexingRunResult> {
+  const log = options.log ?? console.log;
+
+  log(`Loading indexing source from ${runtimeConfig.sourcePath}`);
+  const analysis = await analyzeIndexingSource(runtimeConfig);
   const documents = analysis.documents;
 
-  console.log(
+  log(
     `Loaded ${documents.length} indexable documents from ${analysis.loadedDocumentCount} parsed source documents`,
   );
   for (const sourceFile of analysis.sourceFiles) {
-    console.log(
+    log(
       `- ${sourceFile.path} (${sourceFile.sourceType}): ${sourceFile.loadedDocumentCount} documents`,
     );
   }
@@ -100,8 +113,8 @@ async function main(): Promise<void> {
   }
 
   const splitter = new RecursiveCharacterTextSplitter({
-    chunkSize: config.chunkSize,
-    chunkOverlap: config.chunkOverlap,
+    chunkSize: runtimeConfig.chunkSize,
+    chunkOverlap: runtimeConfig.chunkOverlap,
   });
   const chunks = await splitter.splitDocuments(documents);
   const indexedChunks = chunks.map((chunk, chunkIndex) => {
@@ -112,17 +125,27 @@ async function main(): Promise<void> {
     return chunk;
   });
 
-  console.log(`Split documents into ${indexedChunks.length} chunks`);
-  console.log(`Resetting Chroma collection "${config.chromaCollection}" at ${config.chromaUrl}`);
-  await resetChromaCollection();
+  log(`Split documents into ${indexedChunks.length} chunks`);
+  log(`Resetting Chroma collection "${runtimeConfig.chromaCollection}" at ${runtimeConfig.chromaUrl}`);
+  await resetChromaCollection(runtimeConfig);
 
-  console.log(`Indexing into Chroma collection "${config.chromaCollection}" at ${config.chromaUrl}`);
-  const vectorStore = createVectorStore();
+  log(`Indexing into Chroma collection "${runtimeConfig.chromaCollection}" at ${runtimeConfig.chromaUrl}`);
+  const vectorStore = createVectorStore(runtimeConfig);
   await vectorStore.addDocuments(indexedChunks, {
     ids: indexedChunks.map((chunk) => `${chunk.metadata.documentId}:${chunk.metadata.chunkIndex}`),
   });
 
-  console.log("Indexing complete");
+  log("Indexing complete");
+
+  return {
+    sourceDocumentCount: documents.length,
+    parsedSourceDocumentCount: analysis.loadedDocumentCount,
+    chunkCount: indexedChunks.length,
+  };
+}
+
+async function main(): Promise<void> {
+  await runIndexing(config);
 }
 
 const isDirectExecution = process.argv[1] === fileURLToPath(import.meta.url);

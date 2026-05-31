@@ -5,6 +5,8 @@ import { config } from "./config.js";
 import { errorHandler, notFoundHandler, sendErrorResponse } from "./http/errors.js";
 import { createRequestContext } from "./http/requestContext.js";
 import { checkIndexingSourceHealth, type IndexingSourceHealthDetails } from "./index.js";
+import { createAdminRouter } from "./http/adminRouter.js";
+import { createRagRouter } from "./http/ragRouter.js";
 import {
   checkChatGenerationHealth,
   checkChromaHealth,
@@ -78,6 +80,7 @@ function configureApp(app: Express): void {
       endpoints: {
         health: "/health",
         ready: "/ready",
+        adminCollections: "/v1/admin/collections",
         collections: "/v1/rag/collections",
         query: "/v1/rag/collections/:collectionId/query",
         retrieve: "/v1/rag/collections/:collectionId/retrieve",
@@ -85,6 +88,9 @@ function configureApp(app: Express): void {
       },
     });
   });
+
+  app.use("/v1/admin", createAdminRouter(app.locals.dependencies));
+  app.use("/v1/rag", createRagRouter(app.locals.dependencies));
 
   app.use("/test-frontend", express.static(path.resolve(process.cwd(), "test_frontend")));
 

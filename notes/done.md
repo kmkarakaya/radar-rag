@@ -86,3 +86,18 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
 - Doğrulama komutları:
   - `npm run build`: hatasız başarılı.
   - `npm run test`: başarılı, 14 test geçti.
+
+## Prompt 5: /v1 Admin and RAG API Endpoints
+
+- `src/http/adminRouter.ts` ve `src/http/ragRouter.ts` ayrı ayrı route dosyaları olarak oluşturulup `src/app.ts` içerisine entegre edildi.
+- Eklenen/uyarlanan public endpointler şunlardır:
+  - **Admin API**: `POST /v1/admin/collections` (Zod destekli data validasyonu), `PATCH /v1/admin/collections/:collectionId`, `POST /v1/admin/collections/:collectionId/reindex` ve `GET /v1/admin/jobs/:jobId`.
+  - **RAG API**: `GET /v1/rag/collections`, `GET /v1/rag/collections/:collectionId`, `GET /v1/rag/collections/:collectionId/ready` (Chroma readability guard içerir).
+  - **Query/Retrieve API**: `POST /v1/rag/collections/:collectionId/query` ve `POST /v1/rag/collections/:collectionId/retrieve`. Bu rotalar read guard çalışmadan ve fiziksel model uyanmadan önce `resolveReadableCollection` üzerinden doğrulanıyor.
+- `src/collections/resolveReadableCollection.ts` yardımcı helper'ı eklendi. Bu yapı sayesinde controller içerisinde tekrar tekrar registry, count ve missing collection check işlemi yapılması önlendi. Active model yoksa, indeksleme sürüyorsa vb. durumlarda uygun 404 / 503 dönüşleri garanti altına alındı.
+- Eski positional/default RAG array logic içeren (`/rag/query`, `/rag/retrieve`) endpointleri geri eklenmedi, route rotasından silindiği kalıcı oldu.
+- `src/http/errors.ts` güncellendi ve Prompt sözleşmesinde beklenen yeni type safe API error code'ları (`COLLECTION_NOT_FOUND`, `COLLECTION_NOT_READY`, `COLLECTION_INDEXING`, `COLLECTION_STORAGE_INCONSISTENT`, `COLLECTION_INDEX_ALREADY_RUNNING`, vb.) map edildi.
+- `test/api.endpoints.test.ts` eklenerek yukarıdaki davranışların testleri yazıldı ve 404, 503, 409 ve 201 statü dönüşleri kanıtlandı.
+- Doğrulama komutları:
+  - `npm run build`: hatasız tamamlandı.
+  - `npm run test`: tüm 22 test başarıyla geçti.

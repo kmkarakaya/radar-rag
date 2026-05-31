@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import type { RequestContext } from "./requestContext.js";
+import { RagQueryError } from "../rag.js";
 
 export type ApiErrorCode =
   | "INVALID_REQUEST_BODY"
@@ -90,6 +91,39 @@ export function errorHandler(
       statusCode: error.statusCode,
       error: "Request failed",
       code: error.code,
+      message: error.message,
+      details: error.details,
+      context: res.locals.requestContext as RequestContext | undefined,
+    });
+    return;
+  }
+
+  // Handle generic errors with code property matching ApiErrorCode (e.g. from startReindexJob)
+  if (
+    error instanceof Error &&
+    "code" in error &&
+    typeof (error as any).code === "string"
+  ) {
+    const code = (error as any).code;
+    if (code === "COLLECTION_INDEX_ALREADY_RUNNING") {
+      sendErrorResponse(res, {
+        statusCode: 409,
+        error: "Job Error",
+        code: code,
+        message: error.message,
+        context: res.locals.requestContext as RequestContext | undefined,
+      });
+      return;
+    }
+  }
+
+  if (error instanceof RagQueryError) {
+    let statusCode = error.statusCode;
+    // Map existing rag error codes if necessary
+    sendErrorResponse(res, {
+      statusCode: statusCode,
+      error: "RAG query failed",
+      code: error.code as unknown as ApiErrorCode,
       message: error.message,
       details: error.details,
       context: res.locals.requestContext as RequestContext | undefined,

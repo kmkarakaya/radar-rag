@@ -119,5 +119,6 @@ export interface CollectionRegistry {
   ): Promise<IndexJob>;
   completeIndexJob(jobId: string, result: CompleteIndexJobResult): Promise<IndexJob>;
   failIndexJob(jobId: string, error: string): Promise<IndexJob>;
+  failStaleJobs(staleThresholdMs: number): Promise<number>;
   close?(): void;
 }

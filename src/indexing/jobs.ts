@@ -69,6 +69,15 @@ export async function runIndexJob(input: {
     });
     
     log(`Job ${jobId} completed successfully.`);
+
+    if (collection.activePhysicalCollection && collection.activePhysicalCollection !== job.targetPhysicalCollection) {
+      log(`Scheduling cleanup for old physical collection: ${collection.activePhysicalCollection}`);
+      import("../collections/chromaCollections.js").then(({ deletePhysicalChromaCollection }) => {
+        deletePhysicalChromaCollection({ name: collection.activePhysicalCollection!, runtimeConfig }).catch((err) => {
+          console.error(`Failed to clean up old physical collection ${collection.activePhysicalCollection}:`, err);
+        });
+      });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await registry.failIndexJob(jobId, message);

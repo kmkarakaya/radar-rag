@@ -57,6 +57,10 @@ function configureApp(app: Express): void {
 
   app.use(express.json({ limit: "1mb" }));
 
+  // TODO: Implement rate limiting per collection/tenant here. 
+  // Do not write ad-hoc rate limiters in individual routes.
+  // app.use(rateLimitMiddleware);
+
   app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
     // Check for express.json body parser errors (such as Payload Too Large or Invalid JSON)
     if (err instanceof Error && "status" in err && typeof err.status === "number") {

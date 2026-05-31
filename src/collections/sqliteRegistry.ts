@@ -498,6 +498,49 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     return transaction();
   }
 
+  async failStaleJobs(staleThresholdMs: number): Promise<number> {
+    const thresholdDate = new Date(Date.now() - staleThresholdMs).toISOString();
+    const now = new Date().toISOString();
+
+    const transaction = this.db.transaction(() => {
+      // Find stale jobs
+      const staleJobs = this.db.prepare(`
+        SELECT id, collection_id, tenant_id FROM index_jobs
+        WHERE status IN ('queued', 'running') AND updated_at < ?
+      `).all(thresholdDate) as { id: string; collection_id: string; tenant_id: string }[];
+
+      if (staleJobs.length === 0) {
+        return 0;
+      }
+
+      // Fail them
+      this.db.prepare(`
+        UPDATE index_jobs
+        SET status = 'failed', error = 'Job timed out (stale lock)', updated_at = ?, finished_at = ?
+        WHERE status IN ('queued', 'running') AND updated_at < ?
+      `).run(now, now, thresholdDate);
+
+      // Update their collections
+      for (const job of staleJobs) {
+        const collection = this.getCollectionRow(job.tenant_id, job.collection_id);
+        this.db.prepare(`
+          UPDATE collections
+          SET status = ?, updated_at = ?
+          WHERE tenant_id = ? AND id = ? AND status = 'indexing'
+        `).run(
+          collection?.active_physical_collection ? "ready" : "failed",
+          now,
+          job.tenant_id,
+          job.collection_id
+        );
+      }
+
+      return staleJobs.length;
+    });
+
+    return transaction();
+  }
+
   close(): void {
     this.db.close();
   }

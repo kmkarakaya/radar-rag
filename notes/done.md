@@ -98,9 +98,12 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
 - Eski positional/default RAG array logic içeren (`/rag/query`, `/rag/retrieve`) endpointleri geri eklenmedi, route rotasından silindiği kalıcı oldu.
 - `src/http/errors.ts` güncellendi ve Prompt sözleşmesinde beklenen yeni type safe API error code'ları (`COLLECTION_NOT_FOUND`, `COLLECTION_NOT_READY`, `COLLECTION_INDEXING`, `COLLECTION_STORAGE_INCONSISTENT`, `COLLECTION_INDEX_ALREADY_RUNNING`, vb.) map edildi.
 - `test/api.endpoints.test.ts` eklenerek yukarıdaki davranışların testleri yazıldı ve 404, 503, 409 ve 201 statü dönüşleri kanıtlandı.
+- Eski physical collection cleanup akışı eklendi (Başarılı bir rebuild işlemi sonrası eski fiziksel koleksiyon Chroma'dan silinerek garbage önlenir hale getirildi).
+- `src/app.ts` içerisine "TODO: Implement rate limiting per collection/tenant here." hook yorumu bırakıldı.
+- Başlangıç/Worker Restart durumları için `stale lock` timeout kurtarma fonksiyonu eklendi (`failStaleJobs`), böylece server kapandığında kilitli kalan index işleri serbest bırakılabiliyor.
 - Doğrulama komutları:
   - `npm run build`: hatasız tamamlandı.
-  - `npm run test`: tüm 22 test başarıyla geçti.
+  - `npm run test`: tüm 24 test başarıyla geçti.
 
 ## Prompt 6: Frontend, README, Smoke Flow
 

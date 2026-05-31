@@ -198,10 +198,6 @@ Girdi:
     - `warningCodes`
     - `recommendedActions`
 - `details=true` verildiğinde ayrıntılı payload açılır ve ayrıca şu alanlar görünür:
-    - `chromaCollection`
-    - `chromaCollectionExists`
-    - `chromaCollectionCount`
-    - `chromaCollectionEmpty`
     - `checks`
     - `blockers`
     - `warnings`
@@ -211,12 +207,9 @@ Girdi:
 Kontrol ettiği başlıca şeyler:
 
 - Chroma erişilebilir mi
-- Hedef collection var mı
-- Collection boş mu, kaç chunk içeriyor
 - Ollama erişilebilir mi
 - Chat modeli mevcut mu
 - Embedding modeli mevcut mi
-- Embedding smoke test başarılı mı
 - Veri dosyası okunabilir mi
 - Örneklem içinde indexlenebilir doküman var mı
 
@@ -225,64 +218,33 @@ HTTP durum semantiği:
 - Varsayılan `/ready` çağrısı her zaman `200` döner ve gerçek durumu JSON içindeki `ready`, `queryReady`, `indexReady` alanlarında bildirir.
 - `strict=true` verildiğinde ve sistem hazır değilse `503` döner.
 
-Bu endpoint'in en önemli katkısı, sadece "hazır / değil" dememesi; neden hazır olmadığını da kullanıcıya açıkça anlatmasıdır.
+Not: Eski mimaride varsayılan koleksiyon kontrol ediliyordu. Multi-collection sonrası bu genel `/ready` rotası *koleksiyondan bağımsız* sadece sistem bağımlılıklarını (Chroma, Ollama vb.) ölçer. Spesifik koleksiyon bazlı sağlık durumu için `GET /v1/rag/collections/:collectionId/ready` kullanılır.
 
-#### `GET /rag/query`
+#### `GET /v1/rag/collections/:collectionId/ready`
 
 Maksat:
 
-- Yanlış HTTP method kullanımını açık hata ile karşılamak
-- Tüketiciye bu endpoint'in yalnızca `POST` kabul ettiğini anlatmak
-
-Girdi:
-
-- Request body yok
+- Seçili koleksiyonun erişilebilirliğini ve index durumunu raporlamak.
 
 Çıktı:
 
-- `error`
-- `message`
-- `example`
+- `chromaReadable`
+- `chromaCount`
+- `status`
+- `activePhysicalCollection`
 
-HTTP durum semantiği:
+Bu endpoint, sorgu yapmadan önce koleksiyonun endekslenip endekslenmediğini ya da "indexing" statüsünde olup olmadığını kullanıcıya bildirir.
 
-- Her zaman `405 Method Not Allowed`
-
-Bu küçük endpoint, API ergonomisi açısından faydalıdır; istemci yanlış method kullandığında sessizce başarısız olmak yerine yönlendirici bir cevap alır.
-
-#### `GET /rag/retrieve`
+#### `POST /v1/rag/collections/:collectionId/query`
 
 Maksat:
 
-- Yanlış HTTP method kullanımını açık hata ile karşılamak
-- Tüketiciye bu endpoint'in yalnızca `POST` kabul ettiğini anlatmak
-
-Girdi:
-
-- Request body yok
-
-Çıktı:
-
-- `error`
-- `message`
-- `example`
-
-HTTP durum semantiği:
-
-- Her zaman `405 Method Not Allowed`
-
-Bu endpoint de `GET /rag/query` ile aynı ergonomi amacına hizmet eder; retrieval yüzeyi yanlış method ile çağrıldığında açıklayıcı bir cevap üretir.
-
-#### `POST /rag/query`
-
-Maksat:
-
-- Kullanıcının sorusunu alıp retrieval + generation akışını çalıştırmak
+- Seçilen mantıksal (logical) koleksiyon üzerinden kullanıcı sorusunu alıp retrieval + generation akışını çalıştırmak
 - Sonucu answer + sources şeklinde JSON olarak döndürmek
 
 Girdi:
 
-- JSON request body
+- JSON request body (Limit 1MB, asılırsa 413 Payload Too Large)
 - Zorunlu alan: `question: string`
 
 Örnek girdi:
@@ -298,24 +260,28 @@ Başarılı çıktı:
 - `answer: string`
 - `distanceScoreThreshold: number`
 - `sources: Array<{ ozelgeId?, sayi?, tarih?, konu?, distanceScore?, content }>`
+- `collectionId: string`
+- `collectionDisplayName: string`
+- `activeVersion: string`
 
 Örnek hata durumları:
 
 - `400`: body geçersizse veya `question` boşsa
+- `413`: Gönderilen JSON gövdesi çok büyükse
+- `404`: Koleksiyon (veya ilgili aktif versiyon) bulunamazsa (`COLLECTION_NOT_FOUND` / `COLLECTION_NOT_READY`)
+- `503`: Koleksiyon ilk defa endeksleniyorsa (`COLLECTION_INDEXING`)
 - `422`: retrieval eşiği altında chunk kalmazsa (`NO_RELEVANT_CONTEXT`) veya retrieved chunk'lar cevap üretmeye yetmezse (`ANSWER_NOT_IN_RETRIEVED_CONTEXT`)
 - `502`: model boş cevap dönerse (`EMPTY_MODEL_RESPONSE`) veya yasaklı fallback answer dönerse (`DISALLOWED_FALLBACK_ANSWER`)
+- `503`: Eşzamanlı istek limiti aşıldığında veya client timeout'a düştüğünde (`MODEL_BACKPRESSURE`)
 - `500`: beklenmeyen başka backend hatası oluşursa
 
 Önemli not:
 
-- `POST /rag/retrieve` tarafında chunk bulunması, `POST /rag/query` tarafında mutlaka cevap üretileceği anlamına gelmez.
-- Retrieval katmanı konuya yakın chunk'lar bulabilir; ancak bu chunk'lar sorunun istediği spesifik olguyu veya sayısal eşiği içermeyebilir.
-- Bu durumda `POST /rag/query`, başarı yerine `ANSWER_NOT_IN_RETRIEVED_CONTEXT` döner.
-- Bu hata payload'ı artık retrieval'ın tamamen boş olmadığını göstermek için kompakt `retrievedSources` özeti de içerir.
+- Backend, koleksiyon okunabilirliğini Langchain'e bırakmadan önce `resolveReadableCollection` katmanında bizzat Chroma'ya sorarak (`assertChromaCollectionReadable`) teyit eder. Bu, yanlışlıkla boş koleksiyon oluşturma riskini (zero-downtime) ortadan kaldırır.
 
 Bu endpoint, repodaki asıl ürün endpoint'idir. Vanilla RAG backend hedefi açısından en kritik API yüzeyi budur.
 
-#### `POST /rag/retrieve`
+#### `POST /v1/rag/collections/:collectionId/retrieve`
 
 Maksat:
 
@@ -344,22 +310,26 @@ Başarılı çıktı:
 - `distanceScoreThreshold: number`
 - `sourceCount: number`
 - `sources: Array<{ ozelgeId?, sayi?, tarih?, konu?, distanceScore?, content }>`
+- `collectionId: string`
+- `collectionDisplayName: string`
+- `activeVersion: string`
 
 Örnek hata durumları:
-
 - `400`: body geçersizse, `question` boşsa veya `k` geçersizse
+- `404`: Koleksiyon aktif değilse
+- `503`: Eşzamanlı limitten (`MODEL_BACKPRESSURE`) dolayı kaynak tükenmişse
 - `422`: `retrievalDistanceThreshold` altında hiç chunk kalmazsa (`NO_RELEVANT_CONTEXT`)
-- `500`: retrieval veya vector store erişiminde backend hatası oluşursa
 
 Bu endpoint ürün akışının zorunlu parçası değildir; esas görevi retrieval kalitesini generation'dan bağımsız gözlemlemeyi kolaylaştırmaktır.
 
-#### HTTP Endpoint Olmayan Ama Operasyonel Olarak Önemli Akış
+#### Admin API Endpointleri (Yönetim)
 
-İndeksleme şu anda HTTP endpoint olarak değil, CLI komutu olarak sunulur:
+Aşağıdaki API rotaları Çoklu-Koleksiyon (Multi-Collection) konsepti gereği koleksiyon yönetimi için kullanılır:
 
-- `npm run index`
-
-Bu önemli bir mimari karardır. Çünkü repo query-serving backend yüzeyini HTTP üzerinden açarken, veri ingestion işlemini şimdilik operasyonel komut olarak tutar. Bu basitlik sağlar; ancak ileride yönetilen bir servis istenirse indexing için ayrı endpoint veya job tetikleme yüzeyi gerekebilir.
+- `POST /v1/admin/collections`: Zod doğrulamasından geçerek yeni bir logical koleksiyon metadata'sı yaratır (Henüz endekslemez).
+- `PATCH /v1/admin/collections/:collectionId`: Varolan bir koleksiyonun yapılandırmasını günceller (Model, metrikler vb.)
+- `POST /v1/admin/collections/:collectionId/reindex`: O koleksiyon için arka planda asenkron çalışacak, eski veriyi kesintiye uğratmadan yeni bir fiziksel tabloya (`rag_tenant_..._version`) data yazacak olan `Index Job`'u tetikler.
+- `GET /v1/admin/jobs/:jobId`: İlgili işin durumunu döner.
 
 ### 5.2 RAG Orchestrator Katmanı
 
@@ -763,22 +733,23 @@ Her re-index işlemi koleksiyonu sıfırdan siliyor.
 
 Bu şu anlama gelir:
 
-- backend basit
-- ama operasyonel olarak kaba taneli
+- Backend basit
+- Ama operasyonel olarak kaba taneli
 
-Vanilla RAG için kabul edilebilir, ancak daha olgun backend mimarisinde upsert veya selective re-index beklenir.
+Vanilla RAG için kabul edilebilir. Ancak gelişmiş bir arkaplan aracı (örneğin Admin API) entegre edilmiştir. Artık eski koleksiyon silinmemekte; tüm işlemler yeni yaratılan versiyonlu fiziksel koleksiyon (zero-downtime pointer swap) üzerine inşa edilmekte, başarı halinde pointer değişirken, eski hedef otomatik temizlenmektedir (garbage collection).
 
 ### 11.7 API hardening eksik
 
-Şu backend özellikleri henüz yok:
+Şu backend özellikleri büyük oranda sisteme dahil edilmiştir:
 
-- auth
-- rate limit
-- versioning
-- request id
-- structured logging
+- request id (app katmanından `requestContext` ile dağıtılır)
+- auth/tenant (hazırlık var, sahte olarak `default` tenant çalışıyor)
+- versioning (`/v1` endpointleri aktif)
+- structured logging (logStep aracılığıyla requestId, latency, model timeout vb. izlenir)
+- concurrency & backpressure (Embeddings ve generation için asenkron semaphore mekanizması eklendi)
+- payload limit (`1mb` JSON sınır aşımında HTML yerine düzgün `413` hatası dönülüyor)
 
-Bunlar Vanilla RAG teorisinin çekirdeği değil, ama backend olarak paketlenen bir sistemin olgunluk katmanlarıdır.
+Sadece rate limiting (Collection/user bazlı saniye/dakika kotası) `app.ts` içerisinde TODO kancası (hook) olarak bırakılmıştır.
 
 ## 12. Tasarım Trade-off'ları
 

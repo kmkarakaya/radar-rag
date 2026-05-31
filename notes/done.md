@@ -101,3 +101,29 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
 - Doğrulama komutları:
   - `npm run build`: hatasız tamamlandı.
   - `npm run test`: tüm 22 test başarıyla geçti.
+
+## Prompt 6: Frontend, README, Smoke Flow
+
+- `test_frontend/index.html` güncellendi. Eski `/rag/query` ve `/rag/retrieve` buton/endpoint referansları tamamen silindi.
+- Sayfa yüklenirken `/v1/rag/collections` endpoint'inden veri çekerek koleksiyon dropdown menüsü (collection-select) oluşturması ve duruma uygun `/v1/rag/collections/:collectionId/...` query işlemlerini yürütecek altyapı eklendi.
+- Eksik veya hazır olmayan koleksiyonlarda ilgili UI elemanları devre dışı bırakıldı (disabled state). Readiness endpoint'i üzerinden collection seviyesinde spesifik "Check Status" aracı sayfaya dahil edildi.
+- `README.md` dosyası çoklu koleksiyon destekleyen versiyonuna göre düzenlendi. Terminal ve manuel smoke flow (Invoke-RestMethod) içeren PowerShell script test senaryoları `README` içine gömüldü. Collection id referansı üzerinden işlemler tanımlandı.
+- `vanilla_rag_backend_mimarisi.md` güncellenerek RAG Core İç Akışı ve Veri Seti Indexleme Süreci başlıklarındaki multi-collection mantığı revize edildi.
+- `test/frontend.static.test.ts` eklenerek front-end dosyasında legacy (eski) `/rag/query` kullanımının var olup olmadığı otomatik testlerle izole şekilde güvence altına alındı.
+- Test ve build doğrulama komutları:
+  - `npm run build`: hatasız başarıyla tamamlandı.
+  - `npm run test`: 23 test başarıyla geçti. (Frontend static check testi de bu gruba dahil oldu).
+
+## Prompt 7: Final Hardening, Readiness, Backpressure, Cleanup
+
+- `src/app.ts` içerisindeki `/ready` route'ı Multi-Collection ortamına uygun olarak güncellendi. Artık default collection aranmıyor (zira system registry-based boş başlayabiliyor). Readiness payload'u, sistemin query yapmaya veya index çalıştırılmaya ne kadar hazır olduğunu açıkça raporluyor (`systemReadyFor = 'query' | 'index' | 'query-and-index' | 'neither'`).
+- `GET /v1/rag/collections/:collectionId/ready` controller içerisinde Chroma collection'ın fiziki erişilebilirliği (`count`) dahil olmak üzere tam sağlık durumu entegre edildi.
+- `src/config.ts`'e model concurrency (backpressure) sınırlarını tutan `maxConcurrentEmbeddings` (default 5) ve `maxConcurrentGenerations` (default 2) eklendi.
+- `src/http/semaphore.ts` adlı basit bir semaphore dosyası oluşturularak asenkron token limitleyici mekanizma kurgulandı.
+- `src/rag.ts` içerisindeki `retrieveSources` (embeddings) ve `answerQuestion` (chat generation) süreçlerine semantic asenkron kilitler eklendi (`getEmbeddingSemaphore` ve `getGenerationSemaphore`). Limitlerin dolması veya timeout (`ragTimeoutMs`) aşımı senaryosunda, model veya veritabanı yanıt veremeden client koparsa (`AbortSignal`) `503 MODEL_BACKPRESSURE` hatası atılması sağlandı.
+- Client kopmalarında Ollama isteklerinin yarıda iptal edilmesi için `req.on("close", () => ac.abort())` AbortController mantığı routerlar içine bağlandı ve `rag.ts`'ye iletildi.
+- Request/Traceability açısından loglama güçlendirildi: `rag.ts` loglarına merkezi middleware'dan gelen `requestId` parametresi bağlandı.
+- Kullanılmayan `resetChromaCollection` gibi eski ve tehlikeli index yardımcı fonksiyonları kod tabanından tamamen çıkartıldı. 
+- Doğrulama komutları:
+  - `npm run build`: hatasız başarıyla tamamlandı.
+  - `npm run test`: tüm kabul testleri, yeni eklemelerle beraber başarıyla geçti.

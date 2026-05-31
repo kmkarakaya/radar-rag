@@ -4,6 +4,8 @@ import { ChatOllama, OllamaEmbeddings } from "@langchain/ollama";
 import { ChromaClient, type ChromaClientArgs } from "chromadb";
 import { assertChromaCollectionReadable } from "./collections/chromaCollections.js";
 import { config, type DistanceMetric, type ResolvedConfig } from "./config.js";
+import { Semaphore } from "./http/semaphore.js";
+import type { RequestContext } from "./http/requestContext.js";
 
 export type RagSource = {
   documentId?: string;
@@ -150,6 +152,23 @@ function hasConfiguredModel(availableModels: string[], configuredModel: string):
   return availableModels.some(
     (availableModel) => normalizeOllamaModelName(availableModel) === normalizedConfiguredModel,
   );
+}
+
+let embeddingSemaphore: Semaphore | undefined;
+let generationSemaphore: Semaphore | undefined;
+
+function getEmbeddingSemaphore(runtimeConfig: ResolvedConfig): Semaphore {
+  if (!embeddingSemaphore) {
+    embeddingSemaphore = new Semaphore(runtimeConfig.maxConcurrentEmbeddings);
+  }
+  return embeddingSemaphore;
+}
+
+function getGenerationSemaphore(runtimeConfig: ResolvedConfig): Semaphore {
+  if (!generationSemaphore) {
+    generationSemaphore = new Semaphore(runtimeConfig.maxConcurrentGenerations);
+  }
+  return generationSemaphore;
 }
 
 export async function checkChromaHealth(
@@ -457,6 +476,8 @@ export async function retrieveSources(
     collectionName: string;
     k?: number;
     runtimeConfig: ResolvedConfig;
+    context?: RequestContext;
+    abortSignal?: AbortSignal;
   },
 ): Promise<RetrievalResult> {
   const runtimeConfig = options.runtimeConfig;
@@ -468,7 +489,26 @@ export async function retrieveSources(
     collectionName: options.collectionName,
     runtimeConfig,
   });
-  const docsWithScores = await vectorStore.similaritySearchWithScore(question, k);
+
+  const semaphore = getEmbeddingSemaphore(runtimeConfig);
+  let docsWithScores;
+  try {
+    docsWithScores = await semaphore.run(
+      () => vectorStore.similaritySearchWithScore(question, k),
+      runtimeConfig.ragTimeoutMs,
+      options.abortSignal
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("Timeout of") || message.includes("Request aborted")) {
+      throw new RagQueryError(
+        "MODEL_BACKPRESSURE",
+        "Could not acquire embedding lock in time or request aborted.",
+        503,
+      );
+    }
+    throw error;
+  }
 
   const sources = docsWithScores
     .sort((left, right) => left[1] - right[1])
@@ -498,6 +538,8 @@ export async function answerQuestion(question: string, options: {
   collectionName: string;
   runtimeConfig: ResolvedConfig;
   retrievalK?: number;
+  context?: RequestContext;
+  abortSignal?: AbortSignal;
 }): Promise<{
   answer: string;
   distanceScoreThreshold: number;
@@ -507,14 +549,18 @@ export async function answerQuestion(question: string, options: {
   const startedAt = Date.now();
   const model = createChatModel(runtimeConfig);
   const k = options.retrievalK ?? runtimeConfig.retrievalK;
-  logStep(`query started; model=${runtimeConfig.ollamaChatModel}; k=${k}`);
+  logStep(`query started; model=${runtimeConfig.ollamaChatModel}; k=${k}; reqId=${options.context?.requestId || "-"}`);
 
-  logStep("retrieval started");
+  logStep(`retrieval started; reqId=${options.context?.requestId || "-"}`);
+  const retrievalStartedAt = Date.now();
   const retrieval = await retrieveSources(question, {
     collectionName: options.collectionName,
     k,
     runtimeConfig,
+    context: options.context,
+    abortSignal: options.abortSignal,
   });
+  const retrievalElapsedMs = Date.now() - retrievalStartedAt;
   const retrievedSources = retrieval.sources;
 
   if (retrievedSources.length === 0) {
@@ -547,18 +593,49 @@ export async function answerQuestion(question: string, options: {
   ].join("\n");
 
   const controller = new AbortController();
+  const onParentAbort = () => controller.abort();
+  if (options.abortSignal) {
+    if (options.abortSignal.aborted) {
+      throw new RagQueryError("MODEL_BACKPRESSURE", "Request aborted before generation.", 503);
+    }
+    options.abortSignal.addEventListener("abort", onParentAbort);
+  }
+
   const timer = setTimeout(
     () => controller.abort(timeoutError("RAG query while waiting for Ollama", runtimeConfig.ragTimeoutMs)),
     runtimeConfig.ragTimeoutMs,
   );
 
   try {
-    logStep(`ollama generation started; timeoutMs=${runtimeConfig.ragTimeoutMs}`);
-    const response = await model.invoke(
-      [new SystemMessage(systemPrompt), new HumanMessage(question)],
-      { signal: controller.signal },
-    );
-    logStep(`ollama generation finished; elapsedMs=${Date.now() - startedAt}`);
+    logStep(`ollama generation started; timeoutMs=${runtimeConfig.ragTimeoutMs}; reqId=${options.context?.requestId || "-"}`);
+    
+    const semaphore = getGenerationSemaphore(runtimeConfig);
+    const generationStartedAt = Date.now();
+    let response;
+    
+    try {
+      response = await semaphore.run(
+        () => model.invoke(
+          [new SystemMessage(systemPrompt), new HumanMessage(question)],
+          { signal: controller.signal },
+        ),
+        runtimeConfig.ragTimeoutMs,
+        controller.signal
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("Timeout of") || message.includes("Request aborted")) {
+        throw new RagQueryError(
+          "MODEL_BACKPRESSURE",
+          "Could not acquire generation lock in time or request aborted.",
+          503,
+        );
+      }
+      throw error;
+    }
+    
+    const generationElapsedMs = Date.now() - generationStartedAt;
+    logStep(`ollama generation finished; totalElapsedMs=${Date.now() - startedAt}; retrievalMs=${retrievalElapsedMs}; generationMs=${generationElapsedMs}; reqId=${options.context?.requestId || "-"}`);
 
     const answer = contentToString(response.content).trim();
 
@@ -609,5 +686,8 @@ export async function answerQuestion(question: string, options: {
     };
   } finally {
     clearTimeout(timer);
+    if (options.abortSignal) {
+      options.abortSignal.removeEventListener("abort", onParentAbort);
+    }
   }
 }

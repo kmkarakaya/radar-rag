@@ -107,12 +107,23 @@ export function createRagRouter(deps: AppDependencies) {
         throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid retrieve payload", { issues: parsed.error.issues });
       }
 
+      const context = res.locals.requestContext as RequestContext;
       const collection = await resolveReadableCollection(req, { registry: deps.registry! }, config);
+
+      req.on("close", () => {
+        // We could abort an AbortController here if we wired one up fully, but 
+        // express request doesn't directly expose standard abort signals until Express 5 
+        // with node 16+. For now, we will just pass a local abort controller.
+      });
+      const ac = new AbortController();
+      req.on("close", () => ac.abort());
 
       const result = await retrieveSources(parsed.data.question, {
         collectionName: collection.activePhysicalCollection!,
         k: parsed.data.k ?? collection.retrievalK,
         runtimeConfig: config,
+        context,
+        abortSignal: ac.signal,
       });
 
       res.json({
@@ -137,12 +148,18 @@ export function createRagRouter(deps: AppDependencies) {
         throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid query payload", { issues: parsed.error.issues });
       }
 
+      const context = res.locals.requestContext as RequestContext;
       const collection = await resolveReadableCollection(req, { registry: deps.registry! }, config);
+
+      const ac = new AbortController();
+      req.on("close", () => ac.abort());
 
       const result = await answerQuestion(parsed.data.question, {
         collectionName: collection.activePhysicalCollection!,
         retrievalK: collection.retrievalK,
         runtimeConfig: config,
+        context,
+        abortSignal: ac.signal,
       });
 
       res.json({

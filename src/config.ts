@@ -41,6 +41,10 @@ export const configSchema = z.object({
     embeddingProbeText: z.string().trim().min(1),
     chatProbeText: z.string().trim().min(1),
   }).strict(),
+  limits: z.object({
+    maxConcurrentEmbeddings: z.number().int().positive().default(5),
+    maxConcurrentGenerations: z.number().int().positive().default(2),
+  }).strict().optional(),
 }).strict().superRefine((value, ctx) => {
   if (value.collectionDefaults.chunkOverlap >= value.collectionDefaults.chunkSize) {
     ctx.addIssue({
@@ -117,6 +121,8 @@ export function resolveConfig(
     readyEmbedProbeText: rawConfig.readiness.embeddingProbeText,
     readyChatProbeText: rawConfig.readiness.chatProbeText,
     ragTimeoutMs: collectionDefaults.timeoutMs,
+    maxConcurrentEmbeddings: rawConfig.limits?.maxConcurrentEmbeddings ?? 5,
+    maxConcurrentGenerations: rawConfig.limits?.maxConcurrentGenerations ?? 2,
   };
 }
 

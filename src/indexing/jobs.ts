@@ -34,10 +34,13 @@ export async function runIndexJob(input: {
   const { registry, jobId, runtimeConfig } = input;
   const log = input.log ?? console.log;
 
-  const job = await registry.getJob(jobId);
+  let job = await registry.getJob(jobId);
   if (!job) {
     throw new Error(`Job not found: ${jobId}`);
   }
+
+  // Mark job as running
+  job = await registry.markIndexJobRunning(jobId);
 
   const collection = await registry.getVisibleCollection({ 
     tenantId: job.tenantId, 
@@ -53,6 +56,14 @@ export async function runIndexJob(input: {
   const targetVersion = job.id.split("_")[0] || "unknown";
 
   try {
+    await registry.createPhysicalCollectionRecord({
+      name: job.targetPhysicalCollection,
+      tenantId: collection.tenantId,
+      collectionId: collection.id,
+      version: targetVersion,
+      chromaConfiguration: job.targetChromaConfiguration,
+    });
+
     const result = await buildPhysicalCollection({
       collection,
       targetPhysicalCollection: job.targetPhysicalCollection,
@@ -66,18 +77,10 @@ export async function runIndexJob(input: {
       chunkCount: result.chunkCount,
       activePhysicalCollection: job.targetPhysicalCollection,
       activeVersion: targetVersion,
+      retentionMs: runtimeConfig.cleanupRetentionMs,
     });
     
     log(`Job ${jobId} completed successfully.`);
-
-    if (collection.activePhysicalCollection && collection.activePhysicalCollection !== job.targetPhysicalCollection) {
-      log(`Scheduling cleanup for old physical collection: ${collection.activePhysicalCollection}`);
-      import("../collections/chromaCollections.js").then(({ deletePhysicalChromaCollection }) => {
-        deletePhysicalChromaCollection({ name: collection.activePhysicalCollection!, runtimeConfig }).catch((err) => {
-          console.error(`Failed to clean up old physical collection ${collection.activePhysicalCollection}:`, err);
-        });
-      });
-    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await registry.failIndexJob(jobId, message);

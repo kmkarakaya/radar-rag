@@ -18,7 +18,7 @@ function readHeaderValue(value: string | string[] | undefined): string | undefin
 export function createRequestContext(req: Request): RequestContext {
   return {
     requestId: readHeaderValue(req.headers["x-request-id"])?.trim() || randomUUID(),
-    tenantId: "default",
-    userId: "local-dev",
+    tenantId: readHeaderValue(req.headers["x-tenant-id"])?.trim() || "default",
+    userId: readHeaderValue(req.headers["x-user-id"])?.trim() || "local-dev",
   };
 }

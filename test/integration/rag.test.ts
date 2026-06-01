@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { retrieveSources, RagQueryError, checkChromaHealth } from "../src/rag.js";
-import { config } from "../src/config.js";
-import { createPhysicalChromaCollection, deletePhysicalChromaCollection } from "../src/collections/chromaCollections.js";
+import { retrieveSources, RagQueryError, checkChromaHealth } from "../../src/rag.js";
+import { config } from "../../src/config.js";
+import { createPhysicalChromaCollection, deletePhysicalChromaCollection } from "../../src/collections/chromaCollections.js";
 import { randomUUID } from "node:crypto";
 
 describe("rag core", () => {

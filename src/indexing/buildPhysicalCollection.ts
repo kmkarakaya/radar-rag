@@ -40,9 +40,16 @@ export async function buildPhysicalCollection(input: {
 
   try {
     log(`Creating physical collection "${targetPhysicalCollection}" (version: ${targetVersion})`);
+    const chromaConfiguration = collection.chromaCollectionConfiguration ?? {
+      hnsw: {
+        space: collection.distanceMetric,
+      },
+    };
+
     await createPhysicalChromaCollection({
       name: targetPhysicalCollection,
       distanceMetric: collection.distanceMetric,
+      chromaConfiguration,
       runtimeConfig,
     });
 

@@ -1,6 +1,7 @@
 import { ChromaClient } from "chromadb";
 import type { ResolvedConfig } from "../config.js";
 import { RagQueryError } from "../rag.js";
+import { assertValidChromaCollectionName } from "./ids.js";
 
 function chromaClientParams(runtimeConfig: ResolvedConfig) {
   const url = new URL(runtimeConfig.chromaUrl);
@@ -11,22 +12,36 @@ function chromaClientParams(runtimeConfig: ResolvedConfig) {
   };
 }
 
+export function buildCreateCollectionRequest(input: {
+  name: string;
+  chromaConfiguration: Record<string, unknown>;
+}) {
+  assertValidChromaCollectionName(input.name);
+
+  return {
+    name: input.name,
+    embeddingFunction: null as any,
+    configuration: input.chromaConfiguration,
+  };
+}
+
 export async function createPhysicalChromaCollection(input: {
   name: string;
   distanceMetric: "l2" | "cosine" | "ip";
+  chromaConfiguration?: Record<string, unknown>;
   runtimeConfig: ResolvedConfig;
 }): Promise<void> {
   const client = new ChromaClient(chromaClientParams(input.runtimeConfig));
 
-  await client.createCollection({
-    name: input.name,
-    embeddingFunction: null as any,
-    configuration: {
-      hnsw: {
-        space: input.distanceMetric,
-      },
+  const chromaConfiguration = input.chromaConfiguration ?? {
+    hnsw: {
+      space: input.distanceMetric,
     },
-  });
+  };
+
+  const req = buildCreateCollectionRequest({ name: input.name, chromaConfiguration });
+
+  await client.createCollection(req);
 }
 
 export async function assertChromaCollectionReadable(input: {

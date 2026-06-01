@@ -32,8 +32,8 @@ export function createRagRouter(deps: AppDependencies) {
         chunkCount: c.chunkCount,
         activeVersion: c.activeVersion,
         capabilities: {
-          query: c.status === "ready",
-          retrieve: c.status === "ready",
+          query: !!c.activePhysicalCollection,
+          retrieve: !!c.activePhysicalCollection,
           reindex: true,
         },
         updatedAt: c.updatedAt,
@@ -48,8 +48,13 @@ export function createRagRouter(deps: AppDependencies) {
   router.get("/collections/:collectionId", requireRegistry, async (req, res, next) => {
     try {
       const context = res.locals.requestContext as RequestContext;
-      const collection = await deps.registry!.getVisibleCollection(context, req.params.collectionId as string);
+      const collectionId = req.params.collectionId as string;
+      const collection = await deps.registry!.getVisibleCollection(context, collectionId);
       if (!collection) {
+        const exists = await deps.registry!.collectionExists(collectionId);
+        if (exists) {
+          throw new HttpError(403, "COLLECTION_FORBIDDEN", "Collection access forbidden");
+        }
         throw new HttpError(404, "COLLECTION_NOT_FOUND", "Collection not found");
       }
       res.json({ collection });
@@ -61,10 +66,17 @@ export function createRagRouter(deps: AppDependencies) {
   router.get("/collections/:collectionId/ready", requireRegistry, async (req, res, next) => {
     try {
       const context = res.locals.requestContext as RequestContext;
-      const collection = await deps.registry!.getVisibleCollection(context, req.params.collectionId as string);
+      const collectionId = req.params.collectionId as string;
+      const collection = await deps.registry!.getVisibleCollection(context, collectionId);
       if (!collection) {
+        const exists = await deps.registry!.collectionExists(collectionId);
+        if (exists) {
+          throw new HttpError(403, "COLLECTION_FORBIDDEN", "Collection access forbidden");
+        }
         throw new HttpError(404, "COLLECTION_NOT_FOUND", "Collection not found");
       }
+
+      const activeJob = await deps.registry!.getActiveJobForCollection(context, collection.id);
 
       let chromaCount = -1;
       let chromaReadable = false;
@@ -82,11 +94,12 @@ export function createRagRouter(deps: AppDependencies) {
         status: collection.status,
         activePhysicalCollection: collection.activePhysicalCollection,
         activeVersion: collection.activeVersion,
+        activeJob: activeJob ? { id: activeJob.id, status: activeJob.status } : null,
         chromaReadable,
         chromaCount,
         capabilities: {
-          query: chromaReadable && collection.status === "ready",
-          retrieve: chromaReadable && collection.status === "ready",
+          query: chromaReadable,
+          retrieve: chromaReadable,
           reindex: true,
         }
       });

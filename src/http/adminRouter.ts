@@ -15,6 +15,10 @@ export function createAdminRouter(deps: AppDependencies) {
       next(new HttpError(500, "INTERNAL_ERROR", "Registry is not available"));
       return;
     }
+    if (!deps.jobRunner) {
+      next(new HttpError(500, "INTERNAL_ERROR", "Job Runner is not available"));
+      return;
+    }
     next();
   };
 
@@ -99,12 +103,7 @@ export function createAdminRouter(deps: AppDependencies) {
         runtimeConfig: config,
       });
 
-      // Import runIndexJob but don't await it to let it run in background
-      import("../indexing/jobs.js").then(({ runIndexJob }) => {
-        runIndexJob({ registry: deps.registry!, jobId: job.id, runtimeConfig: config }).catch((err) => {
-          console.error(`Background job ${job.id} failed:`, err);
-        });
-      });
+      deps.jobRunner!.start(job.id);
 
       res.status(202).json({
         job: {

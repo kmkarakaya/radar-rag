@@ -8,6 +8,7 @@ export type RequestContext = {
 
 export type CollectionStatus = "creating" | "indexing" | "ready" | "failed" | "archived";
 export type IndexJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type PhysicalCollectionStatus = "building" | "active" | "retired" | "delete_pending" | "deleted" | "cleanup_failed";
 
 export type RagCollection = {
   id: string;
@@ -100,12 +101,31 @@ export type CompleteIndexJobResult = {
   chunkCount?: number;
   activePhysicalCollection?: string;
   activeVersion?: string;
+  retentionMs: number;
+};
+
+export type PhysicalCollectionRecord = {
+  name: string;
+  tenantId: string;
+  collectionId: string;
+  version: string;
+  status: PhysicalCollectionStatus;
+  chromaConfiguration: Record<string, unknown>;
+  documentCount?: number;
+  chunkCount?: number;
+  createdAt: string;
+  activatedAt?: string;
+  retiredAt?: string;
+  deleteAfter?: string;
+  deletedAt?: string;
+  cleanupError?: string;
 };
 
 export interface CollectionRegistry {
   listVisibleCollections(context: RequestContext): Promise<RagCollection[]>;
   getVisibleCollection(context: RequestContext, collectionId: string): Promise<RagCollection | null>;
   getJob(jobId: string): Promise<IndexJob | null>;
+  getActiveJobForCollection(context: RequestContext, collectionId: string): Promise<IndexJob | null>;
   createCollection(context: RequestContext, input: CreateCollectionInput): Promise<RagCollection>;
   updateCollection(
     context: RequestContext,
@@ -117,8 +137,22 @@ export interface CollectionRegistry {
     collectionId: string,
     input?: BeginIndexJobInput,
   ): Promise<IndexJob>;
+  markIndexJobRunning(jobId: string, input?: { lockToken?: string }): Promise<IndexJob>;
   completeIndexJob(jobId: string, result: CompleteIndexJobResult): Promise<IndexJob>;
   failIndexJob(jobId: string, error: string): Promise<IndexJob>;
   failStaleJobs(staleThresholdMs: number): Promise<number>;
+  
+  createPhysicalCollectionRecord(input: {
+    name: string;
+    tenantId: string;
+    collectionId: string;
+    version: string;
+    chromaConfiguration: Record<string, unknown>;
+  }): Promise<PhysicalCollectionRecord>;
+  markPhysicalCollectionDeleted(name: string): Promise<void>;
+  markPhysicalCollectionCleanupFailed(name: string, error: string): Promise<void>;
+  listDuePhysicalCollectionsForCleanup(nowIso: string, limit: number): Promise<PhysicalCollectionRecord[]>;
+  collectionExists(collectionId: string): Promise<boolean>;
+
   close?(): void;
 }

@@ -1,5 +1,7 @@
 # Admin Onboarding CLI Implementation Plan
 
+> **LEGACY PLAN / GÜNCEL DEĞİL**: Bu doküman eski single-collection yapısına göre planlanmıştır. Güncel Multi-Collection onboarding, job runner ve Admin API yönetimi için doğrudan [README.md](../README.md) ve [vanilla_rag_backend_mimarisi.md](../vanilla_rag_backend_mimarisi.md) dosyalarına bakınız.
+
 ## Summary
 
 Bu plan, mevcut repo gerÃ§eklerine gÃ¶re onboarding CLI iÃ§in uygulanacak plandÄ±r. Hedef, adminâ€™in `config/rag.config.yaml` dosyasÄ±nÄ± elle dÃ¼zenlemek ve sonra `npm.cmd run index` Ã§alÄ±ÅŸtÄ±rmak yerine tek komutla ayarlarÄ± gÃ¶zden geÃ§irip doÄŸrulamasÄ± ve index pipelineâ€™Ä± Ã§alÄ±ÅŸtÄ±rmasÄ±dÄ±r.

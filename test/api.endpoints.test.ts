@@ -5,14 +5,21 @@ import { after, before, describe, it } from "node:test";
 import { createApp } from "../src/app.js";
 import { createSqliteCollectionRegistry } from "../src/collections/sqliteRegistry.js";
 import type { CollectionRegistry, RagCollection } from "../src/collections/types.js";
+import type { IndexJobRunner } from "../src/indexing/jobRunner.js";
 
 let server: Server;
 let baseUrl: string;
 let registry: CollectionRegistry;
+let jobRunner: IndexJobRunner;
 
 before(async () => {
   registry = createSqliteCollectionRegistry({ dbPath: ":memory:" });
-  const app = createApp({ registry });
+  jobRunner = {
+    start: () => {},
+    drain: async () => {},
+    shutdown: async () => {},
+  };
+  const app = createApp({ registry, jobRunner });
 
   await new Promise<void>((resolve) => {
     server = app.listen(0, resolve);
@@ -24,6 +31,7 @@ before(async () => {
 });
 
 after(async () => {
+  await jobRunner.shutdown();
   registry.close?.();
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {

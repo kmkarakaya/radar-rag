@@ -154,7 +154,7 @@ Koleksiyon yaratırken belirttiğiniz `sourcePath` (veya `ozelgeDataPath`) değe
 - `documentId`, `sourcePath`, `sourceType`, `chunkIndex`
 - Çoklu koleksiyon yapısı gereği eklenen: `collectionId`, `collectionVersion`, `physicalCollection`
 
-Veri tabanı indeksleme örneklemini kısıtlamak için `config/rag.config.yaml` içinde yer alan `data.indexSampleSize` değeri kullanılabilir. Değer `0` ise hedef dizindeki tüm veriler endekslenir.
+Veri tabanı indeksleme örneklemini kısıtlamak için `config/rag.config.yaml` içinde yer alan `collectionDefaults.indexSampleSize` değeri kullanılabilir. Değer `0` ise hedef dizindeki tüm veriler endekslenir.
 
 ## Response ve Hata Semantigi
 

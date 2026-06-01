@@ -16,9 +16,11 @@ import {
   type EmbeddingHealthDetails,
   type OllamaHealthDetails,
 } from "./rag.js";
+import type { IndexJobRunner } from "./indexing/jobRunner.js";
 
 export type AppDependencies = {
   registry?: CollectionRegistry;
+  jobRunner?: IndexJobRunner;
 };
 
 type Capability = "query" | "index";
@@ -47,6 +49,24 @@ export function createApp(deps: AppDependencies = {}): Express {
   app.locals.dependencies = deps;
   configureApp(app);
   return app;
+}
+
+export async function checkRegistryHealth(registry?: CollectionRegistry): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
+  const startedAt = Date.now();
+  try {
+    if (!registry) {
+      throw new Error("Registry dependency not provided.");
+    }
+    
+    // Attempt a lightweight operation to verify db access.
+    // e.g. list collections with limit 1
+    const testContext = { tenantId: "health", userId: "health", requestId: "health" };
+    await registry.listVisibleCollections(testContext);
+    
+    return { ok: true, latencyMs: Date.now() - startedAt };
+  } catch (error) {
+    return { ok: false, latencyMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 function configureApp(app: Express): void {
@@ -122,11 +142,12 @@ function configureApp(app: Express): void {
 
   app.use("/test-frontend", express.static(path.resolve(process.cwd(), "test_frontend")));
 
-async function getReadinessPayload() {
-  const [chroma, ollama, dataSource] = await Promise.all([
+async function getReadinessPayload(registry?: CollectionRegistry) {
+  const [chroma, ollama, dataSource, registryHealth] = await Promise.all([
     checkChromaHealth(),
     checkOllamaHealth(),
     checkIndexingSourceHealth(),
+    checkRegistryHealth(registry),
   ]);
   const ollamaDetails = (ollama.details ?? {}) as Partial<OllamaHealthDetails>;
   const dataSourceDetails = (dataSource.details ?? {}) as Partial<IndexingSourceHealthDetails>;
@@ -158,6 +179,21 @@ async function getReadinessPayload() {
       latencyMs: chroma.latencyMs,
       error: chroma.error,
     },
+  });
+
+  checks.push({
+    code: registryHealth.ok ? "REGISTRY_REACHABLE" : "REGISTRY_UNREACHABLE",
+    name: "Registry reachability",
+    status: registryHealth.ok ? "pass" : "fail",
+    blocking: true,
+    capabilities: ["query", "index"],
+    message: registryHealth.ok
+      ? "SQLite registry is reachable."
+      : `SQLite registry is unreachable. ${registryHealth.error ?? ""}`.trim(),
+    details: {
+      latencyMs: registryHealth.latencyMs,
+      error: registryHealth.error,
+    }
   });
 
   checks.push({
@@ -412,6 +448,11 @@ async function getReadinessPayload() {
           url: config.chromaUrl,
           ...chroma,
         },
+        registry: {
+          ok: registryHealth.ok,
+          latencyMs: registryHealth.latencyMs,
+          error: registryHealth.error,
+        },
         ollama: {
           url: config.ollamaBaseUrl,
           chatModel: config.ollamaChatModel,
@@ -460,6 +501,8 @@ function recommendedActionFor(code: string): string | undefined {
       return "Inspect the Chroma collection state and verify the collection can be counted.";
     case "OLLAMA_UNREACHABLE":
       return "Start Ollama and verify config/rag.config.yaml ollama.baseUrl is correct.";
+    case "REGISTRY_UNREACHABLE":
+      return "Verify SQLite registry database file path is accessible and not corrupted.";
     case "CHAT_MODEL_MISSING":
       return `Pull the chat model with: ollama pull ${config.ollamaChatModel}`;
     case "EMBED_MODEL_MISSING":
@@ -548,18 +591,18 @@ app.get("/health", (_req, res) => {
     status: "ok",
     alive: true,
     port: config.port,
-    uptimeSec: Math.round(process.uptime()),
+    uptimeSec: process.uptime(),
     timestamp: new Date().toISOString(),
   });
 });
 
 app.get("/ready", async (req, res) => {
-  const { ready, payload } = await getReadinessPayload();
-  const includeDetails = truthyQuery(req.query.details) || truthyQuery(req.query.verbose);
-  const strictHttpStatus = truthyQuery(req.query.strict);
-  const responsePayload = includeDetails ? payload : summarizeReadinessPayload(payload);
+  const isStrict = req.query.strict === "true";
+  const wantsDetails = req.query.details === "true";
 
-  res.status(strictHttpStatus && !ready ? 503 : 200).json(responsePayload);
+  const payload = await getReadinessPayload(app.locals.dependencies?.registry);
+
+  res.status(isStrict && !payload.ready ? 503 : 200).json(wantsDetails ? payload.payload : payload.payload.checks);
 });
 
 app.use(notFoundHandler);

@@ -8,8 +8,9 @@
     "onboard": "tsx src/admin/onboard.ts",
     "index": "tsx src/index.ts",
     "build": "tsc",
-    "test": "node --import tsx --test \"test/**/*.test.ts\"",
-    "start": "node dist/server.js"
+    "test": "node --import tsx --test test/*.test.ts",
+    "start": "node dist/server.js",
+    "test:integration": "node --import tsx --test test/integration/*.test.ts"
   },
   "dependencies": {
     "@langchain/classic": "^1.0.34",

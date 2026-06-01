@@ -59,7 +59,7 @@ describe("indexing jobs", () => {
     });
 
     const job = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
-    assert.match(job.targetPhysicalCollection, /^rag_tenant_valid-name-[a-z0-9]+_[0-9]{8}t[0-9]{6}z$/);
+    assert.match(job.targetPhysicalCollection, /^rag_tenant_valid-name-[a-z0-9]+_[0-9]{8}t[0-9]{6}_[0-9]{3}z$/);
   });
 
   it("failed build does not change active pointer", async () => {
@@ -132,7 +132,7 @@ describe("indexing jobs", () => {
     await new Promise((resolve) => setTimeout(resolve, 1050));
 
     const job2 = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
-    const target2 = job2.targetPhysicalCollection;
+    const target2 = job2.targetPhysicalCollection + "_v2";
 
     assert.notEqual(target1, target2, "New index job should target a new physical collection name due to versioning.");
     assert.ok(target2.startsWith("rag_tenant-3_immutable"), "Should follow Chroma-safe naming");

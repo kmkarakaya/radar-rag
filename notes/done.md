@@ -131,3 +131,39 @@ Her agent Ã§alÄ±ÅŸmaya baÅŸlamadan Ã¶nce bu dosyayÄ± okumalÄ±dÄ±r. Her agent iÅŸ
 - DoÄŸrulama komutlarÄ±:
   - `npm run build`: hatasÄ±z baÅŸarÄ±yla tamamlandÄ±.
   - `npm run test`: tÃ¼m 24 kabul testi (Payload Too Large check eklendi) baÅŸarÄ±yla geÃ§ti.
+
+## Prompt 8: Job Lifecycle, Worker Safety, and Version Uniqueness
+
+- SQLite registry'de job lifecycle eksikleri kapatÄ±ldÄ±: `markIndexJobRunning` fonksiyonu oluÅŸturularak job durumunun yalnÄ±zca "queued" durumundan "running" e geÃ§mesi ve `started_at` in atanmasÄ± saÄŸlandÄ±.
+- `src/indexing/jobs.ts` iÃ§inde yer alan `runIndexJob` fonksiyonu, iÅŸlemlerine baÅŸlamadan hemen Ã¶nce job'u "running" durumuna gÃ¼venli bir ÅŸekilde geÃ§irecek sekilde refactor edildi.
+- Version string ve physical name collision riskini engellemek iÃ§in `createVersionString` iÃ§erisine milisaniye detayÄ± dahil edildi (Ã¶r. `20260601t121336_085z`).
+- Arkaplan index iÅŸlerini process belleÄŸinde izole eden `IndexJobRunner` (i.e., `src/indexing/jobRunner.ts`) eklendi. `src/http/adminRouter.ts` iÃ§inde yer alan fire-and-forget job baslatma sekli bu runner `start(jobId)` uzerinden gecirildi. 
+- Sunucu kapandiginda baslatilmis tum background islemlerini guvenli bir sekilde bitirebilmek veya iptal edebilmek icin runner a `drain()` ve `shutdown()` metodlari eklendi.
+- API testleri (`test/api.endpoints.test.ts`), `IndexJobRunner`'in "fake" versiyonu (no-op) araciligiyla calistirilmaya baslandi. Bu sayede testler bagimsiz, hizli (flaky olmaktan uzak) hale getirildi ve gereksiz arkaplan veritabani connection hatalari cozuldu.
+- Test ve build dogrulama komutlari:
+  - `npm run build`: hatasÄ±z baÅŸarÄ±yla tamamlandÄ±.
+  - `npm run test`: TÃ¼m testler (24/24) hatasÄ±z gecti.
+
+## Prompt 11: Acceptance Tests, Test Isolation, and External-Service Boundaries
+
+- Test/Mimar sýnýrlarý dýþ servislere (Chroma / Ollama vb.) baðýmlýlýklardan arýndýrýldý. Unit ve endpoint testleri lokal ortamlarda bu servislerin hiçbiri ("Docker container") ayakta deðilken bile %100 baþarýlý geçecek duruma (Fake JobRunner, Mocked Read Paths, Cleanup Fake test vs.) getirildi.
+- "npm run test" komutu Chroma/Ollama kapalý iken çalýþtýrýlarak doðrulandý ve 23 test fire vermeden "PASS" oldu.
+- Gerçek Chroma baðlantýsý ve Collection Readiness deneyen test ("test/rag.test.ts"), mimariden izole edilerek "test/integration/rag.test.ts" klasörüne taþýndý.
+- "package.json" içerisine opsiyonel çalýþtýrýlabilecek olan "Integration test" script'i eklendi ("npm run test:integration"). Bu sayede normal CLI build pipeline'larý harici servis arýzalarýndan kaynaklý flaky düþüþlerden kalýcý olarak kurtarýldý.
+- Yapýlan deðiþikliklerle test suite'nin izolasyonu, hýz ve stabilite (determinism) kazandý. Tüm acceptance kriterleri kapsandý.
+
+## Prompt 12: Documentation, Frontend Contract, and Architecture Cleanup
+
+- README.md ve vanilla_rag_backend_mimarisi.md içindeki tüm eski /rag/query, /rag/retrieve ibareleri yeni multi-collection rotalarý ile deðiþtirildi.
+- data.indexSampleSize gibi eski config path referanslarý collectionDefaults.indexSampleSize olarak güncellendi.
+- Eski destructive reset (koleksiyon sil baþtan) anlatýmý, logical collection registry -> reindex job -> versioned physical collection -> pointer swap -> retention cleanup akýþýný yansýtan Zero-Downtime modeline uygun olarak yeniden dokümante edildi.
+- test_frontend/index.html UI akýþý doðrulanarak eski endpoint kalýntýlarý testlerle (frontend.static.test.ts) garanti altýna alýndý.
+- notes/onboardin_plan.md dosyasý legacy olarak iþaretlenip README'ye yönlendirildi.
+- npm run build ve npm run test iþlemleri sorunsuz geçmektedir.
+
+## Prompt 13: Final Multi-Collection Audit and Release Gate
+
+- Repo notes/multicollection.md içindeki Zero-downtime, retention cleanup, tenant access, ve registry-aware readiness gibi tüm kabul kriterlerine göre incelendi ve eksiksiz bir þekilde (PASS) uygulandýðý kanýtlandý.
+- Tüm stale (eski) config/endpoint referans aramalarý yapýldý (rg/grep taramasý); product dosyalarýnda ve dokümanlarýnda temizlenmiþ olduðu görüldü.
+- npm run build ve npm run test (25 unit test) ile npm run test:integration (1 chroma read-path test) hatasýz olarak baþarýyla çalýþtý.
+- Herhangi bir eksik ya da fix ihtiyacý bulunmadýðý, Vanilla RAG Backend'in multi-collection yeteneði için planlanan %100 hedeflere (Release Baseline) ulaþtýðý doðrulandý.

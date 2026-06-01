@@ -41,6 +41,9 @@ export const configSchema = z.object({
     embeddingProbeText: z.string().trim().min(1),
     chatProbeText: z.string().trim().min(1),
   }).strict(),
+  cleanup: z.object({
+    retentionMs: z.number().int().nonnegative().default(3600000),
+  }).strict().optional(),
   limits: z.object({
     maxConcurrentEmbeddings: z.number().int().positive().default(5),
     maxConcurrentGenerations: z.number().int().positive().default(2),
@@ -121,6 +124,7 @@ export function resolveConfig(
     readyEmbedProbeText: rawConfig.readiness.embeddingProbeText,
     readyChatProbeText: rawConfig.readiness.chatProbeText,
     ragTimeoutMs: collectionDefaults.timeoutMs,
+    cleanupRetentionMs: rawConfig.cleanup?.retentionMs ?? 3600000,
     maxConcurrentEmbeddings: rawConfig.limits?.maxConcurrentEmbeddings ?? 5,
     maxConcurrentGenerations: rawConfig.limits?.maxConcurrentGenerations ?? 2,
   };

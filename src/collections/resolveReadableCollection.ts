@@ -22,13 +22,13 @@ export async function resolveReadableCollection(
 
   const collection = await deps.registry.getVisibleCollection(context, collectionId);
   if (!collection) {
+    // Check if it exists globally
+    const exists = await deps.registry.collectionExists(collectionId);
+    if (exists) {
+      throw new HttpError(403, "COLLECTION_FORBIDDEN", `Collection access forbidden: ${collectionId}`, { collectionId });
+    }
     throw new HttpError(404, "COLLECTION_NOT_FOUND", `Collection not found: ${collectionId}`, { collectionId });
   }
-
-  // Auth logic is bypassed in local dev since we have no roles/permissions logic yet,
-  // but if tenantId matches (which it does via getVisibleCollection), we assume allowed.
-  // if tenantId mismatches, getVisibleCollection returns null, triggering 404 above. 
-  // If we had cross-tenant but forbidden access, it would be 403 COLLECTION_FORBIDDEN.
 
   if (!collection.activePhysicalCollection) {
     if (collection.status === "creating" || collection.status === "indexing") {

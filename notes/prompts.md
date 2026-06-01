@@ -619,3 +619,561 @@ Final cevapta:
 - Test/build sonuçlarını yaz.
 - notes/done.md dosyasına "Prompt 7: Final Hardening, Readiness, Backpressure, Cleanup" başlığı altında yaptıklarını eklediğini belirt.
 ```
+
+## Prompt 8: Job Lifecycle, Worker Safety, and Version Uniqueness
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Görevin Prompt 1-7 sonrası kalan job lifecycle açıklarını kapatmak, reindex job state'ini gerçek queued/running/succeeded/failed akışına oturtmak ve background worker davranışını test edilebilir hale getirmek.
+
+Önce mutlaka notes/multicollection.md dosyasını oku. Özellikle şu bölümlere göre çalış:
+- "Concurrency Stratejisi"
+- "Index/Rebuild Path"
+- "`src/indexing/jobs.ts`"
+- "Registry Şeması"
+- "Zero-Downtime Index/Rebuild"
+- "Test Kabul Kriterleri"
+
+Ayrıca çalışmaya başlamadan önce notes/done.md dosyasını oku. Prompt 1-7 çıktılarının tamamlandığını, özellikle Prompt 5 ve Prompt 7 altında not edilen job, stale lock ve backpressure davranışlarını kontrol et.
+
+Bu prompt, Prompt 1-7'nin uygulanmış olduğunu varsayar. Başlamadan önce kontrol et:
+- `src/indexing/jobs.ts` var mı?
+- `src/collections/sqliteRegistry.ts` içinde `index_jobs.started_at` alanı var mı?
+- `src/http/adminRouter.ts` içinde reindex endpoint'i var mı?
+- `npm.cmd run build` mevcut durumda geçiyor mu?
+Eksik veya build kırık ise kod yazmadan önce kısa raporla.
+
+Bilinen mevcut riskler:
+- Reindex endpoint'i job'ı fire-and-forget başlatıyor ve test teardown sırasında SQLite bağlantısı kapanınca background job `database connection is not open` hatası üretebiliyor.
+- Job state pratikte `queued -> succeeded/failed` gidiyor; `running` ve `started_at` kullanılmıyor.
+- Aynı saniye içinde ardışık job oluşturulursa physical collection target name çakışma riski var.
+- API testleri gerçek background job başlattığı için flaky davranabilir.
+
+Amaç:
+Job lifecycle'ı sağlam, gözlemlenebilir ve test edilebilir hale getir. HTTP route doğrudan dinamik import ve kontrolsüz fire-and-forget yapmasın; job runner dependency olarak yönetilsin.
+
+Yapılacaklar:
+1. `src/collections/types.ts` içindeki `CollectionRegistry` interface'ini genişlet:
+   - `markIndexJobRunning(jobId, input?)` veya eşdeğer bir method ekle.
+   - Bu method job'ı sadece `queued` durumundan `running` durumuna geçirebilmeli.
+   - `startedAt`, `updatedAt` ve varsa `lockToken`/fencing bilgisi set edilmeli.
+   - `getActiveJobForCollection(context, collectionId)` veya `listActiveJobsForCollection(context, collectionId)` benzeri bir method ekle. Sonraki promptlar collection readiness içinde bunu kullanacak.
+2. `src/collections/sqliteRegistry.ts` güncelle:
+   - `markIndexJobRunning` transaction içinde çalışmalı.
+   - `queued` olmayan job tekrar running yapılamamalı.
+   - `succeeded`, `failed`, `cancelled` job tekrar çalıştırılamamalı.
+   - `started_at` doğru set edilmeli.
+   - Aynı collection için ikinci `queued/running` job engeli korunmalı.
+   - `failStaleJobs` hem `queued` hem `running` jobları fail edebilmeli ve active pointer varsa collection status'u tekrar `ready`, yoksa `failed` yapmalı.
+3. Version/physical target uniqueness düzelt:
+   - `createVersionString` veya job target üretiminde saniye hassasiyetine bağlı çakışma riskini kaldır.
+   - Aynı collection için iki başarılı job kısa aralıkla oluşturulursa target physical collection adları farklı olmalı.
+   - Çözüm olarak timestamp'e milisaniye ekleyebilir veya physical name suffix'ine job id/random parçası dahil edebilirsin.
+   - Testlerde `setTimeout(1050)` gibi yapay bekleme kalmamalı.
+4. `src/indexing/jobs.ts` güncelle:
+   - `runIndexJob` build başlamadan önce registry'de job'ı `running` yapmalı.
+   - Job bulunamazsa veya terminal state'teyse açık hata vermeli.
+   - Build başarısız olursa `failIndexJob` çağrısı korunmalı.
+   - Başarılı olursa `completeIndexJob` çağrısı korunmalı.
+   - Bu promptta eski physical collection cleanup işini değiştirme; Prompt 9 bunu retention modeline taşıyacak. Sadece job lifecycle'ı düzelt.
+5. Job runner dependency ekle:
+   - `src/indexing/jobRunner.ts` veya benzeri bir modül oluştur.
+   - `createIndexJobRunner({ registry, runtimeConfig, log })` export et.
+   - Runner `start(jobId)` veya `enqueue(jobId)` ile job'ı background çalıştırmalı ve promise'i internal olarak track etmeli.
+   - `drain()` ve `shutdown()` gibi test/server teardown için kullanılabilecek methodlar ekle.
+   - Bu in-memory tracking lock yerine geçmemeli; sadece process içindeki background promise lifecycle'ını yönetmeli. Writer lock/source of truth SQLite registry olarak kalmalı.
+6. `src/app.ts` ve `src/server.ts` dependency wiring'i güncelle:
+   - `AppDependencies` içine `jobRunner?: IndexJobRunner` ekle.
+   - `src/server.ts` registry ve runtime config ile job runner oluştursun, `createApp({ registry, jobRunner })` versin.
+7. `src/http/adminRouter.ts` güncelle:
+   - Reindex route dynamic import ile `runIndexJob` çağırmasın.
+   - `deps.jobRunner.start(job.id)` veya eşdeğer runner methodunu kullansın.
+   - Testlerde fake/noop runner inject edilebilir olmalı.
+   - Runner yoksa açık `500 INTERNAL_ERROR` dönsün; sessizce job başlatmadan 202 dönme.
+8. API testlerini düzelt:
+   - `test/api.endpoints.test.ts` gerçek Chroma/data source gerektiren background job başlatmamalı.
+   - Test için fake job runner kullan ve duplicate reindex davranışını registry state üzerinden deterministik test et.
+   - Test teardown öncesi runner `drain()`/`shutdown()` çağır.
+9. Unit test ekle/güncelle:
+   - Job `queued -> running -> succeeded`.
+   - `startedAt` set ediliyor.
+   - Terminal job tekrar çalıştırılamıyor.
+   - Aynı collection için active job varken ikinci job engelleniyor.
+   - Aynı saniye içinde ardışık iki job target physical name çakışmıyor.
+   - Eski `setTimeout(1050)` tabanlı test kaldırılıyor.
+
+Dikkat:
+- JSON registry veya in-memory writer lock ekleme.
+- Eski `/rag/query` ve `/rag/retrieve` endpointlerini geri ekleme.
+- Worker tracking in-memory olabilir ama lock ve job state mutlaka SQLite registry'de kalmalı.
+- Build kırık kalmamalı.
+
+Doğrulama:
+1. `npm.cmd run build`
+2. `npm.cmd test`
+
+Final cevapta:
+- Job lifecycle state akışını özetle.
+- Fire-and-forget/dynamic import davranışının nasıl değiştiğini belirt.
+- Same-second physical name çakışma riskinin nasıl kapatıldığını yaz.
+- Test/build sonuçlarını yaz.
+- notes/done.md dosyasına "Prompt 8: Job Lifecycle, Worker Safety, and Version Uniqueness" başlığı altında yaptıklarını, değiştirdiğin ana dosyaları, çalıştırdığın komutları ve varsa kalan riskleri eklediğini belirt.
+```
+
+## Prompt 9: Zero-Downtime Retention Cleanup and Chroma Configuration Fidelity
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Görevin Prompt 8 sonrası reindex akışını gerçek zero-downtime modeline yaklaştırmak, eski physical Chroma collection'ları hemen silmek yerine retention/cleanup state'i ile yönetmek ve Chroma create configuration davranışını registry ile uyumlu hale getirmek.
+
+Önce mutlaka notes/multicollection.md dosyasını oku. Özellikle şu bölümlere göre çalış:
+- "Chroma Dokümanlarıyla Uyum Notları"
+- "Zero-Downtime Index/Rebuild"
+- "Index/Rebuild Path"
+- "`src/collections/chromaCollections.ts`"
+- "`src/indexing/buildPhysicalCollection.ts`"
+- "Test Kabul Kriterleri"
+
+Ayrıca çalışmaya başlamadan önce notes/done.md dosyasını oku. Prompt 8'in tamamlandığını ve job lifecycle notlarını kontrol et.
+
+Bu prompt, Prompt 8'in tamamlandığını varsayar. Başlamadan önce kontrol et:
+- `markIndexJobRunning` veya eşdeğer running transition var mı?
+- Reindex route job runner dependency kullanıyor mu?
+- Same-second target name çakışma riski giderilmiş mi?
+Eksikse kod yazmadan raporla.
+
+Bilinen mevcut riskler:
+- Başarılı rebuild sonrası eski active physical collection hemen siliniyor. Bu, request başında eski physical collection'a bağlanan in-flight query/retrieve isteklerini kırabilir.
+- Registry `chromaCollectionConfiguration` saklıyor ama physical collection creation sadece `distanceMetric` üzerinden `configuration.hnsw.space` kuruyor; registry'deki configuration source of truth olarak tam kullanılmıyor.
+- `createPhysicalChromaCollection` dışarıdan gelen name'i kendi içinde validate etmiyor.
+
+Amaç:
+Pointer swap sonrası eski physical collection'lar retention süresi dolmadan silinmesin. Cleanup ayrı, retry edilebilir ve test edilebilir olsun. Physical Chroma collection creation registry'deki configuration ile uyumlu olsun.
+
+Yapılacaklar:
+1. Registry storage modelini genişlet:
+   - `collection_versions`, `physical_collections` veya benzeri bir tablo ekle. İsim repo stiline göre seçilebilir.
+   - En az şu alanları tut:
+     - `name`
+     - `tenant_id`
+     - `collection_id`
+     - `version`
+     - `status`: `building | active | retired | delete_pending | deleted | cleanup_failed`
+     - `chroma_configuration_json`
+     - `document_count`
+     - `chunk_count`
+     - `created_at`
+     - `activated_at`
+     - `retired_at`
+     - `delete_after`
+     - `deleted_at`
+     - `cleanup_error`
+   - Mevcut `collections.active_physical_collection` ve `active_version` alanları source of truth olarak kalabilir; yeni tablo version/cleanup audit için kullanılmalı.
+2. Config'e cleanup retention ayarı ekle:
+   - `config/rag.config.yaml` içine örn. `cleanup.retentionMs` veya `indexing.cleanupRetentionMs`.
+   - `src/config.ts` schema ve `ResolvedConfig` içinde defaultlu şekilde doğrula.
+   - Varsayılan lokal geliştirme için kısa ama güvenli olabilir; örn. `3600000` ms. Testlerde override edilebilir olmalı.
+3. `completeIndexJob` akışını güncelle:
+   - Yeni physical collection version kaydı `active` olsun.
+   - Önceki active physical collection hemen silinmesin.
+   - Önceki active physical collection varsa registry'de `retired/delete_pending` durumuna alınsın ve `delete_after = now + retentionMs` set edilsin.
+   - Pointer swap transaction içinde atomik kalmalı.
+4. `src/indexing/jobs.ts` içindeki immediate cleanup'ı kaldır:
+   - Başarılı job sonrası `deletePhysicalChromaCollection` doğrudan çağrılmamalı.
+   - Cleanup ayrı servis/fonksiyon üzerinden yapılmalı.
+5. Cleanup service ekle:
+   - `src/indexing/cleanup.ts` veya `src/collections/cleanup.ts`.
+   - `cleanupRetiredPhysicalCollections({ registry, runtimeConfig, now, limit, log })`.
+   - Registry'den `delete_after <= now` olan due physical collection'ları listele.
+   - Chroma'dan delete dene.
+   - Başarılı olursa registry status `deleted`.
+   - Missing collection delete başarılı kabul edilebilir.
+   - Hata olursa `cleanup_failed` ve error kaydı bırak; tekrar denenebilir olmalı.
+6. Server startup davranışı:
+   - İstersen startup'ta bir kez due cleanup çalıştırabilirsin.
+   - Uzun süreli interval ekleyeceksen testlerde kapatılabilir olmalı.
+   - Testlerin kapanmasını engelleyen interval bırakma.
+7. Chroma configuration fidelity:
+   - `src/collections/chromaCollections.ts` içinde create request builder veya helper ekle:
+     - `buildCreateCollectionRequest({ name, chromaConfiguration })`
+   - Name validation için `assertValidChromaCollectionName(name)` çağır.
+   - Registry'de saklanan `chromaCollectionConfiguration` create request'te kullanılmalı.
+   - Default configuration `{ hnsw: { space: collection.distanceMetric } }` registry collection create sırasında üretilmeli.
+   - Eğer custom configuration yoksa distanceMetric ile HNSW space tutarlı olmalı.
+8. `src/indexing/buildPhysicalCollection.ts` güncelle:
+   - `createPhysicalChromaCollection` çağrısı collection'ın `chromaCollectionConfiguration` değerini kullanmalı.
+   - `distanceMetric` sadece default config üretimi veya validation için kullanılmalı.
+9. Tests:
+   - Başarılı rebuild sonrası eski physical collection hemen `deletePhysicalChromaCollection` ile silinmiyor.
+   - Retention süresi dolmadan cleanup silmiyor.
+   - Retention süresi dolunca cleanup due collection'ı siliyor ve registry status `deleted` oluyor.
+   - Cleanup delete hata verirse registry `cleanup_failed` ve error tutuyor.
+   - Build edilen physical collection create request `configuration.hnsw.space` değerini registry `distanceMetric` değerinden alıyor.
+   - Custom `chromaCollectionConfiguration` create request'e taşınıyor.
+   - Invalid physical collection name helper seviyesinde fail ediyor.
+   - Farklı collection'lar aynı anda queued/running rebuild job sahibi olabiliyor; aynı collection için tek active job kuralı korunuyor.
+
+Dikkat:
+- Zero-downtime davranışı için eski physical collection'ı immediate delete etme.
+- Cleanup source of truth registry olmalı; Chroma `listCollections()` tek başına ürün state'i gibi kullanılmamalı.
+- Chroma docs'a göre HNSW ayarları metadata değil `configuration` altında kurulmalı.
+- Build/test gerçek Chroma servisinin ayakta olmasına bağlı olmamalı; create request/config testleri mümkünse pure unit veya mock ile yazılmalı.
+
+Doğrulama:
+1. `npm.cmd run build`
+2. `npm.cmd test`
+
+Final cevapta:
+- Immediate cleanup'ın kaldırıldığını ve retention modelinin nasıl çalıştığını anlat.
+- Chroma create configuration'ın registry ile nasıl hizalandığını belirt.
+- Test/build sonuçlarını yaz.
+- notes/done.md dosyasına "Prompt 9: Zero-Downtime Retention Cleanup and Chroma Configuration Fidelity" başlığı altında yaptıklarını, değiştirdiğin ana dosyaları, çalıştırdığın komutları ve varsa kalan riskleri eklediğini belirt.
+```
+
+## Prompt 10: Tenant Access, Registry-Aware Readiness, and Collection Capabilities
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Görevin request context, tenant/access davranışı, servis readiness ve collection-level readiness/capability sözleşmesini tamamlamak.
+
+Önce mutlaka notes/multicollection.md dosyasını oku. Özellikle şu bölümlere göre çalış:
+- "Son Kullanıcı Collection'ları Kolayca Bulabiliyor mu?"
+- "Yeni Endpoint Kontratları"
+- "HTTP Hata Kodları"
+- "Query/Retrieve Path"
+- "Readiness ve Healthcheck"
+- "Test Kabul Kriterleri"
+
+Ayrıca çalışmaya başlamadan önce notes/done.md dosyasını oku. Prompt 8 ve Prompt 9 sonrasında job lifecycle, cleanup ve Chroma configuration değişikliklerini kontrol et.
+
+Bu prompt, Prompt 8-9'un tamamlandığını varsayar. Başlamadan önce kontrol et:
+- Job runner dependency var mı?
+- Registry active job sorgusu veya eşdeğeri var mı?
+- Retention cleanup immediate delete yerine registry state kullanıyor mu?
+Eksikse kod yazmadan raporla.
+
+Bilinen mevcut riskler:
+- `COLLECTION_FORBIDDEN` error code var ama pratikte üretilmiyor.
+- `/ready` registry reachable kontrolü yapmıyor.
+- `GET /v1/rag/collections` capability hesabı sadece `status === "ready"` üzerinden yapılıyor; active physical varsa rebuild sırasında query devam edebilmeli.
+- `GET /v1/rag/collections/:id/ready` active job bilgisini ve rebuild sırasında query/retrieve capability ayrımını yeterince göstermiyor.
+
+Amaç:
+Gerçek auth sistemi eklemeden development için merkezi, test edilebilir tenant/user context kur. Registry erişimini tenant scoped tut, forbidden/missing ayrımını tek helper'da çöz, readiness endpointlerini planla uyumlu hale getir.
+
+Yapılacaklar:
+1. `src/http/requestContext.ts` güncelle:
+   - Varsayılanlar korunmalı: `tenantId = "default"`, `userId = "local-dev"`.
+   - Development/test için header desteği ekle:
+     - `x-tenant-id`
+     - `x-user-id`
+     - `x-request-id`
+   - Header değerlerini trim et, boşsa default kullan.
+   - Request id yoksa üret.
+   - Bu gerçek auth değildir; sadece backend boundary ve test edilebilir tenant scoping içindir.
+2. Registry access helper ekle:
+   - `resolveReadableCollection` içinde veya ayrı `resolveCollectionAccess` helper olarak yapılabilir.
+   - Akış:
+     1. collectionId path parametresini validate et.
+     2. `getVisibleCollection(context, collectionId)` ile tenant scoped lookup yap.
+     3. Bulunursa devam et.
+     4. Bulunmazsa registry'de aynı id herhangi bir tenant altında var mı diye güvenli access check yap.
+     5. Varsa `403 COLLECTION_FORBIDDEN`.
+     6. Yoksa `404 COLLECTION_NOT_FOUND`.
+   - Bunun için `CollectionRegistry` interface'ine `collectionExists(collectionId)` veya `getCollectionAccessState(context, collectionId)` gibi method ekleyebilirsin.
+   - Bu helper bütün RAG route'larında kullanılmalı; controller içinde kopyalanmamalı.
+3. `src/http/errors.ts` güncelle:
+   - `COLLECTION_FORBIDDEN` gerçek route path'lerinden dönebilmeli.
+   - `ANSWER_NOT_IN_RETRIEVED_CONTEXT` ve `DISALLOWED_FALLBACK_ANSWER` gibi RAG error code'ları type/response contract içinde tutarlı olsun.
+4. `/ready` registry-aware olsun:
+   - Registry için `healthCheck()` / `ping()` / basit `SELECT 1` methodu ekle.
+   - `/ready` payload'ında `dependencies.registry` alanı olsun.
+   - Registry unreachable ise `indexReady` ve `queryReady` blocking fail olmalı.
+   - Default collection yok diye fail olmasın.
+   - `?strict=true` davranışı korunmalı.
+5. `GET /v1/rag/collections` capability hesabını düzelt:
+   - Collection status `indexing` olsa bile `activePhysicalCollection` varsa query/retrieve capability true olabilir.
+   - İlk indexing sırasında active yoksa query/retrieve false olmalı.
+   - List endpoint Chroma'ya her collection için count atmak zorunda değil; hızlı list için registry state yeterli olabilir.
+   - Response içinde `hasActiveVersion` veya `activeVersion` zaten varsa capability bunu yansıtmalı.
+6. `GET /v1/rag/collections/:collectionId/ready` endpointini tamamla:
+   - Access/missing/forbidden helper kullan.
+   - Response şu alanları içermeli:
+     - `id`
+     - `status`
+     - `activeVersion`
+     - `activePhysicalCollection`
+     - `indexing` veya `activeJob`
+     - `chromaReadable`
+     - `chromaCount`
+     - `capabilities.query`
+     - `capabilities.retrieve`
+     - `capabilities.reindex`
+   - Active physical readable ise collection status `indexing` olsa da query/retrieve true olmalı.
+   - Active physical yok ve active job varsa query/retrieve false, indexing true.
+7. Query/retrieve resolve davranışını doğrula:
+   - Rebuild sırasında active physical varsa query/retrieve eski active physical ile devam etmeli.
+   - Active physical yok ve status/index job varsa `503 COLLECTION_INDEXING`.
+   - Active physical yok ve job yoksa `404 COLLECTION_NOT_READY`.
+8. Tests:
+   - Default context ile mevcut testler kırılmamalı.
+   - `x-tenant-id` ile farklı tenant collection'ları listelenmez.
+   - Başka tenant'a ait bilinen collection id için query/retrieve `403 COLLECTION_FORBIDDEN`.
+   - Bilinmeyen collection id için `404 COLLECTION_NOT_FOUND`.
+   - `/ready?details=true` registry dependency alanı döner.
+   - Registry ping fail ederse `/ready?strict=true` 503 döner. Bunun için fake registry veya kapatılmış SQLite bağlantısı kullanılabilir.
+   - Collection `indexing` ama active physical varsa list/ready capabilities query/retrieve true olur.
+   - İlk indexing sırasında active physical yoksa ready capabilities query/retrieve false olur.
+
+Dikkat:
+- Full authentication/authorization sistemi ekleme. Bu prompt sadece merkezi context ve tenant-scoped registry boundary kurar.
+- 403 davranışı sadece collection id registry'de var ama current tenant'a görünmüyorsa dönmeli.
+- Eski endpointleri geri ekleme.
+- Build/test kırık kalmamalı.
+
+Doğrulama:
+1. `npm.cmd run build`
+2. `npm.cmd test`
+
+Final cevapta:
+- Request context ve tenant header davranışını özetle.
+- `/ready` ve collection ready contract'ının nasıl değiştiğini belirt.
+- 403/404 ayrımını açıkça yaz.
+- Test/build sonuçlarını yaz.
+- notes/done.md dosyasına "Prompt 10: Tenant Access, Registry-Aware Readiness, and Collection Capabilities" başlığı altında yaptıklarını, değiştirdiğin ana dosyaları, çalıştırdığın komutları ve varsa kalan riskleri eklediğini belirt.
+```
+
+## Prompt 11: Acceptance Tests, Test Isolation, and External-Service Boundaries
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Görevin test suite'i planın kabul kriterlerini gerçekten kanıtlayacak hale getirmek ve normal `npm test` komutunu Chroma/Ollama gibi dış servislerin ayakta olmasına bağımlı olmaktan çıkarmaktır.
+
+Önce mutlaka notes/multicollection.md dosyasını oku. Özellikle şu bölümlere göre çalış:
+- "Test Kabul Kriterleri"
+- "Query/Retrieve Path"
+- "Index/Rebuild Path"
+- "Readiness ve Healthcheck"
+- "Ollama ve Chroma Backpressure"
+- "Coding Agent Çalışma Sırası"
+
+Ayrıca çalışmaya başlamadan önce notes/done.md dosyasını oku. Prompt 8-10 sonrasında job runner, cleanup, tenant access ve readiness değişikliklerini dikkate al.
+
+Bu prompt, Prompt 8-10'un tamamlandığını varsayar. Başlamadan önce kontrol et:
+- `npm.cmd test` mevcut durumda geçiyor mu?
+- Test çıktısında background job, Chroma veya Ollama kaynaklı beklenmeyen log/error var mı?
+- `test/rag.test.ts` veya API testleri gerçek Chroma/Ollama servisine bağımlı mı?
+Eksik veya flaky davranış varsa önce bunu raporla, sonra düzelt.
+
+Amaç:
+Unit ve endpoint testleri deterministik, hızlı ve dış servis bağımsız olmalı. Gerçek Chroma/Ollama smoke testleri gerekiyorsa opsiyonel integration test olarak ayrılmalı.
+
+Yapılacaklar:
+1. Test dependency injection sınırlarını iyileştir:
+   - `createApp` testlerde runtime config, registry, jobRunner ve RAG/chroma service fake'leri ile çalışabilecek şekilde genişletilebilir.
+   - Büyük mimari bozma; sadece test edilebilirlik için açık dependency boundary ekle.
+   - Production path varsayılan gerçek implementation'ı kullanmalı.
+2. Chroma/Ollama dış servis bağımlılığını normal testlerden kaldır:
+   - `test/rag.test.ts` gerçek Chroma'ya bağlanıyorsa mock/fake helper ile değiştir.
+   - `npm.cmd test` Chroma/Ollama kapalıyken de geçmeli.
+   - Gerçek servis gerektiren test varsa `test/integration/*.test.ts` altına taşı ve `RUN_INTEGRATION=1` gibi env flag olmadan çalıştırma.
+   - `package.json` içinde gerekirse ayrı script ekle:
+     - `test:integration`
+3. Acceptance testleri tamamla:
+   - `GET /v1/rag/collections` sadece current tenant visible logical collection'ları listeler.
+   - Registry'de olmayan collection için Chroma'da yeni boş collection oluşmaz; fake Chroma create çağrılmadığını doğrula.
+   - Üretilen physical collection adları Chroma ad kurallarına uyar.
+   - Build edilen physical collection create request'i `configuration.hnsw.space` değerini registry `distanceMetric` veya registry config'ten alır.
+   - Bilinmeyen `collectionId` için query/retrieve `404 COLLECTION_NOT_FOUND`.
+   - Yetkisiz collection için `403 COLLECTION_FORBIDDEN`.
+   - Aktif sürümü olmayan ve indexing süren collection için `503 COLLECTION_INDEXING`.
+   - Rebuild sırasında önceki aktif sürüm varsa query/retrieve eski active physical collection ile başarılı çalışır.
+   - Aynı collection için iki rebuild isteğinden ikincisi `409 COLLECTION_INDEX_ALREADY_RUNNING`.
+   - Farklı collection'lar aynı anda rebuild edilebilir.
+   - Rebuild başarısız olursa önceki active pointer değişmeden kalır.
+   - `GET /v1/rag/collections/:collectionId/ready` collection bazlı doğru readiness verir.
+   - Oversized JSON body structured JSON error döner.
+   - Eski `/rag/query` ve `/rag/retrieve` public API yüzeyinde yok.
+4. Testlerde background lifecycle temizliği:
+   - API testleri job runner `drain()` veya fake runner ile kapanmalı.
+   - Test sonunda kapalı SQLite connection'a yazmaya çalışan background job logu kalmamalı.
+5. Backpressure/timeout testleri:
+   - Semaphore limitleri deterministik küçük config ile test edilmeli.
+   - Limit/timeout durumunda `503 MODEL_BACKPRESSURE` mapping'i test edilmeli.
+   - Bu test gerçek Ollama çağırmamalı.
+6. Docs/static contract testleri:
+   - README ve test frontend eski endpointleri aktif kullanım olarak içermiyor mu test et.
+   - Bu promptta architecture docs temizliğini tamamen yapman gerekmiyor; Prompt 12 bunu detaylandıracak. Ama test helper'ı kurulabilir.
+
+Dikkat:
+- Testleri yeşil yapmak için plan davranışını gevşetme.
+- Gerçek Chroma/Ollama gerektiren normal unit test bırakma.
+- Fake'ler production code path'e fallback olarak sızmamalı.
+- Eski endpointleri geri ekleme.
+
+Doğrulama:
+1. Chroma/Ollama kapalıyken `npm.cmd run build`
+2. Chroma/Ollama kapalıyken `npm.cmd test`
+3. Eğer integration script eklediysen ve servisler lokal ayaktaysa opsiyonel:
+   - `npm.cmd run test:integration`
+
+Final cevapta:
+- Normal test suite'in hangi dış servislerden bağımsız hale geldiğini belirt.
+- Kapatılan acceptance kriterlerini listele.
+- Opsiyonel integration test varsa nasıl çalıştırılacağını yaz.
+- Test/build sonuçlarını yaz.
+- notes/done.md dosyasına "Prompt 11: Acceptance Tests, Test Isolation, and External-Service Boundaries" başlığı altında yaptıklarını, değiştirdiğin ana dosyaları, çalıştırdığın komutları ve varsa kalan riskleri eklediğini belirt.
+```
+
+## Prompt 12: Documentation, Frontend Contract, and Architecture Cleanup
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Görevin Prompt 1-11 sonrası dokümantasyon, test frontend ve mimari metinlerde kalan eski single-collection/destructive reset anlatımlarını temizlemek ve kullanıcı akışını yeni multi-collection backend sözleşmesiyle tutarlı hale getirmek.
+
+Önce mutlaka notes/multicollection.md dosyasını oku. Özellikle şu bölümlere göre çalış:
+- "Son Kullanıcı Collection'ları Kolayca Bulabiliyor mu?"
+- "Yeni Endpoint Kontratları"
+- "Faz 6: Test Frontend ve Dokümantasyon"
+- "Readiness ve Healthcheck"
+- "Test Kabul Kriterleri"
+
+Ayrıca çalışmaya başlamadan önce notes/done.md dosyasını oku. Prompt 8-11 sonrası gerçek endpoint, readiness, cleanup ve test sözleşmelerini dikkate al.
+
+Bu prompt, Prompt 11'in tamamlandığını varsayar. Başlamadan önce kontrol et:
+- README, `vanilla_rag_backend_mimarisi.md`, `test_frontend/index.html` ve varsa onboarding dokümanlarında eski `/rag/query`, `/rag/retrieve`, `chroma.collection`, `data.indexSampleSize`, destructive reset anlatımları var mı?
+- `npm.cmd test` mevcut durumda geçiyor mu?
+Eksik veya çelişkili implementation varsa dokümana yanlış bilgi yazmadan önce raporla.
+
+Amaç:
+Dokümanlar ve test frontend artık repo gerçekliğini doğru anlatsın: logical collection registry, public collectionId, versioned physical Chroma collection, retention cleanup, registry-aware readiness, tenant-scoped list/query ve yeni `/v1` endpointleri.
+
+Yapılacaklar:
+1. README güncelle:
+   - Eski active endpoint olarak `/rag/query` ve `/rag/retrieve` anlatımı kalmamalı.
+   - `chroma.collection` config örneği kalmamalı.
+   - `data.indexSampleSize` yerine yeni config path'i kullanılmalı: `collectionDefaults.indexSampleSize`.
+   - Collection create, reindex job, job status, list, collection ready, retrieve, query örnekleri güncel olmalı.
+   - Rebuild sırasında active version varsa query/retrieve'in eski active physical collection'dan devam ettiği açıklanmalı.
+   - Eski physical collection cleanup'ın retention sonrası yapıldığı açıklanmalı.
+   - Normal `npm test` dış servis gerektirmiyorsa bunu belirt; integration test varsa ayrı anlat.
+2. `vanilla_rag_backend_mimarisi.md` güncelle:
+   - Aktif mimariyi anlatan bölümlerde eski `/rag/query`, `/rag/retrieve` endpointleri kalmamalı.
+   - Destructive "Chroma collection resetlenir/silinir/baştan yazılır" anlatımı aktif akış gibi kalmamalı.
+   - Yeni akış şu sırayla anlatılmalı:
+     1. logical collection registry kaydı
+     2. reindex job
+     3. yeni versioned physical Chroma collection
+     4. build/readability check
+     5. registry pointer swap
+     6. retention cleanup
+   - `/ready` ve `/v1/rag/collections/:id/ready` ayrımı anlatılmalı.
+   - Tenant/access boundary ve `403 COLLECTION_FORBIDDEN` davranışı anlatılmalı.
+3. `notes/onboardin_plan.md` veya başka onboarding notları güncel davranışla çelişiyorsa:
+   - Ya güncelle.
+   - Ya da dosyanın en üstüne açıkça "legacy plan / güncel değil" notu koy ve güncel README'ye yönlendir.
+4. `test_frontend/index.html` iyileştir:
+   - Collection list/dropdown mevcut kalmalı.
+   - Collection yoksa query/retrieve butonları pasif olmalı ve kullanıcıya collection oluşturma/reindex için admin API yönü gösterilmeli.
+   - Collection status/readiness sonucu active job, activeVersion, chromaCount ve capabilities alanlarını gösteriyorsa güncel response contract ile uyumlu olmalı.
+   - Eski endpoint stringleri kalmamalı.
+   - Gerekirse admin create/reindex butonu ekleyebilirsin, ancak test frontend'i production admin UI'a çevirmeye çalışma; amaç smoke/debug kolaylığı.
+5. Static/docs contract testleri ekle/güncelle:
+   - `test/frontend.static.test.ts` sadece quoted string aramakla kalmasın; `/rag/query` ve `/rag/retrieve` aktif fetch/action olarak kalmadığını yakalasın.
+   - `test/docs.contract.test.ts` ekle:
+     - README içinde aktif endpoint olarak `/rag/query` veya `/rag/retrieve` geçmesin.
+     - README içinde `chroma.collection` ve `data.indexSampleSize` stale config path'i geçmesin.
+     - Architecture doc içinde eski endpointler varsa sadece "legacy/removed" bağlamında geçsin; mümkünse tamamen temizle.
+   - `notes/multicollection.md` ve `notes/prompts.md` tarihsel plan/prompt dosyaları olduğu için bu testlerin kapsamı dışında kalabilir.
+6. Smoke flow'u doğrula:
+   - README'deki PowerShell örnekleri syntactically tutarlı olsun.
+   - Endpoint path'leri gerçek route'larla eşleşsin.
+
+Dikkat:
+- Dokümanda implementation'da olmayan özelliği tamamlanmış gibi anlatma.
+- Eski endpointleri "kullanılabilir fallback" gibi göstermeme.
+- Migration/backward compatibility anlatımı ekleme; proje henüz kullanılmıyor ve hedef doğru yeni mimari.
+- Build/test kırık kalmamalı.
+
+Doğrulama:
+1. `npm.cmd run build`
+2. `npm.cmd test`
+3. Manuel olarak README smoke komutlarını gözden geçir; dış servis çalıştırman gerekiyorsa bunu finalde açıkça belirt.
+
+Final cevapta:
+- Temizlenen dokümanları ve frontend contract değişikliklerini listele.
+- Eski endpoint/config/destructive reset anlatımlarının temizlendiğini belirt.
+- Test/build sonuçlarını yaz.
+- notes/done.md dosyasına "Prompt 12: Documentation, Frontend Contract, and Architecture Cleanup" başlığı altında yaptıklarını, değiştirdiğin ana dosyaları, çalıştırdığın komutları ve varsa kalan riskleri eklediğini belirt.
+```
+
+## Prompt 13: Final Multi-Collection Audit and Release Gate
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Görevin Prompt 1-12 sonrası son kalite kapısını çalıştırmak: implementation'ı notes/multicollection.md planı ve test kabul kriterleriyle birebir karşılaştır, eksik varsa küçük düzeltmeleri yap, büyük eksik varsa kod yazmadan raporla.
+
+Önce mutlaka notes/multicollection.md dosyasını baştan sona oku. Özellikle şu bölümlere göre çalış:
+- "Kısa Karar"
+- "Mimari Etkinlik Değerlendirmesi"
+- "Test Kabul Kriterleri"
+- "Readiness ve Healthcheck"
+- "Concurrency Stratejisi"
+- "Fazlara Bölünmüş Uygulama Planı"
+
+Ayrıca çalışmaya başlamadan önce notes/done.md dosyasını oku. Prompt 1-12 boyunca ne yapıldığını, hangi risklerin kapandığını ve kalan notları çıkar.
+
+Amaç:
+Repo gerçekten multiple collection destekleyen RAG backend hedefini karşılıyor mu, bunu son kez doğrula. Bu prompt çoğunlukla audit + küçük contract düzeltmeleri içindir; büyük mimari eksik bulursan bunu net raporla ve gerekiyorsa yeni prompt öner.
+
+Yapılacaklar:
+1. Plan karşılaştırması yap:
+   - Config shape.
+   - Registry storage ve schema.
+   - Public collection ID / physical Chroma name ayrımı.
+   - Chroma create configuration.
+   - Query/retrieve resolve path.
+   - Reindex job lifecycle.
+   - Zero-downtime pointer swap.
+   - Retention cleanup.
+   - Registry-aware readiness.
+   - Tenant/access/403 davranışı.
+   - Backpressure/timeouts.
+   - Frontend collection discovery.
+   - README/architecture docs.
+2. Kod taraması yap:
+   - `rg "chromaCollection|chroma.collection|/rag/query|/rag/retrieve|resetChromaCollection|data.indexSampleSize|rag.retrievalK"` ile stale referansları kontrol et.
+   - `notes/multicollection.md`, `notes/prompts.md` ve `notes/done.md` tarihsel/plan dosyaları olduğu için stale referansları otomatik hata sayma; product docs/code/test/frontend için değerlendir.
+3. Testleri çalıştır:
+   - `npm.cmd run build`
+   - `npm.cmd test`
+   - Eğer integration test script'i varsa ve dış servisler ayakta değilse çalıştırma; finalde neden çalıştırmadığını belirt.
+4. Küçük eksik düzeltmeleri yap:
+   - Stale README path'i.
+   - Test isimleri.
+   - Error code type union eksikleri.
+   - Missing docs/static contract test.
+   - Obvious route response contract mismatch.
+5. Büyük eksik bulursan:
+   - Yeni kod yazmadan önce final raporda açıkça belirt.
+   - Hangi dosyada, hangi plan maddesine göre eksik olduğunu yaz.
+   - Gerekirse "Prompt 14" için kısa öneri bırak ama bu dosyaya otomatik yeni prompt eklemek zorunda değilsin.
+6. Final acceptance checklist hazırla:
+   - Her `notes/multicollection.md` test kabul kriteri için `pass`, `partial`, `fail`, `not tested` durumu.
+   - `partial/fail/not tested` varsa nedenini ve önerilen fix'i yaz.
+7. notes/done.md güncelle:
+   - "Prompt 13: Final Multi-Collection Audit and Release Gate" başlığı altında audit sonucunu, küçük düzeltmeleri, komut sonuçlarını ve kalan riskleri yaz.
+
+Dikkat:
+- Yeşil testleri tek başına yeterli kabul etme; plan kabul kriterleriyle karşılaştır.
+- Eski endpointleri geri ekleme.
+- Compatibility/migration katmanı ekleme.
+- Büyük refactor gerekiyorsa yarım yamalak implement etme; net raporla.
+
+Doğrulama:
+1. `npm.cmd run build`
+2. `npm.cmd test`
+3. Stale referans taraması:
+   - `rg "chromaCollection|chroma.collection|/rag/query|/rag/retrieve|resetChromaCollection|data.indexSampleSize|rag.retrievalK" src test README.md vanilla_rag_backend_mimarisi.md test_frontend config`
+
+Final cevapta:
+- Repo multi-collection hedefi için hazır mı, doğrudan "evet/hayır/kısmen" diye cevapla.
+- Acceptance checklist özetini ver.
+- Kalan riskleri öncelik sırasıyla listele.
+- Test/build/stale-scan sonuçlarını yaz.
+- notes/done.md dosyasına final audit kaydını eklediğini belirt.
+```

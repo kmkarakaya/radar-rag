@@ -86,8 +86,8 @@ Repodaki implementasyon:
 
 - API katmanı [src/server.ts](src/server.ts) içinde kuruludur.
 - Express sunucusu burada ayağa kalkar.
-- `POST /rag/retrieve` retrieval-only akışını açar.
-- `POST /rag/query` retrieval + generation akışını açar.
+- `POST /v1/rag/collections/:collectionId/retrieve` retrieval-only akışını açar.
+- `POST /v1/rag/collections/:collectionId/query` retrieval + generation akışını açar.
 - Zod ile request body'si validate edilir.
 - Başarılı validation sonrasında uygun RAG yardımcıları çağrılır.
 
@@ -107,10 +107,10 @@ Repodaki HTTP yüzeyi şu anda yedi endpoint'ten oluşur:
 - `GET /`
 - `GET /health`
 - `GET /ready`
-- `GET /rag/query`
-- `GET /rag/retrieve`
-- `POST /rag/retrieve`
-- `POST /rag/query`
+
+
+- `POST /v1/rag/collections/:collectionId/retrieve`
+- `POST /v1/rag/collections/:collectionId/query`
 
 Bu yüzey, Vanilla RAG backend'in asgari query servisini ve operasyonel sağlık bilgisini vermek için yeterlidir; ancak ingestion ve yönetim işlemleri halen HTTP endpoint yerine CLI akışı ile yapılır.
 
@@ -389,9 +389,9 @@ Burada önemli ayrım şudur:
 
 - Retrieval sonuçları `distanceScore` ile birlikte döner.
 - Daha küçük score daha yakın chunk anlamına gelir.
-- `rag.retrievalDistanceThreshold` üstündeki chunk'lar hem `/rag/retrieve` hem `/rag/query` için elenir.
+- `rag.retrievalDistanceThreshold` üstündeki chunk'lar hem `/v1/rag/collections/:collectionId/retrieve` hem `/v1/rag/collections/:collectionId/query` için elenir.
 - Hiç chunk kalmazsa backend bunu başarı değil, `NO_RELEVANT_CONTEXT` hatası olarak ele alır.
-- Chunk bulunması tek başına answerability garantisi vermez; `POST /rag/query` gerekli olgusal kanıt yoksa `ANSWER_NOT_IN_RETRIEVED_CONTEXT` üretebilir.
+- Chunk bulunması tek başına answerability garantisi vermez; `POST /v1/rag/collections/:collectionId/query` gerekli olgusal kanıt yoksa `ANSWER_NOT_IN_RETRIEVED_CONTEXT` üretebilir.
 
 Bu eksikler Vanilla RAG'in "yanlış" olduğu anlamına gelmez. Sadece bu repo retrieval tarafında baseline seviyededir.
 
@@ -469,7 +469,7 @@ Bu, backend mimarisi açısından doğru bir ayrımdır. Ancak config schema val
 
 ## 6. Sorgu Akışı: Runtime Request Lifecycle
 
-Bir istemci `POST /rag/query` çağırdığında bu repoda şu olay zinciri çalışır:
+Bir istemci `POST /v1/rag/collections/:collectionId/query` çağırdığında bu repoda şu olay zinciri çalışır:
 
 1. Express JSON body'yi parse eder.
 2. Zod, `question` alanının boş olmayan bir string olduğunu doğrular.
@@ -709,7 +709,7 @@ Repo artık ayrık bir readiness katmanına sahiptir ve şu kontrolleri yapar:
 - Chat smoke test başarılı mı
 - Veri dosyası okunabilir mi
 
-Bu önemli bir olgunluk artışıdır. Ancak mevcut readiness katmanı yine de gerçek `POST /rag/query` akışını bire bir garanti etmez.
+Bu önemli bir olgunluk artışıdır. Ancak mevcut readiness katmanı yine de gerçek `POST /v1/rag/collections/:collectionId/query` akışını bire bir garanti etmez.
 
 Örneğin:
 
@@ -720,7 +720,7 @@ Dolayısıyla readiness implement edilmiştir; fakat gerçek RAG çağrısına d
 
 ### 11.5 Full-data indexing semantiği net değil
 
-Varsayılan `data.indexSampleSize=100` olduğu için sistem tüm veri yerine örneklemle çalışıyor.
+Varsayılan `collectionDefaults.indexSampleSize=100` olduğu için sistem tüm veri yerine örneklemle çalışıyor.
 
 Bu, Vanilla RAG demo için kabul edilebilir ama backend mimarisi dokümanı açısından şu notu düşmek gerekir:
 

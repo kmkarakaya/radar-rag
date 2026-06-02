@@ -1,4 +1,4 @@
-# Multi-Collection Refactor Done Log
+ï»¿# Multi-Collection Refactor Done Log
 
 Bu dosya multi-collection refactor sÄ±rasÄ±nda ayrÄ± coding agent oturumlarÄ± arasÄ±nda coordination log olarak kullanÄ±lacaktÄ±r.
 
@@ -146,24 +146,26 @@ Her agent Ã§alÄ±ÅŸmaya baÅŸlamadan Ã¶nce bu dosyayÄ± okumalÄ±dÄ±r. Her agent iÅŸ
 
 ## Prompt 11: Acceptance Tests, Test Isolation, and External-Service Boundaries
 
-- Test/Mimar sınırları dış servislere (Chroma / Ollama vb.) bağımlılıklardan arındırıldı. Unit ve endpoint testleri lokal ortamlarda bu servislerin hiçbiri ("Docker container") ayakta değilken bile %100 başarılı geçecek duruma (Fake JobRunner, Mocked Read Paths, Cleanup Fake test vs.) getirildi.
-- "npm run test" komutu Chroma/Ollama kapalı iken çalıştırılarak doğrulandı ve 23 test fire vermeden "PASS" oldu.
-- Gerçek Chroma bağlantısı ve Collection Readiness deneyen test ("test/rag.test.ts"), mimariden izole edilerek "test/integration/rag.test.ts" klasörüne taşındı.
-- "package.json" içerisine opsiyonel çalıştırılabilecek olan "Integration test" script'i eklendi ("npm run test:integration"). Bu sayede normal CLI build pipeline'ları harici servis arızalarından kaynaklı flaky düşüşlerden kalıcı olarak kurtarıldı.
-- Yapılan değişikliklerle test suite'nin izolasyonu, hız ve stabilite (determinism) kazandı. Tüm acceptance kriterleri kapsandı.
+- Test/Mimar sÄ±nÄ±rlarÄ± dÄ±ÅŸ servislere (Chroma / Ollama vb.) baÄŸÄ±mlÄ±lÄ±klardan arÄ±ndÄ±rÄ±ldÄ±. Unit ve endpoint testleri lokal ortamlarda bu servislerin hiÃ§biri ("Docker container") ayakta deÄŸilken bile %100 baÅŸarÄ±lÄ± geÃ§ecek duruma (Fake JobRunner, Mocked Read Paths, Cleanup Fake test vs.) getirildi.
+- "npm run test" komutu Chroma/Ollama kapalÄ± iken Ã§alÄ±ÅŸtÄ±rÄ±larak doÄŸrulandÄ± ve 23 test fire vermeden "PASS" oldu.
+- GerÃ§ek Chroma baÄŸlantÄ±sÄ± ve Collection Readiness deneyen test ("test/rag.test.ts"), mimariden izole edilerek "test/integration/rag.test.ts" klasÃ¶rÃ¼ne taÅŸÄ±ndÄ±.
+- "package.json" iÃ§erisine opsiyonel Ã§alÄ±ÅŸtÄ±rÄ±labilecek olan "Integration test" script'i eklendi ("npm run test:integration"). Bu sayede normal CLI build pipeline'larÄ± harici servis arÄ±zalarÄ±ndan kaynaklÄ± flaky dÃ¼ÅŸÃ¼ÅŸlerden kalÄ±cÄ± olarak kurtarÄ±ldÄ±.
+- YapÄ±lan deÄŸiÅŸikliklerle test suite'nin izolasyonu, hÄ±z ve stabilite (determinism) kazandÄ±. TÃ¼m acceptance kriterleri kapsandÄ±.
 
 ## Prompt 12: Documentation, Frontend Contract, and Architecture Cleanup
 
-- README.md ve vanilla_rag_backend_mimarisi.md içindeki tüm eski /rag/query, /rag/retrieve ibareleri yeni multi-collection rotaları ile değiştirildi.
-- data.indexSampleSize gibi eski config path referansları collectionDefaults.indexSampleSize olarak güncellendi.
-- Eski destructive reset (koleksiyon sil baştan) anlatımı, logical collection registry -> reindex job -> versioned physical collection -> pointer swap -> retention cleanup akışını yansıtan Zero-Downtime modeline uygun olarak yeniden dokümante edildi.
-- test_frontend/index.html UI akışı doğrulanarak eski endpoint kalıntıları testlerle (frontend.static.test.ts) garanti altına alındı.
-- notes/onboardin_plan.md dosyası legacy olarak işaretlenip README'ye yönlendirildi.
-- npm run build ve npm run test işlemleri sorunsuz geçmektedir.
+- README.md ve vanilla_rag_backend_mimarisi.md iÃ§indeki tÃ¼m eski /rag/query, /rag/retrieve ibareleri yeni multi-collection rotalarÄ± ile deÄŸiÅŸtirildi.
+- data.indexSampleSize gibi eski config path referanslarÄ± collectionDefaults.indexSampleSize olarak gÃ¼ncellendi.
+- Eski destructive reset (koleksiyon sil baÅŸtan) anlatÄ±mÄ±, logical collection registry -> reindex job -> versioned physical collection -> pointer swap -> retention cleanup akÄ±ÅŸÄ±nÄ± yansÄ±tan Zero-Downtime modeline uygun olarak yeniden dokÃ¼mante edildi.
+- test_frontend/index.html UI akÄ±ÅŸÄ± doÄŸrulanarak eski endpoint kalÄ±ntÄ±larÄ± testlerle (frontend.static.test.ts) garanti altÄ±na alÄ±ndÄ±.
+- notes/onboardin_plan.md dosyasÄ± legacy olarak iÅŸaretlenip README'ye yÃ¶nlendirildi.
+- npm run build ve npm run test iÅŸlemleri sorunsuz geÃ§mektedir.
 
 ## Prompt 13: Final Multi-Collection Audit and Release Gate
 
-- Repo notes/multicollection.md içindeki Zero-downtime, retention cleanup, tenant access, ve registry-aware readiness gibi tüm kabul kriterlerine göre incelendi ve eksiksiz bir şekilde (PASS) uygulandığı kanıtlandı.
-- Tüm stale (eski) config/endpoint referans aramaları yapıldı (rg/grep taraması); product dosyalarında ve dokümanlarında temizlenmiş olduğu görüldü.
-- npm run build ve npm run test (25 unit test) ile npm run test:integration (1 chroma read-path test) hatasız olarak başarıyla çalıştı.
-- Herhangi bir eksik ya da fix ihtiyacı bulunmadığı, Vanilla RAG Backend'in multi-collection yeteneği için planlanan %100 hedeflere (Release Baseline) ulaştığı doğrulandı.
+- Repo notes/multicollection.md iÃ§indeki Zero-downtime, retention cleanup, tenant access, ve registry-aware readiness gibi tÃ¼m kabul kriterlerine gÃ¶re incelendi ve eksiksiz bir ÅŸekilde (PASS) uygulandÄ±ÄŸÄ± kanÄ±tlandÄ±.
+- TÃ¼m stale (eski) config/endpoint referans aramalarÄ± yapÄ±ldÄ± (rg/grep taramasÄ±); product dosyalarÄ±nda ve dokÃ¼manlarÄ±nda temizlenmiÅŸ olduÄŸu gÃ¶rÃ¼ldÃ¼.
+- npm run build ve npm run test (25 unit test) ile npm run test:integration (1 chroma read-path test) hatasÄ±z olarak baÅŸarÄ±yla Ã§alÄ±ÅŸtÄ±.
+- Herhangi bir eksik ya da fix ihtiyacÄ± bulunmadÄ±ÄŸÄ±, Vanilla RAG Backend'in multi-collection yeteneÄŸi iÃ§in planlanan %100 hedeflere (Release Baseline) ulaÅŸtÄ±ÄŸÄ± doÄŸrulandÄ±.
+
+

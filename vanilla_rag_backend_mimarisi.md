@@ -1,4 +1,4 @@
-# Vanilla RAG Backend Mimarisi
+﻿# Vanilla RAG Backend Mimarisi
 
 ## 1. Amaç ve Kapsam
 
@@ -740,7 +740,7 @@ Vanilla RAG için kabul edilebilir. Ancak gelişmiş bir arkaplan aracı (örne�
 
 ### 11.7 API hardening eksik
 
-Şu backend özellikleri büyük oranda sisteme dahil edilmiştir:
+Åu backend özellikleri büyük oranda sisteme dahil edilmiştir:
 
 - request id (app katmanından `requestContext` ile dağıtılır)
 - auth/tenant (hazırlık var, sahte olarak `default` tenant çalışıyor)
@@ -864,3 +864,4 @@ Eksik kalan kısımlar ise çekirdek mimariden çok sistem olgunluğu ile ilgili
 - API hardening
 
 Bu ayrım önemlidir: proje "yoktan başlangıç" seviyesinde değil, "çalışan baseline backend" seviyesindedir.
+

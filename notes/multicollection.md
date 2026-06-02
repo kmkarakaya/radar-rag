@@ -1,4 +1,4 @@
-# Vanilla RAG Backend: Multi-Collection ve Concurrency Refactor Planı
+﻿# Vanilla RAG Backend: Multi-Collection ve Concurrency Refactor Planı
 
 ## Kısa Karar
 
@@ -446,7 +446,7 @@ Mevcut repo küçük olduğu için bu dosyaların bazıları birleştirilebilir,
 
 ### `src/app.ts` ve `src/server.ts`
 
-Şu an `src/server.ts` hem Express app'i kuruyor hem `listen` çağırıyor. Test yazabilmek için ayrıştırılmalı:
+Åu an `src/server.ts` hem Express app'i kuruyor hem `listen` çağırıyor. Test yazabilmek için ayrıştırılmalı:
 
 ```ts
 export type AppDependencies = {
@@ -487,7 +487,7 @@ registry:
 
 Native dependency eklemek istenmezse agent kullanıcıya sormadan JSON registry'ye düşmemeli; JSON eşzamanlı backend planına uygun değildir. Böyle bir blocker varsa registry interface'i ve test fake'i eklenip kalıcı implementation ayrı bir açık görev olarak bırakılmalıdır.
 
-### Registry Şeması
+### Registry Åeması
 
 SQLite tabloları minimum şu alanlarla oluşturulmalı:
 
@@ -1136,3 +1136,4 @@ Revize planla mimari daha etkin hale gelir:
 - Storage detayı public API'den ayrılır.
 - Rebuild işlemi mümkün olduğunca kesintisiz hale gelir.
 - Aynı anda çok kullanıcı ve çok collection senaryosu servis seviyesinde yönetilebilir olur.
+

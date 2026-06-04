@@ -1,4 +1,4 @@
-﻿# Multi-Collection Refactor Done Log
+# Multi-Collection Refactor Done Log
 
 Bu dosya multi-collection refactor sırasında ayrı coding agent oturumları arasında coordination log olarak kullanılacaktır.
 
@@ -434,3 +434,5 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
   - `notes/plan-parity-audit.md` icindeki iki kucuk tutarsiz `PARTIAL` notu duzeltildi. Test script ayrimi Prompt 11 dis-servis izolasyonu nedeniyle `test` + `test:integration` olarak kabul edildi; Chroma list/count/existence davranisi `listPhysicalChromaCollections` + `assertChromaCollectionReadable` ile karsilaniyor. Kalan `PARTIAL` maddeler yalniz Faz 5 operasyonel olgunluk kapsamindadir.
   - Runtime registry DB dosyasinin calisma agacinda untracked gorunmemesi icin `.gitignore` icine `data/*.sqlite` eklendi. `data/registry.sqlite` silinmedi.
   - Bu re-audit sirasinda attachment icindeki metnin Prompt 20 oldugu goruldu; kullanici mesajinda Prompt 21 istendigi icin Prompt 21 esas alindi, Prompt 20 discovery/list kontrati da gerileme acisindan tekrar kontrol edildi.
+  - **Cold-Start Audit Update (2026-06-05):** Cold-start olarak atanan coding agent (biz) tarafından tüm kod tabanı, testler, Zod şemaları ve entegrasyon yolları tekrar elden geçirildi. `npm run typecheck`, `npm test` ve `npm run test:integration` komutları çalıştırılarak testlerin %100 yeşil olduğu ve regresyon bulunmadığı teyit edildi. Bu doğrulamayla beraber iş paketi başarıyla sonlandırılmıştır.
+

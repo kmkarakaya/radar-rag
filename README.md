@@ -90,6 +90,14 @@ limits:
 - Rebuild başarıyla bittiğinde eski aktif fiziksel koleksiyon hemen silinmez; önce registry içinde `delete_pending` durumuna alınır ve `delete_after = now + cleanup.retentionMs` olarak işaretlenir.
 - Sunucu açılışında bir kez stale job recovery ve due cleanup çalışır. Bu tarama `delete_pending` ve `cleanup_failed` kayıtları arasından süresi dolmuş fiziksel koleksiyonları yeniden denemeye uygundur.
 
+Retention cleanup state contract:
+
+- `delete_pending`: A previously active physical collection was replaced by a successful pointer swap and can be deleted after `delete_after`.
+- `cleanup_failed`: A due delete failed. The record keeps `cleanup_error` and is retried when still due.
+- `deleted`: The physical collection delete succeeded, or storage reported an idempotent not-found delete. `deleted_at` is set and `cleanup_error` is cleared.
+- `failed_build`: A build target failed before pointer swap. It is not treated as an old active collection and is not selected by retention cleanup.
+- Startup maintenance is scheduled after `listen`; it is fire-and-forget, logs failures, and does not block server startup. `startServer()` returns `startupMaintenancePromise`, which tests or embedded callers can await before closing the registry during controlled shutdown.
+
 ### 1. Collection Yaratma (Admin API)
 Koleksiyonun mantıksal (logical) konfigürasyonunu tanımlayın. Burada belirlediğiniz mesafe metriği (distanceMetric), embedding modeli, chat modeli, retrieval eşiği ve parçalama boyutları o koleksiyonun build/query akışında gerçekten kullanılır:
 

@@ -1,32 +1,89 @@
+import { fileURLToPath } from "node:url";
 import { createApp } from "./app.js";
+import type { CollectionRegistry } from "./collections/types.js";
 import { createSqliteCollectionRegistry } from "./collections/sqliteRegistry.js";
-import { createIndexJobRunner } from "./indexing/jobRunner.js";
+import { createIndexJobRunner, type IndexJobRunner } from "./indexing/jobRunner.js";
 import { cleanupRetiredPhysicalCollections } from "./indexing/cleanup.js";
-import { config } from "./config.js";
+import { config, type ResolvedConfig } from "./config.js";
 
-const registry = createSqliteCollectionRegistry({ dbPath: config.registryPath });
+type StartupLogger = Pick<Console, "log" | "error">;
 
-// Recover stale jobs on startup (jobs older than 2 hours)
-registry.failStaleJobs(2 * 60 * 60 * 1000).then((count) => {
-  if (count > 0) {
-    console.log(`Recovered ${count} stale index jobs on startup.`);
+export async function runStartupMaintenance(input: {
+  registry: CollectionRegistry;
+  runtimeConfig: ResolvedConfig;
+  staleThresholdMs?: number;
+  cleanupLimit?: number;
+  log?: StartupLogger;
+  cleanupRetiredPhysicalCollectionsFn?: typeof cleanupRetiredPhysicalCollections;
+}): Promise<void> {
+  const staleThresholdMs = input.staleThresholdMs ?? 2 * 60 * 60 * 1000;
+  const cleanupLimit = input.cleanupLimit ?? 10;
+  const log = input.log ?? console;
+  const cleanupFn = input.cleanupRetiredPhysicalCollectionsFn ?? cleanupRetiredPhysicalCollections;
+
+  try {
+    const count = await input.registry.failStaleJobs(staleThresholdMs);
+    if (count > 0) {
+      log.log(`Recovered ${count} stale index jobs on startup.`);
+    }
+  } catch (error) {
+    log.error("Failed to recover stale jobs on startup:", error);
   }
-}).catch((error) => {
-  console.error("Failed to recover stale jobs on startup:", error);
-});
 
-// Run a one-time cleanup on startup
-cleanupRetiredPhysicalCollections({ registry, runtimeConfig: config, limit: 10 }).then((count) => {
-  if (count > 0) {
-    console.log(`Cleaned up ${count} retired physical collections on startup.`);
+  try {
+    const count = await cleanupFn({
+      registry: input.registry,
+      runtimeConfig: input.runtimeConfig,
+      limit: cleanupLimit,
+      log: (message) => log.log(message),
+    });
+    if (count > 0) {
+      log.log(`Cleaned up ${count} retired physical collections on startup.`);
+    }
+  } catch (error) {
+    log.error("Failed to run startup cleanup:", error);
   }
-}).catch((error) => {
-  console.error("Failed to run startup cleanup:", error);
-});
+}
 
-const jobRunner = createIndexJobRunner({ registry, runtimeConfig: config });
-const app = createApp({ registry, jobRunner });
+export async function startServer(input: {
+  runtimeConfig?: ResolvedConfig;
+  registry?: CollectionRegistry;
+  jobRunner?: IndexJobRunner;
+  log?: StartupLogger;
+  startupMaintenance?: typeof runStartupMaintenance;
+} = {}) {
+  const runtimeConfig = input.runtimeConfig ?? config;
+  const registry = input.registry ?? createSqliteCollectionRegistry({ dbPath: runtimeConfig.registryPath });
+  const jobRunner = input.jobRunner ?? createIndexJobRunner({ registry, runtimeConfig });
+  const log = input.log ?? console;
+  const startupMaintenance = input.startupMaintenance ?? runStartupMaintenance;
 
-app.listen(config.port, () => {
-  console.log(`RAG backend listening on http://localhost:${config.port}`);
-});
+  const app = createApp({ registry, jobRunner });
+  const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
+    const startedServer = app.listen(runtimeConfig.port, () => {
+      log.log(`RAG backend listening on http://localhost:${runtimeConfig.port}`);
+      resolve(startedServer);
+    });
+  });
+
+  const startupMaintenancePromise = Promise.resolve()
+    .then(() => startupMaintenance({ registry, runtimeConfig, log }))
+    .catch((error) => {
+      log.error("Startup maintenance crashed unexpectedly:", error);
+    });
+
+  return { app, server, registry, jobRunner, startupMaintenancePromise };
+}
+
+async function main(): Promise<void> {
+  await startServer();
+}
+
+const isDirectExecution = process.argv[1] === fileURLToPath(import.meta.url);
+
+if (isDirectExecution) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

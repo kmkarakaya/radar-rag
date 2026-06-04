@@ -119,10 +119,15 @@ export async function buildPhysicalCollection(input: {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log(`Build failed: ${message}. Attempting to clean up target physical collection...`);
-    await deleteCollection({
-      name: targetPhysicalCollection,
-      runtimeConfig,
-    });
+    try {
+      await deleteCollection({
+        name: targetPhysicalCollection,
+        runtimeConfig,
+      });
+    } catch (deleteError) {
+      const deleteMessage = deleteError instanceof Error ? deleteError.message : String(deleteError);
+      log(`Best-effort target physical cleanup failed: ${deleteMessage}`);
+    }
     throw error;
   }
 }

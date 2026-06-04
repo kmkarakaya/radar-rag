@@ -79,7 +79,7 @@ export function createAdminRouter(deps: AppDependencies) {
 
   const updateCollectionSchema = z.object({
     displayName: z.string().trim().min(1).optional(),
-    description: z.string().optional(),
+    description: z.string().nullable().optional(),
     sourcePath: z.string().trim().min(1).optional(),
     ozelgeDataPath: z.string().trim().min(1).optional(),
     distanceMetric: z.enum(["l2", "cosine", "ip"]).optional(),

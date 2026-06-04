@@ -1547,3 +1547,334 @@ Final cevapta:
 - Komut sonuçlarını yaz.
 - notes/done.md içine final audit ve done-log repair kaydını eklediğini belirt.
 ```
+
+## Prompt 18: Registry Patch Fields and Job Lifecycle Invariants
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin multi-collection refactor icin registry katmanindaki kalan lifecycle ve update invariant aciklarini kapatmaktir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "Onerilen Registry Modeli"
+- "Registry Semasi"
+- "src/collections/types.ts"
+- "Faz 2: Collection Registry Ekle"
+- "Faz 4: Zero-Downtime Index/Rebuild"
+- "Concurrency Stratejisi"
+- "Test Kabul Kriterleri"
+
+Ayrica calismaya baslamadan once notes/done.md dosyasini oku. Prompt 14-17 kayitlarini gercek kodla karsilastir. Done log'da Prompt 14 kaydi eksik veya Prompt 15 duplicate olabilir; bunlari dogru kabul etmeden once repo durumunu dogrula.
+
+Bilinen mevcut sorunlar:
+1. `src/collections/sqliteRegistry.ts` icindeki `updateCollection` schema/type olarak `displayName`, `description`, `sourcePath`, `ozelgeDataPath` kabul ediyor, fakat bu alanlari SQL update'e eklemiyor.
+2. `completeIndexJob` queued veya failed job'u dogrudan `succeeded` yapabiliyor. Job ancak `running` durumundayken tamamlanabilmeli.
+3. `completeIndexJob` fallback olarak `versionFromJobId(existing.id)` kullaniyor. `targetVersion` icinde underscore varsa activeVersion kirpiliyor. Fallback `existing.target_version` olmali; mumkunse `versionFromJobId` tamamen kaldirilmali.
+4. `completeIndexJob` ilgili `physical_collections` kaydi yoksa veya `building` degilse bile collection'i `ready` yapabiliyor. Pointer swap oncesi physical record integrity kontrolu yapilmali.
+5. `failIndexJob` ve `failStaleJobs`, job'un target physical record'u `building` olarak kaldiysa terminal bir state'e cekmiyor. Failed build kayitlari sonsuza kadar `building` kalmamali.
+6. Mevcut testler yesil ama bu invariant'lari kapsamiyor.
+
+Amac:
+SQLite registry, logical collection update ve index job lifecycle konusunda tek basina guvenilir kaynak olsun. Job state machine disina cikilmasin; collection pointer'i sadece dogrulanmis physical record basariyla aktiflenince degissin.
+
+Yapilacaklar:
+1. `updateCollection` alanlarini tamamla:
+   - `displayName -> display_name`
+   - `description -> description` nullable destekli olmali.
+   - `sourcePath -> source_path`
+   - `ozelgeDataPath -> ozelge_data_path`
+   - Mevcut model/config/chunk/retrieval alanlari bozulmamali.
+   - Bos patch gelirse sadece `updated_at` yazmak yerine davranisi bilincli sec: ya no-op olarak mevcut collection'i don ya da `400` route seviyesinde reddet. Secimini testle ve dokumante et.
+2. Job state invariantlarini sikilastir:
+   - `markIndexJobRunning` sadece `queued -> running` yapmaya devam etmeli.
+   - `completeIndexJob` sadece `running` job icin calismali.
+   - `failIndexJob` terminal job'larda tekrar status overwrite etmemeli; en azindan `succeeded` job'un failed yapilmasini engelle.
+   - Hata mesajlari testlerde dogrulanabilir netlikte olsun.
+3. Active version dogrulugunu duzelt:
+   - `completeIndexJob` `result.activeVersion` yoksa `existing.target_version` kullanmali.
+   - `versionFromJobId` artik gerekmiyorsa kaldir.
+   - Underscore iceren target version icin activeVersion'in birebir korundugunu test et.
+4. Physical record integrity ekle:
+   - `completeIndexJob`, `activePhysicalCollection` icin registry'de physical record bulmali.
+   - Bu record ayni tenantId + collectionId + targetVersion ile eslesmeli.
+   - Record `building` degilse completion reddedilmeli.
+   - `UPDATE physical_collections SET status = 'active' ...` sonucunda affected row sayisi 1 degilse transaction rollback olmali.
+   - Bu durumda collection status/active pointer degismemeli ve job succeeded olmamali.
+5. Failed build state'ini modelle:
+   - `PhysicalCollectionStatus` icine gerekirse `failed_build` ekle.
+   - `failIndexJob` running/queued job'un target physical record'u `building` ise onu `failed_build` yapmali ve hata bilgisini saklamali.
+   - `failStaleJobs` de ayni mantigi uygulamali.
+   - `failed_build` kayitlari cleanup due listesine karismamali; bunlar active/retired collection degildir.
+6. Test edilebilir physical record okuma helper'i ekle:
+   - Registry interface'e public HTTP'ye acilmayan `getPhysicalCollection(name)` veya `listPhysicalCollectionsForCollection(context, collectionId)` metodu ekle.
+   - Bu metot unit testlerde state dogrulamasi icin kullanilsin.
+7. Testleri genislet:
+   - `test/collections.registry.test.ts`:
+     - PATCH tum kabul edilen alanlari persist ediyor.
+     - queued job complete edilemiyor.
+     - failed/succeeded terminal job tekrar complete/fail edilemiyor.
+     - completeIndexJob physical record yoksa collection ready olmuyor.
+     - completeIndexJob targetVersion'i birebir activeVersion yapiyor.
+     - failIndexJob building physical record'u `failed_build` yapiyor.
+     - failStaleJobs stale building record'u `failed_build` yapiyor.
+   - `test/indexing.jobs.test.ts`:
+     - runIndexJob basarili path physical record'u create -> active yapar.
+     - build hata verirse active pointer degismez ve physical record terminal failed_build olur.
+8. HTTP tarafini gerekiyorsa uyumlu hale getir:
+   - Admin PATCH basarili update testleri eklenince router response gercek updated collection'i dondurmeli.
+   - Yeni error'lar `HttpError` mapping gerektiriyorsa `src/http/errors.ts` guncelle.
+
+Dikkat:
+- Geriye donuk compatibility endpoint ekleme.
+- JSON registry veya config-backed default collection ekleme.
+- Pointer swap'i Chroma'da collection yazilmis varsayimiyla yapma; registry physical record integrity kontrolu sart.
+- Testleri sadece hata mesajina gevsek regex ile baglama; state degisimlerini de assert et.
+
+Dogrulama:
+1. `npm.cmd run typecheck`
+2. `npm.cmd run typecheck:test`
+3. `npm.cmd run build`
+4. `npm.cmd test`
+5. `npm.cmd run test:integration`
+
+Final cevapta:
+- Hangi registry invariant'larini sikilastirdigini ozetle.
+- PATCH alanlari ve job lifecycle icin eklenen testleri listele.
+- Komut sonuclarini yaz.
+- notes/done.md dosyasina "Prompt 18: Registry Patch Fields and Job Lifecycle Invariants" basligi altinda yaptiklarini, degistirdigin ana dosyalari, calistirdigin komutlari ve kalan riskleri ekledigini belirt.
+```
+
+## Prompt 19: Retention Cleanup Testability and Physical Collection Cleanup Semantics
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin retention cleanup akisini dis servisten izole, test edilebilir ve registry lifecycle ile tutarli hale getirmektir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "Chroma Dokumanlariyla Uyum Notlari"
+- "Faz 4: Zero-Downtime Index/Rebuild"
+- "src/indexing/buildPhysicalCollection.ts"
+- "src/indexing/jobs.ts"
+- "Concurrency Stratejisi"
+- "Test Kabul Kriterleri"
+
+Ayrica calismaya baslamadan once notes/done.md dosyasini oku. Prompt 18 tamamlanmissa yeni physical status ve registry invariant degisikliklerini dikkate al.
+
+Bilinen mevcut sorunlar:
+1. `src/indexing/cleanup.ts` dogrudan `deletePhysicalChromaCollection` import ediyor; unit testlerde fake delete callback verilemiyor.
+2. Retention cleanup icin due/not-due, retry, failure ve idempotent delete semantikleri yeterince testlenmemis.
+3. Startup cleanup'in server bootstrap'i kirip kirmadigi ve hata loglama davranisi net testlenmiyor.
+4. Failed build physical record'lari ile retired/delete_pending physical record'larin cleanup semantigi ayrismali.
+
+Amac:
+Eski active physical collection'lar pointer swap sonrasi retention suresi dolunca temizlensin; cleanup testleri Chroma/Ollama gerektirmesin; failure durumlari registry'de tekrar denenebilir olarak kalsin.
+
+Yapilacaklar:
+1. `cleanupRetiredPhysicalCollections` dependency injection alacak sekilde refactor et:
+   - Input'a opsiyonel `deletePhysicalCollection?: (input: { name: string; runtimeConfig: ResolvedConfig }) => Promise<void>` ekle.
+   - Production default `deletePhysicalChromaCollection` olmali.
+   - Testlerde bu callback fake kullanilmali.
+2. Cleanup state semantigini netlestir:
+   - Sadece `delete_pending` ve `cleanup_failed` status'leri due ise listelenmeli.
+   - `failed_build`, `building`, `active`, `retired`, `deleted` cleanup due listesine girmemeli.
+   - `cleanup_failed` due ise tekrar denenebilmeli.
+   - Basarili delete sonrasi `deleted_at` ve status `deleted` yazilmali.
+   - Delete callback "not found" semantigini ayirt edebiliyorsa idempotent olarak `deleted` kabul etmeyi degerlendir; secimini test ve dokumanda belirt.
+3. Registry cleanup helper'larini sikilastir:
+   - `markPhysicalCollectionDeleted` ve `markPhysicalCollectionCleanupFailed` affected row sayisini kontrol etmeli.
+   - Yanlis status'teki record'lari sessizce degistirmemeli.
+   - `cleanup_error` basarili delete sonrasi temizlenmeli.
+4. Startup cleanup davranisini kontrol et:
+   - `src/server.ts` registry bootstrap sonrasi due cleanup calistiriyorsa hata server start'i gereksiz yere durdurmamali; loglamali.
+   - Startup cleanup synchronous bekleniyorsa dokumante et; fire-and-forget ise process shutdown/drain etkisini degerlendir.
+5. Test ekle:
+   - `test/indexing.cleanup.test.ts` veya mevcut uygun dosya:
+     - due collection yoksa delete callback cagrilmiyor.
+     - delete_after gelecekteyse silinmiyor.
+     - delete_after gecmisse fake delete cagriliyor ve registry `deleted` oluyor.
+     - fake delete hata verirse status `cleanup_failed`, error saklaniyor.
+     - `cleanup_failed` ve due ise tekrar deneniyor.
+     - `failed_build` cleanup tarafindan silinmeye calisilmiyor.
+   - `test/collections.registry.test.ts`:
+     - `listDuePhysicalCollectionsForCleanup` status ve time filtrelerini dogru uyguluyor.
+6. Dokumantasyonu guncelle:
+   - README veya `vanilla_rag_backend_mimarisi.md` retention cleanup state'lerini gercek implementasyonla hizala.
+   - "garbage collection" gibi genel anlatim yerine `delete_pending`, `cleanup_failed`, `deleted`, `failed_build` semantigini net yaz.
+
+Dikkat:
+- Cleanup unit testleri gercek Chroma servisine baglanmamali.
+- Aktif physical collection cleanup'a dusmemeli.
+- Failed build record'unu eski active physical gibi ele alma; pointer swap olmadiysa kullanici query path'i eski active version'da kalmali.
+
+Dogrulama:
+1. `npm.cmd run typecheck`
+2. `npm.cmd run typecheck:test`
+3. `npm.cmd run build`
+4. `npm.cmd test`
+5. `npm.cmd run test:integration`
+
+Final cevapta:
+- Cleanup dependency injection ve state semantigini ozetle.
+- Eklenen cleanup testlerini listele.
+- Komut sonuclarini yaz.
+- notes/done.md dosyasina "Prompt 19: Retention Cleanup Testability and Physical Collection Cleanup Semantics" basligi altinda yaptiklarini, degistirdigin ana dosyalari, calistirdigin komutlari ve kalan riskleri ekledigini belirt.
+```
+
+## Prompt 20: HTTP Contract Tightening, Collection Discovery, and Acceptance Gaps
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin public/admin HTTP kontratini planla birebir hizalamak, collection discovery davranisini yaniltici olmaktan cikarmak ve acceptance test bosluklarini kapatmaktir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "Son Kullanici Collection'lari Kolayca Bulabiliyor mu?"
+- "Yeni Endpoint Kontratlari"
+- "HTTP Hata Kodlari"
+- "Readiness ve Healthcheck"
+- "Ollama ve Chroma Backpressure"
+- "Test Kabul Kriterleri"
+
+Ayrica calismaya baslamadan once notes/done.md dosyasini oku. Prompt 18-19 tamamlanmissa registry lifecycle ve cleanup degisikliklerini dikkate al.
+
+Bilinen mevcut sorunlar:
+1. `GET /v1/rag/collections` collection kesfi sagliyor, fakat `capabilities.query/retrieve` su anda pratikte sadece `activePhysicalCollection` varligina bakabiliyor. Chroma/model readiness kontrolu yapilmadan "query true" demek kullaniciyi yaniltabilir.
+2. Admin PATCH icin tenant forbidden testi var, fakat basarili PATCH'in tum alanlari persist ettigi HTTP seviyesinde testlenmiyor.
+3. Backpressure/timeout error mapping acceptance seviyesinde yeterince kanitlanmamis.
+4. Done log ve test adlari bazi davranislari iddia ediyor ama her zaman birebir assert etmiyor.
+
+Amac:
+Son kullanici var olan collection'lari kolayca bulabilsin, her collection'in durumunu dogru anlayabilsin ve query/retrieve/reindex akislari versioned multi-collection mimarisine uygun HTTP kontratlariyla calissin.
+
+Yapilacaklar:
+1. `GET /v1/rag/collections` response kontratini netlestir:
+   - Liste endpoint'i pahali Chroma/Ollama readiness check yapmayacaksa `capabilities.query/retrieve` alanlarini yaniltici kullanma.
+   - Seceneklerden birini uygula:
+     - A) Liste endpoint'i sadece cheap registry bilgisi dondursun: `status`, `activeVersion`, `chunkCount`, `updatedAt`, `readyUrl`, `queryUrl`, `retrieveUrl`.
+     - B) `capabilities` kalacaksa anlamini "registry-level eligibility" olarak dokumante et ve field adini netlestir, orn. `registryCapabilities`.
+     - C) Gercek readiness hesaplayacaksan Chroma/Ollama checks'i bilincli ve limitli yap; latency etkisini test ve dokumanda belirt.
+   - Hangi secimi yaptigini README ve testlerde sabitle.
+2. Admin PATCH acceptance testleri ekle:
+   - `PATCH /v1/admin/collections/:collectionId` basarili durumda `displayName`, `description`, `sourcePath`, `ozelgeDataPath`, `embeddingModel`, `chatModel`, `distanceMetric`, chunk ve retrieval alanlarini persist ediyor.
+   - Baska tenant icin `403 COLLECTION_FORBIDDEN`.
+   - Bilinmeyen collection icin `404 COLLECTION_NOT_FOUND`.
+   - Unknown body key strict schema ile `400 INVALID_REQUEST_BODY`.
+3. Query/retrieve HTTP tests:
+   - `retrieve` body'deki explicit `k`, collection default `retrievalK` yerine kullaniliyor.
+   - `query` collection default `retrievalK` kullanmaya devam ediyor.
+   - Collection-specific `embeddingModel`, `chatModel`, `retrievalDistanceThreshold`, `activePhysicalCollection`, `activeVersion` response ve handler call icinde assert ediliyor.
+   - Registry'de olmayan collection icin Chroma create/read/write cagrisi yapilmiyor.
+4. Error mapping acceptance testleri ekle:
+   - Fake RAG handler `MODEL_BACKPRESSURE` firlattiginda HTTP `503` ve `code: "MODEL_BACKPRESSURE"` donuyor.
+   - Fake RAG handler storage inconsistency firlattiginda uygun 503/500 mapping planla uyumlu donuyor.
+   - Oversized JSON ve invalid JSON structured error kontrati korunuyor.
+5. Collection ready endpoint'i ile list endpoint'i arasindaki iliskiyi netlestir:
+   - Liste, kullaniciyi `GET /v1/rag/collections/:collectionId/ready` endpoint'ine yonlendirmeli veya `readyUrl` sunmali.
+   - `/ready` collection-ready degildir; bu ayrim dokumanda ve testlerde karismamali.
+6. Frontend static contract'i guncelle:
+   - `test_frontend/index.html` liste endpoint kontrati degistiyse uyarlansin.
+   - UI query/retrieve butonlarini yalnizca secili collection ve ready/capability durumu uygunsa aktif etsin.
+   - Eski `/rag/query` ve `/rag/retrieve` referanslari geri gelmesin.
+7. Acceptance test dosyalarini dogru konumlandir:
+   - Unit/acceptance testler `npm.cmd test` ile calismali.
+   - Dis servis isteyen testler sadece `npm.cmd run test:integration` altinda kalmali.
+
+Dikkat:
+- Kullanilmayan veya dogrulanmayan capability alanlari ekleme.
+- Eski endpoint fallback/redirect ekleme.
+- HTTP testlerinde gercek Chroma/Ollama gerektirme; fake deps kullan.
+- Test adlari iddia ettigi davranisi gercek assert etmeli.
+
+Dogrulama:
+1. `npm.cmd run typecheck`
+2. `npm.cmd run typecheck:test`
+3. `npm.cmd run build`
+4. `npm.cmd test`
+5. `npm.cmd run test:integration`
+6. Stale scan:
+   - `rg "/rag/query|/rag/retrieve|chroma\\.collection|data\\.indexSampleSize|rag\\.retrievalK" src test README.md vanilla_rag_backend_mimarisi.md test_frontend config`
+
+Final cevapta:
+- Collection list/discovery kontratinda hangi secimi yaptigini acikla.
+- Eklenen HTTP acceptance testlerini plan maddeleriyle eslestir.
+- Komut ve stale scan sonuclarini yaz.
+- notes/done.md dosyasina "Prompt 20: HTTP Contract Tightening, Collection Discovery, and Acceptance Gaps" basligi altinda yaptiklarini, degistirdigin ana dosyalari, calistirdigin komutlari ve kalan riskleri ekledigini belirt.
+```
+
+## Prompt 21: Final Plan Parity Audit, Done Log Repair, and Release Gate
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin Prompt 18-20 sonrasinda final plan-parity audit yapmak, notes/done.md coordination log'unu gercek durumla hizalamak ve release gate sonucunu kanitlariyla yazmaktir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini bastan sona oku. Ozellikle su bolumlere gore calis:
+- "Kisa Karar"
+- "Endpoint Path'ine Collection Hash Ekleyelim mi?"
+- "Chroma Dokumanlariyla Uyum Notlari"
+- "Coding Agent Icin Uygulama Blueprint'i"
+- "Fazlara Bolunmus Uygulama Plani"
+- "Test Kabul Kriterleri"
+- "Mimari Etkinlik Degerlendirmesi"
+
+Ayrica notes/done.md dosyasini oku ve Prompt 1-20 kayitlarini gercek repo durumu ile karsilastir. Done log tarihsel kayittir; hatali eski PASS iddialarini silme, yeni correction note ekle.
+
+Amac:
+Repo gercekten multiple collection destekleyen bir RAG backend'i oldu mu sorusuna kanitli cevap ver. Yesil test tek basina yeterli degil; plan kabul kriterleri kod, test ve dokumanla eslesmeli.
+
+Yapilacaklar:
+1. Plan parity checklist hazirla:
+   - notes/multicollection.md "Faz 0" - "Faz 6" ve "Test Kabul Kriterleri" maddelerini tek tek denetle.
+   - Her maddeye `PASS`, `PARTIAL`, `FAIL`, `NOT TESTED` ver.
+   - Her madde icin kanit olarak dosya/test adi yaz.
+   - `PARTIAL/FAIL/NOT TESTED` varsa kucukse bu promptta duzelt; buyukse notes/prompts.md icine Prompt 22+ olarak cold-start prompt ekle.
+2. Done log'u onar:
+   - Prompt 14 kaydi eksikse gercek repo durumuna gore backfill/correction entry ekle.
+   - Duplicate Prompt 15 varsa silme; altina "duplicate historical entry" correction note ekle.
+   - Prompt 13 ve Prompt 17 "release-ready" iddialari artik yanlissa correction note ekle.
+   - Prompt 18-20 agent kayitlari gercekten var mi kontrol et.
+   - Bu prompt sonunda "Prompt 21: Final Plan Parity Audit, Done Log Repair, and Release Gate" basligini ekle.
+3. Kod audit'i yap:
+   - `src/config.ts`, `config/rag.config.yaml`
+   - `src/collections/types.ts`, `ids.ts`, `sqliteRegistry.ts`, `chromaCollections.ts`, `resolveReadableCollection.ts`
+   - `src/indexing/buildPhysicalCollection.ts`, `jobs.ts`, `jobRunner.ts`, `cleanup.ts`
+   - `src/rag.ts`, `src/index.ts`, `src/server.ts`, `src/app.ts`
+   - `src/http/adminRouter.ts`, `ragRouter.ts`, `errors.ts`, `requestContext.ts`
+   - `test_frontend/index.html`, README, `vanilla_rag_backend_mimarisi.md`
+4. Spesifik regresyon scriptlerini calistir veya unit testlerin kapsadigini kanitla:
+   - Admin/registry PATCH tum alanlari persist ediyor.
+   - Queued job complete edilemiyor.
+   - Failed/succeeded terminal job complete/fail edilemiyor.
+   - completeIndexJob physical record olmadan collection'i ready yapmiyor.
+   - targetVersion underscore dahil birebir activeVersion oluyor.
+   - failed build physical record `building` kalmiyor.
+   - cleanup due/not-due/failure/retry testleri mevcut.
+   - list endpoint capability/discovery semantigi dokumanla ayni.
+5. Stale scan yap:
+   - Product source/docs/config/frontend icin eski endpoint ve eski config path kalmasin.
+   - Testlerde eski endpointler sadece route-not-found amacli kalabilir.
+6. Build/test final gate:
+   - `npm.cmd run typecheck`
+   - `npm.cmd run typecheck:test`
+   - `npm.cmd run build`
+   - `npm.cmd test`
+   - `npm.cmd run test:integration`
+7. Git calisma agacini raporla:
+   - `git status --short`
+   - Kullaniciya hangi dosyalarin degistigini soyle.
+
+Dikkat:
+- notes/multicollection.md hedefini geriye dogru gevsetme.
+- Dokumanda implementation'da olmayan ozelligi varmis gibi anlatma.
+- Hata bulursan "testler yesil" diyerek gecme.
+- Yeni prompt ekliyorsan her yeni prompt notes/multicollection.md ve notes/done.md okuma zorunlulugu icermeli.
+
+Dogrulama:
+1. `npm.cmd run typecheck`
+2. `npm.cmd run typecheck:test`
+3. `npm.cmd run build`
+4. `npm.cmd test`
+5. `npm.cmd run test:integration`
+6. `git status --short`
+
+Final cevapta:
+- Repo multiple collection hedefi icin hazir mi: `evet`, `kismen`, veya `hayir`.
+- Acceptance checklist ozetini ver.
+- Kalan riskleri oncelik sirasiyla listele.
+- Degisen dosyalari listele.
+- Komut sonuclarini yaz.
+- notes/done.md icine final audit ve done-log repair kaydini ekledigini belirt.
+```

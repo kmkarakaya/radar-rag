@@ -89,7 +89,7 @@ Bu repodaki gerçek multi-collection davranışı aşağıdaki control-plane kur
 3. Her rebuild yeni bir versioned physical Chroma collection üretir. `targetPhysicalCollection` ve `targetVersion` registry job kaydında tutulur.
 4. Job lifecycle açıkça `queued -> running -> succeeded|failed` state'leri ile izlenir. Job source of truth SQLite registry'dir; process içi runner sadece background promise lifecycle'ını yönetir.
 5. Başarılı build sonrası aktif pointer transaction içinde atomik olarak yeni physical collection'a çevrilir. Böylece aktif eski sürüm varsa rebuild sırasında query/retrieve kesilmez.
-6. Önceki aktif fiziksel collection hemen silinmez. Registry'de `delete_pending` durumuna alınır, `delete_after = now + cleanup.retentionMs` set edilir ve due cleanup aşamasında silinir. `cleanup_failed` kayıtları daha sonra yeniden denenebilir.
+6. Önceki aktif fiziksel collection hemen silinmez. Registry'de `delete_pending` durumuna alınır, `delete_after = now + cleanup.retentionMs` set edilir ve due cleanup aşamasında silinir. `cleanup_failed` kayıtları daha sonra yeniden denenebilir. Storage delete "not found" dönerse cleanup idempotent başarı kabul edilir ve kayıt `deleted` yapılır; build sırasında başarısız olan hedef fiziksel kayıt ise `failed_build` kalır ve retention cleanup'a girmez.
 7. `GET /ready` registry-aware'dir; ama collection-aware değildir. Registry, Chroma, Ollama, model availability ve indexing source erişimini kontrol eder. Default collection yok diye fail etmez.
 8. `GET /v1/rag/collections/:collectionId/ready` seçili logical collection'ın `activeJob`, `activeVersion`, `chromaReadable`, `chromaCount` ve capability alanlarını döndürür.
 9. Access kontrolünde `403/404` ayrımı vardır. Collection global olarak varsa ama request tenant'ı göremiyorsa `403 COLLECTION_FORBIDDEN`; hiç yoksa `404 COLLECTION_NOT_FOUND` döner.
@@ -538,7 +538,7 @@ Bu akışta backend'in görevi, retrieval ile LLM arasında bir bağlam kontrat�
 6. Yeni physical Chroma collection registry'deki configuration ile oluşturulur ve chunk'lar bu koleksiyona yazılır.
 7. Build başarılıysa registry transaction içinde aktif pointer swap yapılır.
 8. Önceki aktif fiziksel collection varsa `delete_pending` durumuna alınır ve `delete_after` atanır.
-9. Startup'ta ve due cleanup çağrılarında süresi dolmuş `delete_pending`/`cleanup_failed` kayıtları Chroma'dan silinip `deleted` durumuna alınır.
+9. Startup'ta ve due cleanup çağrılarında süresi dolmuş `delete_pending`/`cleanup_failed` kayıtları Chroma'dan silinip `deleted` durumuna alınır. Başarılı delete sonrası `deleted_at` yazılır ve `cleanup_error` temizlenir. Chroma tarafı "not found" dönerse bu idempotent başarı sayılır. `building`, `active`, `retired`, `deleted` ve `failed_build` kayıtları due cleanup listesine girmez.
 
 Bu akışın backend mimarisindeki anlamı şudur:
 
@@ -576,6 +576,7 @@ Mimari yorumu:
 
 - Bu dosya controller katmanı değildir; bootstrap katmanıdır.
 - Operasyonel startup davranışlarını (`failStaleJobs`, due cleanup, runner wiring) tek yerde toplaması doğru bir ayrımdır.
+- Startup maintenance `listen` sonrasında fire-and-forget başlatılır ve hata logları server start'ı durdurmaz. `startServer()` dönüşündeki `startupMaintenancePromise`, kontrollü shutdown veya testlerde registry kapatılmadan önce await edilerek drain edilebilir.
 
 ### [src/rag.ts](src/rag.ts)
 

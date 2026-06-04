@@ -279,3 +279,65 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
   - `git status --short`: final audit sonunda tekrar raporlandı
 - Kalan risk/not:
   - Done log artık tarihsel olarak daha doğru, ancak eski duplicate Prompt 15 kaydı korunmuştur; silinmedi çünkü coordination geçmişi değiştirilmeyip yeni audit notlarıyla düzeltilmesi tercih edildi.
+
+## Prompt 18: Registry Patch Fields and Job Lifecycle Invariants
+
+- SQLite registry katmanında collection PATCH alanları tamamlandı. `updateCollection` artık `displayName`, nullable `description`, `status`, `sourcePath` ve `ozelgeDataPath` alanlarını da persist ediyor; daha önce çalışan model/config/chunk/retrieval alanları korunuyor. Boş patch gövdesi artık sadece `updated_at` yazan sahte update üretmiyor; bilinçli no-op olarak mevcut collection kaydını döndürüyor.
+- Registry lifecycle state machine sıkılaştırıldı:
+  - `completeIndexJob` sadece `running` job için çalışıyor.
+  - `failIndexJob` sadece `queued` veya `running` job için çalışıyor; terminal job üzerine tekrar status overwrite edilmiyor.
+  - `completeIndexJob` fallback olarak artık `existing.target_version` kullanıyor; `job.id` parsing ile version türetme kaldırıldı.
+  - `completeIndexJob` pointer swap öncesinde hedef physical record'u tenant + collection + targetVersion bazında doğruluyor; record yoksa, eşleşmiyorsa veya `building` değilse transaction fail ediyor ve collection active pointer'ı değişmiyor.
+- Physical collection lifecycle genişletildi: `failed_build` terminal physical status'u eklendi. `failIndexJob` ve `failStaleJobs`, hedef physical record hâlâ `building` durumundaysa onu `failed_build` yapıyor ve hata bilgisini record üzerinde saklıyor. Bu kayıtlar due cleanup listesine girmiyor.
+- Testlenebilir physical registry read helper'ı eklendi: `CollectionRegistry.getPhysicalCollection(name)`.
+- HTTP tarafı registry semantics ile hizalandı: admin PATCH schema'sı `description: null` temizliğini kabul ediyor ve acceptance testinde güncellenmiş collection payload'ı doğrulandı.
+- Güçlendirilen test yüzeyi:
+  - `test/collections.registry.test.ts`: tam PATCH persistency, empty-patch no-op, queued job complete rejection, terminal job complete/fail rejection, missing physical record completion rejection, exact `targetVersion -> activeVersion` eşleştirmesi, `failed_build` transitions.
+  - `test/indexing.jobs.test.ts`: `runIndexJob` success path'te physical record `building -> active`, build failure path'te pointer korunması ve target physical record'un `failed_build` olması.
+  - `test/acceptance/api.endpoints.test.ts`: admin PATCH'in güncel collection payload'ını döndürmesi ve `description: null` temizliği.
+  - `test/app.foundation.test.ts`: registry stub yeni `getPhysicalCollection` contract'ına hizalandı.
+- Değiştirilen ana dosyalar: `src/collections/sqliteRegistry.ts`, `src/collections/types.ts`, `src/http/adminRouter.ts`, `src/indexing/jobs.ts`, `test/collections.registry.test.ts`, `test/indexing.jobs.test.ts`, `test/acceptance/api.endpoints.test.ts`, `test/app.foundation.test.ts`, `notes/done.md`.
+- Çalıştırılan doğrulama komutları ve sonuçları:
+  - `node --import tsx --test test/collections.registry.test.ts test/indexing.jobs.test.ts`: PASS
+  - `node --import tsx --test test/collections.registry.test.ts test/indexing.jobs.test.ts test/acceptance/api.endpoints.test.ts`: PASS
+  - `npm.cmd run typecheck`: PASS
+  - `npm.cmd run typecheck:test`: PASS
+  - `npm.cmd run build`: PASS
+  - `npm.cmd test`: PASS (58 test)
+  - `npm.cmd run test:integration`: PASS (1 test)
+- Kalan risk/not:
+  - `physical_collections.cleanup_error` alanı şu anda hem cleanup hem de `failed_build` hata bilgisini taşımak için yeniden kullanılıyor. Davranış doğru, ancak ileride cleanup ve build failure nedenleri ayrı raporlanacaksa ayrı kolona ayrıştırmak daha temiz olabilir.
+
+## Prompt 19: Retention Cleanup Testability and Physical Collection Cleanup Semantics
+
+- `cleanupRetiredPhysicalCollections` test edilebilir dependency injection sözleşmesiyle netleştirildi. `deletePhysicalCollection?: DeletePhysicalCollectionFn` callback'i fake olarak verilebiliyor; production default hâlâ `deletePhysicalChromaCollection`.
+- Retention cleanup state davranışı doğrulandı ve sabitlendi:
+  - Sadece due `delete_pending` ve `cleanup_failed` kayıtları cleanup listesine giriyor.
+  - `cleanup_failed` kayıtları due kaldıkça tekrar deneniyor.
+  - Başarılı delete sonrası status `deleted`, `deleted_at` set ve `cleanup_error` temiz.
+  - Storage delete "not found" dönerse idempotent başarı kabul ediliyor.
+  - `failed_build`, `building`, `active`, `retired` ve `deleted` cleanup tarafından silinmeye çalışılmıyor.
+- SQLite cleanup index'i `cleanup_failed` retry kayıtlarıyla hizalandı: `idx_physical_collections_cleanup` artık `delete_pending` ve `cleanup_failed` için kuruluyor.
+- Registry helper invariant testleri güçlendirildi: `markPhysicalCollectionDeleted` ve `markPhysicalCollectionCleanupFailed` yanlış status'teki kayıtları sessizce değiştirmiyor, hata veriyor ve mevcut state'i koruyor.
+- Startup cleanup davranışı doğrulandı: maintenance `listen` sonrası fire-and-forget schedule ediliyor; cleanup/startup maintenance hataları loglanıyor ve server startup'ı durdurmuyor. Dokümana kontrollü shutdown sırasında registry'nin maintenance bitmeden kapatılmaması gerektiği notu eklendi.
+- Follow-up audit sırasında iki ek lifecycle açığı kapatıldı:
+  - Pointer swap sırasında önceki aktif physical record `delete_pending` durumuna alınamazsa transaction artık fail ediyor; böylece eski active collection cleanup dışı kalacak şekilde sessiz pointer swap yapılmıyor.
+  - `buildPhysicalCollection` hata yolunda target physical collection delete işlemi gerçek best-effort hale getirildi; delete cleanup da hata verse özgün build hatası maskelenmiyor.
+- `startServer()` artık `startupMaintenancePromise` döndürüyor. Startup maintenance hâlâ server start'ı bloklamıyor, ancak testler/embedded caller kontrollü shutdown öncesi bu promise'i await ederek drain edebiliyor.
+- README ve `vanilla_rag_backend_mimarisi.md` retention cleanup state sözleşmesiyle hizalandı; genel "garbage collection" anlatımı yerine `delete_pending`, `cleanup_failed`, `deleted` ve `failed_build` semantiği yazıldı.
+- Güçlendirilen test yüzeyi:
+  - `test/indexing.cleanup.test.ts`: due yoksa callback çağrılmaması, future `delete_after`, due delete success, cleanup failure, `cleanup_failed` retry, idempotent not-found, `failed_build` skip, active physical skip ve startup logging/nonblocking/drain davranışları.
+  - `test/collections.registry.test.ts`: due cleanup status/time filtresi, yanlış status'teki physical record helper rejection davranışı ve eski active physical `delete_pending` yapılamazsa pointer swap rejection.
+  - `test/buildPhysicalCollection.test.ts`: best-effort target cleanup hatasının özgün build hatasını maskelememesi.
+  - `test/docs.contract.test.ts`: cleanup state dokümantasyon sözleşmesi.
+- Değiştirilen ana dosyalar: `src/indexing/cleanup.ts`, `src/indexing/buildPhysicalCollection.ts`, `src/collections/sqliteRegistry.ts`, `src/server.ts`, `test/indexing.cleanup.test.ts`, `test/collections.registry.test.ts`, `test/buildPhysicalCollection.test.ts`, `test/docs.contract.test.ts`, `README.md`, `vanilla_rag_backend_mimarisi.md`, `notes/done.md`.
+- Çalıştırılan doğrulama komutları ve sonuçları:
+  - `npm.cmd run typecheck`: PASS
+  - `npm.cmd run typecheck:test`: PASS
+  - `node --import tsx --test test/buildPhysicalCollection.test.ts test/indexing.cleanup.test.ts test/collections.registry.test.ts test/docs.contract.test.ts`: PASS (28 test)
+  - `npm.cmd run build`: PASS
+  - `npm.cmd test`: PASS (72 test)
+  - `npm.cmd run test:integration`: PASS (1 test)
+- Kalan risk/not:
+  - Startup maintenance fire-and-forget çalışmaya devam ediyor; `startupMaintenancePromise` drain handle'ı var, ancak production shutdown orchestration bu handle'ı çağıran üst katmanın sorumluluğunda.
+  - `cleanup_error` alanı Prompt 18'deki gibi hem cleanup failure hem `failed_build` hata metnini taşıyor; ayrı raporlama ihtiyacı doğarsa ayrı kolonla ayrıştırılabilir.

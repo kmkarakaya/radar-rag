@@ -10,19 +10,9 @@ import { Document } from "@langchain/core/documents";
 describe("indexing jobs", () => {
   let registry: CollectionRegistry;
 
-  before(() => {
-    registry = createSqliteCollectionRegistry({ dbPath: ":memory:" });
-  });
-
-  after(() => {
-    registry.close?.();
-  });
-
-  it("prevents a second queued or running job for the same collection", async () => {
-    const context = { tenantId: "test-tenant", userId: "test-user", requestId: "req-1" };
-    
-    const collection = await registry.createCollection(context, {
-      displayName: "Test Collection",
+  async function createCollection(context: { tenantId: string; userId: string; requestId: string }, displayName: string) {
+    return registry.createCollection(context, {
+      displayName,
       sourcePath: "data",
       ozelgeDataPath: "data/ozelge",
       embeddingModel: "test-model",
@@ -33,6 +23,20 @@ describe("indexing jobs", () => {
       retrievalK: 5,
       retrievalDistanceThreshold: 1,
     });
+  }
+
+  before(() => {
+    registry = createSqliteCollectionRegistry({ dbPath: ":memory:" });
+  });
+
+  after(() => {
+    registry.close?.();
+  });
+
+  it("prevents a second queued or running job for the same collection", async () => {
+    const context = { tenantId: "test-tenant", userId: "test-user", requestId: "req-1" };
+
+    const collection = await createCollection(context, "Test Collection");
 
     const job1 = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
     assert.equal(job1.status, "queued");
@@ -48,13 +52,8 @@ describe("indexing jobs", () => {
   });
 
   it("target physical name should be Chroma-safe and metadata contains version", async () => {
-    // Tests for target physical collection name generation inside startReindexJob
     const context = { tenantId: "tenant", userId: "u", requestId: "r" };
-    const collection = await registry.createCollection(context, {
-      displayName: "Valid Name",
-      sourcePath: "d", ozelgeDataPath: "d", embeddingModel: "m", chatModel: "m",
-      distanceMetric: "l2", chunkSize: 1, chunkOverlap: 0, retrievalK: 1, retrievalDistanceThreshold: 1
-    });
+    const collection = await createCollection(context, "Valid Name");
 
     const job = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
     assert.match(job.targetPhysicalCollection, /^rag_tenant_valid-name-[a-z0-9]+_[0-9]{8}t[0-9]{6}_[0-9]{3}z$/);
@@ -62,16 +61,8 @@ describe("indexing jobs", () => {
 
   it("allows queued jobs for different collections at the same time", async () => {
     const context = { tenantId: "tenant-parallel", userId: "u", requestId: "r" };
-    const collectionA = await registry.createCollection(context, {
-      displayName: "Parallel A",
-      sourcePath: "d", ozelgeDataPath: "d", embeddingModel: "m", chatModel: "m",
-      distanceMetric: "l2", chunkSize: 1, chunkOverlap: 0, retrievalK: 1, retrievalDistanceThreshold: 1,
-    });
-    const collectionB = await registry.createCollection(context, {
-      displayName: "Parallel B",
-      sourcePath: "d", ozelgeDataPath: "d", embeddingModel: "m", chatModel: "m",
-      distanceMetric: "l2", chunkSize: 1, chunkOverlap: 0, retrievalK: 1, retrievalDistanceThreshold: 1,
-    });
+    const collectionA = await createCollection(context, "Parallel A");
+    const collectionB = await createCollection(context, "Parallel B");
 
     const jobA = await startReindexJob({ registry, collectionId: collectionA.id, context, runtimeConfig: config });
     const jobB = await startReindexJob({ registry, collectionId: collectionB.id, context, runtimeConfig: config });
@@ -83,13 +74,8 @@ describe("indexing jobs", () => {
 
   it("failed build does not change active pointer", async () => {
     const context = { tenantId: "tenant-2", userId: "u", requestId: "r" };
-    const collection = await registry.createCollection(context, {
-      displayName: "Failure Test",
-      sourcePath: "d", ozelgeDataPath: "d", embeddingModel: "m", chatModel: "m",
-      distanceMetric: "l2", chunkSize: 1, chunkOverlap: 0, retrievalK: 1, retrievalDistanceThreshold: 1
-    });
+    const collection = await createCollection(context, "Failure Test");
 
-    // Assume collection has an active pointer
     await registry.updateCollection(context, collection.id, {
       activePhysicalCollection: "rag_tenant-2_failure-test_oldversion",
       activeVersion: "oldversion",
@@ -98,7 +84,6 @@ describe("indexing jobs", () => {
 
     const job = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
     
-    // Simulate job failure
     await registry.failIndexJob(job.id, "Simulated failure");
 
     const updated = await registry.getVisibleCollection(context, collection.id);
@@ -123,10 +108,10 @@ describe("indexing jobs", () => {
 
   it("immutable HNSW/distanceMetric veya embedding model değişince yeni physical collection hedeflenir", async () => {
     const context = { tenantId: "tenant-3", userId: "u", requestId: "r" };
-    const collection = await registry.createCollection(context, {
-      displayName: "Immutable Test",
-      sourcePath: "d", ozelgeDataPath: "d", embeddingModel: "m1", chatModel: "m",
-      distanceMetric: "l2", chunkSize: 1, chunkOverlap: 0, retrievalK: 1, retrievalDistanceThreshold: 1
+    const collection = await createCollection(context, "Immutable Test");
+    await registry.updateCollection(context, collection.id, {
+      embeddingModel: "m1",
+      chatModel: "m",
     });
 
     const realDate = Date;
@@ -145,19 +130,26 @@ describe("indexing jobs", () => {
     globalThis.Date = FixedDate as unknown as DateConstructor;
 
     try {
-      const job1 = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
-      const target1 = job1.targetPhysicalCollection;
-      
-      // complete job 1 so we can start another
-      await registry.completeIndexJob(job1.id, {
+      const queuedJob1 = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
+      const runningJob1 = await registry.markIndexJobRunning(queuedJob1.id);
+      await registry.createPhysicalCollectionRecord({
+        name: runningJob1.targetPhysicalCollection,
+        tenantId: context.tenantId,
+        collectionId: collection.id,
+        version: runningJob1.targetVersion,
+        chromaConfiguration: runningJob1.targetChromaConfiguration,
+      });
+
+      const target1 = runningJob1.targetPhysicalCollection;
+
+      await registry.completeIndexJob(runningJob1.id, {
         activePhysicalCollection: target1,
-        activeVersion: "v1",
+        activeVersion: runningJob1.targetVersion,
         documentCount: 1,
         chunkCount: 1,
         retentionMs: 0,
       });
 
-      // change immutable config
       await registry.updateCollection(context, collection.id, {
         embeddingModel: "m2",
         distanceMetric: "cosine"
@@ -235,6 +227,7 @@ describe("indexing jobs", () => {
         return { ...job, status: "failed", error };
       },
       failStaleJobs: async () => 0,
+      getPhysicalCollection: async () => null,
       createPhysicalCollectionRecord: async (input) => {
         createdRecordVersions.push(input.version);
         return {
@@ -253,9 +246,88 @@ describe("indexing jobs", () => {
       collectionExists: async () => true,
     };
 
-    await runIndexJob({ registry: fakeRegistry, jobId: job.id, runtimeConfig: config, log: () => {} });
+    await runIndexJob({
+      registry: fakeRegistry,
+      jobId: job.id,
+      runtimeConfig: config,
+      log: () => {},
+      deps: {
+        buildPhysicalCollection: async () => {
+          throw new Error("Simulated build failure");
+        },
+      },
+    });
 
     assert.deepEqual(createdRecordVersions, ["explicit-version"]);
     assert.equal(failedMessages.length, 1);
+  });
+
+  it("runIndexJob marks the created physical record active on success", async () => {
+    const context = { tenantId: "tenant-success", userId: "u", requestId: "r" };
+    const collection = await createCollection(context, "Successful Build");
+    const job = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
+
+    await runIndexJob({
+      registry,
+      jobId: job.id,
+      runtimeConfig: config,
+      log: () => {},
+      deps: {
+        buildPhysicalCollection: async () => ({
+          sourceDocumentCount: 2,
+          parsedSourceDocumentCount: 2,
+          chunkCount: 5,
+        }),
+      },
+    });
+
+    const finishedJob = await registry.getJob(job.id);
+    const updatedCollection = await registry.getVisibleCollection(context, collection.id);
+    const physical = await registry.getPhysicalCollection(job.targetPhysicalCollection);
+
+    assert.equal(finishedJob?.status, "succeeded");
+    assert.equal(updatedCollection?.status, "ready");
+    assert.equal(updatedCollection?.activePhysicalCollection, job.targetPhysicalCollection);
+    assert.equal(updatedCollection?.activeVersion, job.targetVersion);
+    assert.equal(updatedCollection?.documentCount, 2);
+    assert.equal(updatedCollection?.chunkCount, 5);
+    assert.equal(physical?.status, "active");
+    assert.equal(physical?.version, job.targetVersion);
+  });
+
+  it("runIndexJob keeps the previous active pointer and marks the target record failed_build on build failure", async () => {
+    const context = { tenantId: "tenant-build-fail", userId: "u", requestId: "r" };
+    const collection = await createCollection(context, "Build Fail");
+    await registry.updateCollection(context, collection.id, {
+      status: "ready",
+      activePhysicalCollection: "rag_tenant-build-fail_build-fail-old_v1",
+      activeVersion: "v1",
+    });
+
+    const job = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
+
+    await runIndexJob({
+      registry,
+      jobId: job.id,
+      runtimeConfig: config,
+      log: () => {},
+      deps: {
+        buildPhysicalCollection: async () => {
+          throw new Error("Injected build failure");
+        },
+      },
+    });
+
+    const failedJob = await registry.getJob(job.id);
+    const updatedCollection = await registry.getVisibleCollection(context, collection.id);
+    const physical = await registry.getPhysicalCollection(job.targetPhysicalCollection);
+
+    assert.equal(failedJob?.status, "failed");
+    assert.equal(failedJob?.error, "Injected build failure");
+    assert.equal(updatedCollection?.status, "ready");
+    assert.equal(updatedCollection?.activePhysicalCollection, "rag_tenant-build-fail_build-fail-old_v1");
+    assert.equal(updatedCollection?.activeVersion, "v1");
+    assert.equal(physical?.status, "failed_build");
+    assert.equal(physical?.cleanupError, "Injected build failure");
   });
 });

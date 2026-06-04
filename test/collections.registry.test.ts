@@ -3,15 +3,21 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import Database from "better-sqlite3";
 import { createSqliteCollectionRegistry } from "../src/collections/sqliteRegistry.js";
+import { createPhysicalCollectionName } from "../src/collections/ids.js";
 import type {
   CollectionRegistry,
   CreateCollectionInput,
+  IndexJob,
+  PhysicalCollectionStatus,
   RequestContext,
 } from "../src/collections/types.js";
 
 let tempDir: string;
+let dbPath: string;
 let registry: CollectionRegistry;
+let rawDb: Database.Database;
 
 const context: RequestContext = {
   requestId: "registry-test",
@@ -35,17 +41,50 @@ const collectionInput: CreateCollectionInput = {
 
 beforeEach(async () => {
   tempDir = await mkdtemp(path.join(os.tmpdir(), "vanilla-rag-registry-"));
+  dbPath = path.join(tempDir, "registry.sqlite");
   registry = createSqliteCollectionRegistry({
-    dbPath: path.join(tempDir, "registry.sqlite"),
+    dbPath,
   });
+  rawDb = new Database(dbPath);
+  rawDb.pragma("foreign_keys = ON");
 });
 
 afterEach(async () => {
+  rawDb.close();
   registry.close?.();
   await rm(tempDir, { recursive: true, force: true });
 });
 
 describe("sqlite collection registry", () => {
+  async function createRunningJob(options?: {
+    targetVersion?: string;
+    createPhysicalRecord?: boolean;
+  }): Promise<{
+    collectionId: string;
+    job: IndexJob;
+  }> {
+    const collection = await registry.createCollection(context, collectionInput);
+    const queuedJob = await registry.beginIndexJob(context, collection.id, {
+      targetVersion: options?.targetVersion,
+    });
+    const runningJob = await registry.markIndexJobRunning(queuedJob.id);
+
+    if (options?.createPhysicalRecord !== false) {
+      await registry.createPhysicalCollectionRecord({
+        name: runningJob.targetPhysicalCollection,
+        tenantId: context.tenantId,
+        collectionId: collection.id,
+        version: runningJob.targetVersion,
+        chromaConfiguration: runningJob.targetChromaConfiguration,
+      });
+    }
+
+    return {
+      collectionId: collection.id,
+      job: runningJob,
+    };
+  }
+
   it("creates, lists, and gets tenant-visible collections", async () => {
     const collection = await registry.createCollection(context, collectionInput);
 
@@ -74,6 +113,71 @@ describe("sqlite collection registry", () => {
     assert.equal(otherTenant, null);
   });
 
+  it("persists accepted patch fields and treats an empty patch as a no-op", async () => {
+    const collection = await registry.createCollection(context, collectionInput);
+    const lastIndexedAt = "2026-06-04T10:00:00.000Z";
+
+    const updated = await registry.updateCollection(context, collection.id, {
+      displayName: "Patched Belgeler",
+      description: null,
+      status: "ready",
+      sourcePath: "data/patched-source",
+      ozelgeDataPath: "data/patched-ozelge.json",
+      embeddingModel: "embed-v2",
+      chatModel: "chat-v2",
+      distanceMetric: "cosine",
+      chromaCollectionConfiguration: {
+        hnsw: {
+          space: "l2",
+          ef_construction: 256,
+        },
+        custom: {
+          label: "patched",
+        },
+      },
+      chunkSize: 256,
+      chunkOverlap: 32,
+      retrievalK: 9,
+      retrievalDistanceThreshold: 0.25,
+      activePhysicalCollection: "rag_default_patched-belgeler-123_v_custom",
+      activeVersion: "v_custom_with_underscores",
+      documentCount: 12,
+      chunkCount: 34,
+      lastIndexedAt,
+    });
+
+    assert.equal(updated.displayName, "Patched Belgeler");
+    assert.equal(updated.description, undefined);
+    assert.equal(updated.status, "ready");
+    assert.equal(updated.sourcePath, "data/patched-source");
+    assert.equal(updated.ozelgeDataPath, "data/patched-ozelge.json");
+    assert.equal(updated.embeddingModel, "embed-v2");
+    assert.equal(updated.chatModel, "chat-v2");
+    assert.equal(updated.distanceMetric, "cosine");
+    assert.deepEqual(updated.chromaCollectionConfiguration, {
+      hnsw: {
+        space: "cosine",
+        ef_construction: 256,
+      },
+      custom: {
+        label: "patched",
+      },
+    });
+    assert.equal(updated.chunkSize, 256);
+    assert.equal(updated.chunkOverlap, 32);
+    assert.equal(updated.retrievalK, 9);
+    assert.equal(updated.retrievalDistanceThreshold, 0.25);
+    assert.equal(updated.activePhysicalCollection, "rag_default_patched-belgeler-123_v_custom");
+    assert.equal(updated.activeVersion, "v_custom_with_underscores");
+    assert.equal(updated.documentCount, 12);
+    assert.equal(updated.chunkCount, 34);
+    assert.equal(updated.lastIndexedAt, lastIndexedAt);
+
+    const noOp = await registry.updateCollection(context, collection.id, {});
+    assert.equal(noOp.updatedAt, updated.updatedAt);
+    assert.deepEqual(noOp, updated);
+  });
+
   it("prevents a second queued or running job for the same collection", async () => {
     const collection = await registry.createCollection(context, collectionInput);
     const firstJob = await registry.beginIndexJob(context, collection.id);
@@ -86,7 +190,18 @@ describe("sqlite collection registry", () => {
       /queued or running index job/,
     );
 
+    const runningJob = await registry.markIndexJobRunning(firstJob.id);
+    await registry.createPhysicalCollectionRecord({
+      name: runningJob.targetPhysicalCollection,
+      tenantId: context.tenantId,
+      collectionId: collection.id,
+      version: runningJob.targetVersion,
+      chromaConfiguration: runningJob.targetChromaConfiguration,
+    });
+
     await registry.completeIndexJob(firstJob.id, {
+      activePhysicalCollection: runningJob.targetPhysicalCollection,
+      activeVersion: runningJob.targetVersion,
       documentCount: 2,
       chunkCount: 10,
       retentionMs: 0,
@@ -145,5 +260,356 @@ describe("sqlite collection registry", () => {
         label: "kept",
       },
     });
+  });
+
+  it("rejects completing a queued job", async () => {
+    const collection = await registry.createCollection(context, collectionInput);
+    const job = await registry.beginIndexJob(context, collection.id);
+
+    await assert.rejects(
+      () => registry.completeIndexJob(job.id, {
+        documentCount: 1,
+        chunkCount: 1,
+        retentionMs: 0,
+      }),
+      /status 'queued'.*cannot be completed/i,
+    );
+
+    const unchangedJob = await registry.getJob(job.id);
+    const unchangedCollection = await registry.getVisibleCollection(context, collection.id);
+    assert.equal(unchangedJob?.status, "queued");
+    assert.equal(unchangedCollection?.status, "indexing");
+  });
+
+  it("rejects re-completing or failing a succeeded job", async () => {
+    const { collectionId, job } = await createRunningJob();
+
+    await registry.completeIndexJob(job.id, {
+      activePhysicalCollection: job.targetPhysicalCollection,
+      documentCount: 3,
+      chunkCount: 4,
+      retentionMs: 0,
+    });
+
+    await assert.rejects(
+      () => registry.completeIndexJob(job.id, {
+        activePhysicalCollection: job.targetPhysicalCollection,
+        documentCount: 5,
+        chunkCount: 6,
+        retentionMs: 0,
+      }),
+      /status 'succeeded'.*cannot be completed/i,
+    );
+
+    await assert.rejects(
+      () => registry.failIndexJob(job.id, "should not overwrite success"),
+      /status 'succeeded'.*cannot be failed/i,
+    );
+
+    const unchangedJob = await registry.getJob(job.id);
+    const collection = await registry.getVisibleCollection(context, collectionId);
+    assert.equal(unchangedJob?.status, "succeeded");
+    assert.equal(collection?.status, "ready");
+    assert.equal(collection?.activeVersion, job.targetVersion);
+  });
+
+  it("rejects re-completing or re-failing a failed job", async () => {
+    const { collectionId, job } = await createRunningJob();
+
+    await registry.failIndexJob(job.id, "build failed");
+
+    await assert.rejects(
+      () => registry.completeIndexJob(job.id, {
+        activePhysicalCollection: job.targetPhysicalCollection,
+        documentCount: 1,
+        chunkCount: 1,
+        retentionMs: 0,
+      }),
+      /status 'failed'.*cannot be completed/i,
+    );
+
+    await assert.rejects(
+      () => registry.failIndexJob(job.id, "build failed twice"),
+      /status 'failed'.*cannot be failed/i,
+    );
+
+    const unchangedJob = await registry.getJob(job.id);
+    const collection = await registry.getVisibleCollection(context, collectionId);
+    assert.equal(unchangedJob?.status, "failed");
+    assert.equal(collection?.status, "failed");
+  });
+
+  it("does not make a collection ready when the target physical record is missing", async () => {
+    const { collectionId, job } = await createRunningJob({ createPhysicalRecord: false });
+
+    await assert.rejects(
+      () => registry.completeIndexJob(job.id, {
+        activePhysicalCollection: job.targetPhysicalCollection,
+        documentCount: 1,
+        chunkCount: 1,
+        retentionMs: 0,
+      }),
+      /Physical collection record not found/i,
+    );
+
+    const unchangedJob = await registry.getJob(job.id);
+    const collection = await registry.getVisibleCollection(context, collectionId);
+    assert.equal(unchangedJob?.status, "running");
+    assert.equal(collection?.status, "indexing");
+    assert.equal(collection?.activePhysicalCollection, undefined);
+    assert.equal(collection?.activeVersion, undefined);
+  });
+
+  it("uses the exact targetVersion as activeVersion on completion", async () => {
+    const targetVersion = "custom_version_with_underscores";
+    const { collectionId, job } = await createRunningJob({ targetVersion });
+
+    await registry.completeIndexJob(job.id, {
+      activePhysicalCollection: job.targetPhysicalCollection,
+      documentCount: 2,
+      chunkCount: 3,
+      retentionMs: 0,
+    });
+
+    const collection = await registry.getVisibleCollection(context, collectionId);
+    assert.equal(collection?.activeVersion, targetVersion);
+    assert.equal(collection?.activePhysicalCollection, job.targetPhysicalCollection);
+  });
+
+  it("rejects pointer swap when the previous active physical record cannot be moved to delete_pending", async () => {
+    const first = await createRunningJob({ targetVersion: "first_version_with_underscores" });
+
+    await registry.completeIndexJob(first.job.id, {
+      activePhysicalCollection: first.job.targetPhysicalCollection,
+      documentCount: 2,
+      chunkCount: 3,
+      retentionMs: 0,
+    });
+
+    rawDb.prepare(`
+      UPDATE physical_collections
+      SET status = 'deleted'
+      WHERE name = ?
+    `).run(first.job.targetPhysicalCollection);
+
+    const secondQueued = await registry.beginIndexJob(context, first.collectionId, {
+      targetVersion: "second_version_with_underscores",
+    });
+    const second = await registry.markIndexJobRunning(secondQueued.id);
+    await registry.createPhysicalCollectionRecord({
+      name: second.targetPhysicalCollection,
+      tenantId: context.tenantId,
+      collectionId: first.collectionId,
+      version: second.targetVersion,
+      chromaConfiguration: second.targetChromaConfiguration,
+    });
+
+    await assert.rejects(
+      () => registry.completeIndexJob(second.id, {
+        activePhysicalCollection: second.targetPhysicalCollection,
+        documentCount: 4,
+        chunkCount: 5,
+        retentionMs: 0,
+      }),
+      /previous active physical collection .* could not be retired for cleanup/i,
+    );
+
+    const collection = await registry.getVisibleCollection(context, first.collectionId);
+    const secondPhysical = await registry.getPhysicalCollection(second.targetPhysicalCollection);
+
+    assert.equal(collection?.activePhysicalCollection, first.job.targetPhysicalCollection);
+    assert.equal(collection?.activeVersion, first.job.targetVersion);
+    assert.equal(secondPhysical?.status, "building");
+  });
+
+  it("marks a building physical record as failed_build when a job fails", async () => {
+    const { job } = await createRunningJob();
+
+    await registry.failIndexJob(job.id, "simulated build failure");
+
+    const failedJob = await registry.getJob(job.id);
+    const physical = await registry.getPhysicalCollection(job.targetPhysicalCollection);
+    const due = await registry.listDuePhysicalCollectionsForCleanup(new Date().toISOString(), 10);
+
+    assert.equal(failedJob?.status, "failed");
+    assert.equal(physical?.status, "failed_build");
+    assert.equal(physical?.cleanupError, "simulated build failure");
+    assert.equal(due.length, 0);
+  });
+
+  it("marks stale building records as failed_build", async () => {
+    const { collectionId, job } = await createRunningJob();
+
+    const failedCount = await registry.failStaleJobs(-1);
+
+    const staleJob = await registry.getJob(job.id);
+    const collection = await registry.getVisibleCollection(context, collectionId);
+    const physical = await registry.getPhysicalCollection(job.targetPhysicalCollection);
+    const due = await registry.listDuePhysicalCollectionsForCleanup(new Date().toISOString(), 10);
+
+    assert.equal(failedCount, 1);
+    assert.equal(staleJob?.status, "failed");
+    assert.equal(staleJob?.error, "Job timed out (stale lock)");
+    assert.equal(collection?.status, "failed");
+    assert.equal(physical?.status, "failed_build");
+    assert.equal(physical?.cleanupError, "Job timed out (stale lock)");
+    assert.equal(due.length, 0);
+  });
+
+  it("lists only due delete_pending and cleanup_failed physical collections", async () => {
+    const collection = await registry.createCollection(context, collectionInput);
+    const dueNow = "2026-06-04T12:00:00.000Z";
+
+    async function seedPhysical(options: {
+      version: string;
+      status: PhysicalCollectionStatus;
+      deleteAfter?: string | null;
+      cleanupError?: string | null;
+    }) {
+      const name = createPhysicalCollectionName({
+        tenantId: context.tenantId,
+        collectionId: collection.id,
+        version: options.version,
+      });
+
+      await registry.createPhysicalCollectionRecord({
+        name,
+        tenantId: context.tenantId,
+        collectionId: collection.id,
+        version: options.version,
+        chromaConfiguration: { hnsw: { space: "l2" } },
+      });
+
+      rawDb.prepare(`
+        UPDATE physical_collections
+        SET status = @status, delete_after = @deleteAfter, cleanup_error = @cleanupError
+        WHERE name = @name
+      `).run({
+        name,
+        status: options.status,
+        deleteAfter: options.deleteAfter ?? null,
+        cleanupError: options.cleanupError ?? null,
+      });
+
+      return name;
+    }
+
+    const dueDeletePending = await seedPhysical({
+      version: "20260604t110000_000z",
+      status: "delete_pending",
+      deleteAfter: "2026-06-04T11:30:00.000Z",
+    });
+    const dueCleanupFailed = await seedPhysical({
+      version: "20260604t110500_000z",
+      status: "cleanup_failed",
+      deleteAfter: "2026-06-04T11:45:00.000Z",
+      cleanupError: "first delete failed",
+    });
+
+    await seedPhysical({
+      version: "20260604t120100_000z",
+      status: "delete_pending",
+      deleteAfter: "2026-06-04T12:30:00.000Z",
+    });
+    await seedPhysical({
+      version: "20260604t120200_000z",
+      status: "failed_build",
+      deleteAfter: "2026-06-04T11:00:00.000Z",
+      cleanupError: "build failed",
+    });
+    await seedPhysical({
+      version: "20260604t120300_000z",
+      status: "building",
+      deleteAfter: "2026-06-04T11:00:00.000Z",
+    });
+    await seedPhysical({
+      version: "20260604t120400_000z",
+      status: "active",
+      deleteAfter: "2026-06-04T11:00:00.000Z",
+    });
+    await seedPhysical({
+      version: "20260604t120500_000z",
+      status: "retired",
+      deleteAfter: "2026-06-04T11:00:00.000Z",
+    });
+    await seedPhysical({
+      version: "20260604t120600_000z",
+      status: "deleted",
+      deleteAfter: "2026-06-04T11:00:00.000Z",
+    });
+
+    const due = await registry.listDuePhysicalCollectionsForCleanup(dueNow, 20);
+
+    assert.deepEqual(
+      due.map((record) => ({ name: record.name, status: record.status })),
+      [
+        { name: dueDeletePending, status: "delete_pending" },
+        { name: dueCleanupFailed, status: "cleanup_failed" },
+      ],
+    );
+  });
+
+  it("does not silently mark non-cleanup physical records as deleted or cleanup_failed", async () => {
+    const collection = await registry.createCollection(context, collectionInput);
+
+    async function seedPhysical(options: {
+      version: string;
+      status: PhysicalCollectionStatus;
+      cleanupError?: string | null;
+    }) {
+      const name = createPhysicalCollectionName({
+        tenantId: context.tenantId,
+        collectionId: collection.id,
+        version: options.version,
+      });
+
+      await registry.createPhysicalCollectionRecord({
+        name,
+        tenantId: context.tenantId,
+        collectionId: collection.id,
+        version: options.version,
+        chromaConfiguration: { hnsw: { space: "l2" } },
+      });
+
+      rawDb.prepare(`
+        UPDATE physical_collections
+        SET status = @status, cleanup_error = @cleanupError
+        WHERE name = @name
+      `).run({
+        name,
+        status: options.status,
+        cleanupError: options.cleanupError ?? null,
+      });
+
+      return name;
+    }
+
+    const activeName = await seedPhysical({
+      version: "20260604t121000_000z",
+      status: "active",
+    });
+    const failedBuildName = await seedPhysical({
+      version: "20260604t121500_000z",
+      status: "failed_build",
+      cleanupError: "build failed",
+    });
+
+    await assert.rejects(
+      () => registry.markPhysicalCollectionDeleted(activeName),
+      /not pending cleanup/i,
+    );
+    await assert.rejects(
+      () => registry.markPhysicalCollectionCleanupFailed(failedBuildName, "delete failed"),
+      /not pending cleanup retry/i,
+    );
+
+    const active = await registry.getPhysicalCollection(activeName);
+    const failedBuild = await registry.getPhysicalCollection(failedBuildName);
+
+    assert.equal(active?.status, "active");
+    assert.equal(active?.deletedAt, undefined);
+    assert.equal(active?.cleanupError, undefined);
+    assert.equal(failedBuild?.status, "failed_build");
+    assert.equal(failedBuild?.cleanupError, "build failed");
   });
 });

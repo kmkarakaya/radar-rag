@@ -15,6 +15,10 @@ describe('docs static contract', () => {
     assert.ok(content.includes('/v1/admin/collections'), 'Should mention admin collection endpoint');
     assert.ok(content.includes('/v1/admin/jobs/'), 'Should mention admin job endpoint');
     assert.ok(content.includes('cleanup.retentionMs'), 'Should document retention cleanup config');
+    assert.ok(content.includes('delete_pending'), 'Should document pending physical cleanup state');
+    assert.ok(content.includes('cleanup_failed'), 'Should document retryable cleanup failure state');
+    assert.ok(content.includes('failed_build'), 'Should document failed build physical state');
+    assert.ok(content.includes('idempotent not-found'), 'Should document idempotent not-found cleanup behavior');
     assert.ok(content.includes('COLLECTION_FORBIDDEN'), 'Should document 403 forbidden collection behavior');
     assert.ok(content.includes('[src/app.ts](src/app.ts)'), 'Should describe the app composition layer explicitly');
     assert.ok(!content.includes('[src/server.ts](src/server.ts): HTTP API katmanı'), 'Should not misdescribe server.ts as the HTTP API layer');
@@ -33,6 +37,9 @@ describe('docs static contract', () => {
     assert.ok(content.includes('/v1/admin/collections'), 'Should describe the admin collection API');
     assert.ok(content.includes('delete_pending'), 'Should describe retention cleanup state');
     assert.ok(content.includes('cleanup_failed'), 'Should describe retryable cleanup failure state');
+    assert.ok(content.includes('deleted_at'), 'Should describe successful cleanup timestamp semantics');
+    assert.ok(content.includes('failed_build'), 'Should describe failed build physical state');
+    assert.ok(content.includes('idempotent başarı'), 'Should describe idempotent storage missing delete behavior');
     assert.ok(content.includes('COLLECTION_FORBIDDEN'), 'Should describe 403 vs 404 access behavior');
     assert.ok(content.includes('modelAvailability'), 'Should describe collection-level model availability in readiness');
   });

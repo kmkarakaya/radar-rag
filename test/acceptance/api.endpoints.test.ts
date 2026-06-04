@@ -387,6 +387,35 @@ describe("v1 admin and rag api endpoints", () => {
     }
   });
 
+  it("admin collection update returns the updated collection payload", async () => {
+    const response = await request(`/v1/admin/collections/${createdCollection.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        displayName: "API Patched Collection",
+        description: null,
+        sourcePath: "data/api-test-updated",
+        ozelgeDataPath: "data/api-test-updated-ozelge.json",
+      }),
+    });
+
+    const body = await response.json() as any;
+    assert.equal(response.status, 200);
+    assert.equal(body.collection.displayName, "API Patched Collection");
+    assert.equal(body.collection.sourcePath, "data/api-test-updated");
+    assert.equal(body.collection.ozelgeDataPath, "data/api-test-updated-ozelge.json");
+    assert.equal("description" in body.collection, false);
+
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "patch-check" };
+    const saved = await registry.getVisibleCollection(ctx, createdCollection.id);
+    assert.equal(saved?.displayName, "API Patched Collection");
+    assert.equal(saved?.description, undefined);
+    assert.equal(saved?.sourcePath, "data/api-test-updated");
+    assert.equal(saved?.ozelgeDataPath, "data/api-test-updated-ozelge.json");
+  });
+
   it("admin collection update is tenant-scoped and returns 403 for another tenant", async () => {
     const response = await request(`/v1/admin/collections/${createdCollection.id}`, {
       method: "PATCH",

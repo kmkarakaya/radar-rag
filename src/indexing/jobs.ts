@@ -30,9 +30,13 @@ export async function runIndexJob(input: {
   jobId: string;
   runtimeConfig: ResolvedConfig;
   log?: (message: string) => void;
+  deps?: {
+    buildPhysicalCollection?: typeof buildPhysicalCollection;
+  };
 }): Promise<void> {
   const { registry, jobId, runtimeConfig } = input;
   const log = input.log ?? console.log;
+  const buildCollection = input.deps?.buildPhysicalCollection ?? buildPhysicalCollection;
 
   let job = await registry.getJob(jobId);
   if (!job) {
@@ -64,7 +68,7 @@ export async function runIndexJob(input: {
       chromaConfiguration: job.targetChromaConfiguration,
     });
 
-    const result = await buildPhysicalCollection({
+    const result = await buildCollection({
       collection,
       targetPhysicalCollection: job.targetPhysicalCollection,
       targetVersion,

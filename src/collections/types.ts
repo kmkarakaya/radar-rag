@@ -8,7 +8,7 @@ export type RequestContext = {
 
 export type CollectionStatus = "creating" | "indexing" | "ready" | "failed" | "archived";
 export type IndexJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
-export type PhysicalCollectionStatus = "building" | "active" | "retired" | "delete_pending" | "deleted" | "cleanup_failed";
+export type PhysicalCollectionStatus = "building" | "failed_build" | "active" | "retired" | "delete_pending" | "deleted" | "cleanup_failed";
 
 export type RagCollection = {
   id: string;
@@ -69,27 +69,26 @@ export type CreateCollectionInput = {
   retrievalDistanceThreshold: number;
 };
 
-export type UpdateCollectionPatch = Partial<Pick<
-  RagCollection,
-  | "displayName"
-  | "description"
-  | "status"
-  | "sourcePath"
-  | "ozelgeDataPath"
-  | "embeddingModel"
-  | "chatModel"
-  | "distanceMetric"
-  | "chromaCollectionConfiguration"
-  | "chunkSize"
-  | "chunkOverlap"
-  | "retrievalK"
-  | "retrievalDistanceThreshold"
-  | "activePhysicalCollection"
-  | "activeVersion"
-  | "documentCount"
-  | "chunkCount"
-  | "lastIndexedAt"
->>;
+export type UpdateCollectionPatch = {
+  displayName?: RagCollection["displayName"];
+  description?: RagCollection["description"] | null;
+  status?: RagCollection["status"];
+  sourcePath?: RagCollection["sourcePath"];
+  ozelgeDataPath?: RagCollection["ozelgeDataPath"];
+  embeddingModel?: RagCollection["embeddingModel"];
+  chatModel?: RagCollection["chatModel"];
+  distanceMetric?: RagCollection["distanceMetric"];
+  chromaCollectionConfiguration?: RagCollection["chromaCollectionConfiguration"];
+  chunkSize?: RagCollection["chunkSize"];
+  chunkOverlap?: RagCollection["chunkOverlap"];
+  retrievalK?: RagCollection["retrievalK"];
+  retrievalDistanceThreshold?: RagCollection["retrievalDistanceThreshold"];
+  activePhysicalCollection?: RagCollection["activePhysicalCollection"] | null;
+  activeVersion?: RagCollection["activeVersion"] | null;
+  documentCount?: RagCollection["documentCount"] | null;
+  chunkCount?: RagCollection["chunkCount"] | null;
+  lastIndexedAt?: RagCollection["lastIndexedAt"] | null;
+};
 
 export type BeginIndexJobInput = {
   targetPhysicalCollection?: string;
@@ -143,6 +142,7 @@ export interface CollectionRegistry {
   completeIndexJob(jobId: string, result: CompleteIndexJobResult): Promise<IndexJob>;
   failIndexJob(jobId: string, error: string): Promise<IndexJob>;
   failStaleJobs(staleThresholdMs: number): Promise<number>;
+  getPhysicalCollection(name: string): Promise<PhysicalCollectionRecord | null>;
   
   createPhysicalCollectionRecord(input: {
     name: string;

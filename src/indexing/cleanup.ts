@@ -2,17 +2,24 @@ import type { CollectionRegistry } from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
 import { deletePhysicalChromaCollection } from "../collections/chromaCollections.js";
 
+export type DeletePhysicalCollectionFn = (input: {
+  name: string;
+  runtimeConfig: ResolvedConfig;
+}) => Promise<void>;
+
 export async function cleanupRetiredPhysicalCollections(input: {
   registry: CollectionRegistry;
   runtimeConfig: ResolvedConfig;
   now?: Date;
   limit?: number;
   log?: (message: string) => void;
+  deletePhysicalCollection?: DeletePhysicalCollectionFn;
 }): Promise<number> {
   const { registry, runtimeConfig } = input;
   const nowIso = (input.now ?? new Date()).toISOString();
   const limit = input.limit ?? 10;
   const log = input.log ?? console.log;
+  const deletePhysicalCollection = input.deletePhysicalCollection ?? deletePhysicalChromaCollection;
 
   const dueCollections = await registry.listDuePhysicalCollectionsForCleanup(nowIso, limit);
   if (dueCollections.length === 0) {
@@ -24,7 +31,7 @@ export async function cleanupRetiredPhysicalCollections(input: {
   for (const record of dueCollections) {
     log(`Attempting to clean up retired physical collection: ${record.name}`);
     try {
-      await deletePhysicalChromaCollection({
+      await deletePhysicalCollection({
         name: record.name,
         runtimeConfig,
       });
@@ -32,6 +39,13 @@ export async function cleanupRetiredPhysicalCollections(input: {
       log(`Successfully cleaned up: ${record.name}`);
       cleanedCount++;
     } catch (error) {
+      if (isPhysicalCollectionMissingError(error)) {
+        log(`Physical collection ${record.name} was already missing in storage. Marking as deleted.`);
+        await registry.markPhysicalCollectionDeleted(record.name);
+        cleanedCount++;
+        continue;
+      }
+
       const message = error instanceof Error ? error.message : String(error);
       log(`Failed to clean up ${record.name}: ${message}`);
       await registry.markPhysicalCollectionCleanupFailed(record.name, message);
@@ -39,4 +53,9 @@ export async function cleanupRetiredPhysicalCollections(input: {
   }
 
   return cleanedCount;
+}
+
+function isPhysicalCollectionMissingError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /not found|does not exist|404|could not be found/i.test(message);
 }

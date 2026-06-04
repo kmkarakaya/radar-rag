@@ -12,6 +12,8 @@ import type {
   CreateCollectionInput,
   IndexJob,
   IndexJobStatus,
+  PhysicalCollectionRecord,
+  PhysicalCollectionStatus,
   RagCollection,
   RequestContext,
   UpdateCollectionPatch,
@@ -70,7 +72,7 @@ type PhysicalCollectionRow = {
   tenant_id: string;
   collection_id: string;
   version: string;
-  status: string;
+  status: PhysicalCollectionStatus;
   chroma_configuration_json: string;
   document_count: number | null;
   chunk_count: number | null;
@@ -171,8 +173,9 @@ function initializeSchema(db: SqliteDatabase): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_index_jobs_one_active_per_collection
       ON index_jobs(collection_id, tenant_id)
       WHERE status IN ('queued', 'running');
+    DROP INDEX IF EXISTS idx_physical_collections_cleanup;
     CREATE INDEX IF NOT EXISTS idx_physical_collections_cleanup ON physical_collections(delete_after, status)
-      WHERE status = 'delete_pending';
+      WHERE status IN ('delete_pending', 'cleanup_failed');
   `);
 }
 
@@ -304,6 +307,11 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       updatedAt: new Date().toISOString(),
     };
 
+    addPatch("displayName", "display_name", patch.displayName, updates, values);
+    addNullablePatch("description", "description", patch.description, updates, values);
+    addPatch("status", "status", patch.status, updates, values);
+    addPatch("sourcePath", "source_path", patch.sourcePath, updates, values);
+    addPatch("ozelgeDataPath", "ozelge_data_path", patch.ozelgeDataPath, updates, values);
     addPatch("embeddingModel", "embedding_model", patch.embeddingModel, updates, values);
     addPatch("chatModel", "chat_model", patch.chatModel, updates, values);
     addPatch("distanceMetric", "distance_metric", patch.distanceMetric, updates, values);
@@ -337,6 +345,10 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     addNullablePatch("documentCount", "document_count", patch.documentCount, updates, values);
     addNullablePatch("chunkCount", "chunk_count", patch.chunkCount, updates, values);
     addNullablePatch("lastIndexedAt", "last_indexed_at", patch.lastIndexedAt, updates, values);
+
+    if (updates.length === 0) {
+      return existing;
+    }
 
     updates.push("updated_at = @updatedAt");
 
@@ -495,28 +507,97 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         throw new Error(`Index job not found: ${jobId}`);
       }
 
-      const now = new Date().toISOString();
-      this.db.prepare(`
-        UPDATE index_jobs
-        SET
-          status = 'succeeded',
-          finished_at = @finishedAt,
-          document_count = @documentCount,
-          chunk_count = @chunkCount,
-          updated_at = @updatedAt
-        WHERE id = @id
-      `).run({
-        id: jobId,
-        finishedAt: now,
-        documentCount: result.documentCount ?? existing.document_count,
-        chunkCount: result.chunkCount ?? existing.chunk_count,
-        updatedAt: now,
-      });
+      if (existing.status !== "running") {
+        throw new Error(`Job ${jobId} is in status '${existing.status}', cannot be completed.`);
+      }
+
+      const collection = this.getCollectionRow(existing.tenant_id, existing.collection_id);
+      if (!collection) {
+        throw new Error(`Collection not found for job ${jobId}: ${existing.collection_id}`);
+      }
 
       const activePhysicalCollection = result.activePhysicalCollection ?? existing.target_physical_collection;
-      const activeVersion = result.activeVersion ?? versionFromJobId(existing.id);
+      const activeVersion = result.activeVersion ?? existing.target_version;
 
-      const oldCollection = this.getCollectionRow(existing.tenant_id, existing.collection_id);
+      if (activeVersion !== existing.target_version) {
+        throw new Error(
+          `Job ${jobId} cannot activate version '${activeVersion}' because target version is '${existing.target_version}'.`,
+        );
+      }
+
+      const physicalRecord = this.getPhysicalCollectionRow(activePhysicalCollection);
+      if (!physicalRecord) {
+        throw new Error(`Physical collection record not found: ${activePhysicalCollection}`);
+      }
+
+      if (
+        physicalRecord.tenant_id !== existing.tenant_id
+        || physicalRecord.collection_id !== existing.collection_id
+        || physicalRecord.version !== existing.target_version
+      ) {
+        throw new Error(`Physical collection ${activePhysicalCollection} does not match job ${jobId} target.`);
+      }
+
+      if (physicalRecord.status !== "building") {
+        throw new Error(
+          `Physical collection ${activePhysicalCollection} is in status '${physicalRecord.status}', cannot be activated.`,
+        );
+      }
+
+      const now = new Date().toISOString();
+      const activatedResult = this.db.prepare(`
+        UPDATE physical_collections
+        SET
+          status = 'active',
+          activated_at = @now,
+          document_count = @documentCount,
+          chunk_count = @chunkCount,
+          cleanup_error = NULL
+        WHERE name = @newName
+          AND tenant_id = @tenantId
+          AND collection_id = @collectionId
+          AND version = @version
+          AND status = 'building'
+      `).run({
+        newName: activePhysicalCollection,
+        tenantId: existing.tenant_id,
+        collectionId: existing.collection_id,
+        version: existing.target_version,
+        now,
+        documentCount: result.documentCount ?? existing.document_count,
+        chunkCount: result.chunkCount ?? existing.chunk_count,
+      });
+
+      if (activatedResult.changes !== 1) {
+        throw new Error(`Physical collection ${activePhysicalCollection} could not be activated for job ${jobId}.`);
+      }
+
+      if (
+        collection.active_physical_collection
+        && collection.active_physical_collection !== activePhysicalCollection
+      ) {
+        const deleteAfter = new Date(Date.now() + result.retentionMs).toISOString();
+        const retiredResult = this.db.prepare(`
+          UPDATE physical_collections
+          SET status = 'delete_pending', retired_at = @now, delete_after = @deleteAfter
+          WHERE name = @oldName
+            AND tenant_id = @tenantId
+            AND collection_id = @collectionId
+            AND status = 'active'
+        `).run({
+          oldName: collection.active_physical_collection,
+          tenantId: existing.tenant_id,
+          collectionId: existing.collection_id,
+          now,
+          deleteAfter,
+        });
+
+        if (retiredResult.changes !== 1) {
+          throw new Error(
+            `Previous active physical collection ${collection.active_physical_collection} could not be retired for cleanup.`,
+          );
+        }
+      }
 
       this.db.prepare(`
         UPDATE collections
@@ -540,28 +621,22 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         updatedAt: now,
       });
 
-      if (oldCollection?.active_physical_collection && oldCollection.active_physical_collection !== activePhysicalCollection) {
-        const deleteAfter = new Date(Date.now() + result.retentionMs).toISOString();
-        this.db.prepare(`
-          UPDATE physical_collections
-          SET status = 'delete_pending', retired_at = @now, delete_after = @deleteAfter
-          WHERE name = @oldName
-        `).run({
-          oldName: oldCollection.active_physical_collection,
-          now,
-          deleteAfter
-        });
-      }
-
       this.db.prepare(`
-        UPDATE physical_collections
-        SET status = 'active', activated_at = @now, document_count = @documentCount, chunk_count = @chunkCount
-        WHERE name = @newName
+        UPDATE index_jobs
+        SET
+          status = 'succeeded',
+          finished_at = @finishedAt,
+          error = NULL,
+          document_count = @documentCount,
+          chunk_count = @chunkCount,
+          updated_at = @updatedAt
+        WHERE id = @id AND status = 'running'
       `).run({
-        newName: activePhysicalCollection,
-        now,
+        id: jobId,
+        finishedAt: now,
         documentCount: result.documentCount ?? existing.document_count,
         chunkCount: result.chunkCount ?? existing.chunk_count,
+        updatedAt: now,
       });
 
       const updated = this.getJobRow(jobId);
@@ -582,16 +657,36 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         throw new Error(`Index job not found: ${jobId}`);
       }
 
+      if (existing.status !== "queued" && existing.status !== "running") {
+        throw new Error(`Job ${jobId} is in status '${existing.status}', cannot be failed.`);
+      }
+
       const now = new Date().toISOString();
       this.db.prepare(`
         UPDATE index_jobs
         SET status = 'failed', finished_at = @finishedAt, error = @error, updated_at = @updatedAt
-        WHERE id = @id
+        WHERE id = @id AND status IN ('queued', 'running')
       `).run({
         id: jobId,
         finishedAt: now,
         error,
         updatedAt: now,
+      });
+
+      this.db.prepare(`
+        UPDATE physical_collections
+        SET status = 'failed_build', cleanup_error = @error
+        WHERE name = @name
+          AND tenant_id = @tenantId
+          AND collection_id = @collectionId
+          AND version = @version
+          AND status = 'building'
+      `).run({
+        name: existing.target_physical_collection,
+        tenantId: existing.tenant_id,
+        collectionId: existing.collection_id,
+        version: existing.target_version,
+        error,
       });
 
       const collection = this.getCollectionRow(existing.tenant_id, existing.collection_id);
@@ -622,25 +717,43 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     const now = new Date().toISOString();
 
     const transaction = this.db.transaction(() => {
-      // Find stale jobs
       const staleJobs = this.db.prepare(`
-        SELECT id, collection_id, tenant_id FROM index_jobs
+        SELECT * FROM index_jobs
         WHERE status IN ('queued', 'running') AND updated_at < ?
-      `).all(thresholdDate) as { id: string; collection_id: string; tenant_id: string }[];
+      `).all(thresholdDate) as IndexJobRow[];
 
       if (staleJobs.length === 0) {
         return 0;
       }
 
-      // Fail them
-      this.db.prepare(`
-        UPDATE index_jobs
-        SET status = 'failed', error = 'Job timed out (stale lock)', updated_at = ?, finished_at = ?
-        WHERE status IN ('queued', 'running') AND updated_at < ?
-      `).run(now, now, thresholdDate);
-
-      // Update their collections
       for (const job of staleJobs) {
+        this.db.prepare(`
+          UPDATE index_jobs
+          SET status = 'failed', error = @error, updated_at = @updatedAt, finished_at = @finishedAt
+          WHERE id = @id AND status IN ('queued', 'running')
+        `).run({
+          id: job.id,
+          error: "Job timed out (stale lock)",
+          updatedAt: now,
+          finishedAt: now,
+        });
+
+        this.db.prepare(`
+          UPDATE physical_collections
+          SET status = 'failed_build', cleanup_error = @error
+          WHERE name = @name
+            AND tenant_id = @tenantId
+            AND collection_id = @collectionId
+            AND version = @version
+            AND status = 'building'
+        `).run({
+          name: job.target_physical_collection,
+          tenantId: job.tenant_id,
+          collectionId: job.collection_id,
+          version: job.target_version,
+          error: "Job timed out (stale lock)",
+        });
+
         const collection = this.getCollectionRow(job.tenant_id, job.collection_id);
         this.db.prepare(`
           UPDATE collections
@@ -660,13 +773,18 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     return transaction();
   }
 
+  async getPhysicalCollection(name: string): Promise<PhysicalCollectionRecord | null> {
+    const row = this.getPhysicalCollectionRow(name);
+    return row ? mapPhysicalCollectionRow(row) : null;
+  }
+
   async createPhysicalCollectionRecord(input: {
     name: string;
     tenantId: string;
     collectionId: string;
     version: string;
     chromaConfiguration: Record<string, unknown>;
-  }) {
+  }): Promise<PhysicalCollectionRecord> {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO physical_collections (
@@ -688,25 +806,36 @@ class SqliteCollectionRegistry implements CollectionRegistry {
   }
 
   async markPhysicalCollectionDeleted(name: string): Promise<void> {
-    this.db.prepare(`
+    const result = this.db.prepare(`
       UPDATE physical_collections
-      SET status = 'deleted', deleted_at = @now
-      WHERE name = @name
+      SET status = 'deleted', deleted_at = @now, cleanup_error = NULL
+      WHERE name = @name AND status IN ('delete_pending', 'cleanup_failed')
     `).run({ name, now: new Date().toISOString() });
+
+    if (result.changes !== 1) {
+      throw new Error(`Physical collection ${name} is not pending cleanup.`);
+    }
   }
 
   async markPhysicalCollectionCleanupFailed(name: string, error: string): Promise<void> {
-    this.db.prepare(`
+    const result = this.db.prepare(`
       UPDATE physical_collections
       SET status = 'cleanup_failed', cleanup_error = @error
-      WHERE name = @name
+      WHERE name = @name AND status IN ('delete_pending', 'cleanup_failed')
     `).run({ name, error });
+
+    if (result.changes !== 1) {
+      throw new Error(`Physical collection ${name} is not pending cleanup retry.`);
+    }
   }
 
   async listDuePhysicalCollectionsForCleanup(nowIso: string, limit: number) {
     const rows = this.db.prepare(`
       SELECT * FROM physical_collections
-      WHERE status IN ('delete_pending', 'cleanup_failed') AND delete_after <= ?
+      WHERE status IN ('delete_pending', 'cleanup_failed')
+        AND delete_after IS NOT NULL
+        AND delete_after <= ?
+      ORDER BY delete_after ASC, created_at ASC
       LIMIT ?
     `).all(nowIso, limit) as PhysicalCollectionRow[];
 
@@ -773,6 +902,14 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     const row = this.db
       .prepare("SELECT * FROM index_jobs WHERE id = ?")
       .get(jobId) as IndexJobRow | undefined;
+
+    return row ?? null;
+  }
+
+  private getPhysicalCollectionRow(name: string): PhysicalCollectionRow | null {
+    const row = this.db
+      .prepare("SELECT * FROM physical_collections WHERE name = ?")
+      .get(name) as PhysicalCollectionRow | undefined;
 
     return row ?? null;
   }
@@ -857,13 +994,13 @@ function mapIndexJobRow(row: IndexJobRow): IndexJob {
   };
 }
 
-function mapPhysicalCollectionRow(row: PhysicalCollectionRow): import("./types.js").PhysicalCollectionRecord {
+function mapPhysicalCollectionRow(row: PhysicalCollectionRow): PhysicalCollectionRecord {
   return {
     name: row.name,
     tenantId: row.tenant_id,
     collectionId: row.collection_id,
     version: row.version,
-    status: row.status as import("./types.js").PhysicalCollectionStatus,
+    status: row.status,
     chromaConfiguration: JSON.parse(row.chroma_configuration_json) as Record<string, unknown>,
     documentCount: row.document_count ?? undefined,
     chunkCount: row.chunk_count ?? undefined,
@@ -882,10 +1019,6 @@ function createVersionString(isoDate: string): string {
     .replace(/[-:]/g, "")
     .replace(/\.\d{3}/, (match) => `_${match.slice(1)}`)
     .toLowerCase();
-}
-
-function versionFromJobId(jobId: string): string {
-  return jobId.split("_")[0] ?? jobId;
 }
 
 function normalizeChromaCollectionConfiguration(

@@ -196,21 +196,24 @@ describe("app foundation", () => {
     const largeString = "a".repeat(1024 * 1024 + 10);
     const response = await request("/v1/rag/collections", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "x-request-id": "oversized-json-test",
+      },
       body: JSON.stringify({ data: largeString }),
     });
+    const body = await response.json() as {
+      code?: string;
+      error?: string;
+      message?: string;
+      requestId?: string;
+    };
 
     assert.equal(response.status, 413); // Payload Too Large
-
-    // express built-in json parser might return html error for PayloadTooLarge depending on config
-    // but at least verify status code
-    try {
-      const body = await response.json() as { error?: string };
-      assert.match(body.error || "", /request entity too large|payload too large/i);
-    } catch {
-      const text = await response.text();
-      assert.match(text, /Payload Too Large|request entity too large/i);
-    }
+    assert.equal(body.code, "INVALID_REQUEST_BODY");
+    assert.equal(body.error, "Payload Too Large");
+    assert.equal(body.message, "Request entity too large.");
+    assert.equal(body.requestId, "oversized-json-test");
   });
 
   it("does not expose legacy RAG endpoints", async () => {

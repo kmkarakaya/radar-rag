@@ -142,6 +142,22 @@ Repodaki HTTP yüzeyi şu başlıca endpointlerden oluşur:
 
 Bu yüzey, query/retrieve akışını, collection discovery'yi, admin lifecycle'ı ve operasyonel sağlık bilgisini aynı backend sınırı içinde toplar. CLI akışı (`npm run onboard`, `npm run index`) operatör kolaylığı için vardır; HTTP admin yüzeyiyle aynı registry kurallarını izler.
 
+#### `GET /v1/rag/collections`
+
+Maksat:
+
+- Kullanıcının tenant kapsamında görebildiği logical collection kayıtlarını listelemek.
+- Pahalı Chroma/Ollama probe çalıştırmadan hızlı collection discovery sağlamak.
+
+Çıktı:
+
+- `collections[]`
+- Her item için `id`, `displayName`, `description`, `status`, `activeVersion`, `chunkCount`, `updatedAt`
+- Her item için `readyUrl`, `queryUrl`, `retrieveUrl`
+- Henüz aktif index yoksa `activeVersion` ve `chunkCount` alanları `null` döner; alanlar response shape'inden düşürülmez.
+
+Bu endpoint `capabilities.query` veya `capabilities.retrieve` döndürmez. Liste sadece registry-level discovery kontratıdır; gerçek query/retrieve uygunluğu `GET /v1/rag/collections/:collectionId/ready` cevabındaki `capabilities` alanından okunmalıdır.
+
 #### `GET /`
 
 Maksat:

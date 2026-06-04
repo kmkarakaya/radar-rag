@@ -15,6 +15,9 @@ describe('docs static contract', () => {
     assert.ok(content.includes('/v1/admin/collections'), 'Should mention admin collection endpoint');
     assert.ok(content.includes('/v1/admin/jobs/'), 'Should mention admin job endpoint');
     assert.ok(content.includes('cleanup.retentionMs'), 'Should document retention cleanup config');
+    assert.ok(content.includes('readyUrl'), 'Should document collection discovery readyUrl');
+    assert.ok(content.includes('does not return query/retrieve capability flags'), 'Should document list endpoint capability boundary');
+    assert.ok(content.includes('activeVersion` ve `chunkCount` alanlari `null`'), 'Should document stable null fields for unindexed collection discovery');
     assert.ok(content.includes('delete_pending'), 'Should document pending physical cleanup state');
     assert.ok(content.includes('cleanup_failed'), 'Should document retryable cleanup failure state');
     assert.ok(content.includes('failed_build'), 'Should document failed build physical state');
@@ -35,6 +38,9 @@ describe('docs static contract', () => {
     assert.ok(!content.includes('chroma.collection'), 'Should not mention stale chroma.collection config');
     assert.ok(!content.includes('data.indexSampleSize'), 'Should not mention stale data.indexSampleSize config');
     assert.ok(content.includes('/v1/admin/collections'), 'Should describe the admin collection API');
+    assert.ok(content.includes('readyUrl'), 'Should describe collection discovery links');
+    assert.ok(content.includes('Liste sadece registry-level discovery kontratıdır'), 'Should describe list endpoint as cheap registry discovery');
+    assert.ok(content.includes('activeVersion` ve `chunkCount` alanları `null`'), 'Should describe stable null fields for unindexed collection discovery');
     assert.ok(content.includes('delete_pending'), 'Should describe retention cleanup state');
     assert.ok(content.includes('cleanup_failed'), 'Should describe retryable cleanup failure state');
     assert.ok(content.includes('deleted_at'), 'Should describe successful cleanup timestamp semantics');

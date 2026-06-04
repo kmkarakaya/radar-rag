@@ -26,5 +26,11 @@ describe("frontend static file", () => {
     assert.ok(content.includes('No collections available'));
     assert.ok(content.includes('Please create a collection via CLI or Admin API first.'));
     assert.ok(content.includes('updateQueryButtons(false);'));
+    assert.ok(content.includes('collectionReadiness'), 'Query actions should depend on collection-ready output');
+    assert.ok(content.includes('readiness?.capabilities?.query'), 'Query button should use ready endpoint query capability');
+    assert.ok(content.includes('readiness?.capabilities?.retrieve'), 'Retrieve button should use ready endpoint retrieve capability');
+    assert.ok(content.includes('collection?.readyUrl'), 'Frontend should follow readyUrl from list response');
+    assert.ok(content.includes('createCollectionOption'), 'Collection options should be rendered through DOM nodes');
+    assert.ok(!content.includes('collectionSelect.innerHTML = collections.map'), 'Collection display names should not be injected through innerHTML');
   });
 });

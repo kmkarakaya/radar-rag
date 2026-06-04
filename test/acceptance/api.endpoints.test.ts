@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
-import { createApp } from "../../src/app.js";
+import { createApp, type AppDependencies } from "../../src/app.js";
 import { createSqliteCollectionRegistry } from "../../src/collections/sqliteRegistry.js";
 import { resolveReadableCollection as actualResolveReadableCollection } from "../../src/collections/resolveReadableCollection.js";
 import type { CollectionRegistry, RagCollection } from "../../src/collections/types.js";
 import type { IndexJobRunner } from "../../src/indexing/jobRunner.js";
+import { RagQueryError } from "../../src/rag.js";
 
 let server: Server;
 let baseUrl: string;
@@ -16,7 +17,15 @@ const readablePhysicalCollections = new Map<string, number>();
 const retrieveCalls: Array<Record<string, unknown>> = [];
 const answerCalls: Array<Record<string, unknown>> = [];
 let resolveReadableCollectionOverride: typeof actualResolveReadableCollection | undefined;
+let retrieveOverride: AppRagRetrieveHandler | undefined;
+let answerOverride: AppRagAnswerHandler | undefined;
 let availableOllamaModels = ["gemma3:4b-cloud", "bge-m3", "chat-collection-specific", "embed-collection-specific"];
+let chromaHealthCalls = 0;
+let ollamaHealthCalls = 0;
+
+type AppRagHandlers = NonNullable<AppDependencies["ragHandlers"]>;
+type AppRagRetrieveHandler = NonNullable<AppRagHandlers["retrieveSources"]>;
+type AppRagAnswerHandler = NonNullable<AppRagHandlers["answerQuestion"]>;
 
 before(async () => {
   registry = createSqliteCollectionRegistry({ dbPath: ":memory:" });
@@ -29,14 +38,20 @@ before(async () => {
     registry,
     jobRunner,
     ragHandlers: {
-      retrieveSources: async (_question, options) => {
+      retrieveSources: async (question, options) => {
+        if (retrieveOverride) {
+          return retrieveOverride(question, options);
+        }
         retrieveCalls.push({ ...options });
         return {
           distanceScoreThreshold: options.retrievalDistanceThreshold ?? -1,
           sources: [],
         };
       },
-      answerQuestion: async (_question, options) => {
+      answerQuestion: async (question, options) => {
+        if (answerOverride) {
+          return answerOverride(question, options);
+        }
         answerCalls.push({ ...options });
         return {
           answer: "stub-answer",
@@ -53,18 +68,22 @@ before(async () => {
       },
     },
     healthChecks: {
-      checkOllamaHealth: async () => ({
-        ok: true,
-        latencyMs: 1,
-        details: {
-          reachable: true,
-          availableModels: availableOllamaModels,
-          missingModels: [],
-          chatModelAvailable: true,
-          embeddingModelAvailable: true,
-        },
-      }),
+      checkOllamaHealth: async () => {
+        ollamaHealthCalls += 1;
+        return {
+          ok: true,
+          latencyMs: 1,
+          details: {
+            reachable: true,
+            availableModels: availableOllamaModels,
+            missingModels: [],
+            chatModelAvailable: true,
+            embeddingModelAvailable: true,
+          },
+        };
+      },
       checkChromaHealth: async (_runtimeConfig, options) => {
+        chromaHealthCalls += 1;
         if (!options?.collectionName) {
           return {
             ok: true,
@@ -160,6 +179,8 @@ describe("v1 admin and rag api endpoints", () => {
   it("GET /v1/rag/collections lists collections", async () => {
     retrieveCalls.length = 0;
     answerCalls.length = 0;
+    chromaHealthCalls = 0;
+    ollamaHealthCalls = 0;
     const response = await request("/v1/rag/collections");
     const body = await response.json() as any;
 
@@ -168,7 +189,19 @@ describe("v1 admin and rag api endpoints", () => {
     const found = body.collections.find((c: any) => c.id === createdCollection.id);
     assert.ok(found);
     assert.equal(found.displayName, "API Test Collection");
-    assert.equal(found.capabilities.query, false); // Because status is 'creating'
+    assert.equal(found.description, "Test description");
+    assert.equal(found.status, "creating");
+    assert.equal(found.activeVersion, null);
+    assert.equal(found.chunkCount, null);
+    assert.equal(typeof found.updatedAt, "string");
+    assert.equal("capabilities" in found, false);
+    assert.equal(found.readyUrl, `/v1/rag/collections/${createdCollection.id}/ready`);
+    assert.equal(found.queryUrl, `/v1/rag/collections/${createdCollection.id}/query`);
+    assert.equal(found.retrieveUrl, `/v1/rag/collections/${createdCollection.id}/retrieve`);
+    assert.equal(retrieveCalls.length, 0);
+    assert.equal(answerCalls.length, 0);
+    assert.equal(chromaHealthCalls, 0);
+    assert.equal(ollamaHealthCalls, 0);
   });
 
   it("GET /v1/rag/collections only returns collections visible to the request tenant", async () => {
@@ -182,16 +215,24 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(body.collections.length, 0);
   });
 
-  it("missing collection -> 404", async () => {
-    const response = await request("/v1/rag/collections/non-existent-123/query", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question: "hello?" }),
-    });
+  it("missing collection query/retrieve -> 404 without calling rag handlers", async () => {
+    retrieveCalls.length = 0;
+    answerCalls.length = 0;
 
-    const body = await response.json() as any;
-    assert.equal(response.status, 404);
-    assert.equal(body.code, "COLLECTION_NOT_FOUND");
+    for (const endpoint of ["query", "retrieve"]) {
+      const response = await request(`/v1/rag/collections/non-existent-123/${endpoint}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "hello?" }),
+      });
+
+      const body = await response.json() as any;
+      assert.equal(response.status, 404);
+      assert.equal(body.code, "COLLECTION_NOT_FOUND");
+    }
+
+    assert.equal(retrieveCalls.length, 0);
+    assert.equal(answerCalls.length, 0);
   });
 
   it("existing collection from another tenant -> 403 COLLECTION_FORBIDDEN", async () => {
@@ -354,19 +395,22 @@ describe("v1 admin and rag api endpoints", () => {
       const retrieveResponse = await request(`/v1/rag/collections/${createdCollection.id}/retrieve`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: "threshold?" }),
+        body: JSON.stringify({ question: "threshold?", k: 3 }),
       });
       const retrieveBody = await retrieveResponse.json() as any;
 
       assert.equal(retrieveResponse.status, 200);
       assert.equal(retrieveBody.question, "threshold?");
-      assert.equal(retrieveBody.k, 7);
+      assert.equal(retrieveBody.k, 3);
       assert.equal(retrieveBody.sourceCount, 0);
       assert.equal(retrieveBody.distanceScoreThreshold, 0.42);
+      assert.equal(retrieveBody.collectionId, createdCollection.id);
+      assert.equal(retrieveBody.activeVersion, "v-route-settings");
       assert.equal(retrieveCalls.length, 1);
+      assert.equal(retrieveCalls[0]?.collectionName, activePhysicalCollection);
       assert.equal(retrieveCalls[0]?.embeddingModel, "embed-collection-specific");
       assert.equal(retrieveCalls[0]?.retrievalDistanceThreshold, 0.42);
-      assert.equal(retrieveCalls[0]?.k, 7);
+      assert.equal(retrieveCalls[0]?.k, 3);
 
       const queryResponse = await request(`/v1/rag/collections/${createdCollection.id}/query`, {
         method: "POST",
@@ -377,7 +421,10 @@ describe("v1 admin and rag api endpoints", () => {
 
       assert.equal(queryResponse.status, 200);
       assert.equal(queryBody.distanceScoreThreshold, 0.42);
+      assert.equal(queryBody.collectionId, createdCollection.id);
+      assert.equal(queryBody.activeVersion, "v-route-settings");
       assert.equal(answerCalls.length, 1);
+      assert.equal(answerCalls[0]?.collectionName, activePhysicalCollection);
       assert.equal(answerCalls[0]?.embeddingModel, "embed-collection-specific");
       assert.equal(answerCalls[0]?.chatModel, "chat-collection-specific");
       assert.equal(answerCalls[0]?.retrievalDistanceThreshold, 0.42);
@@ -387,7 +434,7 @@ describe("v1 admin and rag api endpoints", () => {
     }
   });
 
-  it("admin collection update returns the updated collection payload", async () => {
+  it("admin collection update persists all supported patch fields and returns the updated collection payload", async () => {
     const response = await request(`/v1/admin/collections/${createdCollection.id}`, {
       method: "PATCH",
       headers: {
@@ -398,6 +445,13 @@ describe("v1 admin and rag api endpoints", () => {
         description: null,
         sourcePath: "data/api-test-updated",
         ozelgeDataPath: "data/api-test-updated-ozelge.json",
+        embeddingModel: "embed-patched-http",
+        chatModel: "chat-patched-http",
+        distanceMetric: "ip",
+        chunkSize: 321,
+        chunkOverlap: 12,
+        retrievalK: 11,
+        retrievalDistanceThreshold: 0.33,
       }),
     });
 
@@ -406,6 +460,18 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(body.collection.displayName, "API Patched Collection");
     assert.equal(body.collection.sourcePath, "data/api-test-updated");
     assert.equal(body.collection.ozelgeDataPath, "data/api-test-updated-ozelge.json");
+    assert.equal(body.collection.embeddingModel, "embed-patched-http");
+    assert.equal(body.collection.chatModel, "chat-patched-http");
+    assert.equal(body.collection.distanceMetric, "ip");
+    assert.equal(body.collection.chunkSize, 321);
+    assert.equal(body.collection.chunkOverlap, 12);
+    assert.equal(body.collection.retrievalK, 11);
+    assert.equal(body.collection.retrievalDistanceThreshold, 0.33);
+    assert.deepEqual(body.collection.chromaCollectionConfiguration, {
+      hnsw: {
+        space: "ip",
+      },
+    });
     assert.equal("description" in body.collection, false);
 
     const ctx = { tenantId: "default", userId: "local-dev", requestId: "patch-check" };
@@ -414,6 +480,42 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(saved?.description, undefined);
     assert.equal(saved?.sourcePath, "data/api-test-updated");
     assert.equal(saved?.ozelgeDataPath, "data/api-test-updated-ozelge.json");
+    assert.equal(saved?.embeddingModel, "embed-patched-http");
+    assert.equal(saved?.chatModel, "chat-patched-http");
+    assert.equal(saved?.distanceMetric, "ip");
+    assert.equal(saved?.chunkSize, 321);
+    assert.equal(saved?.chunkOverlap, 12);
+    assert.equal(saved?.retrievalK, 11);
+    assert.equal(saved?.retrievalDistanceThreshold, 0.33);
+  });
+
+  it("admin collection update returns 404 for an unknown collection", async () => {
+    const response = await request("/v1/admin/collections/unknown-collection-404", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ displayName: "Missing" }),
+    });
+
+    const body = await response.json() as any;
+    assert.equal(response.status, 404);
+    assert.equal(body.code, "COLLECTION_NOT_FOUND");
+  });
+
+  it("admin collection update rejects unknown body keys with INVALID_REQUEST_BODY", async () => {
+    const response = await request(`/v1/admin/collections/${createdCollection.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ displayName: "Valid", unknownPatchKey: true }),
+    });
+
+    const body = await response.json() as any;
+    assert.equal(response.status, 400);
+    assert.equal(body.code, "INVALID_REQUEST_BODY");
+    assert.ok(Array.isArray(body.details?.issues));
   });
 
   it("admin collection update is tenant-scoped and returns 403 for another tenant", async () => {
@@ -451,5 +553,70 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(res2.status, 409);
     const body2 = await res2.json() as any;
     assert.equal(body2.code, "COLLECTION_INDEX_ALREADY_RUNNING");
+  });
+
+  it("maps RAG MODEL_BACKPRESSURE errors to HTTP 503", async () => {
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "backpressure" };
+    const activePhysicalCollection = "api-test-backpressure";
+
+    await registry.updateCollection(ctx, createdCollection.id, {
+      status: "ready",
+      activePhysicalCollection,
+      activeVersion: "v-backpressure",
+      embeddingModel: "embed-collection-specific",
+      chatModel: "chat-collection-specific",
+    });
+
+    resolveReadableCollectionOverride = async (req, deps, _runtimeConfig) => {
+      const collectionId = req.params.collectionId as string;
+      const collection = await deps.registry.getVisibleCollection(ctx, collectionId);
+      assert.ok(collection);
+      return collection;
+    };
+    answerOverride = async () => {
+      throw new RagQueryError("MODEL_BACKPRESSURE", "model queue timed out", 503);
+    };
+
+    try {
+      const response = await request(`/v1/rag/collections/${createdCollection.id}/query`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "overload?" }),
+      });
+      const body = await response.json() as any;
+
+      assert.equal(response.status, 503);
+      assert.equal(body.code, "MODEL_BACKPRESSURE");
+      assert.equal(body.message, "model queue timed out");
+    } finally {
+      resolveReadableCollectionOverride = undefined;
+      answerOverride = undefined;
+    }
+  });
+
+  it("maps storage inconsistency errors to HTTP 503", async () => {
+    resolveReadableCollectionOverride = async () => {
+      throw new RagQueryError(
+        "COLLECTION_STORAGE_INCONSISTENT",
+        "active physical collection missing",
+        503,
+        { collectionId: createdCollection.id },
+      );
+    };
+
+    try {
+      const response = await request(`/v1/rag/collections/${createdCollection.id}/retrieve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "storage?" }),
+      });
+      const body = await response.json() as any;
+
+      assert.equal(response.status, 503);
+      assert.equal(body.code, "COLLECTION_STORAGE_INCONSISTENT");
+      assert.equal(body.details?.collectionId, createdCollection.id);
+    } finally {
+      resolveReadableCollectionOverride = undefined;
+    }
   });
 });

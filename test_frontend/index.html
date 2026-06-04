@@ -494,13 +494,18 @@
       const refreshCollectionsButton = document.getElementById("refresh-collections-button");
 
       let collections = [];
+      const collectionReadiness = new Map();
 
       originLabel.textContent = window.location.origin;
 
       function setBusy(isBusy) {
         document.querySelectorAll("button").forEach((button) => {
-          button.disabled = isBusy;
+          button.disabled = isBusy ? true : false;
         });
+
+        if (!isBusy) {
+          updateCollectionStatus();
+        }
       }
 
       function setStatus(kind, text) {
@@ -632,6 +637,7 @@
 
         renderReadable(endpoint, response.status, parsed);
         setStatus(response.ok ? "ok" : "fail", response.ok ? "Success" : "Error");
+        return parsed;
       }
 
       async function runRequest(endpoint, options = {}) {
@@ -646,11 +652,12 @@
 
         try {
           const response = await fetch(endpoint, options);
-          await showJson(endpoint, response);
+          return await showJson(endpoint, response);
         } catch (error) {
           answer.textContent = "Failed to send request.";
           setOutput(String(error));
           setStatus("fail", "Connection error");
+          return null;
         } finally {
           setBusy(false);
         }
@@ -668,9 +675,17 @@
         return collectionSelect.value;
       }
 
+      function createCollectionOption(value, label) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        return option;
+      }
+
       async function loadCollections() {
         collectionStatus.textContent = "Loading collections...";
         collectionSelect.disabled = true;
+        collectionReadiness.clear();
         
         try {
           const response = await fetch("/v1/rag/collections");
@@ -682,19 +697,20 @@
           collections = body.collections || [];
           
           if (collections.length === 0) {
-            collectionSelect.innerHTML = `<option value="">No collections available</option>`;
+            collectionSelect.replaceChildren(createCollectionOption("", "No collections available"));
             collectionStatus.textContent = "Please create a collection via CLI or Admin API first.";
             updateQueryButtons(false);
           } else {
-            collectionSelect.innerHTML = collections.map((c) => {
+            const options = collections.map((c) => {
               const versionLabel = c.activeVersion ? `(v: ${c.activeVersion})` : "(no active index)";
-              return `<option value="${c.id}">${c.displayName} ${versionLabel}</option>`;
-            }).join("");
+              return createCollectionOption(c.id, `${c.displayName} ${versionLabel}`);
+            });
+            collectionSelect.replaceChildren(...options);
             
             updateCollectionStatus();
           }
         } catch (error) {
-          collectionSelect.innerHTML = `<option value="">Error loading collections</option>`;
+          collectionSelect.replaceChildren(createCollectionOption("", "Error loading collections"));
           collectionStatus.textContent = `Failed to load collections: ${error.message}`;
           updateQueryButtons(false);
         } finally {
@@ -716,21 +732,29 @@
         if (collection.status === "ready") {
           statusText += ` | Chunks: ${collection.chunkCount ?? 0}`;
         }
+        const readiness = collectionReadiness.get(id);
+        if (readiness) {
+          statusText += ` | Ready: query=${Boolean(readiness.capabilities?.query)} retrieve=${Boolean(readiness.capabilities?.retrieve)}`;
+        } else {
+          statusText += " | Run Check Status before querying";
+        }
         collectionStatus.textContent = statusText;
         
-        updateQueryButtons(collection.capabilities?.query === true);
+        updateQueryButtons();
         
         // update endpoint labels
-        document.querySelector("#retrieve-button small").textContent = `POST /v1/rag/collections/${id}/retrieve`;
-        document.querySelector("#ask-button small").textContent = `POST /v1/rag/collections/${id}/query`;
-        document.querySelector("#invalid-button small").textContent = `POST /v1/rag/collections/${id}/query`;
+        document.querySelector("#retrieve-button small").textContent = `POST ${collection.retrieveUrl || `/v1/rag/collections/${id}/retrieve`}`;
+        document.querySelector("#ask-button small").textContent = `POST ${collection.queryUrl || `/v1/rag/collections/${id}/query`}`;
+        document.querySelector("#invalid-button small").textContent = `POST ${collection.queryUrl || `/v1/rag/collections/${id}/query`}`;
       }
 
-      function updateQueryButtons(enabled) {
-        retrieveButton.disabled = !enabled;
-        askButton.disabled = !enabled;
-        invalidButton.disabled = !enabled;
-        collectionReadyButton.disabled = !collectionSelect.value;
+      function updateQueryButtons() {
+        const id = getSelectedCollectionId();
+        const readiness = id ? collectionReadiness.get(id) : null;
+        retrieveButton.disabled = !(id && readiness?.capabilities?.retrieve === true);
+        askButton.disabled = !(id && readiness?.capabilities?.query === true);
+        invalidButton.disabled = !(id && readiness?.capabilities?.query === true);
+        collectionReadyButton.disabled = !id;
       }
 
       collectionSelect.addEventListener("change", updateCollectionStatus);
@@ -744,7 +768,12 @@
           return;
         }
 
-        await runGet(`/v1/rag/collections/${collectionId}/ready`);
+        const collection = collections.find(c => c.id === collectionId);
+        const body = await runRequest(collection?.readyUrl || `/v1/rag/collections/${collectionId}/ready`);
+        if (body?.capabilities) {
+          collectionReadiness.set(collectionId, body);
+          updateCollectionStatus();
+        }
       }
 
       async function runQuery() {
@@ -763,7 +792,8 @@
           return;
         }
 
-        await runRequest(`/v1/rag/collections/${collectionId}/query`, {
+        const collection = collections.find(c => c.id === collectionId);
+        await runRequest(collection?.queryUrl || `/v1/rag/collections/${collectionId}/query`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -788,7 +818,8 @@
           return;
         }
 
-        await runRequest(`/v1/rag/collections/${collectionId}/retrieve`, {
+        const collection = collections.find(c => c.id === collectionId);
+        await runRequest(collection?.retrieveUrl || `/v1/rag/collections/${collectionId}/retrieve`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

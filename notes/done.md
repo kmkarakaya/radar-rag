@@ -341,3 +341,39 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
 - Kalan risk/not:
   - Startup maintenance fire-and-forget çalışmaya devam ediyor; `startupMaintenancePromise` drain handle'ı var, ancak production shutdown orchestration bu handle'ı çağıran üst katmanın sorumluluğunda.
   - `cleanup_error` alanı Prompt 18'deki gibi hem cleanup failure hem `failed_build` hata metnini taşıyor; ayrı raporlama ihtiyacı doğarsa ayrı kolonla ayrıştırılabilir.
+
+## Prompt 20: HTTP Contract Tightening, Collection Discovery, and Acceptance Gaps
+
+- `GET /v1/rag/collections` contract'i A seçeneğiyle sıkılaştırıldı: liste endpoint'i artık yalnızca cheap registry discovery döndürüyor, Chroma/Ollama readiness probe çalıştırmıyor ve yanıltıcı `capabilities.query/retrieve` alanları taşımıyor.
+- Collection discovery item'ları `readyUrl`, `queryUrl` ve `retrieveUrl` döndürür hale geldi. Gerçek query/retrieve capability kaynağı `GET /v1/rag/collections/:collectionId/ready` olarak bırakıldı.
+- Test frontend yeni discovery contract'e uyarlandı:
+  - Liste response'undaki `readyUrl`, `queryUrl`, `retrieveUrl` alanlarını kullanıyor.
+  - Query/retrieve/invalid query butonları yalnızca seçili collection için collection-ready cevabındaki capability uygunsa aktif oluyor.
+  - Eski route referansları geri eklenmedi.
+- HTTP acceptance coverage genişletildi:
+  - Collection list response'unda `capabilities` olmadığı ve discovery URL'lerinin döndüğü assert edildi.
+  - Missing collection için query ve retrieve `404 COLLECTION_NOT_FOUND` dönüyor ve fake RAG handler'lar çağrılmıyor.
+  - Retrieve body'deki explicit `k` collection default `retrievalK` değerini override ediyor; query ise collection default `retrievalK` kullanıyor.
+  - Collection-specific `embeddingModel`, `chatModel`, `retrievalDistanceThreshold`, `activePhysicalCollection` ve `activeVersion` handler call/response içinde assert edildi.
+  - Admin PATCH başarılı durumda `displayName`, nullable `description`, `sourcePath`, `ozelgeDataPath`, `embeddingModel`, `chatModel`, `distanceMetric`, chunk ve retrieval alanlarını persist ediyor.
+  - Admin PATCH başka tenant için `403 COLLECTION_FORBIDDEN`, bilinmeyen collection için `404 COLLECTION_NOT_FOUND`, unknown body key için `400 INVALID_REQUEST_BODY` dönüyor.
+  - Fake RAG `MODEL_BACKPRESSURE` ve `COLLECTION_STORAGE_INCONSISTENT` hataları HTTP `503` ve doğru `code` ile map ediliyor.
+- Follow-up re-audit sırasında eksik kalan kontrat boşlukları kapatıldı:
+  - Collection list item shape'i sabitlendi; henüz aktif index yoksa `activeVersion` ve `chunkCount` alanları response'tan düşmek yerine `null` dönüyor.
+  - Acceptance test artık list endpoint'inin Chroma/Ollama health/readiness callback'lerini çağırmadığını da assert ediyor.
+  - Oversized JSON testi HTML fallback kabul etmeyi bıraktı; `413`, `INVALID_REQUEST_BODY`, `Payload Too Large` ve `requestId` structured JSON shape'i birebir assert ediliyor.
+  - `ApiErrorCode` type union'ı RAG katmanının döndürebildiği `ANSWER_NOT_IN_RETRIEVED_CONTEXT` ve `DISALLOWED_FALLBACK_ANSWER` kodlarıyla hizalandı.
+  - Test frontend collection option'larını user-controlled `displayName` ile `innerHTML` üzerinden üretmiyor; DOM node/textContent kullanıyor.
+- README ve `vanilla_rag_backend_mimarisi.md` collection list/readiness ayrımıyla güncellendi; `/ready` genel sistem readiness, collection `readyUrl` ise collection-level capability kaynağı olarak dokümante edildi.
+- Değiştirilen ana dosyalar: `src/http/ragRouter.ts`, `src/http/errors.ts`, `test/acceptance/api.endpoints.test.ts`, `test/app.foundation.test.ts`, `test_frontend/index.html`, `test/frontend.static.test.ts`, `test/docs.contract.test.ts`, `README.md`, `vanilla_rag_backend_mimarisi.md`, `notes/done.md`.
+- Çalıştırılan doğrulama komutları ve sonuçları:
+  - `npm.cmd run typecheck`: PASS
+  - `npm.cmd run typecheck:test`: PASS
+  - `node --import tsx --test test/acceptance/api.endpoints.test.ts test/app.foundation.test.ts test/frontend.static.test.ts test/docs.contract.test.ts`: PASS (31 test)
+  - `npm.cmd run build`: PASS
+  - `npm.cmd test`: PASS (76 test)
+  - `npm.cmd run test:integration`: PASS (1 test)
+  - Prompt'taki stale scan (`rg "/rag/query|/rag/retrieve|chroma\\.collection|data\\.indexSampleSize|rag\\.retrievalK" src test README.md vanilla_rag_backend_mimarisi.md test_frontend config`): yalnızca beklenen negatif test assertion'larında eski endpoint stringleri bulundu.
+  - Ürün/doküman/frontend/config stale scan (`rg ... src README.md vanilla_rag_backend_mimarisi.md test_frontend config`): temiz, eşleşme yok.
+- Kalan risk/not:
+  - Collection list endpoint'i bilinçli olarak readiness probe çalıştırmıyor; client'ların query/retrieve açmadan önce `readyUrl` çağırması gerekiyor. Test frontend bu akışı izliyor.

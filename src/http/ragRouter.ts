@@ -30,16 +30,14 @@ export function createRagRouter(deps: AppDependencies) {
       const mapped = collections.map(c => ({
         id: c.id,
         displayName: c.displayName,
-        description: c.description,
+        description: c.description ?? null,
         status: c.status,
-        chunkCount: c.chunkCount,
-        activeVersion: c.activeVersion,
-        capabilities: {
-          query: !!c.activePhysicalCollection,
-          retrieve: !!c.activePhysicalCollection,
-          reindex: true,
-        },
+        chunkCount: c.chunkCount ?? null,
+        activeVersion: c.activeVersion ?? null,
         updatedAt: c.updatedAt,
+        readyUrl: `/v1/rag/collections/${c.id}/ready`,
+        queryUrl: `/v1/rag/collections/${c.id}/query`,
+        retrieveUrl: `/v1/rag/collections/${c.id}/retrieve`,
       }));
 
       res.json({ collections: mapped });

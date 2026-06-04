@@ -158,7 +158,11 @@ Sistemdeki tüm görünür koleksiyonları listelemek için:
 Invoke-RestMethod -Uri http://localhost:3010/v1/rag/collections
 ```
 
+Not: Collection list item shape sabittir; henuz aktif index yoksa `activeVersion` ve `chunkCount` alanlari `null` doner.
+
 Bu endpoint yalnızca request tenant'ının görebildiği logical collection kayıtlarını döndürür. Geliştirme ortamında tenant kapsamını denemek isterseniz `x-tenant-id` header'ı gönderebilirsiniz.
+
+Collection listesi bilinçli olarak sadece ucuz registry discovery kontratıdır; Chroma veya Ollama readiness probe çalıştırmaz ve `capabilities.query/retrieve` iddiası taşımaz. Her item en az `status`, `activeVersion`, `chunkCount`, `updatedAt`, `readyUrl`, `queryUrl` ve `retrieveUrl` alanlarıyla gelir. Gerçek query/retrieve uygunluğu için listedeki `readyUrl` (`GET /v1/rag/collections/:collectionId/ready`) çağrılmalıdır.
 
 Spesifik bir koleksiyonun Chroma üzerindeki fiziksel karşılığının erişilebilir (readable) olup olmadığını, doküman sayısını ve hazırlık durumunu doğrulamak için:
 ```powershell
@@ -169,6 +173,7 @@ Bu readiness cevabı artık yalnızca `activePhysicalCollection` ve `chromaCount
 
 ## Health ve Readiness
 
+- `GET /v1/rag/collections`: Cheap registry-only collection discovery. It does not run Chroma/Ollama readiness probes and does not return query/retrieve capability flags. Use each item's `readyUrl` for collection-level capability checks before enabling query/retrieve.
 - `GET /health`: Sadece proses liveness durumunu döndürür.
 - `GET /ready`: Varsayılan summary contract döndürür. En az `status`, `ready`, `systemReadyFor`, `queryReady`, `indexReady`, `blockerCodes`, `warningCodes`, `dependencies.{registry,chroma,ollama}.ok` ve `diagnostics` alanlarını içerir.
 - `GET /ready?details=true`: Ayrıntılı readiness payload'unu (`checks`, `blockers`, `warnings`, `dependencies`, `dataSource`) döndürür.

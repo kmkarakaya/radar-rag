@@ -188,7 +188,19 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
 - npm run build ve npm run test (25 unit test) ile npm run test:integration (1 chroma read-path test) hatasız olarak başarıyla çalıştı.
 - Herhangi bir eksik ya da fix ihtiyacı bulunmadığı, Vanilla RAG Backend'in multi-collection yeteneği için planlanan %100 hedeflere (Release Baseline) ulaştığı doğrulandı.
 - Correction note (Prompt 17 audit): Bu kayıt release gate açısından fazla erken ve fazla kesin kalmıştır. Prompt 9 ve Prompt 10 coordination entry'leri eksikti; ayrıca sonraki Prompt 14-16 turlarında `targetVersion`, readiness contract, stale runtime copy ve test typecheck boşlukları kapatılmıştır. Bu yüzden Prompt 13 kaydı tarihsel bir ara değerlendirme olarak okunmalıdır; nihai audit kaydı Prompt 17 altındadır.
+- Correction note (Prompt 21 audit): Prompt 17 sonrası da bu "eksiksiz PASS / release baseline" iddiasının fazla kesin kaldığı görüldü. Prompt 21 working-tree auditinde Prompt 19 cleanup/startup testability davranışlarında regresyon bulundu ve düzeltildi; ayrıca Faz 5 operasyonel olgunluk maddeleri hâlâ `PARTIAL` kaldı. Bu kayıt yalnızca tarihsel ara değerlendirme olarak okunmalıdır.
 
+
+## Prompt 14: Job Version, Registry Invariants, and Physical Record Integrity
+
+- Backfill/correction note (Prompt 21 audit): Bu başlık önceki coordination log'da eksikti. Mevcut repo durumu Prompt 14 kapsamındaki job/version invariant'larının Prompt 18 ve Prompt 21 ile uygulanıp güçlendirildiğini gösteriyor.
+- `completeIndexJob` artık kayıtlı `targetVersion` dışındaki bir version'ı active pointer olarak yazmıyor; underscore dahil exact `targetVersion -> activeVersion` davranışı testli.
+- `completeIndexJob` target physical record yoksa veya uygun `building` status'unda değilse collection'i ready yapmıyor.
+- `queued` job complete edilemiyor; `succeeded`/`failed` terminal job'lar tekrar complete/fail ile overwrite edilemiyor.
+- Build failure ve stale running job durumlarında target physical record `building` kalmıyor, `failed_build` terminal status'una geçiyor.
+- Pointer swap sırasında önceki active physical record `delete_pending` yapılamazsa transaction fail ediyor; eski active record cleanup dışı kalacak şekilde sessiz pointer swap yapılmıyor.
+- Ana kanıt dosyaları: `src/collections/sqliteRegistry.ts`, `src/indexing/jobs.ts`, `test/collections.registry.test.ts`, `test/indexing.jobs.test.ts`.
+- Bu backfill orijinal Prompt 14 agent komut kaydı değildir; Prompt 21 auditinde mevcut repo ve test kanıtlarına göre eklenmiştir.
 
 
 ## Prompt 15: Acceptance Coverage, Test Typechecking, and Script Discipline
@@ -208,6 +220,7 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
 - completeIndexJob içindeki retentionMs eksikliği typechecking sayesinde saptandı ve mock/fake test değerleri olarak entegre edildi.
 - Testlerin çalışma scripti "test/*.test.ts" olarak güncellenerek, dış Chroma docker image'ına gerçekten bağlanan 	est/integration/rag.test.ts testleri normal build ve Unit test pipelineından dışarı (test:integration olarak ayrı bir formata) çıkarıldı.
 - Artık tüm API acceptance operasyonları test/api.endpoints.test.ts altında %100 başarıyla ve Type-Safe bir biçimde koşmaktadır.
+- Correction note (Prompt 21 audit): Bu ikinci Prompt 15 başlığı duplicate historical entry'dir. Silinmedi; coordination geçmişi korunuyor. Test sayıları ve release iddiaları için Prompt 16-21 kayıtları esas alınmalıdır.
 
 ## Prompt 16: Readiness Contract, Runtime Copy Cleanup, and Operational Config
 
@@ -279,6 +292,7 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
   - `git status --short`: final audit sonunda tekrar raporlandı
 - Kalan risk/not:
   - Done log artık tarihsel olarak daha doğru, ancak eski duplicate Prompt 15 kaydı korunmuştur; silinmedi çünkü coordination geçmişi değiştirilmeyip yeni audit notlarıyla düzeltilmesi tercih edildi.
+  - Correction note (Prompt 21 audit): Prompt 17 "nihai audit/final release" iddiası da artık tarihsel ara kayıt olarak okunmalıdır. Prompt 21 sırasında Prompt 19 cleanup/startup davranışlarında working-tree regresyonu bulundu ve düzeltildi; ayrıca Faz 5 operasyonel olgunluk maddeleri `PARTIAL` kaldığı için final release gate sonucu `kismen` olarak kayda alınmıştır.
 
 ## Prompt 18: Registry Patch Fields and Job Lifecycle Invariants
 
@@ -377,3 +391,46 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
   - Ürün/doküman/frontend/config stale scan (`rg ... src README.md vanilla_rag_backend_mimarisi.md test_frontend config`): temiz, eşleşme yok.
 - Kalan risk/not:
   - Collection list endpoint'i bilinçli olarak readiness probe çalıştırmıyor; client'ların query/retrieve açmadan önce `readyUrl` çağırması gerekiyor. Test frontend bu akışı izliyor.
+
+## Prompt 21: Final Plan Parity Audit, Done Log Repair, and Release Gate
+
+- `notes/multicollection.md` bastan sona okundu; Faz 0-6 ve "Test Kabul Kriterleri" maddeleri mevcut kod/test/dokuman kanitlariyla eslestirildi.
+- `notes/plan-parity-audit.md` eklendi. Audit sonucu:
+  - Multi-collection core, HTTP contract, zero-downtime rebuild ve retention cleanup maddeleri `PASS`.
+  - Faz 5 operasyonel olgunluk maddeleri `PARTIAL`: tam collection/user bazli request rate limiter yok, structured log field standardi merkezi degil, latency response/debug kontrati stabil degil, Chroma query path timeout/abort davranisi tam yayilmis degil.
+  - Release gate sonucu `kismen`.
+- Prompt 19 working-tree regresyonlari tekrar kontrol edildi ve davranis geri sabitlendi:
+  - cleanup dependency injection, due `delete_pending`/`cleanup_failed` filtresi, `failed_build` skip, retry/idempotent delete, registry affected-row guard'lari ve startup maintenance non-blocking log/drain davranisi testlerle dogrulandi.
+- Done log onarildi:
+  - Prompt 14 eksik kaydi backfill/correction note olarak eklendi.
+  - Duplicate Prompt 15 silinmedi; altina `duplicate historical entry` correction note eklendi.
+  - Prompt 13 ve Prompt 17 release-ready/final-release iddialarina Prompt 21 correction note eklendi.
+  - Prompt 18-20 kayitlarinin mevcut oldugu dogrulandi.
+- `notes/prompts.md` icine Prompt 22 follow-up eklendi: Faz 5 partial kalan operational observability, request rate limiting, latency/debug contract ve timeout hardening isleri icin cold-start prompt.
+- Spesifik regresyon kanitlari:
+  - Admin PATCH tum alanlari persist ediyor: `test/acceptance/api.endpoints.test.ts`.
+  - Queued job complete edilemiyor: `test/collections.registry.test.ts`.
+  - Terminal job complete/fail edilemiyor: `test/collections.registry.test.ts`.
+  - `completeIndexJob` physical record olmadan collection'i ready yapmiyor: `test/collections.registry.test.ts`.
+  - `targetVersion` underscore dahil birebir `activeVersion`: `test/collections.registry.test.ts`, `test/indexing.jobs.test.ts`.
+  - Failed build physical record `building` kalmiyor: `test/collections.registry.test.ts`, `test/indexing.jobs.test.ts`.
+  - Cleanup due/not-due/failure/retry/idempotent/skip testleri mevcut: `test/indexing.cleanup.test.ts`, `test/collections.registry.test.ts`.
+  - List endpoint cheap discovery ve `readyUrl` contract'i dokumanla ayni: `test/acceptance/api.endpoints.test.ts`, `README.md`, `vanilla_rag_backend_mimarisi.md`.
+- Değiştirilen ana dosyalar: `notes/plan-parity-audit.md`, `notes/prompts.md`, `notes/done.md`, `src/indexing/cleanup.ts`, `src/collections/sqliteRegistry.ts`, `test/indexing.cleanup.test.ts`, `test/collections.registry.test.ts`.
+- Çalıştırılan doğrulama komutları ve sonuçları:
+  - Product stale scan (`rg "/rag/query|/rag/retrieve|chroma\\.collection|data\\.indexSampleSize|rag\\.retrievalK" src README.md vanilla_rag_backend_mimarisi.md test_frontend config`): PASS, eşleşme yok.
+  - Full stale scan including tests (`rg ... src test README.md vanilla_rag_backend_mimarisi.md test_frontend config`): PASS, eşleşmeler yalnızca negatif assertion/route-not-found testlerinde.
+  - `npm.cmd run typecheck`: PASS
+  - `npm.cmd run typecheck:test`: PASS
+  - `npm.cmd run build`: PASS
+  - `npm.cmd test`: PASS (76 test)
+  - `npm.cmd run test:integration`: PASS (1 test)
+  - `git status --short`: `notes/done.md`, `notes/prompts.md`, `src/collections/sqliteRegistry.ts`, `src/indexing/cleanup.ts`, `test/collections.registry.test.ts`, `test/indexing.cleanup.test.ts` modified; `notes/plan-parity-audit.md` ve `data/registry.sqlite` untracked.
+- Kalan risk/not:
+  - Release gate `kismen`: multi-collection core hedefi calisir ve testli, fakat Faz 5 operational maturity icin Prompt 22 gereklidir.
+  - `data/registry.sqlite` untracked olarak duruyor; audit bu dosyayi silmedi, kullanici/runtime verisi olabilecegi icin sadece raporlandi.
+  - Windows line-ending normalizasyonu nedeniyle `git status` source/test dosyalarini modified gosteriyor; `git diff --stat` semantik diff'i notes dosyalariyla sinirli gosterdi.
+- Re-audit correction (same Prompt 21 follow-up):
+  - `notes/plan-parity-audit.md` icindeki iki kucuk tutarsiz `PARTIAL` notu duzeltildi. Test script ayrimi Prompt 11 dis-servis izolasyonu nedeniyle `test` + `test:integration` olarak kabul edildi; Chroma list/count/existence davranisi `listPhysicalChromaCollections` + `assertChromaCollectionReadable` ile karsilaniyor. Kalan `PARTIAL` maddeler yalniz Faz 5 operasyonel olgunluk kapsamindadir.
+  - Runtime registry DB dosyasinin calisma agacinda untracked gorunmemesi icin `.gitignore` icine `data/*.sqlite` eklendi. `data/registry.sqlite` silinmedi.
+  - Bu re-audit sirasinda attachment icindeki metnin Prompt 20 oldugu goruldu; kullanici mesajinda Prompt 21 istendigi icin Prompt 21 esas alindi, Prompt 20 discovery/list kontrati da gerileme acisindan tekrar kontrol edildi.

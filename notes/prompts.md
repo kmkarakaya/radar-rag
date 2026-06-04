@@ -1878,3 +1878,65 @@ Final cevapta:
 - Komut sonuclarini yaz.
 - notes/done.md icine final audit ve done-log repair kaydini ekledigini belirt.
 ```
+
+## Prompt 22: Operational Observability, Request Rate Limits, and Timeout Hardening
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin Prompt 21 plan-parity auditinde PARTIAL kalan Faz 5 operasyonel olgunluk maddelerini gercek implementasyon, test ve dokumanla kapatmaktir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini bastan sona oku. Ozellikle su bolumlere gore calis:
+- "Faz 5: Backend Operasyonel Olgunluk"
+- "Ollama ve Chroma Backpressure"
+- "HTTP Hata Kodlari"
+- "Test Kabul Kriterleri"
+- "Mimari Etkinlik Degerlendirmesi"
+
+Ayrica calismaya baslamadan once notes/done.md ve notes/plan-parity-audit.md dosyalarini oku. Prompt 21 auditinde `kismen` release gate sonucu verildiyse bunun nedenlerini ve mevcut test kanitlarini dikkate al.
+
+Amac:
+Multi-collection core davranisi zaten korunurken backend'in operasyonel yuzeyini release gate icin tamamlamak: collection/user bazli request rate limiting, standart structured log alanlari, response/debug seviyesinde latency kontrati ve query path genelinde Chroma/Ollama timeout/abort hardening.
+
+Yapilacaklar:
+1. Request rate limiting ekle:
+   - Merkezi middleware veya app-level hook kullan; route icinde ad-hoc limiter yazma.
+   - Limit anahtari en az `tenantId`, `userId`, `collectionId` ve operation (`query`, `retrieve`, `reindex`) boyutlarini desteklemeli.
+   - Config'e dokunuyorsan `config/rag.config.yaml`, `src/config.ts`, README ve mimari dokumani beraber guncelle.
+   - Limit asiminda structured `429 RATE_LIMIT_EXCEEDED` don.
+   - Unit/acceptance testleri Chroma/Ollama gerektirmemeli.
+2. Structured logging standardi kur:
+   - Log event shape'i standardize et: `requestId`, `tenantId`, `userId`, `collectionId`, `physicalCollection`, `jobId`, `operation`, `status`, `latencyMs`, `errorCode`.
+   - RAG query/retrieve, admin reindex/job, indexing build/jobRunner ve cleanup akislari bu alanlari tutarli kullansin.
+   - Testlerde log sink fake veya injectable olmali; console'a bagimli flaky assertion yazma.
+3. Latency/debug kontratini netlestir:
+   - Retrieval ve generation latency olcumlerini response'ta ancak kontrollu debug flag/config ile dondur; default response'u gereksiz kalabaliklastirma.
+   - Debug kapaliyken response shape sabit kalsin.
+   - README ve `vanilla_rag_backend_mimarisi.md` debug/latency sozlesmesini gercek implementasyonla hizala.
+4. Timeout/abort hardening yap:
+   - Chroma readability/vector search ve Ollama generation path'lerinde request abort ve configured timeout davranisini gozden gecir.
+   - Query path'in tamaminda timeout hatalari typed error'a map edilmeli; mumkunse `MODEL_BACKPRESSURE` ile kapasite/timeout durumlarini, storage inconsistency ile Chroma read hatalarini ayirt et.
+   - Testlerde fake deps ile timeout/abort semantigini dogrula.
+5. Plan parity ve done log guncelle:
+   - notes/plan-parity-audit.md Faz 5 maddelerini tekrar denetle.
+   - notes/done.md icine "Prompt 22: Operational Observability, Request Rate Limits, and Timeout Hardening" basligi altinda yaptiklarini, degistirdigin ana dosyalari, calistirdigin komutlari ve kalan riskleri ekle.
+
+Dikkat:
+- Multi-collection acceptance davranislarini geriletme.
+- Collection list endpoint'ini readiness probe ile pahali hale getirme; Prompt 20 contract'i korunmali.
+- Rate limiter ve log sink testleri dis servislere baglanmamali.
+- Dokumanda implementation'da olmayan ozelligi varmis gibi anlatma.
+
+Dogrulama:
+1. `npm.cmd run typecheck`
+2. `npm.cmd run typecheck:test`
+3. `npm.cmd run build`
+4. `npm.cmd test`
+5. `npm.cmd run test:integration`
+6. Stale scan:
+   - `rg "/rag/query|/rag/retrieve|chroma\\.collection|data\\.indexSampleSize|rag\\.retrievalK" src README.md vanilla_rag_backend_mimarisi.md test_frontend config`
+
+Final cevapta:
+- Faz 5 partial maddelerinin hangilerinin PASS oldugunu yaz.
+- Eklenen rate limit/log/latency/timeout testlerini listele.
+- Komut ve stale scan sonuclarini yaz.
+- notes/done.md ve notes/plan-parity-audit.md guncellemelerini belirt.
+```

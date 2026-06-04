@@ -6,6 +6,7 @@ chroma_data/
 npm-debug.log*
 *.log
 data/ozelge_veri.json
+data/*.sqlite
 # Environment variables
 .env
 .env.*

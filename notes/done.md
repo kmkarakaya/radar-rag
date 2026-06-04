@@ -144,6 +144,26 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
   - `npm run build`: hatasız başarıyla tamamlandı.
   - `npm run test`: Tüm testler (24/24) hatasız gecti.
 
+## Prompt 9: Zero-Downtime Retention Cleanup and Chroma Configuration Fidelity
+
+- Backfill note (Prompt 17 audit): Bu başlık önceki coordination log'da eksikti; mevcut repo kodu Prompt 9 kapsamındaki işlerin implement edildiğini gösteriyor.
+- `physical_collections` tablosu ve related registry metotları eklendi; fiziksel collection lifecycle artık `building | active | delete_pending | deleted | cleanup_failed` state'leri ile izleniyor.
+- Başarılı pointer swap sonrası eski aktif fiziksel collection hemen silinmiyor; `delete_after = now + retentionMs` ile due cleanup aşamasına bırakılıyor.
+- `src/indexing/cleanup.ts` ile ayrı cleanup servisi eklendi ve [src/server.ts](src/server.ts) startup'ta due cleanup çalıştırır hale geldi.
+- `src/collections/chromaCollections.ts` tarafında create request builder / name validation ve registry configuration pass-through davranışı kuruldu.
+- Ana dosyalar: `src/collections/sqliteRegistry.ts`, `src/indexing/cleanup.ts`, `src/indexing/jobs.ts`, `src/indexing/buildPhysicalCollection.ts`, `src/collections/chromaCollections.ts`, `src/server.ts`, `src/config.ts`, `config/rag.config.yaml`.
+- Orijinal agent komut kaydı done log'a düşülmemiş. Prompt 17 audit sırasında mevcut durum yeniden doğrulandı.
+
+## Prompt 10: Tenant Access, Registry-Aware Readiness, and Collection Capabilities
+
+- Backfill note (Prompt 17 audit): Bu başlık önceki coordination log'da eksikti; mevcut repo kodu Prompt 10 kapsamındaki access/readiness davranışlarının implement edildiğini gösteriyor.
+- `src/http/requestContext.ts` ile merkezi request context eklendi; `x-tenant-id`, `x-user-id`, `x-request-id` header'ları destekleniyor.
+- Registry erişimi tenant-scoped tutuldu; `getVisibleCollection` ve `listVisibleCollections` sadece request tenant kapsamındaki logical collection'ları döndürüyor.
+- `src/collections/resolveReadableCollection.ts` ve `src/http/ragRouter.ts` ile `403 COLLECTION_FORBIDDEN` / `404 COLLECTION_NOT_FOUND` ayrımı uygulandı.
+- `/ready` registry-aware hale getirildi; collection-level `/v1/rag/collections/:collectionId/ready` endpoint'i `activeJob`, `activeVersion`, `chromaReadable`, `chromaCount` ve capability alanlarını döndürür hale geldi.
+- Ana dosyalar: `src/http/requestContext.ts`, `src/http/errors.ts`, `src/collections/resolveReadableCollection.ts`, `src/http/ragRouter.ts`, `src/app.ts`, `test/acceptance/api.endpoints.test.ts`, `test/app.foundation.test.ts`.
+- Orijinal agent komut kaydı done log'a düşülmemiş. Prompt 17 audit sırasında mevcut durum yeniden doğrulandı.
+
 ## Prompt 11: Acceptance Tests, Test Isolation, and External-Service Boundaries
 
 - Test/Mimar sınırları dış servislere (Chroma / Ollama vb.) bağımlılıklardan arındırıldı. Unit ve endpoint testleri lokal ortamlarda bu servislerin hiçbiri ("Docker container") ayakta değilken bile %100 başarılı geçecek duruma (Fake JobRunner, Mocked Read Paths, Cleanup Fake test vs.) getirildi.
@@ -167,5 +187,95 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
 - Tüm stale (eski) config/endpoint referans aramaları yapıldı (rg/grep taraması); product dosyalarında ve dokümanlarında temizlenmiş olduğu görüldü.
 - npm run build ve npm run test (25 unit test) ile npm run test:integration (1 chroma read-path test) hatasız olarak başarıyla çalıştı.
 - Herhangi bir eksik ya da fix ihtiyacı bulunmadığı, Vanilla RAG Backend'in multi-collection yeteneği için planlanan %100 hedeflere (Release Baseline) ulaştığı doğrulandı.
+- Correction note (Prompt 17 audit): Bu kayıt release gate açısından fazla erken ve fazla kesin kalmıştır. Prompt 9 ve Prompt 10 coordination entry'leri eksikti; ayrıca sonraki Prompt 14-16 turlarında `targetVersion`, readiness contract, stale runtime copy ve test typecheck boşlukları kapatılmıştır. Bu yüzden Prompt 13 kaydı tarihsel bir ara değerlendirme olarak okunmalıdır; nihai audit kaydı Prompt 17 altındadır.
 
 
+
+## Prompt 15: Acceptance Coverage, Test Typechecking, and Script Discipline
+
+- tsconfig.test.json oluşturuldu ve repo genelinde strict TypeScript denetimi test dosyalarına da genişletildi. Artık testler içindeki Tip (Type) hataları gizlenmiyor.
+- package.json içerisine typecheck ve typecheck:test komutları eklendi.
+- Eksik olan retentionMs argümanları tip doğrulaması sonucunda saptanarak test mock'larının içine dâhil edildi.
+- Normal testler (Integration dışı), npm run test komutu altında tamamen izole koşulacak şekilde Node Test Runner dosya pattern'leri güncellendi (Sadece test/*.test.ts).
+- Tüm API Acceptance kriterleri ve operasyonları %100 Passing ve %100 Type-Checked seviyesine çekildi.
+
+
+## Prompt 15: Acceptance Coverage, Test Typechecking, and Script Discipline
+
+- tsconfig.test.json oluşturuldu ve test dosyaları (--noEmit) TypeScript koruması altına alındı.
+- package.json içine typecheck:test script'i eklendi.
+- Express app.listen(0, resolve) satırlarındaki Void/Error Union Type uyumsuzlukları (overload hataları) test dosyalarından giderildi.
+- completeIndexJob içindeki retentionMs eksikliği typechecking sayesinde saptandı ve mock/fake test değerleri olarak entegre edildi.
+- Testlerin çalışma scripti "test/*.test.ts" olarak güncellenerek, dış Chroma docker image'ına gerçekten bağlanan 	est/integration/rag.test.ts testleri normal build ve Unit test pipelineından dışarı (test:integration olarak ayrı bir formata) çıkarıldı.
+- Artık tüm API acceptance operasyonları test/api.endpoints.test.ts altında %100 başarıyla ve Type-Safe bir biçimde koşmaktadır.
+
+## Prompt 16: Readiness Contract, Runtime Copy Cleanup, and Operational Config
+
+- `/ready` summary contract gerçek implementasyonla sabitlendi. Varsayılan `GET /ready` artık raw `checks` array yerine summary object döndürüyor; summary içinde `status`, `ready`, `systemReadyFor`, `queryReady`, `indexReady`, `blockerCodes`, `warningCodes`, `dependencies.{registry,chroma,ollama}.ok` ve `diagnostics` alanları yer alıyor. `GET /ready?details=true` tam payload, `GET /ready?strict=true` ise not-ready durumda `503` döndürüyor.
+- Registry readiness contract testlerle sabitlendi: sağlıklı fake registry ile `dependencies.registry.ok = true`, arızalı fake registry ile `GET /ready?strict=true&details=true` altında `503` ve `REGISTRY_UNREACHABLE` doğrulandı.
+- Collection readiness contract netleştirildi: `src/http/ragRouter.ts` içinde `activePhysicalCollection` ve `activeVersion` alanları `null`/string olarak stabil dönecek hale getirildi; `activeJob`, `chromaReadable`, `chromaCount` ve `capabilities` alanları acceptance testleriyle sabitlendi. Rebuild sürerken aktif physical okunabiliyorsa query/retrieve capability'lerinin açık kaldığı test edildi.
+- Runtime stale copy temizliği yapıldı: `src/app.ts` içindeki eski `data.sourcePath` recommendedAction yolu `collectionDefaults.sourcePath` olarak düzeltildi; `/ready` ve onboarding kopyaları yeni multi-collection config shape ile hizalandı. `src/admin/onboard.ts` içindeki `collectionDefaults.indexSampleSize` açıklaması netleştirildi.
+- Operasyonel config görünür hale getirildi: `config/rag.config.yaml` içine `cleanup.retentionMs`, `limits.maxConcurrentEmbeddings`, `limits.maxConcurrentGenerations` açıkça eklendi. Onboarding CLI bu alanları artık prompt ediyor, yazıyor ve config özetinde gösteriyor.
+- README ve `vanilla_rag_backend_mimarisi.md` dokümanları güncellendi: `/ready` summary/details/strict davranışı eklendi, collection-ready contract genişletildi, retention cleanup `cleanup.retentionMs` ile anlatıldı ve "henüz tam request rate limiter yok, sadece model backpressure + body limit var" durumu açıkça yazıldı.
+- Güçlendirilen test yüzeyi:
+  - `test/app.foundation.test.ts`: `/ready` summary/details/strict registry fail.
+  - `test/acceptance/api.endpoints.test.ts`: collection-ready queued/no-active-physical ve readable-active-version during rebuild.
+  - `test/runtime.static.test.ts`: product source/docs/config için stale path scan + operasyonel config görünürlüğü + rate-limit dürüstlüğü.
+- Değiştirilen ana dosyalar: `src/app.ts`, `src/http/ragRouter.ts`, `src/admin/onboard.ts`, `config/rag.config.yaml`, `README.md`, `vanilla_rag_backend_mimarisi.md`, `test/app.foundation.test.ts`, `test/acceptance/api.endpoints.test.ts`, `test/runtime.static.test.ts`.
+- Çalıştırılan doğrulama komutları ve sonuçları:
+  - `node --import tsx --test test/app.foundation.test.ts`: PASS
+  - `node --import tsx --test test/acceptance/api.endpoints.test.ts test/runtime.static.test.ts`: PASS
+  - `npm.cmd run typecheck`: PASS
+  - `npm.cmd run typecheck:test`: PASS
+  - `npm.cmd run build`: PASS
+  - `npm.cmd test`: PASS (33 test)
+  - `rg ...` komutu bu Windows ortamında mevcut değildi; aynı stale scan regex'i tool-search/grep ile tekrarlandı. `src`, `README.md`, `vanilla_rag_backend_mimarisi.md`, `test_frontend`, `config` içinde eşleşme bulunmadı; eşleşmeler sadece beklenen negatif test assertion'larında kaldı.
+- Kalan risk/not:
+  - Bu prompt kapsamında `npm run test:integration` tekrar koşulmadı; Prompt 16 değişiklikleri dış servis bağımlı integration path'i doğrudan değiştirmedi.
+  - README ve mimari dokümanda markdown-lint biçim uyarıları mevcut, ancak build/typecheck/test hattını etkilemiyor ve bu promptun davranış sözleşmesi kapsamı dışında bırakıldı.
+
+## Prompt 17: Documentation Truth, Done Log Repair, and Final Release Audit
+
+- Kod, test, README, mimari doküman ve coordination log tekrar karşılaştırıldı. Bu turda sadece yeşil testlere bakılmadı; planın "Test Kabul Kriterleri" tek tek repo implementasyonu ile eşleştirildi.
+- Gerçek bug fix: `src/indexing/jobs.ts` içinde `runIndexJob` artık `job.id`'den türetmek yerine kayıtlı `job.targetVersion` değerini kullanıyor. Bu, explicit target version invariant'ını gerçek uygulamada koruyor.
+- Dokümantasyon doğruluğu için `README.md` ve `vanilla_rag_backend_mimarisi.md` güncellendi:
+  - admin API yüzeyi
+  - logical registry / tenant-scoped public collectionId
+  - versioned physical collection lifecycle
+  - job state'leri (`queued`, `running`, `succeeded`, `failed`)
+  - atomic pointer swap
+  - retention cleanup (`delete_pending`, `cleanup_failed`, `delete_after`)
+  - startup stale-job recovery ve due cleanup
+  - registry-aware `/ready`
+  - collection-level `/v1/rag/collections/:collectionId/ready`
+  - `403 COLLECTION_FORBIDDEN` / `404 COLLECTION_NOT_FOUND` ayrımı
+  - model backpressure ve henüz tamamlanmamış request rate limiter TODO durumu
+- Done log onarıldı:
+  - eksik Prompt 9 ve Prompt 10 başlıkları backfill edildi
+  - Prompt 13 altına düzeltme notu eklendi
+  - bu Prompt 17 audit kaydı eklendi
+- Güçlendirilen test yüzeyi:
+  - `test/acceptance/api.endpoints.test.ts`: tenant-visible collection listing ve `403 COLLECTION_FORBIDDEN`
+  - `test/indexing.jobs.test.ts`: farklı collection'larda eşzamanlı queued job ve `job.targetVersion` doğruluğu
+  - `test/chroma.collections.test.ts`: registry Chroma configuration pass-through ve invalid name rejection
+  - `test/frontend.static.test.ts`: empty/no-selection durumunda query form disable davranışı
+  - `test/docs.contract.test.ts`: admin API, retention cleanup state ve `COLLECTION_FORBIDDEN` dokümantasyonu
+- Follow-up correction (same Prompt 17 audit): İlk Prompt 17 pass'inden sonra ek kod denetimi, collection kayıtlarında saklanan `embeddingModel`, `chatModel` ve `retrievalDistanceThreshold` ayarlarının gerçek query/build akışında tam uygulanmadığını ortaya çıkardı. Bu turda:
+  - `src/rag.ts`, `src/http/ragRouter.ts` ve `src/indexing/buildPhysicalCollection.ts` collection-specific model/threshold wiring ile düzeltildi.
+  - `src/collections/sqliteRegistry.ts` ve `src/collections/chromaCollections.ts` içinde `distanceMetric` ile `configuration.hnsw.space` senkronizasyonu zorunlu hale getirildi.
+  - `src/http/adminRouter.ts` tenant-scoped update/reindex/job görünürlüğü açısından sıkılaştırıldı.
+  - `GET /v1/rag/collections/:collectionId/ready` artık collection-specific model availability'yi de raporlar.
+  - Yeni/ek testler: `test/buildPhysicalCollection.test.ts`, `test/collections.registry.test.ts`, `test/acceptance/api.endpoints.test.ts`, `test/chroma.collections.test.ts`.
+- Değiştirilen ana dosyalar: `src/indexing/jobs.ts`, `README.md`, `vanilla_rag_backend_mimarisi.md`, `notes/done.md`, `test/acceptance/api.endpoints.test.ts`, `test/indexing.jobs.test.ts`, `test/chroma.collections.test.ts`, `test/frontend.static.test.ts`, `test/docs.contract.test.ts`.
+- Çalıştırılan doğrulama komutları ve sonuçları:
+  - `node --import tsx --test test/acceptance/api.endpoints.test.ts test/indexing.jobs.test.ts test/frontend.static.test.ts test/chroma.collections.test.ts`: PASS
+  - `node --import tsx --test test/indexing.jobs.test.ts`: PASS (same-millisecond `targetVersion` uniqueness düzeltmesi sonrası tekrarlandı)
+  - `npm.cmd run typecheck`: Prompt 17 sonunda yeniden doğrulandı
+  - `npm.cmd run typecheck:test`: Prompt 17 sonunda yeniden doğrulandı
+  - `npm.cmd run build`: Prompt 17 sonunda yeniden doğrulandı
+  - `npm.cmd test`: Prompt 17 sonunda yeniden doğrulandı
+  - `npm.cmd run test:integration`: PASS
+  - stale scan (`/rag/query|/rag/retrieve|chroma.collection|data.indexSampleSize`): `src`, `config`, `README.md`, `vanilla_rag_backend_mimarisi.md`, `test_frontend` içinde eşleşme yok; kalan eşleşmeler sadece beklenen negatif test assertion'larında
+  - `git status --short`: final audit sonunda tekrar raporlandı
+- Kalan risk/not:
+  - Done log artık tarihsel olarak daha doğru, ancak eski duplicate Prompt 15 kaydı korunmuştur; silinmedi çünkü coordination geçmişi değiştirilmeyip yeni audit notlarıyla düzeltilmesi tercih edildi.

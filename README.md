@@ -12,7 +12,8 @@ Detaylı mimari ve endpoint sözleşmeleri için [vanilla_rag_backend_mimarisi.m
 - **Sıfır Kesinti ile Endeksleme (Zero-Downtime Rebuild):** Endeksleme işlemleri arka planda her seferinde yeni bir "versiyonlu fiziksel Chroma koleksiyonuna" yazılır. İşlem başarıyla bittiğinde aktif yönlendirici (pointer) atomik olarak değiştirilir. Böylece sorgu (query) işlemleri endeksleme süresince eski veriden kesintisiz hizmet almaya devam eder.
 - **Model Backpressure & Concurrency Koruması:** Eşzamanlı istek yığılmalarına karşı Ollama ve Chroma etkileşimlerinde asenkron kilitler (semaphore) kullanılır (`maxConcurrentEmbeddings`, `maxConcurrentGenerations`). Sistem kapasitesi aşıldığında veya client bağlantıyı kestiğinde (abort), istekler `503 MODEL_BACKPRESSURE` ile güvenli şekilde sonlandırılır.
 - **Gelişmiş Hata Yönetimi ve Payload Koruması:** Tüm JSON gövdeleri 1MB limit ile korunur (Aşımında `413 Payload Too Large` döner). Hatalar standart bir JSON şeması ile, Request ID izlenebilirliği (traceability) eşliğinde loglanır ve iletilir.
-- **Stale Job Recovery & Otomatik Temizlik:** Sunucu yeniden başladığında asılı kalan (stale) index kilitleri otomatik temizlenir. Yeni bir re-index başarıyla tamamlandığında, Chroma üzerinde yer kaplayan eski fiziksel koleksiyonlar arka planda (garbage collection) silinir.
+- **Stale Job Recovery & Otomatik Temizlik:** Sunucu yeniden başladığında asılı kalan (stale) index kilitleri otomatik temizlenir. Yeni bir re-index başarıyla tamamlandığında, Chroma üzerinde yer kaplayan eski fiziksel koleksiyonlar `cleanup.retentionMs` süresi dolunca arka planda temizlenir.
+- **Dürüst Operasyonel Limitler:** Henüz tam bir request rate limiter yoktur. Merkezi kanca [src/app.ts](src/app.ts) içinde TODO olarak durur; bugün uygulanan korumalar model backpressure limitleri (`maxConcurrentEmbeddings`, `maxConcurrentGenerations`) ve 1MB JSON body limitidir.
 
 ## Nerede Ne Var?
 
@@ -21,7 +22,8 @@ Detaylı mimari ve endpoint sözleşmeleri için [vanilla_rag_backend_mimarisi.m
 - [config/rag.config.yaml](config/rag.config.yaml): aktif runtime ayarları (limitler, default değerler vb.)
 - [data/registry.sqlite](data/registry.sqlite): logical collection ve job durumu registry'si
 - [test_frontend/index.html](test_frontend/index.html): browser tabanlı manuel test arayüzü
-- [src/server.ts](src/server.ts): HTTP API katmanı
+- [src/app.ts](src/app.ts): HTTP API kompozisyonu, readiness ve router bağlama katmanı
+- [src/server.ts](src/server.ts): runtime bootstrap, registry/job runner wiring ve startup cleanup
 - [src/rag.ts](src/rag.ts): retrieval + generation orkestrasyonu ve backpressure yönetimi
 - [src/indexing/jobs.ts](src/indexing/jobs.ts): Arka plan re-index job yönetimi
 
@@ -69,8 +71,27 @@ npm.cmd run onboard -- --yes
 
 > **Not:** Eski sürümde onboarding aracı direkt olarak Chroma indekslemeyi de başlatıyordu. Multi-collection yapısına geçilmesiyle birlikte, onboarding aracı **yalnızca sistem konfigürasyonunu (config) hazırlar**. Endeksleme adımı ayrı bir komuta (`npm run index`) veya API çağrısına devredilmiştir.
 
+### Operasyonel Config Yüzeyi
+
+`config/rag.config.yaml` içinde aşağıdaki operasyonel alanlar görünür ve onboarding CLI tarafından korunur:
+
+```yaml
+cleanup:
+  retentionMs: 3600000
+limits:
+  maxConcurrentEmbeddings: 5
+  maxConcurrentGenerations: 2
+```
+
+- `cleanup.retentionMs`: Eski fiziksel Chroma koleksiyonlarının emekliye ayrıldıktan sonra ne kadar süre tutulacağını belirler.
+- `limits.maxConcurrentEmbeddings`: Embedding istekleri için model backpressure sınırı.
+- `limits.maxConcurrentGenerations`: Chat generation istekleri için model backpressure sınırı.
+- Henüz request bazlı bir rate limiter yoktur; bu alanlar yalnızca model concurrency/backpressure davranışını sınırlar.
+- Rebuild başarıyla bittiğinde eski aktif fiziksel koleksiyon hemen silinmez; önce registry içinde `delete_pending` durumuna alınır ve `delete_after = now + cleanup.retentionMs` olarak işaretlenir.
+- Sunucu açılışında bir kez stale job recovery ve due cleanup çalışır. Bu tarama `delete_pending` ve `cleanup_failed` kayıtları arasından süresi dolmuş fiziksel koleksiyonları yeniden denemeye uygundur.
+
 ### 1. Collection Yaratma (Admin API)
-Koleksiyonun mantıksal (logical) konfigürasyonunu tanımlayın. Burada belirlediğiniz mesafe metriği (distanceMetric), parçalama boyutları (chunkSize) vb. o koleksiyon için sabittir:
+Koleksiyonun mantıksal (logical) konfigürasyonunu tanımlayın. Burada belirlediğiniz mesafe metriği (distanceMetric), embedding modeli, chat modeli, retrieval eşiği ve parçalama boyutları o koleksiyonun build/query akışında gerçekten kullanılır:
 
 ```powershell
 $collection = @{
@@ -82,12 +103,16 @@ $collection = @{
   chunkOverlap = 200
   retrievalK = 5
   retrievalDistanceThreshold = 1
+  embeddingModel = "bge-m3"
+  chatModel = "gemma3:4b-cloud"
 } | ConvertTo-Json
 
 $response = Invoke-RestMethod -Uri http://localhost:3010/v1/admin/collections -Method Post -ContentType "application/json; charset=utf-8" -Body $collection
 $collectionId = $response.collection.id
 Write-Host "Created collection: $collectionId"
 ```
+
+Bu `collectionId`, kullanıcıya açık ve tenant-scoped bir public kimliktir; Chroma içindeki gerçek fiziksel collection adı değildir. Lokal geliştirmede farklı tenant görünürlüğünü denemek için `x-tenant-id` header'ı kullanılabilir.
 
 ### 2. Re-Index / Job Başlatma
 Tanımladığınız koleksiyon için verileri Chroma'ya aktaracak (ve versiyonlu physical collection üretecek) arka plan index görevini HTTP API ile başlatın:
@@ -99,6 +124,8 @@ Write-Host "Started Job: $jobId"
 ```
 
 Aynı anda aynı koleksiyon için ikinci bir index görevi başlatmaya çalışırsanız sistem `409 COLLECTION_INDEX_ALREADY_RUNNING` hatası ile bunu güvenli bir şekilde engeller.
+
+Başarılı bir rebuild sonrasında registry aktif pointer'ı atomik olarak yeni fiziksel collection'a çevrilir. Önceki aktif fiziksel collection ise hemen silinmez; `delete_pending` durumuna alınır ve due cleanup aşamasına bırakılır.
 
 **Alternatif (CLI ile İndeksleme):**
 HTTP API yerine doğrudan komut satırı üzerinden (sunucu çalışırken veya çalışmazken) indeksleme tetiklemek için `npm run index` aracını kullanabilirsiniz. Mantıksal koleksiyonun ID'sini vermeniz zorunludur:
@@ -123,10 +150,23 @@ Sistemdeki tüm görünür koleksiyonları listelemek için:
 Invoke-RestMethod -Uri http://localhost:3010/v1/rag/collections
 ```
 
+Bu endpoint yalnızca request tenant'ının görebildiği logical collection kayıtlarını döndürür. Geliştirme ortamında tenant kapsamını denemek isterseniz `x-tenant-id` header'ı gönderebilirsiniz.
+
 Spesifik bir koleksiyonun Chroma üzerindeki fiziksel karşılığının erişilebilir (readable) olup olmadığını, doküman sayısını ve hazırlık durumunu doğrulamak için:
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:3010/v1/rag/collections/$collectionId/ready"
 ```
+
+Bu readiness cevabı artık yalnızca `activePhysicalCollection` ve `chromaCount` bilgilerini değil, seçili koleksiyonun `embeddingModel` ve `chatModel` değerlerinin Ollama tarafında gerçekten bulunup bulunmadığını da `modelAvailability` alanı altında raporlar. `capabilities.query` ancak aktif fiziksel collection okunabiliyor ve koleksiyonun chat+embedding modelleri mevcutsa `true` olur.
+
+## Health ve Readiness
+
+- `GET /health`: Sadece proses liveness durumunu döndürür.
+- `GET /ready`: Varsayılan summary contract döndürür. En az `status`, `ready`, `systemReadyFor`, `queryReady`, `indexReady`, `blockerCodes`, `warningCodes`, `dependencies.{registry,chroma,ollama}.ok` ve `diagnostics` alanlarını içerir.
+- `GET /ready?details=true`: Ayrıntılı readiness payload'unu (`checks`, `blockers`, `warnings`, `dependencies`, `dataSource`) döndürür.
+- `GET /ready?strict=true`: Sistem hazır değilse HTTP `503` döndürür.
+
+Bu endpoint collection'dan bağımsızdır; boş bir registry veya henüz default collection olmaması tek başına `/ready` başarısızlığı sayılmaz. Collection bazlı erişilebilirlik için `GET /v1/rag/collections/:collectionId/ready` kullanılmalıdır.
 
 ### RAG Sorguları: Retrieve ve Query
 
@@ -139,6 +179,8 @@ Invoke-RestMethod -Uri "http://localhost:3010/v1/rag/collections/$collectionId/r
 # Retrieve edilen kaynaklar üzerinden Ollama LLM'i ile nihai cevabı üretme
 Invoke-RestMethod -Uri "http://localhost:3010/v1/rag/collections/$collectionId/query" -Method Post -ContentType "application/json; charset=utf-8" -Body $body
 ```
+
+`retrieve` akışında koleksiyonun kendi `embeddingModel` ve `retrievalDistanceThreshold` ayarları, `query` akışında ise bunlara ek olarak koleksiyonun `chatModel` ayarı kullanılır. Global config bu alanlar için fallback/default görevi görür; logical collection kaydı varsa asıl source of truth registry'dir.
 
 ## Veri Kaynakları ve Ingestion (İndeksleme Altyapısı)
 
@@ -183,6 +225,7 @@ Bu backend bilincli olarak kullaniciya placeholder veya fallback answer dondurme
 ### Başlıca Hata Kodları:
 
 - `INVALID_REQUEST_BODY` (`400` / `413`): Gönderilen JSON geçersiz veya 1MB payload limitini aşıyor.
+- `COLLECTION_FORBIDDEN` (`403`): Koleksiyon ID'si var ama başka tenant kapsamına ait olduğu için erişim reddedildi.
 - `COLLECTION_NOT_FOUND` (`404`): Koleksiyon ID'si registry'de bulunamadı.
 - `COLLECTION_NOT_READY` (`404`): Koleksiyon var ama henüz başarılı bir endekse (aktif fiziksel pointer'a) sahip değil.
 - `COLLECTION_INDEXING` (`503`): Koleksiyon şu anda sıfırdan ilk kez endeksleniyor. (Daha önce başarıyla bitmiş bir index olsaydı, `zero-downtime` prensibi gereği sorgular eski indeksten dönmeye devam ederdi).

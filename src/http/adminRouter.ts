@@ -15,12 +15,30 @@ export function createAdminRouter(deps: AppDependencies) {
       next(new HttpError(500, "INTERNAL_ERROR", "Registry is not available"));
       return;
     }
+    next();
+  };
+
+  const requireJobRunner = (req: Request, _res: Response, next: NextFunction) => {
     if (!deps.jobRunner) {
       next(new HttpError(500, "INTERNAL_ERROR", "Job Runner is not available"));
       return;
     }
     next();
   };
+
+  async function requireVisibleCollection(context: RequestContext, collectionId: string) {
+    const collection = await deps.registry!.getVisibleCollection(context, collectionId);
+    if (collection) {
+      return collection;
+    }
+
+    const exists = await deps.registry!.collectionExists(collectionId);
+    if (exists) {
+      throw new HttpError(403, "COLLECTION_FORBIDDEN", "Collection access forbidden");
+    }
+
+    throw new HttpError(404, "COLLECTION_NOT_FOUND", "Collection not found");
+  }
 
   const createCollectionSchema = z.object({
     displayName: z.string().trim().min(1),
@@ -84,6 +102,7 @@ export function createAdminRouter(deps: AppDependencies) {
       }
 
       const context = res.locals.requestContext as RequestContext;
+      await requireVisibleCollection(context, collectionId);
       const collection = await deps.registry!.updateCollection(context, collectionId, parsed.data);
       res.json({ collection });
     } catch (error) {
@@ -91,10 +110,11 @@ export function createAdminRouter(deps: AppDependencies) {
     }
   });
 
-  router.post("/collections/:collectionId/reindex", requireRegistry, async (req, res, next) => {
+  router.post("/collections/:collectionId/reindex", requireRegistry, requireJobRunner, async (req, res, next) => {
     try {
       const collectionId = req.params.collectionId as string;
       const context = res.locals.requestContext as RequestContext;
+      await requireVisibleCollection(context, collectionId);
       
       const job = await startReindexJob({
         registry: deps.registry!,
@@ -120,8 +140,9 @@ export function createAdminRouter(deps: AppDependencies) {
 
   router.get("/jobs/:jobId", requireRegistry, async (req, res, next) => {
     try {
+      const context = res.locals.requestContext as RequestContext;
       const job = await deps.registry!.getJob(req.params.jobId as string);
-      if (!job) {
+      if (!job || job.tenantId !== context.tenantId) {
         throw new HttpError(404, "ROUTE_NOT_FOUND", "Job not found.");
       }
       res.json({ job });

@@ -53,7 +53,7 @@ export async function runIndexJob(input: {
     return;
   }
 
-  const targetVersion = job.id.split("_")[0] || "unknown";
+  const targetVersion = job.targetVersion;
 
   try {
     await registry.createPhysicalCollectionRecord({

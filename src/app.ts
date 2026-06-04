@@ -1,6 +1,7 @@
-import path from "node:path";
+﻿import path from "node:path";
 import express, { type Express } from "express";
 import type { CollectionRegistry } from "./collections/types.js";
+import { resolveReadableCollection } from "./collections/resolveReadableCollection.js";
 import { config } from "./config.js";
 import { errorHandler, notFoundHandler, sendErrorResponse } from "./http/errors.js";
 import { createRequestContext } from "./http/requestContext.js";
@@ -8,10 +9,12 @@ import { checkIndexingSourceHealth, type IndexingSourceHealthDetails } from "./i
 import { createAdminRouter } from "./http/adminRouter.js";
 import { createRagRouter } from "./http/ragRouter.js";
 import {
+  answerQuestion,
   checkChatGenerationHealth,
   checkChromaHealth,
   checkEmbeddingHealth,
   checkOllamaHealth,
+  retrieveSources,
   type ChatGenerationHealthDetails,
   type EmbeddingHealthDetails,
   type OllamaHealthDetails,
@@ -21,6 +24,18 @@ import type { IndexJobRunner } from "./indexing/jobRunner.js";
 export type AppDependencies = {
   registry?: CollectionRegistry;
   jobRunner?: IndexJobRunner;
+  ragHandlers?: {
+    retrieveSources?: typeof retrieveSources;
+    answerQuestion?: typeof answerQuestion;
+    resolveReadableCollection?: typeof resolveReadableCollection;
+  };
+  healthChecks?: {
+    checkChromaHealth?: typeof checkChromaHealth;
+    checkOllamaHealth?: typeof checkOllamaHealth;
+    checkEmbeddingHealth?: typeof checkEmbeddingHealth;
+    checkChatGenerationHealth?: typeof checkChatGenerationHealth;
+    checkIndexingSourceHealth?: typeof checkIndexingSourceHealth;
+  };
 };
 
 type Capability = "query" | "index";
@@ -143,10 +158,11 @@ function configureApp(app: Express): void {
   app.use("/test-frontend", express.static(path.resolve(process.cwd(), "test_frontend")));
 
 async function getReadinessPayload(registry?: CollectionRegistry) {
+  const healthChecks = app.locals.dependencies?.healthChecks;
   const [chroma, ollama, dataSource, registryHealth] = await Promise.all([
-    checkChromaHealth(),
-    checkOllamaHealth(),
-    checkIndexingSourceHealth(),
+    (healthChecks?.checkChromaHealth ?? checkChromaHealth)(),
+    (healthChecks?.checkOllamaHealth ?? checkOllamaHealth)(),
+    (healthChecks?.checkIndexingSourceHealth ?? checkIndexingSourceHealth)(),
     checkRegistryHealth(registry),
   ]);
   const ollamaDetails = (ollama.details ?? {}) as Partial<OllamaHealthDetails>;
@@ -154,10 +170,10 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
   const chromaReachable = chroma.ok;
 
   const embedding = ollama.ok && ollamaDetails.embeddingModelAvailable
-    ? await checkEmbeddingHealth()
+    ? await (healthChecks?.checkEmbeddingHealth ?? checkEmbeddingHealth)()
     : null;
   const chatGeneration = ollama.ok && ollamaDetails.chatModelAvailable
-    ? await checkChatGenerationHealth()
+    ? await (healthChecks?.checkChatGenerationHealth ?? checkChatGenerationHealth)()
     : null;
   const embeddingDetails = (embedding?.details ?? {}) as Partial<EmbeddingHealthDetails>;
   const chatGenerationDetails = (
@@ -353,7 +369,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
         status: "warn",
         blocking: false,
         capabilities: ["index", "query"],
-        message: `Indexing currently uses only the first ${dataSourceDetails.documentCount} documents because data.indexSampleSize is set to ${dataSourceDetails.indexSampleSize}.`,
+        message: `Indexing currently uses only the first ${dataSourceDetails.documentCount} documents because collectionDefaults.indexSampleSize is set to ${dataSourceDetails.indexSampleSize}.`,
         details: {
           sourcePath: config.sourcePath,
           loadedDocumentCount,
@@ -510,13 +526,13 @@ function recommendedActionFor(code: string): string | undefined {
     case "EMBED_SMOKE_FAILED":
       return "Verify Ollama embedding inference is working and that the embedding model can generate vectors.";
     case "CHAT_SMOKE_FAILED":
-      return "Verify Ollama chat generation can load the configured model. If Ollama reports memory allocation errors, reduce config/rag.config.yaml ollama.numCtx, ollama.numPredict, or rag.retrievalK, then restart Ollama and the backend.";
+      return "Verify Ollama chat generation can load the configured model. If Ollama reports memory allocation errors, reduce config/rag.config.yaml ollama.numCtx, ollama.numPredict, or collectionDefaults.retrievalK, then restart Ollama and the backend.";
     case "INDEXING_SOURCE_UNREADABLE":
-      return "Verify config/rag.config.yaml data.sourcePath points to a readable file or directory.";
+      return "Verify config/rag.config.yaml collectionDefaults.sourcePath points to a readable file or directory.";
     case "NO_INDEXABLE_DOCUMENTS":
       return "Verify the configured indexing source contains supported files with non-empty document content before running indexing.";
     case "INDEX_SAMPLE_LIMIT_ACTIVE":
-      return "Increase config/rag.config.yaml data.indexSampleSize, or set it to 0, if you want indexing to cover more of the source dataset.";
+      return "Increase config/rag.config.yaml collectionDefaults.indexSampleSize, or set it to 0, if you want indexing to cover more of the source dataset.";
     default:
       return undefined;
   }
@@ -572,6 +588,11 @@ function summarizeReadinessPayload(payload: ReadinessPayload) {
       message: issue.message,
       recommendedAction: issue.recommendedAction,
     })),
+    dependencies: {
+      registry: { ok: payload.dependencies.registry.ok },
+      chroma: { ok: payload.dependencies.chroma.ok },
+      ollama: { ok: payload.dependencies.ollama.ok },
+    },
     config: {
       port: payload.port,
       chatModel: payload.chatModel,
@@ -597,14 +618,17 @@ app.get("/health", (_req, res) => {
 });
 
 app.get("/ready", async (req, res) => {
-  const isStrict = req.query.strict === "true";
-  const wantsDetails = req.query.details === "true";
+  const isStrict = truthyQuery(req.query.strict);
+  const wantsDetails = truthyQuery(req.query.details);
 
   const payload = await getReadinessPayload(app.locals.dependencies?.registry);
 
-  res.status(isStrict && !payload.ready ? 503 : 200).json(wantsDetails ? payload.payload : payload.payload.checks);
+  res
+    .status(isStrict && !payload.ready ? 503 : 200)
+    .json(wantsDetails ? payload.payload : summarizeReadinessPayload(payload.payload));
 });
 
 app.use(notFoundHandler);
 app.use(errorHandler);
 }
+

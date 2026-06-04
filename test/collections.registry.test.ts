@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -89,9 +89,61 @@ describe("sqlite collection registry", () => {
     await registry.completeIndexJob(firstJob.id, {
       documentCount: 2,
       chunkCount: 10,
+      retentionMs: 0,
     });
 
     const secondJob = await registry.beginIndexJob(context, collection.id);
     assert.equal(secondJob.status, "queued");
+  });
+
+  it("keeps stored and queued Chroma configuration aligned with distanceMetric updates", async () => {
+    const collection = await registry.createCollection(context, {
+      ...collectionInput,
+      chromaCollectionConfiguration: {
+        hnsw: {
+          space: "ip",
+          ef_construction: 128,
+        },
+        custom: {
+          label: "kept",
+        },
+      },
+    });
+
+    assert.deepEqual(collection.chromaCollectionConfiguration, {
+      hnsw: {
+        space: "l2",
+        ef_construction: 128,
+      },
+      custom: {
+        label: "kept",
+      },
+    });
+
+    const updated = await registry.updateCollection(context, collection.id, {
+      distanceMetric: "cosine",
+    });
+
+    assert.equal(updated.distanceMetric, "cosine");
+    assert.deepEqual(updated.chromaCollectionConfiguration, {
+      hnsw: {
+        space: "cosine",
+        ef_construction: 128,
+      },
+      custom: {
+        label: "kept",
+      },
+    });
+
+    const job = await registry.beginIndexJob(context, collection.id);
+    assert.deepEqual(job.targetChromaConfiguration, {
+      hnsw: {
+        space: "cosine",
+        ef_construction: 128,
+      },
+      custom: {
+        label: "kept",
+      },
+    });
   });
 });

@@ -1,4 +1,4 @@
-import type { DistanceMetric } from "../config.js";
+﻿import type { DistanceMetric } from "../config.js";
 
 export type RequestContext = {
   requestId: string;
@@ -42,6 +42,7 @@ export type IndexJob = {
   tenantId: string;
   status: IndexJobStatus;
   targetPhysicalCollection: string;
+  targetVersion: string;
   targetChromaConfiguration: Record<string, unknown>;
   startedAt?: string;
   finishedAt?: string;
@@ -92,6 +93,7 @@ export type UpdateCollectionPatch = Partial<Pick<
 
 export type BeginIndexJobInput = {
   targetPhysicalCollection?: string;
+  targetVersion?: string;
   targetChromaConfiguration?: Record<string, unknown>;
   lockToken?: string;
 };

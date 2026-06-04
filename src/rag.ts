@@ -95,16 +95,16 @@ export function isRagQueryError(error: unknown): error is RagQueryError {
   return error instanceof RagQueryError;
 }
 
-function createEmbeddings(runtimeConfig: ResolvedConfig): OllamaEmbeddings {
+function createEmbeddings(runtimeConfig: ResolvedConfig, modelName = runtimeConfig.ollamaEmbeddingModel): OllamaEmbeddings {
   return new OllamaEmbeddings({
-    model: runtimeConfig.ollamaEmbeddingModel,
+    model: modelName,
     baseUrl: runtimeConfig.ollamaBaseUrl,
   });
 }
 
-function createChatModel(runtimeConfig: ResolvedConfig): ChatOllama {
+function createChatModel(runtimeConfig: ResolvedConfig, modelName = runtimeConfig.ollamaChatModel): ChatOllama {
   return new ChatOllama({
-    model: runtimeConfig.ollamaChatModel,
+    model: modelName,
     baseUrl: runtimeConfig.ollamaBaseUrl,
     temperature: 0,
     numCtx: runtimeConfig.ollamaNumCtx,
@@ -352,13 +352,29 @@ export async function checkChatGenerationHealth(runtimeConfig = config): Promise
 export function createVectorStore(input: {
   collectionName: string;
   runtimeConfig: ResolvedConfig;
+  embeddingModel?: string;
 }): Chroma {
   const runtimeConfig = input.runtimeConfig;
 
-  return new Chroma(createEmbeddings(runtimeConfig), {
+  return new Chroma(createEmbeddings(runtimeConfig, input.embeddingModel), {
     collectionName: input.collectionName,
     clientParams: chromaClientParams(runtimeConfig),
   });
+}
+
+export function resolveCollectionRuntimeSettings(
+  runtimeConfig: ResolvedConfig,
+  overrides: {
+    embeddingModel?: string;
+    chatModel?: string;
+    retrievalDistanceThreshold?: number;
+  } = {},
+) {
+  return {
+    embeddingModel: overrides.embeddingModel ?? runtimeConfig.ollamaEmbeddingModel,
+    chatModel: overrides.chatModel ?? runtimeConfig.ollamaChatModel,
+    retrievalDistanceThreshold: overrides.retrievalDistanceThreshold ?? runtimeConfig.retrievalDistanceThreshold,
+  };
 }
 
 function logStep(message: string): void {
@@ -476,18 +492,25 @@ export async function retrieveSources(
     collectionName: string;
     k?: number;
     runtimeConfig: ResolvedConfig;
+    embeddingModel?: string;
+    retrievalDistanceThreshold?: number;
     context?: RequestContext;
     abortSignal?: AbortSignal;
   },
 ): Promise<RetrievalResult> {
   const runtimeConfig = options.runtimeConfig;
   const k = options.k ?? runtimeConfig.retrievalK;
+  const settings = resolveCollectionRuntimeSettings(runtimeConfig, {
+    embeddingModel: options.embeddingModel,
+    retrievalDistanceThreshold: options.retrievalDistanceThreshold,
+  });
 
   await assertChromaCollectionReadable({ name: options.collectionName, runtimeConfig });
 
   const vectorStore = createVectorStore({
     collectionName: options.collectionName,
     runtimeConfig,
+    embeddingModel: settings.embeddingModel,
   });
 
   const semaphore = getEmbeddingSemaphore(runtimeConfig);
@@ -526,10 +549,10 @@ export async function retrieveSources(
     }))
     .filter((source) => (
       source.distanceScore ?? Number.POSITIVE_INFINITY
-    ) <= runtimeConfig.retrievalDistanceThreshold);
+    ) <= settings.retrievalDistanceThreshold);
 
   return {
-    distanceScoreThreshold: runtimeConfig.retrievalDistanceThreshold,
+    distanceScoreThreshold: settings.retrievalDistanceThreshold,
     sources,
   };
 }
@@ -538,6 +561,9 @@ export async function answerQuestion(question: string, options: {
   collectionName: string;
   runtimeConfig: ResolvedConfig;
   retrievalK?: number;
+  embeddingModel?: string;
+  chatModel?: string;
+  retrievalDistanceThreshold?: number;
   context?: RequestContext;
   abortSignal?: AbortSignal;
 }): Promise<{
@@ -547,9 +573,14 @@ export async function answerQuestion(question: string, options: {
 }> {
   const runtimeConfig = options.runtimeConfig;
   const startedAt = Date.now();
-  const model = createChatModel(runtimeConfig);
+  const settings = resolveCollectionRuntimeSettings(runtimeConfig, {
+    embeddingModel: options.embeddingModel,
+    chatModel: options.chatModel,
+    retrievalDistanceThreshold: options.retrievalDistanceThreshold,
+  });
+  const model = createChatModel(runtimeConfig, settings.chatModel);
   const k = options.retrievalK ?? runtimeConfig.retrievalK;
-  logStep(`query started; model=${runtimeConfig.ollamaChatModel}; k=${k}; reqId=${options.context?.requestId || "-"}`);
+  logStep(`query started; model=${settings.chatModel}; k=${k}; reqId=${options.context?.requestId || "-"}`);
 
   logStep(`retrieval started; reqId=${options.context?.requestId || "-"}`);
   const retrievalStartedAt = Date.now();
@@ -557,6 +588,8 @@ export async function answerQuestion(question: string, options: {
     collectionName: options.collectionName,
     k,
     runtimeConfig,
+    embeddingModel: settings.embeddingModel,
+    retrievalDistanceThreshold: settings.retrievalDistanceThreshold,
     context: options.context,
     abortSignal: options.abortSignal,
   });
@@ -642,11 +675,11 @@ export async function answerQuestion(question: string, options: {
     if (answer.length === 0) {
       throw new RagQueryError(
         "EMPTY_MODEL_RESPONSE",
-        `Chat model ${runtimeConfig.ollamaChatModel} returned an empty response.`,
+        `Chat model ${settings.chatModel} returned an empty response.`,
         502,
         {
           question,
-          model: runtimeConfig.ollamaChatModel,
+          model: settings.chatModel,
         },
       );
     }
@@ -673,7 +706,7 @@ export async function answerQuestion(question: string, options: {
         502,
         {
           question,
-          model: runtimeConfig.ollamaChatModel,
+          model: settings.chatModel,
           answer,
         },
       );

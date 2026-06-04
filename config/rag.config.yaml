@@ -24,3 +24,8 @@ readiness:
   timeoutMs: 30000
   embeddingProbeText: readiness probe
   chatProbeText: hazirlik kontrolu
+cleanup:
+  retentionMs: 3600000
+limits:
+  maxConcurrentEmbeddings: 5
+  maxConcurrentGenerations: 2

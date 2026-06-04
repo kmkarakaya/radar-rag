@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it, before, after } from "node:test";
-import { randomUUID } from "node:crypto";
 import { createSqliteCollectionRegistry } from "../src/collections/sqliteRegistry.js";
 import { startReindexJob, runIndexJob } from "../src/indexing/jobs.js";
 import { addMetadataToChunks } from "../src/indexing/buildPhysicalCollection.js";
 import { config } from "../src/config.js";
 import type { CollectionRegistry } from "../src/collections/types.js";
 import { Document } from "@langchain/core/documents";
-import test from "node:test";
 
 describe("indexing jobs", () => {
   let registry: CollectionRegistry;
@@ -62,6 +60,27 @@ describe("indexing jobs", () => {
     assert.match(job.targetPhysicalCollection, /^rag_tenant_valid-name-[a-z0-9]+_[0-9]{8}t[0-9]{6}_[0-9]{3}z$/);
   });
 
+  it("allows queued jobs for different collections at the same time", async () => {
+    const context = { tenantId: "tenant-parallel", userId: "u", requestId: "r" };
+    const collectionA = await registry.createCollection(context, {
+      displayName: "Parallel A",
+      sourcePath: "d", ozelgeDataPath: "d", embeddingModel: "m", chatModel: "m",
+      distanceMetric: "l2", chunkSize: 1, chunkOverlap: 0, retrievalK: 1, retrievalDistanceThreshold: 1,
+    });
+    const collectionB = await registry.createCollection(context, {
+      displayName: "Parallel B",
+      sourcePath: "d", ozelgeDataPath: "d", embeddingModel: "m", chatModel: "m",
+      distanceMetric: "l2", chunkSize: 1, chunkOverlap: 0, retrievalK: 1, retrievalDistanceThreshold: 1,
+    });
+
+    const jobA = await startReindexJob({ registry, collectionId: collectionA.id, context, runtimeConfig: config });
+    const jobB = await startReindexJob({ registry, collectionId: collectionB.id, context, runtimeConfig: config });
+
+    assert.equal(jobA.status, "queued");
+    assert.equal(jobB.status, "queued");
+    assert.notEqual(jobA.collectionId, jobB.collectionId);
+  });
+
   it("failed build does not change active pointer", async () => {
     const context = { tenantId: "tenant-2", userId: "u", requestId: "r" };
     const collection = await registry.createCollection(context, {
@@ -110,31 +129,133 @@ describe("indexing jobs", () => {
       distanceMetric: "l2", chunkSize: 1, chunkOverlap: 0, retrievalK: 1, retrievalDistanceThreshold: 1
     });
 
-    const job1 = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
-    const target1 = job1.targetPhysicalCollection;
-    
-    // complete job 1 so we can start another
-    await registry.completeIndexJob(job1.id, {
-      activePhysicalCollection: target1,
-      activeVersion: "v1",
-      documentCount: 1,
-      chunkCount: 1,
-    });
+    const realDate = Date;
+    const fixedNow = new realDate("2026-06-04T09:39:48.212Z");
 
-    // change immutable config
-    await registry.updateCollection(context, collection.id, {
-      embeddingModel: "m2",
-      distanceMetric: "cosine"
-    });
+    class FixedDate extends realDate {
+      constructor(value?: string | number | Date) {
+        super(value ?? fixedNow.toISOString());
+      }
 
-    // delay slightly to ensure version timestamp is different
-    // since the version string strips ms, we must wait 1s to tick over to the next second
-    await new Promise((resolve) => setTimeout(resolve, 1050));
+      static now(): number {
+        return fixedNow.getTime();
+      }
+    }
 
-    const job2 = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
-    const target2 = job2.targetPhysicalCollection + "_v2";
+    globalThis.Date = FixedDate as unknown as DateConstructor;
 
-    assert.notEqual(target1, target2, "New index job should target a new physical collection name due to versioning.");
-    assert.ok(target2.startsWith("rag_tenant-3_immutable"), "Should follow Chroma-safe naming");
+    try {
+      const job1 = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
+      const target1 = job1.targetPhysicalCollection;
+      
+      // complete job 1 so we can start another
+      await registry.completeIndexJob(job1.id, {
+        activePhysicalCollection: target1,
+        activeVersion: "v1",
+        documentCount: 1,
+        chunkCount: 1,
+        retentionMs: 0,
+      });
+
+      // change immutable config
+      await registry.updateCollection(context, collection.id, {
+        embeddingModel: "m2",
+        distanceMetric: "cosine"
+      });
+
+      const job2 = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
+      const target2 = job2.targetPhysicalCollection;
+
+      assert.notEqual(target1, target2, "New index job should target a new physical collection name due to versioning.");
+      assert.ok(target2.startsWith("rag_tenant-3_immutable"), "Should follow Chroma-safe naming");
+    } finally {
+      globalThis.Date = realDate;
+    }
+  });
+
+  it("runIndexJob uses the stored targetVersion instead of deriving it from the job id", async () => {
+    const createdRecordVersions: string[] = [];
+    const failedMessages: string[] = [];
+    const job = {
+      id: "manual_job_id",
+      collectionId: "col-1",
+      tenantId: "tenant-x",
+      status: "queued",
+      targetPhysicalCollection: "ab",
+      targetVersion: "explicit-version",
+      targetChromaConfiguration: { hnsw: { space: "l2" } },
+      lockToken: "lock-1",
+      createdAt: "2026-06-04T00:00:00.000Z",
+      updatedAt: "2026-06-04T00:00:00.000Z",
+    } as const;
+
+    let currentStatus: "queued" | "running" | "failed" = job.status;
+    const fakeRegistry: CollectionRegistry = {
+      listVisibleCollections: async () => [],
+      getVisibleCollection: async () => ({
+        id: "col-1",
+        tenantId: "tenant-x",
+        displayName: "Test",
+        status: "indexing",
+        sourcePath: "data",
+        ozelgeDataPath: "data/ozelge_veri.json",
+        embeddingModel: "embed",
+        chatModel: "chat",
+        distanceMetric: "l2",
+        chromaCollectionConfiguration: { hnsw: { space: "l2" } },
+        chunkSize: 10,
+        chunkOverlap: 0,
+        retrievalK: 1,
+        retrievalDistanceThreshold: 1,
+        createdBy: "system",
+        createdAt: "2026-06-04T00:00:00.000Z",
+        updatedAt: "2026-06-04T00:00:00.000Z",
+      }),
+      getJob: async () => ({ ...job, status: currentStatus }),
+      getActiveJobForCollection: async () => null,
+      createCollection: async () => {
+        throw new Error("not used");
+      },
+      updateCollection: async () => {
+        throw new Error("not used");
+      },
+      beginIndexJob: async () => {
+        throw new Error("not used");
+      },
+      markIndexJobRunning: async () => {
+        currentStatus = "running";
+        return { ...job, status: "running" };
+      },
+      completeIndexJob: async () => {
+        throw new Error("completeIndexJob should not be reached in this test");
+      },
+      failIndexJob: async (_jobId, error) => {
+        currentStatus = "failed";
+        failedMessages.push(error);
+        return { ...job, status: "failed", error };
+      },
+      failStaleJobs: async () => 0,
+      createPhysicalCollectionRecord: async (input) => {
+        createdRecordVersions.push(input.version);
+        return {
+          name: input.name,
+          tenantId: input.tenantId,
+          collectionId: input.collectionId,
+          version: input.version,
+          status: "building",
+          chromaConfiguration: input.chromaConfiguration,
+          createdAt: "2026-06-04T00:00:00.000Z",
+        };
+      },
+      markPhysicalCollectionDeleted: async () => {},
+      markPhysicalCollectionCleanupFailed: async () => {},
+      listDuePhysicalCollectionsForCleanup: async () => [],
+      collectionExists: async () => true,
+    };
+
+    await runIndexJob({ registry: fakeRegistry, jobId: job.id, runtimeConfig: config, log: () => {} });
+
+    assert.deepEqual(createdRecordVersions, ["explicit-version"]);
+    assert.equal(failedMessages.length, 1);
   });
 });

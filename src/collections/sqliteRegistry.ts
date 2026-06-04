@@ -1,7 +1,8 @@
-import { mkdirSync } from "node:fs";
+﻿import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
+import type { DistanceMetric } from "../config.js";
 import { createPhysicalCollectionName, generateCollectionId } from "./ids.js";
 import type {
   BeginIndexJobInput,
@@ -52,6 +53,7 @@ type IndexJobRow = {
   tenant_id: string;
   status: IndexJobStatus;
   target_physical_collection: string;
+  target_version: string;
   target_chroma_configuration_json: string;
   started_at: string | null;
   finished_at: string | null;
@@ -133,6 +135,7 @@ function initializeSchema(db: SqliteDatabase): void {
       tenant_id TEXT NOT NULL,
       status TEXT NOT NULL,
       target_physical_collection TEXT NOT NULL,
+      target_version TEXT NOT NULL,
       target_chroma_configuration_json TEXT NOT NULL,
       started_at TEXT,
       finished_at TEXT,
@@ -168,7 +171,8 @@ function initializeSchema(db: SqliteDatabase): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_index_jobs_one_active_per_collection
       ON index_jobs(collection_id, tenant_id)
       WHERE status IN ('queued', 'running');
-    CREATE INDEX IF NOT EXISTS idx_physical_collections_cleanup ON physical_collections(delete_after, status) WHERE status = 'delete_pending';
+    CREATE INDEX IF NOT EXISTS idx_physical_collections_cleanup ON physical_collections(delete_after, status)
+      WHERE status = 'delete_pending';
   `);
 }
 
@@ -210,11 +214,10 @@ class SqliteCollectionRegistry implements CollectionRegistry {
   async createCollection(context: RequestContext, input: CreateCollectionInput): Promise<RagCollection> {
     const now = new Date().toISOString();
     const id = this.createUniqueCollectionId(input.displayName);
-    const chromaConfiguration = input.chromaCollectionConfiguration ?? {
-      hnsw: {
-        space: input.distanceMetric,
-      },
-    };
+    const chromaConfiguration = normalizeChromaCollectionConfiguration(
+      input.distanceMetric,
+      input.chromaCollectionConfiguration,
+    );
 
     this.db.prepare(`
       INSERT INTO collections (
@@ -301,17 +304,17 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       updatedAt: new Date().toISOString(),
     };
 
-    addPatch("displayName", "display_name", patch.displayName, updates, values);
-    addNullablePatch("description", "description", patch.description, updates, values);
-    addPatch("status", "status", patch.status, updates, values);
-    addPatch("sourcePath", "source_path", patch.sourcePath, updates, values);
-    addPatch("ozelgeDataPath", "ozelge_data_path", patch.ozelgeDataPath, updates, values);
     addPatch("embeddingModel", "embedding_model", patch.embeddingModel, updates, values);
     addPatch("chatModel", "chat_model", patch.chatModel, updates, values);
     addPatch("distanceMetric", "distance_metric", patch.distanceMetric, updates, values);
-    if (patch.chromaCollectionConfiguration !== undefined) {
+    if (patch.chromaCollectionConfiguration !== undefined || patch.distanceMetric !== undefined) {
+      const nextDistanceMetric = patch.distanceMetric ?? existing.distanceMetric;
+      const nextChromaConfiguration = normalizeChromaCollectionConfiguration(
+        nextDistanceMetric,
+        patch.chromaCollectionConfiguration ?? existing.chromaCollectionConfiguration,
+      );
       updates.push("chroma_collection_configuration_json = @chromaCollectionConfigurationJson");
-      values.chromaCollectionConfigurationJson = JSON.stringify(patch.chromaCollectionConfiguration);
+      values.chromaCollectionConfigurationJson = JSON.stringify(nextChromaConfiguration);
     }
     addPatch("chunkSize", "chunk_size", patch.chunkSize, updates, values);
     addPatch("chunkOverlap", "chunk_overlap", patch.chunkOverlap, updates, values);
@@ -372,11 +375,15 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         throw new Error(`Collection already has a queued or running index job: ${collectionId}`);
       }
 
-      const now = new Date().toISOString();
-      const version = createVersionString(now);
-      const targetChromaConfiguration = input.targetChromaConfiguration ?? JSON.parse(
-        collection.chroma_collection_configuration_json,
-      ) as Record<string, unknown>;
+      const nowDate = new Date();
+      const now = nowDate.toISOString();
+      const version = input.targetVersion ?? this.createUniqueVersionString(context.tenantId, collectionId, nowDate);
+      const targetChromaConfiguration = normalizeChromaCollectionConfiguration(
+        collection.distance_metric,
+        input.targetChromaConfiguration ?? JSON.parse(
+          collection.chroma_collection_configuration_json,
+        ) as Record<string, unknown>,
+      );
       const job: IndexJob = {
         id: `${version}_${randomUUID().slice(0, 8)}`,
         collectionId,
@@ -387,6 +394,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           collectionId,
           version,
         }),
+          targetVersion: version,
         targetChromaConfiguration,
         lockToken: input.lockToken ?? randomUUID(),
         createdAt: now,
@@ -400,7 +408,8 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           tenant_id,
           status,
           target_physical_collection,
-          target_chroma_configuration_json,
+            target_version,
+            target_chroma_configuration_json,
           lock_token,
           created_at,
           updated_at
@@ -410,7 +419,8 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           @tenantId,
           @status,
           @targetPhysicalCollection,
-          @targetChromaConfigurationJson,
+            @targetVersion,
+            @targetChromaConfigurationJson,
           @lockToken,
           @createdAt,
           @updatedAt
@@ -421,6 +431,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         tenantId: job.tenantId,
         status: job.status,
         targetPhysicalCollection: job.targetPhysicalCollection,
+        targetVersion: job.targetVersion,
         targetChromaConfigurationJson: JSON.stringify(job.targetChromaConfiguration),
         lockToken: job.lockToken,
         createdAt: job.createdAt,
@@ -724,6 +735,32 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     throw new Error("Could not generate a unique collection id.");
   }
 
+  private createUniqueVersionString(tenantId: string, collectionId: string, startedAt: Date): string {
+    const candidateDate = new Date(startedAt.getTime());
+
+    for (let attempt = 0; attempt < 5000; attempt += 1) {
+      const version = createVersionString(candidateDate.toISOString());
+      const existingJob = this.db.prepare(`
+        SELECT 1 FROM index_jobs
+        WHERE tenant_id = ? AND collection_id = ? AND target_version = ?
+        LIMIT 1
+      `).get(tenantId, collectionId, version);
+      const existingPhysicalCollection = this.db.prepare(`
+        SELECT 1 FROM physical_collections
+        WHERE tenant_id = ? AND collection_id = ? AND version = ?
+        LIMIT 1
+      `).get(tenantId, collectionId, version);
+
+      if (!existingJob && !existingPhysicalCollection) {
+        return version;
+      }
+
+      candidateDate.setTime(candidateDate.getTime() + 1);
+    }
+
+    throw new Error(`Could not generate a unique collection version for ${collectionId}.`);
+  }
+
   private getCollectionRow(tenantId: string, collectionId: string): CollectionRow | null {
     const row = this.db
       .prepare("SELECT * FROM collections WHERE tenant_id = ? AND id = ?")
@@ -739,6 +776,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
 
     return row ?? null;
   }
+
 }
 
 function addPatch(
@@ -806,6 +844,7 @@ function mapIndexJobRow(row: IndexJobRow): IndexJob {
     tenantId: row.tenant_id,
     status: row.status,
     targetPhysicalCollection: row.target_physical_collection,
+    targetVersion: row.target_version,
     targetChromaConfiguration: JSON.parse(row.target_chroma_configuration_json) as Record<string, unknown>,
     startedAt: row.started_at ?? undefined,
     finishedAt: row.finished_at ?? undefined,
@@ -848,3 +887,26 @@ function createVersionString(isoDate: string): string {
 function versionFromJobId(jobId: string): string {
   return jobId.split("_")[0] ?? jobId;
 }
+
+function normalizeChromaCollectionConfiguration(
+  distanceMetric: DistanceMetric,
+  chromaConfiguration?: Record<string, unknown>,
+): Record<string, unknown> {
+  const normalized = isRecord(chromaConfiguration) ? { ...chromaConfiguration } : {};
+  const existingHnsw = isRecord(normalized.hnsw) ? normalized.hnsw : {};
+
+  return {
+    ...normalized,
+    hnsw: {
+      ...existingHnsw,
+      space: distanceMetric,
+    },
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+
+

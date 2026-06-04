@@ -30,6 +30,14 @@ export async function buildPhysicalCollection(input: {
   targetVersion: string;
   runtimeConfig: ResolvedConfig;
   log?: (message: string) => void;
+  deps?: {
+    analyzeIndexingSource?: typeof analyzeIndexingSource;
+    createPhysicalChromaCollection?: typeof createPhysicalChromaCollection;
+    assertChromaCollectionReadable?: typeof assertChromaCollectionReadable;
+    deletePhysicalChromaCollection?: typeof deletePhysicalChromaCollection;
+    createVectorStore?: typeof createVectorStore;
+    splitDocuments?: (documents: Document[], options: { chunkSize: number; chunkOverlap: number }) => Promise<Document[]>;
+  };
 }): Promise<{
   sourceDocumentCount: number;
   parsedSourceDocumentCount: number;
@@ -37,6 +45,16 @@ export async function buildPhysicalCollection(input: {
 }> {
   const { collection, targetPhysicalCollection, targetVersion, runtimeConfig } = input;
   const log = input.log ?? console.log;
+  const deps = input.deps ?? {};
+  const loadSource = deps.analyzeIndexingSource ?? analyzeIndexingSource;
+  const createCollection = deps.createPhysicalChromaCollection ?? createPhysicalChromaCollection;
+  const assertReadable = deps.assertChromaCollectionReadable ?? assertChromaCollectionReadable;
+  const deleteCollection = deps.deletePhysicalChromaCollection ?? deletePhysicalChromaCollection;
+  const vectorStoreFactory = deps.createVectorStore ?? createVectorStore;
+  const splitDocuments = deps.splitDocuments ?? ((documents: Document[], options: { chunkSize: number; chunkOverlap: number }) => {
+    const splitter = new RecursiveCharacterTextSplitter(options);
+    return splitter.splitDocuments(documents);
+  });
 
   try {
     log(`Creating physical collection "${targetPhysicalCollection}" (version: ${targetVersion})`);
@@ -46,7 +64,7 @@ export async function buildPhysicalCollection(input: {
       },
     };
 
-    await createPhysicalChromaCollection({
+    await createCollection({
       name: targetPhysicalCollection,
       distanceMetric: collection.distanceMetric,
       chromaConfiguration,
@@ -54,7 +72,7 @@ export async function buildPhysicalCollection(input: {
     });
 
     log(`Analyzing indexing source from ${collection.sourcePath}`);
-    const analysis = await analyzeIndexingSource({
+    const analysis = await loadSource({
       sourcePath: collection.sourcePath,
       ozelgeDataPath: collection.ozelgeDataPath,
       indexSampleSize: runtimeConfig.indexSampleSize,
@@ -64,12 +82,10 @@ export async function buildPhysicalCollection(input: {
 
     log(`Loaded ${documents.length} indexable documents from ${analysis.loadedDocumentCount} parsed source documents`);
 
-    const splitter = new RecursiveCharacterTextSplitter({
+    const chunks = await splitDocuments(documents, {
       chunkSize: collection.chunkSize,
       chunkOverlap: collection.chunkOverlap,
     });
-
-    const chunks = await splitter.splitDocuments(documents);
     const indexedChunks = addMetadataToChunks(
       chunks,
       collection,
@@ -79,9 +95,10 @@ export async function buildPhysicalCollection(input: {
 
     log(`Split documents into ${indexedChunks.length} chunks. Indexing into Chroma...`);
 
-    const vectorStore = createVectorStore({
+    const vectorStore = vectorStoreFactory({
       collectionName: targetPhysicalCollection,
       runtimeConfig,
+      embeddingModel: collection.embeddingModel,
     });
 
     await vectorStore.addDocuments(indexedChunks, {
@@ -89,7 +106,7 @@ export async function buildPhysicalCollection(input: {
     });
 
     log(`Verifying readability of physical collection "${targetPhysicalCollection}"`);
-    await assertChromaCollectionReadable({
+    await assertReadable({
       name: targetPhysicalCollection,
       runtimeConfig,
     });
@@ -102,7 +119,7 @@ export async function buildPhysicalCollection(input: {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log(`Build failed: ${message}. Attempting to clean up target physical collection...`);
-    await deletePhysicalChromaCollection({
+    await deleteCollection({
       name: targetPhysicalCollection,
       runtimeConfig,
     });

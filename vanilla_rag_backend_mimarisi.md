@@ -51,25 +51,49 @@ Bu kararların sonucu olarak proje, minimal ama okunabilir bir backend omurgası
 
 ```mermaid
 flowchart TD
-    A[Raw Data JSON\ndata/ozelge_veri.json] --> B[Indexing Pipeline\nsrc/index.ts]
-    B --> C[Chunking\nRecursiveCharacterTextSplitter]
-    C --> D[Embeddings\nOllamaEmbeddings]
-    D --> E[Vector Store\nChroma]
+    U[Client] --> APP[Express App\nsrc/app.ts]
+    APP --> RAGAPI[RAG Router\nsrc/http/ragRouter.ts]
+    APP --> ADMINAPI[Admin Router\nsrc/http/adminRouter.ts]
+    APP --> READY[Health/Readiness\n/health + /ready]
 
-    U[Client] --> F[HTTP API\nsrc/server.ts]
-    F --> G[RAG Orchestrator\nsrc/rag.ts]
-    G --> E
-    G --> H[Chat Model\nChatOllama]
-    E --> G
-    H --> G
-    G --> F
-    F --> U
+    RAGAPI --> REG[(SQLite Registry\ncollections + index_jobs + physical_collections)]
+    ADMINAPI --> REG
+    RAGAPI --> RAG[src/rag.ts]
+    RAG --> CHROMA[(Chroma)]
+    RAG --> OLLAMA[(Ollama)]
+
+    ADMINAPI --> RUNNER[IndexJobRunner]
+    RUNNER --> JOBS[src/indexing/jobs.ts]
+    JOBS --> BUILD[src/indexing/buildPhysicalCollection.ts]
+    BUILD --> CHROMA
+    BUILD --> REG
+
+    SRV[src/server.ts bootstrap] --> REG
+    SRV --> RUNNER
+    SRV --> CLEAN[Startup stale-job recovery\n+ due cleanup]
+    CLEAN --> REG
+    CLEAN --> CHROMA
 ```
 
 Bu diyagramda iki ana hat vardır:
 
-- Offline veya önceden çalıştırılan indexing hattı
-- Runtime query handling hattı
+- Runtime query/retrieve handling hattı
+- Registry-backed admin/indexing hattı
+
+### 4.1 Multi-Collection Control Plane
+
+Bu repodaki gerçek multi-collection davranışı aşağıdaki control-plane kuralları ile kuruludur:
+
+1. Logical collection source of truth SQLite registry'dir. `collections`, `index_jobs` ve `physical_collections` tabloları kullanıcıya açık logical kimliği, job state'ini ve fiziksel Chroma lifecycle'ını ayrı tutar.
+2. Public `collectionId` tenant-scoped ve stabildir. Request context `x-tenant-id`, `x-user-id` ve `x-request-id` header'larından üretilir; Chroma içindeki fiziksel collection adı bu public kimlikten ayrıdır.
+3. Her rebuild yeni bir versioned physical Chroma collection üretir. `targetPhysicalCollection` ve `targetVersion` registry job kaydında tutulur.
+4. Job lifecycle açıkça `queued -> running -> succeeded|failed` state'leri ile izlenir. Job source of truth SQLite registry'dir; process içi runner sadece background promise lifecycle'ını yönetir.
+5. Başarılı build sonrası aktif pointer transaction içinde atomik olarak yeni physical collection'a çevrilir. Böylece aktif eski sürüm varsa rebuild sırasında query/retrieve kesilmez.
+6. Önceki aktif fiziksel collection hemen silinmez. Registry'de `delete_pending` durumuna alınır, `delete_after = now + cleanup.retentionMs` set edilir ve due cleanup aşamasında silinir. `cleanup_failed` kayıtları daha sonra yeniden denenebilir.
+7. `GET /ready` registry-aware'dir; ama collection-aware değildir. Registry, Chroma, Ollama, model availability ve indexing source erişimini kontrol eder. Default collection yok diye fail etmez.
+8. `GET /v1/rag/collections/:collectionId/ready` seçili logical collection'ın `activeJob`, `activeVersion`, `chromaReadable`, `chromaCount` ve capability alanlarını döndürür.
+9. Access kontrolünde `403/404` ayrımı vardır. Collection global olarak varsa ama request tenant'ı göremiyorsa `403 COLLECTION_FORBIDDEN`; hiç yoksa `404 COLLECTION_NOT_FOUND` döner.
+10. Model tarafında gerçek koruma `maxConcurrentEmbeddings` ve `maxConcurrentGenerations` ile sağlanan backpressure'dır. Collection/user bazlı tam request rate limiter henüz yoktur; `src/app.ts` içinde TODO kancası olarak bırakılmıştır.
 
 ## 5. Temel Bileşenler
 
@@ -84,12 +108,11 @@ Teorik rol:
 
 Repodaki implementasyon:
 
-- API katmanı [src/server.ts](src/server.ts) içinde kuruludur.
-- Express sunucusu burada ayağa kalkar.
-- `POST /v1/rag/collections/:collectionId/retrieve` retrieval-only akışını açar.
-- `POST /v1/rag/collections/:collectionId/query` retrieval + generation akışını açar.
-- Zod ile request body'si validate edilir.
-- Başarılı validation sonrasında uygun RAG yardımcıları çağrılır.
+- API kompozisyonu [src/app.ts](src/app.ts) içinde kuruludur.
+- [src/server.ts](src/server.ts) yalnızca bootstrap yapar: SQLite registry, job runner, stale job recovery, due cleanup ve `listen` çağrısı.
+- HTTP yüzeyi [src/http/adminRouter.ts](src/http/adminRouter.ts) ve [src/http/ragRouter.ts](src/http/ragRouter.ts) üzerinden ayrıştırılmıştır.
+- Zod ile request body'leri validate edilir.
+- Başarılı validation sonrası collection resolution, registry access ve RAG yardımcıları çağrılır.
 
 Bu dosyanın backend mimarisindeki görevi şu sınırda tutulmuştur:
 
@@ -102,17 +125,22 @@ Bu tasarım doğrudur; çünkü retrieval ve prompt orkestrasyonu API katmanına
 
 #### 5.1.1 Mevcut Endpoint Yüzeyi
 
-Repodaki HTTP yüzeyi şu anda yedi endpoint'ten oluşur:
+Repodaki HTTP yüzeyi şu başlıca endpointlerden oluşur:
 
 - `GET /`
 - `GET /health`
 - `GET /ready`
-
-
+- `POST /v1/admin/collections`
+- `PATCH /v1/admin/collections/:collectionId`
+- `POST /v1/admin/collections/:collectionId/reindex`
+- `GET /v1/admin/jobs/:jobId`
+- `GET /v1/rag/collections`
+- `GET /v1/rag/collections/:collectionId`
+- `GET /v1/rag/collections/:collectionId/ready`
 - `POST /v1/rag/collections/:collectionId/retrieve`
 - `POST /v1/rag/collections/:collectionId/query`
 
-Bu yüzey, Vanilla RAG backend'in asgari query servisini ve operasyonel sağlık bilgisini vermek için yeterlidir; ancak ingestion ve yönetim işlemleri halen HTTP endpoint yerine CLI akışı ile yapılır.
+Bu yüzey, query/retrieve akışını, collection discovery'yi, admin lifecycle'ı ve operasyonel sağlık bilgisini aynı backend sınırı içinde toplar. CLI akışı (`npm run onboard`, `npm run index`) operatör kolaylığı için vardır; HTTP admin yüzeyiyle aynı registry kurallarını izler.
 
 #### `GET /`
 
@@ -181,7 +209,6 @@ Girdi:
 - Opsiyonel query parameter'lar:
     - `details=true`
     - `strict=true`
-    - `verbose=true`
 
 Çıktı:
 
@@ -197,6 +224,10 @@ Girdi:
     - `blockerCodes`
     - `warningCodes`
     - `recommendedActions`
+    - `dependencies.registry.ok`
+    - `dependencies.chroma.ok`
+    - `dependencies.ollama.ok`
+    - `diagnostics`
 - `details=true` verildiğinde ayrıntılı payload açılır ve ayrıca şu alanlar görünür:
     - `checks`
     - `blockers`
@@ -228,12 +259,21 @@ Maksat:
 
 Çıktı:
 
+- `activeJob`
+- `activeVersion`
 - `chromaReadable`
 - `chromaCount`
+- `modelAvailability.embeddingModel`
+- `modelAvailability.embeddingModelAvailable`
+- `modelAvailability.chatModel`
+- `modelAvailability.chatModelAvailable`
 - `status`
 - `activePhysicalCollection`
+- `capabilities.query`
+- `capabilities.retrieve`
+- `capabilities.reindex`
 
-Bu endpoint, sorgu yapmadan önce koleksiyonun endekslenip endekslenmediğini ya da "indexing" statüsünde olup olmadığını kullanıcıya bildirir.
+Bu endpoint, sorgu yapmadan önce koleksiyonun endekslenip endekslenmediğini ya da "indexing" statüsünde olup olmadığını kullanıcıya bildirir. Aktif fiziksel koleksiyon okunabiliyorsa, koleksiyon statüsü `indexing` olsa bile `capabilities.query=true` ve `capabilities.retrieve=true` kalabilir; böylece rebuild sırasında eski aktif sürümden sorgu servis edilmeye devam eder. Ancak collection-specific `embeddingModel` veya `chatModel` Ollama'da yoksa bu durum `modelAvailability` alanında görünür ve capability bayrakları düşer.
 
 #### `POST /v1/rag/collections/:collectionId/query`
 
@@ -342,19 +382,18 @@ Teorik rol:
 Repodaki implementasyon:
 
 - Bu katman [src/rag.ts](src/rag.ts) içindedir.
-- `answerQuestion(question)` bu mimarinin ana orkestrasyon fonksiyonudur.
-- `retrieveSources(question, k)` retrieval katmanını ayrı yardımcı olarak açar.
+- `answerQuestion(question, { collectionName, retrievalK, runtimeConfig, embeddingModel, chatModel, retrievalDistanceThreshold, context, abortSignal })` bu mimarinin ana generation orkestrasyon fonksiyonudur.
+- `retrieveSources(question, { collectionName, k, runtimeConfig, embeddingModel, retrievalDistanceThreshold, context, abortSignal })` retrieval katmanını ayrı yardımcı olarak açar.
 
-Bu fonksiyon sırayla şunları yapar:
+Bu katman sırayla şunları yapar:
 
-1. `retrieveSources(question, retrievalK)` ile retrieval yardımcı fonksiyonunu çağırır.
-2. Bu yardımcı fonksiyon vector store bağlantısını kurar.
-3. `similaritySearchWithScore(question, retrievalK)` ile benzer dokümanları distance score ile birlikte getirir.
-4. Sonuçları artan `distanceScore` sırasına dizer ve `retrievalDistanceThreshold` üstündekileri eler.
-5. Query tarafında model context bütçesine sığacak kadar chunk seçilir.
-6. Retrieved chunk'lar system prompt içinde düzenlenir.
-7. Soruyu `HumanMessage`, bağlamı `SystemMessage` olarak modele verir.
-8. Model cevabı backend kontratına göre doğrulanır; grounded cevap yoksa string fallback yerine typed hata üretilir.
+1. HTTP katmanı collection resolve işini `resolveReadableCollection` ile tamamlar; Chroma readability doğrulanmadan RAG akışına girilmez.
+2. `retrieveSources(...)` collection'a bağlı vector store üzerinden `similaritySearchWithScore` çağırır ve collection'ın kendi `embeddingModel` ayarını kullanır.
+3. Sonuçlar artan `distanceScore` sırasına dizilir ve collection-specific `retrievalDistanceThreshold` üstündekiler elenir.
+4. Query tarafında model context bütçesine sığacak kadar chunk seçilir.
+5. Retrieved chunk'lar system prompt içinde düzenlenir.
+6. Soruyu `HumanMessage`, bağlamı `SystemMessage` olarak modele verir; generation için collection'ın kendi `chatModel` ayarı kullanılır.
+7. Model cevabı backend kontratına göre doğrulanır; grounded cevap yoksa string fallback yerine typed hata üretilir.
 
 Burada retrieval ile answerability farklı problemler olarak ele alınır:
 
@@ -374,7 +413,7 @@ Teorik rol:
 Repodaki implementasyon:
 
 - Retrieval, [src/rag.ts](src/rag.ts) içindeki Chroma vektör mağazası üzerinden yapılır.
-- `createVectorStore()` fonksiyonu Chroma istemcisini LangChain üzerinden oluşturur.
+- `createVectorStore({ collectionName, runtimeConfig, embeddingModel })` fonksiyonu Chroma istemcisini LangChain üzerinden oluşturur.
 - Retrieval adımı şu an saf benzerlik araması ile sınırlıdır.
 
 Bu ne anlama gelir:
@@ -389,7 +428,7 @@ Burada önemli ayrım şudur:
 
 - Retrieval sonuçları `distanceScore` ile birlikte döner.
 - Daha küçük score daha yakın chunk anlamına gelir.
-- `rag.retrievalDistanceThreshold` üstündeki chunk'lar hem `/v1/rag/collections/:collectionId/retrieve` hem `/v1/rag/collections/:collectionId/query` için elenir.
+- Collection'a ait `retrievalDistanceThreshold` üstündeki chunk'lar hem `/v1/rag/collections/:collectionId/retrieve` hem `/v1/rag/collections/:collectionId/query` için elenir.
 - Hiç chunk kalmazsa backend bunu başarı değil, `NO_RELEVANT_CONTEXT` hatası olarak ele alır.
 - Chunk bulunması tek başına answerability garantisi vermez; `POST /v1/rag/collections/:collectionId/query` gerekli olgusal kanıt yoksa `ANSWER_NOT_IN_RETRIEVED_CONTEXT` üretebilir.
 
@@ -405,7 +444,7 @@ Teorik rol:
 Repodaki implementasyon:
 
 - Generation [src/rag.ts](src/rag.ts) içindeki `ChatOllama` istemcisi ile yapılır.
-- Model parametreleri [src/config.ts](src/config.ts) içinden gelir.
+- Model parametreleri collection kaydından gelir; [src/config.ts](src/config.ts) sadece varsayılan/fallback değerleri ve servis-seviyesi Ollama bağlantısını taşır.
 - `temperature=0` seçimi, sistemin daha deterministik cevap vermesini hedefler.
 - `think: false` seçimi, agentic veya think-mode odaklı bir model akışına gidilmediğini gösterir.
 
@@ -432,12 +471,12 @@ Teorik rol:
 
 Repodaki implementasyon:
 
-- Indexing akışı [src/index.ts](src/index.ts) içindedir.
-- `data/ozelge_veri.json` dosyası okunur.
-- `pdfText` alanı boş olmayan kayıtlar `Document` nesnelerine dönüştürülür.
+- Indexing akışı [src/index.ts](src/index.ts), [src/indexing/jobs.ts](src/indexing/jobs.ts) ve [src/indexing/buildPhysicalCollection.ts](src/indexing/buildPhysicalCollection.ts) arasında bölünmüştür.
+- Job önce registry'ye yazılır ve worker tarafından `running` durumuna alınır.
+- Veri dosyası okunur, `pdfText` alanı boş olmayan kayıtlar `Document` nesnelerine dönüştürülür.
 - `RecursiveCharacterTextSplitter` ile chunk'lara bölünür.
-- Her chunk'a metadata ve `chunkIndex` eklenir.
-- Chroma koleksiyonu resetlenir ve tüm chunk'lar yeniden yazılır.
+- Her chunk'a metadata, `chunkIndex`, `collectionVersion` ve `physicalCollection` eklenir.
+- Aktif fiziksel Chroma koleksiyonu resetlenmez; bunun yerine yeni versioned physical collection oluşturulur ve başarılı build sonrası pointer swap yapılır.
 
 Bu implementasyon Vanilla RAG'in ingestion tarafını karşılıyor. Ancak ileride incremental indexing, better normalization ve richer metadata ihtiyacı çıkacaktır.
 
@@ -457,13 +496,14 @@ Bu katman sayesinde sistem şu kararlar için repoda görünür ve doğrulanabil
 
 - server portu
 - Chroma adresi
-- collection adı
+- registry path'i
 - Ollama base URL
 - chat modeli
 - embedding modeli
-- chunk boyutu ve overlap
-- retrieval `k`
-- timeout
+- collectionDefaults altındaki source path, chunking ve retrieval default'ları
+- readiness probe timeout ve metinleri
+- `cleanup.retentionMs`
+- `limits.maxConcurrentEmbeddings` / `limits.maxConcurrentGenerations`
 
 Bu, backend mimarisi açısından doğru bir ayrımdır. Ancak config schema validation halen sınırlıdır.
 
@@ -473,15 +513,16 @@ Bir istemci `POST /v1/rag/collections/:collectionId/query` çağırdığında bu
 
 1. Express JSON body'yi parse eder.
 2. Zod, `question` alanının boş olmayan bir string olduğunu doğrular.
-3. `answerQuestion(question)` çağrılır.
-4. `createVectorStore()` ile Chroma koleksiyonuna erişim sağlanır.
-5. `similaritySearchWithScore(question, k)` ile ilgili chunk'lar çekilir.
-6. Chunk'lar `distanceScore` alanı ile sıralanır ve threshold üstündekiler elenir.
-7. Hiç chunk kalmazsa `422 NO_RELEVANT_CONTEXT` hatası döner.
-8. Model context bütçesine sığacak kadar chunk prompt içinde birleştirilir.
-9. Soru + system prompt, `ChatOllama` modeline verilir.
-10. Model cevabı alınır ve boş cevap / yasaklı fallback / no-answer sinyali backend tarafından doğrulanır.
-11. Başarılıysa `{ answer, distanceScoreThreshold, sources }` JSON cevabı döner; başarısızsa typed hata üretilir.
+3. `resolveReadableCollection` registry + tenant + active physical + Chroma readability kontrolünü yapar.
+4. Collection görünür ama yetkisizse `403 COLLECTION_FORBIDDEN`, hiç yoksa `404 COLLECTION_NOT_FOUND` döner.
+5. `answerQuestion(question, { collectionName, retrievalK, ... })` çağrılır.
+6. `similaritySearchWithScore(question, k)` ile ilgili chunk'lar çekilir.
+7. Chunk'lar `distanceScore` alanı ile sıralanır ve collection threshold üstündekiler elenir.
+8. Hiç chunk kalmazsa `422 NO_RELEVANT_CONTEXT` hatası döner.
+9. Model context bütçesine sığacak kadar chunk prompt içinde birleştirilir.
+10. Soru + system prompt, `ChatOllama` modeline verilir.
+11. Model cevabı alınır ve boş cevap / yasaklı fallback / no-answer sinyali backend tarafından doğrulanır.
+12. Başarılıysa `{ answer, distanceScoreThreshold, sources, collectionId, collectionDisplayName, activeVersion }` JSON cevabı döner; başarısızsa typed hata üretilir.
 
 Bu akışta backend'in görevi, retrieval ile LLM arasında bir bağlam kontratı oluşturmaktır.
 
@@ -489,36 +530,52 @@ Bu akışta backend'in görevi, retrieval ile LLM arasında bir bağlam kontrat�
 
 İndeksleme komutu çalıştığında bu repoda şu olay zinciri olur:
 
-1. JSON veri dosyası dosya sisteminden okunur.
-2. Veri formatının array olup olmadığı kontrol edilir.
-3. `pdfText` içermeyen kayıtlar elenir.
-4. Geçerli kayıtlar LangChain `Document` nesnesine çevrilir.
-5. Belgeler `RecursiveCharacterTextSplitter` ile chunk'lara bölünür.
-6. Her chunk'a metadata ve `chunkIndex` eklenir.
-7. Hedef Chroma koleksiyonu silinir.
-8. Tüm chunk'lar embedding'e dönüştürülerek koleksiyona yazılır.
+1. Admin API veya CLI yeni bir index job'ı `queued` durumda registry'ye yazar.
+2. `IndexJobRunner` job'ı arka planda alır ve durumu `running` yapar.
+3. Job için versioned bir target physical collection seçilir ve `physical_collections` tablosunda `building` olarak kaydedilir.
+4. Veri kaynağı okunur, belgeler parse edilir ve chunk'lara bölünür.
+5. Chunk metadata'sına `collectionId`, `collectionVersion`, `physicalCollection` eklenir.
+6. Yeni physical Chroma collection registry'deki configuration ile oluşturulur ve chunk'lar bu koleksiyona yazılır.
+7. Build başarılıysa registry transaction içinde aktif pointer swap yapılır.
+8. Önceki aktif fiziksel collection varsa `delete_pending` durumuna alınır ve `delete_after` atanır.
+9. Startup'ta ve due cleanup çağrılarında süresi dolmuş `delete_pending`/`cleanup_failed` kayıtları Chroma'dan silinip `deleted` durumuna alınır.
 
 Bu akışın backend mimarisindeki anlamı şudur:
 
 - Query zamanı pahalı doküman hazırlama işi yapılmaz.
 - Retrieval katmanı önceden hazır embedding'ler üzerinden çalışır.
+- Rebuild sırasında aktif eski sürüm varsa query tarafı kesintisiz kalır.
 
 ## 8. Dosya Bazlı Mimari Eşleme
+
+### [src/app.ts](src/app.ts)
+
+Rol:
+
+- Express middleware ve router kompozisyonu
+- `/health` ve registry-aware `/ready` endpointleri
+- admin ve rag router'larının bağlanması
+
+Mimari yorumu:
+
+- HTTP surface'in gerçek sahibi bu dosyadır.
+- `src/server.ts` bootstrap, `src/app.ts` ise uygulama kompozisyonu sınırıdır.
 
 ### [src/server.ts](src/server.ts)
 
 Rol:
 
 - Backend entrypoint
-- HTTP routing
-- request validation
-- response serialization
-- basic error handling
+- SQLite registry bootstrap
+- startup stale job recovery
+- due cleanup tetikleme
+- job runner wiring
+- HTTP listen
 
 Mimari yorumu:
 
-- Bu dosya controller katmanı gibi davranıyor.
-- Doğrudan embedding veya prompt mantığı içermemesi doğru bir ayrım.
+- Bu dosya controller katmanı değildir; bootstrap katmanıdır.
+- Operasyonel startup davranışlarını (`failStaleJobs`, due cleanup, runner wiring) tek yerde toplaması doğru bir ayrımdır.
 
 ### [src/rag.ts](src/rag.ts)
 
@@ -540,22 +597,20 @@ Mimari yorumu:
 
 Rol:
 
-- offline ingestion
-- source loading
-- document conversion
-- chunking
-- indexing
+- CLI entrypoint
+- registry-backed reindex job başlatma ve çalıştırma
 
 Mimari yorumu:
 
 - Query path ile indexing path'inin ayrılması backend tasarımı açısından doğru.
+- CLI artık destructive reset yerine aynı registry/job kurallarını kullanan operator shortcut'ı olarak davranır.
 
 ### [src/config.ts](src/config.ts)
 
 Rol:
 
 - runtime configuration
-- JSON dosyası tabanlı config yükleme ve validation
+- YAML dosyası tabanlı config yükleme ve validation
 
 Mimari yorumu:
 
@@ -620,7 +675,7 @@ Komut:
 
 Davranış:
 
-- `src/index.ts` çalışır ve Chroma'yı yeniden doldurur.
+- `src/index.ts` collection ID alan registry-backed reindex akışını çalıştırır; aktif fiziksel collection yerinde silinmez.
 
 ### 9.3 Production-like Start
 
@@ -720,23 +775,23 @@ Dolayısıyla readiness implement edilmiştir; fakat gerçek RAG çağrısına d
 
 ### 11.5 Full-data indexing semantiği net değil
 
-Varsayılan `collectionDefaults.indexSampleSize=100` olduğu için sistem tüm veri yerine örneklemle çalışıyor.
+Varsayılan `collectionDefaults.indexSampleSize=0` olduğu için sistem varsayılan durumda tüm veriyi endeksler.
 
 Bu, Vanilla RAG demo için kabul edilebilir ama backend mimarisi dokümanı açısından şu notu düşmek gerekir:
 
 - implementasyon baseline seviyede
-- veri kapsamı varsayılan olarak sınırlı
+- veri kapsamı yalnızca `collectionDefaults.indexSampleSize` bilinçli olarak sıfırdan büyük bir değere çekilirse sınırlanır
 
 ### 11.6 Incremental indexing yok
 
-Her re-index işlemi koleksiyonu sıfırdan siliyor.
+Her re-index işlemi yeni bir fiziksel koleksiyonu sıfırdan build eder.
 
 Bu şu anlama gelir:
 
 - Backend basit
-- Ama operasyonel olarak kaba taneli
+- Ama incremental update yerine full rebuild tercih edildiği için operasyonel maliyet daha yüksektir
 
-Vanilla RAG için kabul edilebilir. Ancak gelişmiş bir arkaplan aracı (örneğin Admin API) entegre edilmiştir. Artık eski koleksiyon silinmemekte; tüm işlemler yeni yaratılan versiyonlu fiziksel koleksiyon (zero-downtime pointer swap) üzerine inşa edilmekte, başarı halinde pointer değişirken, eski hedef otomatik temizlenmektedir (garbage collection).
+Vanilla RAG için kabul edilebilir. Ancak aktif koleksiyon yerinde silinmez; tüm işlemler yeni yaratılan versiyonlu fiziksel koleksiyon (zero-downtime pointer swap) üzerine inşa edilir, başarı halinde pointer değişir ve eski hedef `cleanup.retentionMs` sonrasında otomatik temizlenir.
 
 ### 11.7 API hardening eksik
 
@@ -749,7 +804,7 @@ Vanilla RAG için kabul edilebilir. Ancak gelişmiş bir arkaplan aracı (örne�
 - concurrency & backpressure (Embeddings ve generation için asenkron semaphore mekanizması eklendi)
 - payload limit (`1mb` JSON sınır aşımında HTML yerine düzgün `413` hatası dönülüyor)
 
-Sadece rate limiting (Collection/user bazlı saniye/dakika kotası) `app.ts` içerisinde TODO kancası (hook) olarak bırakılmıştır.
+Henüz tam bir request rate limiter yoktur. Collection/user bazlı rate limiting `app.ts` içerisinde TODO kancası (hook) olarak bırakılmıştır; bugün üretimdeki gerçek koruma model backpressure limitleri ve JSON body limitidir.
 
 ## 12. Tasarım Trade-off'ları
 

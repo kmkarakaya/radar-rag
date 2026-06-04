@@ -25,6 +25,22 @@ export function buildCreateCollectionRequest(input: {
   };
 }
 
+export function normalizeChromaCollectionConfiguration(input: {
+  distanceMetric: "l2" | "cosine" | "ip";
+  chromaConfiguration?: Record<string, unknown>;
+}): Record<string, unknown> {
+  const normalized = isRecord(input.chromaConfiguration) ? { ...input.chromaConfiguration } : {};
+  const existingHnsw = isRecord(normalized.hnsw) ? normalized.hnsw : {};
+
+  return {
+    ...normalized,
+    hnsw: {
+      ...existingHnsw,
+      space: input.distanceMetric,
+    },
+  };
+}
+
 export async function createPhysicalChromaCollection(input: {
   name: string;
   distanceMetric: "l2" | "cosine" | "ip";
@@ -33,11 +49,10 @@ export async function createPhysicalChromaCollection(input: {
 }): Promise<void> {
   const client = new ChromaClient(chromaClientParams(input.runtimeConfig));
 
-  const chromaConfiguration = input.chromaConfiguration ?? {
-    hnsw: {
-      space: input.distanceMetric,
-    },
-  };
+  const chromaConfiguration = normalizeChromaCollectionConfiguration({
+    distanceMetric: input.distanceMetric,
+    chromaConfiguration: input.chromaConfiguration,
+  });
 
   const req = buildCreateCollectionRequest({ name: input.name, chromaConfiguration });
 
@@ -89,4 +104,8 @@ export async function listPhysicalChromaCollections(runtimeConfig: ResolvedConfi
   }
 
   return (collections as unknown as Array<{ name: string }>).map((c) => ({ name: c.name }));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

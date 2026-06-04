@@ -1,4 +1,4 @@
-import fs from "node:fs/promises";
+﻿import fs from "node:fs/promises";
 import path from "node:path";
 import { createInterface, type Interface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
@@ -135,7 +135,9 @@ async function promptConfig(rawConfig: RawConfig): Promise<RawConfig> {
 
   try {
     console.log("Press Enter to keep the current value.");
-    console.log("data.indexSampleSize: 0 means all parsed ozelge records.\n");
+    console.log(
+      "collectionDefaults.indexSampleSize is the default sample size for newly created collections; 0 means all parsed ozelge records.\n",
+    );
 
     return {
       server: {
@@ -222,6 +224,28 @@ async function promptConfig(rawConfig: RawConfig): Promise<RawConfig> {
           rawConfig.readiness.chatProbeText,
         ),
       },
+      cleanup: {
+        retentionMs: await promptNumber(
+          rl,
+          "cleanup.retentionMs",
+          rawConfig.cleanup?.retentionMs ?? 3600000,
+          nonNegativeInteger,
+        ),
+      },
+      limits: {
+        maxConcurrentEmbeddings: await promptNumber(
+          rl,
+          "limits.maxConcurrentEmbeddings",
+          rawConfig.limits?.maxConcurrentEmbeddings ?? 5,
+          positiveInteger,
+        ),
+        maxConcurrentGenerations: await promptNumber(
+          rl,
+          "limits.maxConcurrentGenerations",
+          rawConfig.limits?.maxConcurrentGenerations ?? 2,
+          positiveInteger,
+        ),
+      },
     };
   } finally {
     rl.close();
@@ -260,6 +284,10 @@ function printConfigSummary(runtimeConfig: ResolvedConfig): void {
   console.log(`- collectionDefaults.chunkSize/chunkOverlap: ${runtimeConfig.chunkSize}/${runtimeConfig.chunkOverlap}`);
   console.log(`- collectionDefaults.retrievalK: ${runtimeConfig.retrievalK}`);
   console.log(`- collectionDefaults.retrievalDistanceThreshold: ${runtimeConfig.retrievalDistanceThreshold}`);
+  console.log(`- cleanup.retentionMs: ${runtimeConfig.cleanupRetentionMs}`);
+  console.log(`- limits.maxConcurrentEmbeddings: ${runtimeConfig.maxConcurrentEmbeddings}`);
+  console.log(`- limits.maxConcurrentGenerations: ${runtimeConfig.maxConcurrentGenerations}`);
+  console.log("- request rate limiting: not enabled yet; only model backpressure and the JSON body limit are active");
 }
 
 async function printSourceAnalysis(runtimeConfig: ResolvedConfig): Promise<number> {
@@ -359,3 +387,4 @@ main().catch((error) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });
+

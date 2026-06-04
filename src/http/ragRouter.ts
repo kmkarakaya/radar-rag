@@ -6,10 +6,13 @@ import { HttpError } from "./errors.js";
 import { config } from "../config.js";
 import type { RequestContext } from "./requestContext.js";
 import { resolveReadableCollection } from "../collections/resolveReadableCollection.js";
-import { retrieveSources, answerQuestion, checkChromaHealth } from "../rag.js";
+import { retrieveSources, answerQuestion, checkChromaHealth, checkOllamaHealth } from "../rag.js";
 
 export function createRagRouter(deps: AppDependencies) {
   const router = express.Router();
+  const retrieve = deps.ragHandlers?.retrieveSources ?? retrieveSources;
+  const answer = deps.ragHandlers?.answerQuestion ?? answerQuestion;
+  const resolveCollection = deps.ragHandlers?.resolveReadableCollection ?? resolveReadableCollection;
 
   const requireRegistry = (req: Request, _res: Response, next: NextFunction) => {
     if (!deps.registry) {
@@ -77,12 +80,21 @@ export function createRagRouter(deps: AppDependencies) {
       }
 
       const activeJob = await deps.registry!.getActiveJobForCollection(context, collection.id);
+      const ollama = await (deps.healthChecks?.checkOllamaHealth ?? checkOllamaHealth)(config);
+      const availableModels = Array.isArray(ollama.details?.availableModels)
+        ? ollama.details.availableModels.filter((value): value is string => typeof value === "string")
+        : [];
+      const embeddingModelAvailable = ollama.ok && hasConfiguredModel(availableModels, collection.embeddingModel);
+      const chatModelAvailable = ollama.ok && hasConfiguredModel(availableModels, collection.chatModel);
 
       let chromaCount = -1;
       let chromaReadable = false;
 
       if (collection.activePhysicalCollection) {
-        const health = await checkChromaHealth(config, { collectionName: collection.activePhysicalCollection });
+        const health = await (deps.healthChecks?.checkChromaHealth ?? checkChromaHealth)(
+          config,
+          { collectionName: collection.activePhysicalCollection },
+        );
         chromaReadable = health.details?.collectionReadable === true;
         if (chromaReadable) {
           chromaCount = (health.details?.collectionCount as number | undefined) ?? -1;
@@ -92,14 +104,20 @@ export function createRagRouter(deps: AppDependencies) {
       res.json({
         id: collection.id,
         status: collection.status,
-        activePhysicalCollection: collection.activePhysicalCollection,
-        activeVersion: collection.activeVersion,
+        activePhysicalCollection: collection.activePhysicalCollection ?? null,
+        activeVersion: collection.activeVersion ?? null,
         activeJob: activeJob ? { id: activeJob.id, status: activeJob.status } : null,
         chromaReadable,
         chromaCount,
+        modelAvailability: {
+          embeddingModel: collection.embeddingModel,
+          embeddingModelAvailable,
+          chatModel: collection.chatModel,
+          chatModelAvailable,
+        },
         capabilities: {
-          query: chromaReadable,
-          retrieve: chromaReadable,
+          query: chromaReadable && embeddingModelAvailable && chatModelAvailable,
+          retrieve: chromaReadable && embeddingModelAvailable,
           reindex: true,
         }
       });
@@ -121,7 +139,7 @@ export function createRagRouter(deps: AppDependencies) {
       }
 
       const context = res.locals.requestContext as RequestContext;
-      const collection = await resolveReadableCollection(req, { registry: deps.registry! }, config);
+      const collection = await resolveCollection(req, { registry: deps.registry! }, config);
 
       req.on("close", () => {
         // We could abort an AbortController here if we wired one up fully, but 
@@ -131,15 +149,20 @@ export function createRagRouter(deps: AppDependencies) {
       const ac = new AbortController();
       req.on("close", () => ac.abort());
 
-      const result = await retrieveSources(parsed.data.question, {
+      const result = await retrieve(parsed.data.question, {
         collectionName: collection.activePhysicalCollection!,
         k: parsed.data.k ?? collection.retrievalK,
         runtimeConfig: config,
+        embeddingModel: collection.embeddingModel,
+        retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,
         abortSignal: ac.signal,
       });
 
       res.json({
+        question: parsed.data.question,
+        k: parsed.data.k ?? collection.retrievalK,
+        sourceCount: result.sources.length,
         ...result,
         collectionId: collection.id,
         collectionDisplayName: collection.displayName,
@@ -162,15 +185,18 @@ export function createRagRouter(deps: AppDependencies) {
       }
 
       const context = res.locals.requestContext as RequestContext;
-      const collection = await resolveReadableCollection(req, { registry: deps.registry! }, config);
+      const collection = await resolveCollection(req, { registry: deps.registry! }, config);
 
       const ac = new AbortController();
       req.on("close", () => ac.abort());
 
-      const result = await answerQuestion(parsed.data.question, {
+      const result = await answer(parsed.data.question, {
         collectionName: collection.activePhysicalCollection!,
         retrievalK: collection.retrievalK,
         runtimeConfig: config,
+        embeddingModel: collection.embeddingModel,
+        chatModel: collection.chatModel,
+        retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,
         abortSignal: ac.signal,
       });
@@ -187,4 +213,15 @@ export function createRagRouter(deps: AppDependencies) {
   });
 
   return router;
+}
+
+function normalizeModelName(modelName: string): string {
+  return modelName.endsWith(":latest") ? modelName.slice(0, -":latest".length) : modelName;
+}
+
+function hasConfiguredModel(availableModels: string[], configuredModel: string): boolean {
+  const normalizedConfiguredModel = normalizeModelName(configuredModel);
+  return availableModels.some(
+    (availableModel) => normalizeModelName(availableModel) === normalizedConfiguredModel,
+  );
 }

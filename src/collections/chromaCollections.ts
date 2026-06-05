@@ -2,6 +2,7 @@ import { ChromaClient } from "chromadb";
 import type { ResolvedConfig } from "../config.js";
 import { RagQueryError } from "../rag.js";
 import { assertValidChromaCollectionName } from "./ids.js";
+import { isTimeoutOrAbortError, withTimeoutAndAbort } from "../observability/timeout.js";
 
 function chromaClientParams(runtimeConfig: ResolvedConfig) {
   const url = new URL(runtimeConfig.chromaUrl);
@@ -62,17 +63,38 @@ export async function createPhysicalChromaCollection(input: {
 export async function assertChromaCollectionReadable(input: {
   name: string;
   runtimeConfig: ResolvedConfig;
+  timeoutMs?: number;
+  abortSignal?: AbortSignal;
 }): Promise<{ count: number }> {
   const client = new ChromaClient(chromaClientParams(input.runtimeConfig));
+  const timeoutMs = input.timeoutMs ?? input.runtimeConfig.readyTimeoutMs;
 
   try {
-    const collection = await client.getCollection({ name: input.name });
-    const count = await collection.count();
+    const collection = await withTimeoutAndAbort({
+      promise: client.getCollection({ name: input.name }),
+      timeoutMs,
+      label: `Chroma getCollection ${input.name}`,
+      abortSignal: input.abortSignal,
+    });
+    const count = await withTimeoutAndAbort({
+      promise: collection.count(),
+      timeoutMs,
+      label: `Chroma count ${input.name}`,
+      abortSignal: input.abortSignal,
+    });
     return { count };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (/not found|does not exist|404|could not be found/i.test(message)) {
       throw new RagQueryError("COLLECTION_NOT_FOUND", `Chroma collection not found: ${input.name}`, 404);
+    }
+    if (isTimeoutOrAbortError(error)) {
+      throw new RagQueryError(
+        "COLLECTION_STORAGE_INCONSISTENT",
+        `Chroma collection readability check timed out or was aborted for ${input.name}.`,
+        503,
+        { physicalCollection: input.name },
+      );
     }
     throw error;
   }

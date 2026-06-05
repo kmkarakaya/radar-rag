@@ -2,12 +2,14 @@
 import express, { type Express } from "express";
 import type { CollectionRegistry } from "./collections/types.js";
 import { resolveReadableCollection } from "./collections/resolveReadableCollection.js";
-import { config } from "./config.js";
+import { config, type ResolvedConfig } from "./config.js";
 import { errorHandler, notFoundHandler, sendErrorResponse } from "./http/errors.js";
 import { createRequestContext } from "./http/requestContext.js";
+import { createRateLimitMiddleware, createInMemoryRequestRateLimiter, type RequestRateLimiter } from "./http/rateLimit.js";
 import { checkIndexingSourceHealth, type IndexingSourceHealthDetails } from "./index.js";
 import { createAdminRouter } from "./http/adminRouter.js";
 import { createRagRouter } from "./http/ragRouter.js";
+import { createConsoleLogSink, createOperationalHttpLogger, type OperationalLogSink } from "./observability/logger.js";
 import {
   answerQuestion,
   checkChatGenerationHealth,
@@ -22,8 +24,11 @@ import {
 import type { IndexJobRunner } from "./indexing/jobRunner.js";
 
 export type AppDependencies = {
+  runtimeConfig?: ResolvedConfig;
   registry?: CollectionRegistry;
   jobRunner?: IndexJobRunner;
+  logEvent?: OperationalLogSink;
+  rateLimiter?: RequestRateLimiter;
   ragHandlers?: {
     retrieveSources?: typeof retrieveSources;
     answerQuestion?: typeof answerQuestion;
@@ -61,7 +66,19 @@ type ReadinessIssue = {
 
 export function createApp(deps: AppDependencies = {}): Express {
   const app = express();
-  app.locals.dependencies = deps;
+  const runtimeConfig = deps.runtimeConfig ?? config;
+  const logEvent = deps.logEvent ?? createConsoleLogSink();
+  const rateLimiter = deps.rateLimiter ?? createInMemoryRequestRateLimiter({
+    enabled: runtimeConfig.rateLimitEnabled,
+    windowMs: runtimeConfig.rateLimitWindowMs,
+    maxRequestsPerWindow: runtimeConfig.rateLimitMaxRequestsPerWindow,
+  });
+  app.locals.dependencies = {
+    ...deps,
+    runtimeConfig,
+    logEvent,
+    rateLimiter,
+  } satisfies AppDependencies;
   configureApp(app);
   return app;
 }
@@ -85,16 +102,26 @@ export async function checkRegistryHealth(registry?: CollectionRegistry): Promis
 }
 
 function configureApp(app: Express): void {
+  const deps = app.locals.dependencies as AppDependencies;
+  const runtimeConfig = deps.runtimeConfig ?? config;
+  const logEvent = deps.logEvent ?? createConsoleLogSink();
+
   app.use((req, res, next) => {
     res.locals.requestContext = createRequestContext(req);
     next();
   });
 
+  app.use(createOperationalHttpLogger(logEvent));
   app.use(express.json({ limit: "1mb" }));
-
-  // TODO: Implement rate limiting per collection/tenant here. 
-  // Do not write ad-hoc rate limiters in individual routes.
-  // app.use(rateLimitMiddleware);
+  app.use(createRateLimitMiddleware({
+    limiter: deps.rateLimiter ?? createInMemoryRequestRateLimiter({
+      enabled: runtimeConfig.rateLimitEnabled,
+      windowMs: runtimeConfig.rateLimitWindowMs,
+      maxRequestsPerWindow: runtimeConfig.rateLimitMaxRequestsPerWindow,
+    }),
+    runtimeConfig,
+    logEvent,
+  }));
 
   app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
     // Check for express.json body parser errors (such as Payload Too Large or Invalid JSON)
@@ -152,17 +179,17 @@ function configureApp(app: Express): void {
     });
   });
 
-  app.use("/v1/admin", createAdminRouter(app.locals.dependencies));
-  app.use("/v1/rag", createRagRouter(app.locals.dependencies));
+  app.use("/v1/admin", createAdminRouter(app.locals.dependencies, runtimeConfig));
+  app.use("/v1/rag", createRagRouter(app.locals.dependencies, runtimeConfig));
 
   app.use("/test-frontend", express.static(path.resolve(process.cwd(), "test_frontend")));
 
 async function getReadinessPayload(registry?: CollectionRegistry) {
-  const healthChecks = app.locals.dependencies?.healthChecks;
+  const healthChecks = deps.healthChecks;
   const [chroma, ollama, dataSource, registryHealth] = await Promise.all([
-    (healthChecks?.checkChromaHealth ?? checkChromaHealth)(),
-    (healthChecks?.checkOllamaHealth ?? checkOllamaHealth)(),
-    (healthChecks?.checkIndexingSourceHealth ?? checkIndexingSourceHealth)(),
+    (healthChecks?.checkChromaHealth ?? checkChromaHealth)(runtimeConfig),
+    (healthChecks?.checkOllamaHealth ?? checkOllamaHealth)(runtimeConfig),
+    (healthChecks?.checkIndexingSourceHealth ?? checkIndexingSourceHealth)(runtimeConfig),
     checkRegistryHealth(registry),
   ]);
   const ollamaDetails = (ollama.details ?? {}) as Partial<OllamaHealthDetails>;
@@ -170,10 +197,10 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
   const chromaReachable = chroma.ok;
 
   const embedding = ollama.ok && ollamaDetails.embeddingModelAvailable
-    ? await (healthChecks?.checkEmbeddingHealth ?? checkEmbeddingHealth)()
+    ? await (healthChecks?.checkEmbeddingHealth ?? checkEmbeddingHealth)(runtimeConfig)
     : null;
   const chatGeneration = ollama.ok && ollamaDetails.chatModelAvailable
-    ? await (healthChecks?.checkChatGenerationHealth ?? checkChatGenerationHealth)()
+    ? await (healthChecks?.checkChatGenerationHealth ?? checkChatGenerationHealth)(runtimeConfig)
     : null;
   const embeddingDetails = (embedding?.details ?? {}) as Partial<EmbeddingHealthDetails>;
   const chatGenerationDetails = (
@@ -188,10 +215,10 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
     blocking: true,
     capabilities: ["query", "index"],
     message: chromaReachable
-      ? `Chroma is reachable at ${config.chromaUrl}.`
-      : `Chroma is not reachable at ${config.chromaUrl}. ${chroma.error ?? ""}`.trim(),
+      ? `Chroma is reachable at ${runtimeConfig.chromaUrl}.`
+      : `Chroma is not reachable at ${runtimeConfig.chromaUrl}. ${chroma.error ?? ""}`.trim(),
     details: {
-      url: config.chromaUrl,
+      url: runtimeConfig.chromaUrl,
       latencyMs: chroma.latencyMs,
       error: chroma.error,
     },
@@ -219,10 +246,10 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
     blocking: true,
     capabilities: ["query", "index"],
     message: ollama.ok
-      ? `Ollama is reachable at ${config.ollamaBaseUrl}.`
-      : `Ollama is not reachable at ${config.ollamaBaseUrl}. ${ollama.error ?? ""}`.trim(),
+      ? `Ollama is reachable at ${runtimeConfig.ollamaBaseUrl}.`
+      : `Ollama is not reachable at ${runtimeConfig.ollamaBaseUrl}. ${ollama.error ?? ""}`.trim(),
     details: {
-      url: config.ollamaBaseUrl,
+      url: runtimeConfig.ollamaBaseUrl,
       latencyMs: ollama.latencyMs,
       error: ollama.error,
     },
@@ -236,10 +263,10 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
       blocking: true,
       capabilities: ["query"],
       message: ollamaDetails.chatModelAvailable
-        ? `Chat model ${config.ollamaChatModel} is available in Ollama.`
-        : `Chat model ${config.ollamaChatModel} is missing in Ollama, so answer generation cannot run.`,
+        ? `Chat model ${runtimeConfig.ollamaChatModel} is available in Ollama.`
+        : `Chat model ${runtimeConfig.ollamaChatModel} is missing in Ollama, so answer generation cannot run.`,
       details: {
-        model: config.ollamaChatModel,
+        model: runtimeConfig.ollamaChatModel,
         availableModels: ollamaDetails.availableModels,
       },
     });
@@ -251,10 +278,10 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
       blocking: true,
       capabilities: ["query", "index"],
       message: ollamaDetails.embeddingModelAvailable
-        ? `Embedding model ${config.ollamaEmbeddingModel} is available in Ollama.`
-        : `Embedding model ${config.ollamaEmbeddingModel} is missing in Ollama, so retrieval and indexing embeddings cannot run.`,
+        ? `Embedding model ${runtimeConfig.ollamaEmbeddingModel} is available in Ollama.`
+        : `Embedding model ${runtimeConfig.ollamaEmbeddingModel} is missing in Ollama, so retrieval and indexing embeddings cannot run.`,
       details: {
-        model: config.ollamaEmbeddingModel,
+        model: runtimeConfig.ollamaEmbeddingModel,
         availableModels: ollamaDetails.availableModels,
       },
     });
@@ -269,7 +296,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
       capabilities: ["query", "index"],
       message: "Embedding smoke test was skipped because Ollama or the embedding model is not ready.",
       details: {
-        probeText: config.readyEmbedProbeText,
+        probeText: runtimeConfig.readyEmbedProbeText,
       },
     });
   } else {
@@ -283,7 +310,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
         ? `Embedding smoke test succeeded with a vector length of ${embeddingDetails.vectorLength}.`
         : `Embedding smoke test failed. ${embedding?.error ?? ""}`.trim(),
       details: {
-        probeText: embeddingDetails.probeText ?? config.readyEmbedProbeText,
+        probeText: embeddingDetails.probeText ?? runtimeConfig.readyEmbedProbeText,
         vectorLength: embeddingDetails.vectorLength,
         finiteValues: embeddingDetails.finiteValues,
       },
@@ -299,7 +326,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
       capabilities: ["query"],
       message: "Chat generation smoke test was skipped because Ollama or the chat model is not ready.",
       details: {
-        probeText: config.readyChatProbeText,
+        probeText: runtimeConfig.readyChatProbeText,
       },
     });
   } else {
@@ -313,7 +340,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
         ? `Chat generation smoke test succeeded with a response length of ${chatGenerationDetails.responseLength}.`
         : `Chat generation smoke test failed. ${chatGeneration?.error ?? ""}`.trim(),
       details: {
-        probeText: chatGenerationDetails.probeText ?? config.readyChatProbeText,
+        probeText: chatGenerationDetails.probeText ?? runtimeConfig.readyChatProbeText,
         responseLength: chatGenerationDetails.responseLength,
       },
     });
@@ -326,10 +353,10 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
     blocking: true,
     capabilities: ["index"],
     message: dataSource.ok
-      ? `Indexing source is readable at ${config.sourcePath}.`
-      : `Indexing source cannot be read at ${config.sourcePath}. ${dataSource.error ?? ""}`.trim(),
+      ? `Indexing source is readable at ${runtimeConfig.sourcePath}.`
+      : `Indexing source cannot be read at ${runtimeConfig.sourcePath}. ${dataSource.error ?? ""}`.trim(),
     details: {
-      sourcePath: config.sourcePath,
+      sourcePath: runtimeConfig.sourcePath,
       latencyMs: dataSource.latencyMs,
       error: dataSource.error,
     },
@@ -350,7 +377,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
         ? `Indexing source contains ${documentCount} documents with indexable content.`
         : "Indexing source does not contain any documents with indexable content in the current sample, so indexing cannot proceed.",
       details: {
-        sourcePath: config.sourcePath,
+        sourcePath: runtimeConfig.sourcePath,
         fileCount: dataSourceDetails.fileCount,
         loadedDocumentCount: dataSourceDetails.loadedDocumentCount,
         recordCount: dataSourceDetails.recordCount,
@@ -371,7 +398,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
         capabilities: ["index", "query"],
         message: `Indexing currently uses only the first ${dataSourceDetails.documentCount} documents because collectionDefaults.indexSampleSize is set to ${dataSourceDetails.indexSampleSize}.`,
         details: {
-          sourcePath: config.sourcePath,
+          sourcePath: runtimeConfig.sourcePath,
           loadedDocumentCount,
           recordCount: dataSourceDetails.recordCount,
           sampledRecordCount: dataSourceDetails.sampledRecordCount,
@@ -388,7 +415,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
       capabilities: check.capabilities,
       message: check.message,
       details: check.details,
-      recommendedAction: recommendedActionFor(check.code),
+      recommendedAction: recommendedActionFor(check.code, runtimeConfig),
     } satisfies ReadinessIssue));
 
   const warnings = checks
@@ -398,7 +425,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
       capabilities: check.capabilities,
       message: check.message,
       details: check.details,
-      recommendedAction: recommendedActionFor(check.code),
+      recommendedAction: recommendedActionFor(check.code, runtimeConfig),
     } satisfies ReadinessIssue));
 
   const queryReady = !checks.some(
@@ -441,10 +468,10 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
           .map((issue) => issue.recommendedAction)
           .filter((action): action is string => Boolean(action)),
       ),
-      port: config.port,
-      chatModel: config.ollamaChatModel,
-      embeddingModel: config.ollamaEmbeddingModel,
-      chromaUrl: config.chromaUrl,
+      port: runtimeConfig.port,
+      chatModel: runtimeConfig.ollamaChatModel,
+      embeddingModel: runtimeConfig.ollamaEmbeddingModel,
+      chromaUrl: runtimeConfig.chromaUrl,
       chromaLatencyMs: chroma.latencyMs,
       capabilities: {
         query: {
@@ -461,7 +488,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
       checks,
       dependencies: {
         chroma: {
-          url: config.chromaUrl,
+          url: runtimeConfig.chromaUrl,
           ...chroma,
         },
         registry: {
@@ -470,43 +497,43 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
           error: registryHealth.error,
         },
         ollama: {
-          url: config.ollamaBaseUrl,
-          chatModel: config.ollamaChatModel,
-          embeddingModel: config.ollamaEmbeddingModel,
+          url: runtimeConfig.ollamaBaseUrl,
+          chatModel: runtimeConfig.ollamaChatModel,
+          embeddingModel: runtimeConfig.ollamaEmbeddingModel,
           ...ollama,
         },
         embeddings: embedding
           ? {
-              model: config.ollamaEmbeddingModel,
+              model: runtimeConfig.ollamaEmbeddingModel,
               ...embedding,
             }
           : {
-              model: config.ollamaEmbeddingModel,
+              model: runtimeConfig.ollamaEmbeddingModel,
               ok: false,
               latencyMs: 0,
               skipped: true,
             },
         chatGeneration: chatGeneration
           ? {
-              model: config.ollamaChatModel,
+              model: runtimeConfig.ollamaChatModel,
               ...chatGeneration,
             }
           : {
-              model: config.ollamaChatModel,
+              model: runtimeConfig.ollamaChatModel,
               ok: false,
               latencyMs: 0,
               skipped: true,
             },
       },
       dataSource: {
-        path: config.sourcePath,
+        path: runtimeConfig.sourcePath,
         ...dataSource,
       },
     },
   };
 }
 
-function recommendedActionFor(code: string): string | undefined {
+function recommendedActionFor(code: string, runtimeConfig: ResolvedConfig): string | undefined {
   switch (code) {
     case "CHROMA_UNREACHABLE":
       return "Start Chroma and verify config/rag.config.yaml chroma.url is correct.";
@@ -520,9 +547,9 @@ function recommendedActionFor(code: string): string | undefined {
     case "REGISTRY_UNREACHABLE":
       return "Verify SQLite registry database file path is accessible and not corrupted.";
     case "CHAT_MODEL_MISSING":
-      return `Pull the chat model with: ollama pull ${config.ollamaChatModel}`;
+      return `Pull the chat model with: ollama pull ${runtimeConfig.ollamaChatModel}`;
     case "EMBED_MODEL_MISSING":
-      return `Pull the embedding model with: ollama pull ${config.ollamaEmbeddingModel}`;
+      return `Pull the embedding model with: ollama pull ${runtimeConfig.ollamaEmbeddingModel}`;
     case "EMBED_SMOKE_FAILED":
       return "Verify Ollama embedding inference is working and that the embedding model can generate vectors.";
     case "CHAT_SMOKE_FAILED":
@@ -611,7 +638,7 @@ app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
     alive: true,
-    port: config.port,
+    port: runtimeConfig.port,
     uptimeSec: process.uptime(),
     timestamp: new Date().toISOString(),
   });

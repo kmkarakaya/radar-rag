@@ -6,6 +6,11 @@ import { assertChromaCollectionReadable } from "./collections/chromaCollections.
 import { config, type DistanceMetric, type ResolvedConfig } from "./config.js";
 import { Semaphore } from "./http/semaphore.js";
 import type { RequestContext } from "./http/requestContext.js";
+import {
+  emitOperationalLog,
+  type OperationalLogSink,
+} from "./observability/logger.js";
+import { isTimeoutOrAbortError, withTimeoutAndAbort } from "./observability/timeout.js";
 
 export type RagSource = {
   documentId?: string;
@@ -23,6 +28,12 @@ export type RagSource = {
 export type RetrievalResult = {
   distanceScoreThreshold: number;
   sources: RagSource[];
+  debug?: {
+    latency: {
+      retrievalMs: number;
+      totalMs: number;
+    };
+  };
 };
 
 export type DependencyHealth = {
@@ -126,21 +137,8 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms.`)), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string, abortSignal?: AbortSignal): Promise<T> {
+  return withTimeoutAndAbort({ promise, timeoutMs, label, abortSignal });
 }
 
 function normalizeOllamaModelName(modelName: string): string {
@@ -154,21 +152,25 @@ function hasConfiguredModel(availableModels: string[], configuredModel: string):
   );
 }
 
-let embeddingSemaphore: Semaphore | undefined;
-let generationSemaphore: Semaphore | undefined;
+const embeddingSemaphores = new Map<number, Semaphore>();
+const generationSemaphores = new Map<number, Semaphore>();
 
 function getEmbeddingSemaphore(runtimeConfig: ResolvedConfig): Semaphore {
-  if (!embeddingSemaphore) {
-    embeddingSemaphore = new Semaphore(runtimeConfig.maxConcurrentEmbeddings);
+  let semaphore = embeddingSemaphores.get(runtimeConfig.maxConcurrentEmbeddings);
+  if (!semaphore) {
+    semaphore = new Semaphore(runtimeConfig.maxConcurrentEmbeddings);
+    embeddingSemaphores.set(runtimeConfig.maxConcurrentEmbeddings, semaphore);
   }
-  return embeddingSemaphore;
+  return semaphore;
 }
 
 function getGenerationSemaphore(runtimeConfig: ResolvedConfig): Semaphore {
-  if (!generationSemaphore) {
-    generationSemaphore = new Semaphore(runtimeConfig.maxConcurrentGenerations);
+  let semaphore = generationSemaphores.get(runtimeConfig.maxConcurrentGenerations);
+  if (!semaphore) {
+    semaphore = new Semaphore(runtimeConfig.maxConcurrentGenerations);
+    generationSemaphores.set(runtimeConfig.maxConcurrentGenerations, semaphore);
   }
-  return generationSemaphore;
+  return semaphore;
 }
 
 export async function checkChromaHealth(
@@ -489,6 +491,7 @@ function timeoutError(label: string, timeoutMs: number): Error {
 export async function retrieveSources(
   question: string,
   options: {
+    collectionId?: string;
     collectionName: string;
     k?: number;
     runtimeConfig: ResolvedConfig;
@@ -496,68 +499,130 @@ export async function retrieveSources(
     retrievalDistanceThreshold?: number;
     context?: RequestContext;
     abortSignal?: AbortSignal;
+    includeDebugTimings?: boolean;
+    logEvent?: OperationalLogSink;
   },
 ): Promise<RetrievalResult> {
   const runtimeConfig = options.runtimeConfig;
+  const startedAt = Date.now();
   const k = options.k ?? runtimeConfig.retrievalK;
   const settings = resolveCollectionRuntimeSettings(runtimeConfig, {
     embeddingModel: options.embeddingModel,
     retrievalDistanceThreshold: options.retrievalDistanceThreshold,
   });
 
-  await assertChromaCollectionReadable({ name: options.collectionName, runtimeConfig });
-
-  const vectorStore = createVectorStore({
-    collectionName: options.collectionName,
-    runtimeConfig,
-    embeddingModel: settings.embeddingModel,
-  });
-
-  const semaphore = getEmbeddingSemaphore(runtimeConfig);
-  let docsWithScores;
   try {
-    docsWithScores = await semaphore.run(
-      () => vectorStore.similaritySearchWithScore(question, k),
-      runtimeConfig.ragTimeoutMs,
-      options.abortSignal
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("Timeout of") || message.includes("Request aborted")) {
-      throw new RagQueryError(
-        "MODEL_BACKPRESSURE",
-        "Could not acquire embedding lock in time or request aborted.",
-        503,
+    await assertChromaCollectionReadable({
+      name: options.collectionName,
+      runtimeConfig,
+      timeoutMs: runtimeConfig.ragTimeoutMs,
+      abortSignal: options.abortSignal,
+    });
+
+    const vectorStore = createVectorStore({
+      collectionName: options.collectionName,
+      runtimeConfig,
+      embeddingModel: settings.embeddingModel,
+    });
+
+    const semaphore = getEmbeddingSemaphore(runtimeConfig);
+    const retrievalStartedAt = Date.now();
+    let docsWithScores;
+    try {
+      docsWithScores = await semaphore.run(
+        () => withTimeout(
+          vectorStore.similaritySearchWithScore(question, k),
+          runtimeConfig.ragTimeoutMs,
+          "Chroma vector search",
+          options.abortSignal,
+        ),
+        runtimeConfig.ragTimeoutMs,
+        options.abortSignal,
       );
+    } catch (error) {
+      if (isTimeoutOrAbortError(error)) {
+        throw new RagQueryError(
+          "MODEL_BACKPRESSURE",
+          "RAG retrieval timed out or the request was aborted.",
+          503,
+          {
+            collectionName: options.collectionName,
+          },
+        );
+      }
+      throw error;
     }
+
+    const sources = docsWithScores
+      .sort((left, right) => left[1] - right[1])
+      .map(([doc, distanceScore]) => ({
+        documentId: doc.metadata.documentId as string | undefined,
+        sourcePath: doc.metadata.sourcePath as string | undefined,
+        sourceType: doc.metadata.sourceType as string | undefined,
+        chunkIndex: doc.metadata.chunkIndex as number | undefined,
+        ozelgeId: doc.metadata.ozelgeId as string | undefined,
+        sayi: doc.metadata.sayi as number | string | undefined,
+        tarih: doc.metadata.tarih as string | undefined,
+        konu: doc.metadata.konu as string | undefined,
+        distanceScore,
+        content: doc.pageContent,
+      }))
+      .filter((source) => (
+        source.distanceScore ?? Number.POSITIVE_INFINITY
+      ) <= settings.retrievalDistanceThreshold);
+
+    const retrievalMs = Date.now() - retrievalStartedAt;
+    const totalMs = Date.now() - startedAt;
+
+    emitOperationalLog(options.logEvent, {
+      requestId: options.context?.requestId,
+      tenantId: options.context?.tenantId,
+      userId: options.context?.userId,
+      collectionId: options.collectionId,
+      physicalCollection: options.collectionName,
+      operation: "retrieve",
+      status: "succeeded",
+      latencyMs: totalMs,
+      details: {
+        retrievalMs,
+        sourceCount: sources.length,
+        k,
+      },
+    });
+
+    return {
+      distanceScoreThreshold: settings.retrievalDistanceThreshold,
+      sources,
+      ...(options.includeDebugTimings
+        ? {
+            debug: {
+              latency: {
+                retrievalMs,
+                totalMs,
+              },
+            },
+          }
+        : {}),
+    };
+  } catch (error) {
+    emitOperationalLog(options.logEvent, {
+      requestId: options.context?.requestId,
+      tenantId: options.context?.tenantId,
+      userId: options.context?.userId,
+      collectionId: options.collectionId,
+      physicalCollection: options.collectionName,
+      operation: "retrieve",
+      status: "failed",
+      latencyMs: Date.now() - startedAt,
+      errorCode: error instanceof RagQueryError ? error.code : undefined,
+      message: errorMessage(error),
+    });
     throw error;
   }
-
-  const sources = docsWithScores
-    .sort((left, right) => left[1] - right[1])
-    .map(([doc, distanceScore]) => ({
-      documentId: doc.metadata.documentId as string | undefined,
-      sourcePath: doc.metadata.sourcePath as string | undefined,
-      sourceType: doc.metadata.sourceType as string | undefined,
-      chunkIndex: doc.metadata.chunkIndex as number | undefined,
-      ozelgeId: doc.metadata.ozelgeId as string | undefined,
-      sayi: doc.metadata.sayi as number | string | undefined,
-      tarih: doc.metadata.tarih as string | undefined,
-      konu: doc.metadata.konu as string | undefined,
-      distanceScore,
-      content: doc.pageContent,
-    }))
-    .filter((source) => (
-      source.distanceScore ?? Number.POSITIVE_INFINITY
-    ) <= settings.retrievalDistanceThreshold);
-
-  return {
-    distanceScoreThreshold: settings.retrievalDistanceThreshold,
-    sources,
-  };
 }
 
 export async function answerQuestion(question: string, options: {
+  collectionId?: string;
   collectionName: string;
   runtimeConfig: ResolvedConfig;
   retrievalK?: number;
@@ -566,10 +631,19 @@ export async function answerQuestion(question: string, options: {
   retrievalDistanceThreshold?: number;
   context?: RequestContext;
   abortSignal?: AbortSignal;
+  includeDebugTimings?: boolean;
+  logEvent?: OperationalLogSink;
 }): Promise<{
   answer: string;
   distanceScoreThreshold: number;
   sources: RagSource[];
+  debug?: {
+    latency: {
+      retrievalMs: number;
+      generationMs: number;
+      totalMs: number;
+    };
+  };
 }> {
   const runtimeConfig = options.runtimeConfig;
   const startedAt = Date.now();
@@ -581,23 +655,46 @@ export async function answerQuestion(question: string, options: {
   const model = createChatModel(runtimeConfig, settings.chatModel);
   const k = options.retrievalK ?? runtimeConfig.retrievalK;
   logStep(`query started; model=${settings.chatModel}; k=${k}; reqId=${options.context?.requestId || "-"}`);
+  const emitQueryFailure = (error: unknown) => {
+    emitOperationalLog(options.logEvent, {
+      requestId: options.context?.requestId,
+      tenantId: options.context?.tenantId,
+      userId: options.context?.userId,
+      collectionId: options.collectionId,
+      physicalCollection: options.collectionName,
+      operation: "query",
+      status: "failed",
+      latencyMs: Date.now() - startedAt,
+      errorCode: error instanceof RagQueryError ? error.code : undefined,
+      message: errorMessage(error),
+    });
+  };
 
   logStep(`retrieval started; reqId=${options.context?.requestId || "-"}`);
   const retrievalStartedAt = Date.now();
-  const retrieval = await retrieveSources(question, {
-    collectionName: options.collectionName,
-    k,
-    runtimeConfig,
-    embeddingModel: settings.embeddingModel,
-    retrievalDistanceThreshold: settings.retrievalDistanceThreshold,
-    context: options.context,
-    abortSignal: options.abortSignal,
-  });
+  let retrieval: RetrievalResult;
+  try {
+    retrieval = await retrieveSources(question, {
+      collectionName: options.collectionName,
+      collectionId: options.collectionId,
+      k,
+      runtimeConfig,
+      embeddingModel: settings.embeddingModel,
+      retrievalDistanceThreshold: settings.retrievalDistanceThreshold,
+      context: options.context,
+      abortSignal: options.abortSignal,
+      includeDebugTimings: options.includeDebugTimings,
+      logEvent: options.logEvent,
+    });
+  } catch (error) {
+    emitQueryFailure(error);
+    throw error;
+  }
   const retrievalElapsedMs = Date.now() - retrievalStartedAt;
   const retrievedSources = retrieval.sources;
 
   if (retrievedSources.length === 0) {
-    throw new RagQueryError(
+    const error = new RagQueryError(
       "NO_RELEVANT_CONTEXT",
       `No retrieved chunks remained under the configured distance threshold (${retrieval.distanceScoreThreshold}).`,
       422,
@@ -607,6 +704,8 @@ export async function answerQuestion(question: string, options: {
         distanceScoreThreshold: retrieval.distanceScoreThreshold,
       },
     );
+    emitQueryFailure(error);
+    throw error;
   }
 
   const sources = selectSourcesForGeneration(retrievedSources, runtimeConfig);
@@ -629,7 +728,9 @@ export async function answerQuestion(question: string, options: {
   const onParentAbort = () => controller.abort();
   if (options.abortSignal) {
     if (options.abortSignal.aborted) {
-      throw new RagQueryError("MODEL_BACKPRESSURE", "Request aborted before generation.", 503);
+      const error = new RagQueryError("MODEL_BACKPRESSURE", "Request aborted before generation.", 503);
+      emitQueryFailure(error);
+      throw error;
     }
     options.abortSignal.addEventListener("abort", onParentAbort);
   }
@@ -648,16 +749,20 @@ export async function answerQuestion(question: string, options: {
     
     try {
       response = await semaphore.run(
-        () => model.invoke(
-          [new SystemMessage(systemPrompt), new HumanMessage(question)],
-          { signal: controller.signal },
+        () => withTimeout(
+          model.invoke(
+            [new SystemMessage(systemPrompt), new HumanMessage(question)],
+            { signal: controller.signal },
+          ),
+          runtimeConfig.ragTimeoutMs,
+          "Ollama generation",
+          controller.signal,
         ),
         runtimeConfig.ragTimeoutMs,
         controller.signal
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes("Timeout of") || message.includes("Request aborted")) {
+      if (isTimeoutOrAbortError(error)) {
         throw new RagQueryError(
           "MODEL_BACKPRESSURE",
           "Could not acquire generation lock in time or request aborted.",
@@ -668,7 +773,8 @@ export async function answerQuestion(question: string, options: {
     }
     
     const generationElapsedMs = Date.now() - generationStartedAt;
-    logStep(`ollama generation finished; totalElapsedMs=${Date.now() - startedAt}; retrievalMs=${retrievalElapsedMs}; generationMs=${generationElapsedMs}; reqId=${options.context?.requestId || "-"}`);
+    const totalMs = Date.now() - startedAt;
+    logStep(`ollama generation finished; totalElapsedMs=${totalMs}; retrievalMs=${retrievalElapsedMs}; generationMs=${generationElapsedMs}; reqId=${options.context?.requestId || "-"}`);
 
     const answer = contentToString(response.content).trim();
 
@@ -712,11 +818,42 @@ export async function answerQuestion(question: string, options: {
       );
     }
 
+    emitOperationalLog(options.logEvent, {
+      requestId: options.context?.requestId,
+      tenantId: options.context?.tenantId,
+      userId: options.context?.userId,
+      collectionId: options.collectionId,
+      physicalCollection: options.collectionName,
+      operation: "query",
+      status: "succeeded",
+      latencyMs: totalMs,
+      details: {
+        retrievalMs: retrievalElapsedMs,
+        generationMs: generationElapsedMs,
+        sourceCount: sources.length,
+        k,
+      },
+    });
+
     return {
       answer,
       distanceScoreThreshold: retrieval.distanceScoreThreshold,
       sources,
+      ...(options.includeDebugTimings
+        ? {
+            debug: {
+              latency: {
+                retrievalMs: retrievalElapsedMs,
+                generationMs: generationElapsedMs,
+                totalMs,
+              },
+            },
+          }
+        : {}),
     };
+  } catch (error) {
+    emitQueryFailure(error);
+    throw error;
   } finally {
     clearTimeout(timer);
     if (options.abortSignal) {

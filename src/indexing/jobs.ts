@@ -1,5 +1,6 @@
 import type { CollectionRegistry, IndexJob, RequestContext } from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
+import { emitOperationalLog, type OperationalLogSink } from "../observability/logger.js";
 import { buildPhysicalCollection } from "./buildPhysicalCollection.js";
 
 export async function startReindexJob(input: {
@@ -30,6 +31,7 @@ export async function runIndexJob(input: {
   jobId: string;
   runtimeConfig: ResolvedConfig;
   log?: (message: string) => void;
+  logEvent?: OperationalLogSink;
   deps?: {
     buildPhysicalCollection?: typeof buildPhysicalCollection;
   };
@@ -37,14 +39,34 @@ export async function runIndexJob(input: {
   const { registry, jobId, runtimeConfig } = input;
   const log = input.log ?? console.log;
   const buildCollection = input.deps?.buildPhysicalCollection ?? buildPhysicalCollection;
+  const startedAt = Date.now();
 
   let job = await registry.getJob(jobId);
   if (!job) {
+    emitOperationalLog(input.logEvent, {
+      jobId,
+      operation: "index_job",
+      status: "failed",
+      latencyMs: Date.now() - startedAt,
+      errorCode: "JOB_NOT_FOUND",
+      message: `Job not found: ${jobId}`,
+    });
     throw new Error(`Job not found: ${jobId}`);
   }
 
   // Mark job as running
   job = await registry.markIndexJobRunning(jobId);
+  emitOperationalLog(input.logEvent, {
+    tenantId: job.tenantId,
+    collectionId: job.collectionId,
+    physicalCollection: job.targetPhysicalCollection,
+    jobId,
+    operation: "index_job",
+    status: "started",
+    details: {
+      targetVersion: job.targetVersion,
+    },
+  });
 
   const collection = await registry.getVisibleCollection({ 
     tenantId: job.tenantId, 
@@ -53,7 +75,19 @@ export async function runIndexJob(input: {
   }, job.collectionId);
 
   if (!collection) {
-    await registry.failIndexJob(jobId, `Collection not found: ${job.collectionId}`);
+    const message = `Collection not found: ${job.collectionId}`;
+    await registry.failIndexJob(jobId, message);
+    emitOperationalLog(input.logEvent, {
+      tenantId: job.tenantId,
+      collectionId: job.collectionId,
+      physicalCollection: job.targetPhysicalCollection,
+      jobId,
+      operation: "index_job",
+      status: "failed",
+      latencyMs: Date.now() - startedAt,
+      errorCode: "COLLECTION_NOT_FOUND",
+      message,
+    });
     return;
   }
 
@@ -73,7 +107,9 @@ export async function runIndexJob(input: {
       targetPhysicalCollection: job.targetPhysicalCollection,
       targetVersion,
       runtimeConfig,
+      jobId,
       log,
+      logEvent: input.logEvent,
     });
 
     await registry.completeIndexJob(jobId, {
@@ -85,9 +121,37 @@ export async function runIndexJob(input: {
     });
     
     log(`Job ${jobId} completed successfully.`);
+    emitOperationalLog(input.logEvent, {
+      tenantId: job.tenantId,
+      collectionId: job.collectionId,
+      physicalCollection: job.targetPhysicalCollection,
+      jobId,
+      operation: "index_job",
+      status: "succeeded",
+      latencyMs: Date.now() - startedAt,
+      details: {
+        targetVersion,
+        documentCount: result.parsedSourceDocumentCount,
+        chunkCount: result.chunkCount,
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await registry.failIndexJob(jobId, message);
     log(`Job ${jobId} failed: ${message}`);
+    emitOperationalLog(input.logEvent, {
+      tenantId: job.tenantId,
+      collectionId: job.collectionId,
+      physicalCollection: job.targetPhysicalCollection,
+      jobId,
+      operation: "index_job",
+      status: "failed",
+      latencyMs: Date.now() - startedAt,
+      errorCode: "INDEX_JOB_FAILED",
+      message,
+      details: {
+        targetVersion,
+      },
+    });
   }
 }

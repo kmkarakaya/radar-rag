@@ -4,6 +4,7 @@ import { createPhysicalChromaCollection, assertChromaCollectionReadable, deleteP
 import { createVectorStore } from "../rag.js";
 import type { RagCollection } from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
+import { emitOperationalLog, type OperationalLogSink } from "../observability/logger.js";
 import type { Document } from "@langchain/core/documents";
 
 export function addMetadataToChunks(
@@ -29,7 +30,9 @@ export async function buildPhysicalCollection(input: {
   targetPhysicalCollection: string;
   targetVersion: string;
   runtimeConfig: ResolvedConfig;
+  jobId?: string;
   log?: (message: string) => void;
+  logEvent?: OperationalLogSink;
   deps?: {
     analyzeIndexingSource?: typeof analyzeIndexingSource;
     createPhysicalChromaCollection?: typeof createPhysicalChromaCollection;
@@ -46,6 +49,7 @@ export async function buildPhysicalCollection(input: {
   const { collection, targetPhysicalCollection, targetVersion, runtimeConfig } = input;
   const log = input.log ?? console.log;
   const deps = input.deps ?? {};
+  const startedAt = Date.now();
   const loadSource = deps.analyzeIndexingSource ?? analyzeIndexingSource;
   const createCollection = deps.createPhysicalChromaCollection ?? createPhysicalChromaCollection;
   const assertReadable = deps.assertChromaCollectionReadable ?? assertChromaCollectionReadable;
@@ -54,6 +58,18 @@ export async function buildPhysicalCollection(input: {
   const splitDocuments = deps.splitDocuments ?? ((documents: Document[], options: { chunkSize: number; chunkOverlap: number }) => {
     const splitter = new RecursiveCharacterTextSplitter(options);
     return splitter.splitDocuments(documents);
+  });
+
+  emitOperationalLog(input.logEvent, {
+    tenantId: collection.tenantId,
+    collectionId: collection.id,
+    physicalCollection: targetPhysicalCollection,
+    jobId: input.jobId,
+    operation: "index_build",
+    status: "started",
+    details: {
+      targetVersion,
+    },
   });
 
   try {
@@ -111,11 +127,29 @@ export async function buildPhysicalCollection(input: {
       runtimeConfig,
     });
 
-    return {
+    const output = {
       sourceDocumentCount: documents.length,
       parsedSourceDocumentCount: analysis.loadedDocumentCount,
       chunkCount: indexedChunks.length,
     };
+
+    emitOperationalLog(input.logEvent, {
+      tenantId: collection.tenantId,
+      collectionId: collection.id,
+      physicalCollection: targetPhysicalCollection,
+      jobId: input.jobId,
+      operation: "index_build",
+      status: "succeeded",
+      latencyMs: Date.now() - startedAt,
+      details: {
+        targetVersion,
+        sourceDocumentCount: output.sourceDocumentCount,
+        parsedSourceDocumentCount: output.parsedSourceDocumentCount,
+        chunkCount: output.chunkCount,
+      },
+    });
+
+    return output;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log(`Build failed: ${message}. Attempting to clean up target physical collection...`);
@@ -128,6 +162,20 @@ export async function buildPhysicalCollection(input: {
       const deleteMessage = deleteError instanceof Error ? deleteError.message : String(deleteError);
       log(`Best-effort target physical cleanup failed: ${deleteMessage}`);
     }
+    emitOperationalLog(input.logEvent, {
+      tenantId: collection.tenantId,
+      collectionId: collection.id,
+      physicalCollection: targetPhysicalCollection,
+      jobId: input.jobId,
+      operation: "index_build",
+      status: "failed",
+      latencyMs: Date.now() - startedAt,
+      errorCode: "INDEX_BUILD_FAILED",
+      message,
+      details: {
+        targetVersion,
+      },
+    });
     throw error;
   }
 }

@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
 import { createApp, type AppDependencies } from "../src/app.js";
 import type { CollectionRegistry } from "../src/collections/types.js";
+import { config } from "../src/config.js";
 
 type HealthChecks = NonNullable<AppDependencies["healthChecks"]>;
 
@@ -46,8 +47,9 @@ function createHealthyRegistryStub(): CollectionRegistry {
 async function startServer(
   registry: CollectionRegistry,
   healthChecks: HealthChecks = createHealthyHealthChecks(),
+  runtimeConfig = config,
 ): Promise<{ server: Server; baseUrl: string }> {
-  const app = createApp({ registry, healthChecks });
+  const app = createApp({ registry, healthChecks, runtimeConfig });
   let startedServer!: Server;
 
   await new Promise<void>((resolve) => {
@@ -296,6 +298,52 @@ describe("app foundation", () => {
       assert.equal(response.status, 503);
       assert.equal(body.dependencies?.registry?.ok, false);
       assert.ok(body.blockerCodes?.includes("REGISTRY_UNREACHABLE"));
+    } finally {
+      await stopServer(started.server);
+    }
+  });
+
+  it("passes the active runtime config into embedding and chat smoke checks", async () => {
+    const smokeCalls: Array<{ kind: "embed" | "chat"; probeText: string }> = [];
+    const runtimeConfig = {
+      ...config,
+      readyEmbedProbeText: "embed-probe-from-runtime-config",
+      readyChatProbeText: "chat-probe-from-runtime-config",
+    };
+    const started = await startServer(createHealthyRegistryStub(), {
+      ...createHealthyHealthChecks(),
+      checkEmbeddingHealth: async (receivedConfig = config) => {
+        smokeCalls.push({ kind: "embed", probeText: receivedConfig.readyEmbedProbeText });
+        return {
+          ok: true,
+          latencyMs: 1,
+          details: {
+            probeText: receivedConfig.readyEmbedProbeText,
+            vectorLength: 3,
+            finiteValues: true,
+          },
+        };
+      },
+      checkChatGenerationHealth: async (receivedConfig = config) => {
+        smokeCalls.push({ kind: "chat", probeText: receivedConfig.readyChatProbeText });
+        return {
+          ok: true,
+          latencyMs: 1,
+          details: {
+            probeText: receivedConfig.readyChatProbeText,
+            responseLength: 12,
+          },
+        };
+      },
+    }, runtimeConfig);
+
+    try {
+      const response = await fetch(`${started.baseUrl}/ready?details=true`);
+      assert.equal(response.status, 200);
+      assert.deepEqual(smokeCalls, [
+        { kind: "embed", probeText: "embed-probe-from-runtime-config" },
+        { kind: "chat", probeText: "chat-probe-from-runtime-config" },
+      ]);
     } finally {
       await stopServer(started.server);
     }

@@ -14,6 +14,7 @@ export type ApiErrorCode =
   | "COLLECTION_INDEXING"
   | "COLLECTION_STORAGE_INCONSISTENT"
   | "MODEL_BACKPRESSURE"
+  | "RATE_LIMIT_EXCEEDED"
   | "EMPTY_MODEL_RESPONSE"
   | "ROUTE_NOT_FOUND"
   | "INTERNAL_ERROR";
@@ -56,6 +57,8 @@ export function sendErrorResponse(
     context?: RequestContext;
   },
 ): void {
+  res.locals.errorCode = input.code;
+
   const body: ApiErrorResponse = {
     error: input.error,
     code: input.code,

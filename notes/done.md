@@ -436,3 +436,69 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
   - Bu re-audit sirasinda attachment icindeki metnin Prompt 20 oldugu goruldu; kullanici mesajinda Prompt 21 istendigi icin Prompt 21 esas alindi, Prompt 20 discovery/list kontrati da gerileme acisindan tekrar kontrol edildi.
   - **Cold-Start Audit Update (2026-06-05):** Cold-start olarak atanan coding agent (biz) tarafından tüm kod tabanı, testler, Zod şemaları ve entegrasyon yolları tekrar elden geçirildi. `npm run typecheck`, `npm test` ve `npm run test:integration` komutları çalıştırılarak testlerin %100 yeşil olduğu ve regresyon bulunmadığı teyit edildi. Bu doğrulamayla beraber iş paketi başarıyla sonlandırılmıştır.
 
+## Prompt 22: Operational Observability, Request Rate Limits, and Timeout Hardening
+
+- Prompt 21 plan-parity auditinde `PARTIAL` kalan Faz 5 operational maturity maddeleri tekrar denetlendi ve kapatildi. `notes/plan-parity-audit.md` ozet release gate sonucu `evet` olacak sekilde guncellendi; kalan risk olarak yalniz production auth entegrasyonunun header tabanli request context disinda ayri deployment sorumlulugu oldugu not edildi.
+- Merkezi request rate limiter eklendi:
+  - `src/http/rateLimit.ts` tenant/user/collection/operation (`query`, `retrieve`, `reindex`) boyutlariyla fixed-window limit uyguluyor.
+  - `src/app.ts` limiter'i app-level middleware olarak bagliyor; route icinde ad-hoc limiter yok.
+  - Limit asiminda structured `429 RATE_LIMIT_EXCEEDED`, `Retry-After` ve `X-RateLimit-*` header'lari donuyor.
+  - Config yuzeyi `rateLimit.enabled`, `rateLimit.windowMs`, `rateLimit.maxRequestsPerWindow` alanlariyla `src/config.ts` ve `config/rag.config.yaml` icinde eklendi.
+- Structured logging standardi kuruldu:
+  - `src/observability/logger.ts` ortak event shape'i sagliyor: `requestId`, `tenantId`, `userId`, `collectionId`, `physicalCollection`, `jobId`, `operation`, `status`, `latencyMs`, `errorCode`.
+  - HTTP query/retrieve/reindex/job, RAG query/retrieve, index build/job runner ve retention cleanup akislari injectable log sink ile event uretiyor.
+  - Production default JSON stdout sink; testler fake sink kullaniyor.
+- Latency/debug kontrati netlestirildi:
+  - `observability.includeDebugTimings=false` default; query/retrieve response shape'i debug kapaliyken sade kaliyor.
+  - Config `true` iken retrieve response `debug.latency.retrievalMs,totalMs`, query response `debug.latency.retrievalMs,generationMs,totalMs` donduruyor.
+- Timeout/abort hardening guncellendi:
+  - `src/observability/timeout.ts` `withTimeoutAndAbort`, `OperationTimeoutError`, `OperationAbortError` helper'larini ekledi.
+  - Chroma readability (`assertChromaCollectionReadable`) timeout/abort ile korunuyor ve read inconsistency durumlari typed RAG error'a map ediliyor.
+  - Chroma vector search timeout/abort durumlari `MODEL_BACKPRESSURE`; Ollama generation ise semaphore + abortable timeout ile korunuyor.
+- Eklenen/guclendirilen testler:
+  - `test/acceptance/api.endpoints.test.ts`: rate limit 429 contract'i ve limiter input'unun tenant/user/collection/operation alanlari; default debug response'ta `debug` olmamasi; `includeDebugTimings=true` iken latency response'u; HTTP structured log alanlari.
+  - `test/observability.test.ts`: rate limit key izolasyonu, structured log timestamp normalizasyonu, timeout ve abort helper davranisi.
+  - `test/buildPhysicalCollection.test.ts`: index build structured log eventleri.
+  - `test/indexing.jobs.test.ts`: index job structured log eventleri.
+  - `test/indexing.cleanup.test.ts`: cleanup success/failure structured log eventleri.
+  - `test/runtime.static.test.ts`: rateLimit/observability config ve dokuman contract'i.
+- Dokuman guncellemeleri:
+  - `README.md`: rate limiter, `RATE_LIMIT_EXCEEDED`, debug latency ve structured operational log contract'i.
+  - `vanilla_rag_backend_mimarisi.md`: Faz 5 operational behavior, request lifecycle, HTTP hata kodlari, config yuzeyi, latency/debug ve timeout hardening.
+  - `notes/plan-parity-audit.md`: Faz 5 maddeleri `PASS`; release gate `evet`.
+- Degistirilen ana dosyalar:
+  - `src/app.ts`, `src/config.ts`, `src/http/rateLimit.ts`, `src/http/errors.ts`, `src/http/ragRouter.ts`, `src/http/adminRouter.ts`
+  - `src/observability/logger.ts`, `src/observability/timeout.ts`
+  - `src/rag.ts`, `src/collections/chromaCollections.ts`
+  - `src/index.ts`, `src/server.ts`, `src/indexing/buildPhysicalCollection.ts`, `src/indexing/jobs.ts`, `src/indexing/jobRunner.ts`, `src/indexing/cleanup.ts`
+  - `config/rag.config.yaml`, `README.md`, `vanilla_rag_backend_mimarisi.md`, `notes/plan-parity-audit.md`, `notes/done.md`
+  - `test/acceptance/api.endpoints.test.ts`, `test/observability.test.ts`, `test/buildPhysicalCollection.test.ts`, `test/indexing.jobs.test.ts`, `test/indexing.cleanup.test.ts`, `test/runtime.static.test.ts`
+- Calistirilan dogrulama komutlari ve sonuclari:
+  - `npm.cmd run typecheck`: PASS
+  - `npm.cmd run typecheck:test`: PASS
+  - `npm.cmd run build`: PASS
+  - `npm.cmd test`: PASS (83 test)
+  - `npm.cmd run test:integration`: Ilk deneme Chroma server calismadigi icin FAIL; `docker compose up -d chroma` sonrasi tekrar calistirildi ve PASS (1 test).
+  - Stale scan `rg "/rag/query|/rag/retrieve|chroma\\.collection|data\\.indexSampleSize|rag\\.retrievalK" src README.md vanilla_rag_backend_mimarisi.md test_frontend config`: PASS, eslesme yok.
+- Kalan risk/not:
+  - Production auth entegrasyonu yok; `tenantId` ve `userId` halen request header context'inden geliyor. Rate limiter bu boyutlari destekliyor, ancak kimlik dogrulama/guvenilir header sozlesmesi deployment katmaninda cozulmeli.
+  - `test:integration` icin Chroma gereklidir; bu calismada Chroma `docker compose up -d chroma` ile ayaga kaldirildi ve test sonrasi `docker compose stop chroma` ile durduruldu.
+- Re-audit correction (2026-06-06):
+  - Prompt 22 implementation'i yeniden denetlenirken dort somut bosluk bulundu ve kapatildi:
+    - `src/app.ts`: readiness embedding/chat smoke check'leri injected `runtimeConfig` yerine default config'e dusebiliyordu; aktif runtime config propagation geri sabitlendi.
+    - `src/rag.ts` ve `src/http/ragRouter.ts`: RAG query/retrieve structured log zincirinde `collectionId` eksikti; core ve router call'lari collection-aware log/event yuzeyiyle hizalandi.
+    - `src/http/adminRouter.ts`: admin reindex ve job lookup log'lari `physicalCollection` tasimiyordu; `res.locals` uzerinden HTTP operational log'a eklendi.
+    - `src/admin/onboard.ts` ve `config/rag.config.yaml`: onboarding CLI `rateLimit` / `observability` alanlarini yazmiyor, ozet metni ise yanlis sekilde "request rate limiting yok" diyordu. Prompt 22 config yuzeyi CLI yazma yoluyla hizalandi ve varsayilan config dosyasina eksik `rateLimit` / `observability` bloklari geri eklendi.
+  - Ek test guvenceleri:
+    - `test/app.foundation.test.ts`: readiness smoke check'lerinin aktif runtime config'i aldigi assert edildi.
+    - `test/acceptance/api.endpoints.test.ts`: query/retrieve handler call'larina `collectionId` propagation'i ve admin reindex/job lookup structured log'larinda `physicalCollection` assert edildi.
+    - `test/runtime.static.test.ts`: onboarding config flow'unun `rateLimit.enabled`, `rateLimit.windowMs`, `rateLimit.maxRequestsPerWindow` ve `observability.includeDebugTimings` alanlarini tasidigi; stale "not enabled yet" metninin geri donmedigi assert edildi.
+  - Bu re-auditte calistirilan dogrulama komutlari ve sonuclari:
+    - `npm.cmd run typecheck`: PASS
+    - `npm.cmd run typecheck:test`: PASS
+    - `npm.cmd run build`: PASS
+    - `npm.cmd test`: PASS (86 test)
+    - `npm.cmd run test:integration`: PASS (1 test)
+    - `rg "/rag/query|/rag/retrieve|chroma\\.collection|data\\.indexSampleSize|rag\\.retrievalK" src README.md vanilla_rag_backend_mimarisi.md test_frontend config`: PASS, eslesme yok.
+  - Kalan risk/not:
+    - Production auth entegrasyonu halen ayri deployment sorumlulugudur; rate limiter tenant/user boyutunu desteklese de bu alanlar bugun header tabanli request context'ten geliyor.

@@ -48,16 +48,32 @@ describe("runtime static contract", () => {
     assert.match(configContent, /cleanup:\s*[\r\n]+\s+retentionMs:\s*3600000/);
     assert.match(configContent, /limits:\s*[\r\n]+\s+maxConcurrentEmbeddings:\s*5/);
     assert.match(configContent, /maxConcurrentGenerations:\s*2/);
+    assert.match(configContent, /rateLimit:\s*[\r\n]+\s+enabled:\s*true/);
+    assert.match(configContent, /windowMs:\s*60000/);
+    assert.match(configContent, /maxRequestsPerWindow:\s*60/);
+    assert.match(configContent, /observability:\s*[\r\n]+\s+includeDebugTimings:\s*false/);
   });
 
-  it("documents that full request rate limiting is not enabled yet", async () => {
+  it("documents request rate limiting and debug latency contracts", async () => {
     const readme = await fs.readFile(path.resolve(process.cwd(), "README.md"), "utf8");
     const architecture = await fs.readFile(
       path.resolve(process.cwd(), "vanilla_rag_backend_mimarisi.md"),
       "utf8",
     );
 
-    assert.match(readme, /Henüz tam bir request rate limiter yoktur/i);
-    assert.match(architecture, /Henüz tam bir request rate limiter yoktur/i);
+    assert.match(readme, /RATE_LIMIT_EXCEEDED/);
+    assert.match(readme, /includeDebugTimings/);
+    assert.match(architecture, /RATE_LIMIT_EXCEEDED/);
+    assert.match(architecture, /includeDebugTimings/);
+  });
+
+  it("keeps the onboarding config flow aligned with rate-limit and observability settings", async () => {
+    const onboard = await fs.readFile(path.resolve(process.cwd(), "src/admin/onboard.ts"), "utf8");
+
+    assert.match(onboard, /rateLimit\.enabled/);
+    assert.match(onboard, /rateLimit\.windowMs/);
+    assert.match(onboard, /rateLimit\.maxRequestsPerWindow/);
+    assert.match(onboard, /observability\.includeDebugTimings/);
+    assert.doesNotMatch(onboard, /request rate limiting: not enabled yet/i);
   });
 });

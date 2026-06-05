@@ -6,7 +6,10 @@ import { createApp, type AppDependencies } from "../../src/app.js";
 import { createSqliteCollectionRegistry } from "../../src/collections/sqliteRegistry.js";
 import { resolveReadableCollection as actualResolveReadableCollection } from "../../src/collections/resolveReadableCollection.js";
 import type { CollectionRegistry, RagCollection } from "../../src/collections/types.js";
+import { config } from "../../src/config.js";
 import type { IndexJobRunner } from "../../src/indexing/jobRunner.js";
+import type { RateLimitInput, RequestRateLimiter } from "../../src/http/rateLimit.js";
+import type { OperationalLogEvent } from "../../src/observability/logger.js";
 import { RagQueryError } from "../../src/rag.js";
 
 let server: Server;
@@ -16,6 +19,7 @@ let jobRunner: IndexJobRunner;
 const readablePhysicalCollections = new Map<string, number>();
 const retrieveCalls: Array<Record<string, unknown>> = [];
 const answerCalls: Array<Record<string, unknown>> = [];
+const operationalLogs: OperationalLogEvent[] = [];
 let resolveReadableCollectionOverride: typeof actualResolveReadableCollection | undefined;
 let retrieveOverride: AppRagRetrieveHandler | undefined;
 let answerOverride: AppRagAnswerHandler | undefined;
@@ -118,6 +122,9 @@ before(async () => {
         };
       },
     },
+    logEvent: (event) => {
+      operationalLogs.push(event);
+    },
   });
 
   await new Promise<void>((resolve) => {
@@ -145,6 +152,34 @@ after(async () => {
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
   return fetch(`${baseUrl}${path}`, init);
+}
+
+async function startEphemeralApp(deps: AppDependencies): Promise<{ server: Server; baseUrl: string }> {
+  const app = createApp(deps);
+  let ephemeralServer!: Server;
+  await new Promise<void>((resolve) => {
+    ephemeralServer = app.listen(0, () => resolve());
+  });
+
+  const address = ephemeralServer.address();
+  assert.ok(address && typeof address !== "string");
+
+  return {
+    server: ephemeralServer,
+    baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}`,
+  };
+}
+
+async function stopServer(serverToStop: Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    serverToStop.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
 }
 
 describe("v1 admin and rag api endpoints", () => {
@@ -275,6 +310,7 @@ describe("v1 admin and rag api endpoints", () => {
   });
 
   it("collection ready reports queued job without an active physical as not queryable", async () => {
+    operationalLogs.length = 0;
     const response = await request(`/v1/admin/collections/${createdCollection.id}/reindex`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -283,6 +319,10 @@ describe("v1 admin and rag api endpoints", () => {
 
     assert.equal(response.status, 202);
     activeJobId = body.job.id;
+    const reindexLog = operationalLogs.find((event) => event.operation === "reindex" && event.jobId === activeJobId);
+    assert.ok(reindexLog);
+    assert.equal(reindexLog.collectionId, createdCollection.id);
+    assert.equal(reindexLog.physicalCollection, body.job.targetPhysicalCollection);
 
     const readyResponse = await request(`/v1/rag/collections/${createdCollection.id}/ready`);
     const readyBody = await readyResponse.json() as any;
@@ -373,6 +413,9 @@ describe("v1 admin and rag api endpoints", () => {
     const ctx = { tenantId: "default", userId: "local-dev", requestId: "route-settings" };
     const activePhysicalCollection = "api-test-route-settings";
     readablePhysicalCollections.set(activePhysicalCollection, 7);
+    operationalLogs.length = 0;
+    retrieveCalls.length = 0;
+    answerCalls.length = 0;
 
     await registry.updateCollection(ctx, createdCollection.id, {
       status: "ready",
@@ -394,7 +437,10 @@ describe("v1 admin and rag api endpoints", () => {
     try {
       const retrieveResponse = await request(`/v1/rag/collections/${createdCollection.id}/retrieve`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "x-request-id": "retrieve-log-test",
+        },
         body: JSON.stringify({ question: "threshold?", k: 3 }),
       });
       const retrieveBody = await retrieveResponse.json() as any;
@@ -406,15 +452,20 @@ describe("v1 admin and rag api endpoints", () => {
       assert.equal(retrieveBody.distanceScoreThreshold, 0.42);
       assert.equal(retrieveBody.collectionId, createdCollection.id);
       assert.equal(retrieveBody.activeVersion, "v-route-settings");
+      assert.equal("debug" in retrieveBody, false);
       assert.equal(retrieveCalls.length, 1);
       assert.equal(retrieveCalls[0]?.collectionName, activePhysicalCollection);
+      assert.equal(retrieveCalls[0]?.collectionId, createdCollection.id);
       assert.equal(retrieveCalls[0]?.embeddingModel, "embed-collection-specific");
       assert.equal(retrieveCalls[0]?.retrievalDistanceThreshold, 0.42);
       assert.equal(retrieveCalls[0]?.k, 3);
 
       const queryResponse = await request(`/v1/rag/collections/${createdCollection.id}/query`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "x-request-id": "query-log-test",
+        },
         body: JSON.stringify({ question: "models?" }),
       });
       const queryBody = await queryResponse.json() as any;
@@ -423,14 +474,190 @@ describe("v1 admin and rag api endpoints", () => {
       assert.equal(queryBody.distanceScoreThreshold, 0.42);
       assert.equal(queryBody.collectionId, createdCollection.id);
       assert.equal(queryBody.activeVersion, "v-route-settings");
+      assert.equal("debug" in queryBody, false);
       assert.equal(answerCalls.length, 1);
       assert.equal(answerCalls[0]?.collectionName, activePhysicalCollection);
+      assert.equal(answerCalls[0]?.collectionId, createdCollection.id);
       assert.equal(answerCalls[0]?.embeddingModel, "embed-collection-specific");
       assert.equal(answerCalls[0]?.chatModel, "chat-collection-specific");
       assert.equal(answerCalls[0]?.retrievalDistanceThreshold, 0.42);
       assert.equal(answerCalls[0]?.retrievalK, 7);
+      assert.equal(answerCalls[0]?.includeDebugTimings, false);
+
+      const retrieveLog = operationalLogs.find((event) => event.operation === "retrieve" && event.requestId === "retrieve-log-test");
+      assert.ok(retrieveLog);
+      assert.equal(retrieveLog.collectionId, createdCollection.id);
+      assert.equal(retrieveLog.physicalCollection, activePhysicalCollection);
+      assert.equal(retrieveLog.status, "succeeded");
+      assert.equal(typeof retrieveLog.latencyMs, "number");
+
+      const queryLog = operationalLogs.find((event) => event.operation === "query" && event.requestId === "query-log-test");
+      assert.ok(queryLog);
+      assert.equal(queryLog.collectionId, createdCollection.id);
+      assert.equal(queryLog.physicalCollection, activePhysicalCollection);
+      assert.equal(queryLog.status, "succeeded");
+      assert.equal(typeof queryLog.latencyMs, "number");
     } finally {
       resolveReadableCollectionOverride = undefined;
+    }
+  });
+
+  it("rate limits query, retrieve and reindex by tenant, user, collection and operation", async () => {
+    const capturedInputs: RateLimitInput[] = [];
+    const rateLimitLogs: OperationalLogEvent[] = [];
+    const limiter: RequestRateLimiter = {
+      check: (input) => {
+        capturedInputs.push(input);
+        return {
+          allowed: false,
+          key: `${input.tenantId}:${input.userId}:${input.collectionId}:${input.operation}`,
+          limit: 1,
+          remaining: 0,
+          resetAt: "2026-06-05T12:00:05.000Z",
+          retryAfterMs: 5000,
+        };
+      },
+    };
+    const started = await startEphemeralApp({
+      runtimeConfig: {
+        ...config,
+        rateLimitWindowMs: 5000,
+        rateLimitMaxRequestsPerWindow: 1,
+      },
+      rateLimiter: limiter,
+      logEvent: (event) => {
+        rateLimitLogs.push(event);
+      },
+    });
+
+    try {
+      const targets = [
+        ["/v1/rag/collections/rate-limit-col/query", "query"],
+        ["/v1/rag/collections/rate-limit-col/retrieve", "retrieve"],
+        ["/v1/admin/collections/rate-limit-col/reindex", "reindex"],
+      ] as const;
+
+      for (const [path, operation] of targets) {
+        const response = await fetch(`${started.baseUrl}${path}`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-request-id": `rate-${operation}`,
+            "x-tenant-id": "tenant-rate",
+            "x-user-id": "user-rate",
+          },
+          body: JSON.stringify({ question: "limited?" }),
+        });
+        const body = await response.json() as any;
+
+        assert.equal(response.status, 429);
+        assert.equal(body.code, "RATE_LIMIT_EXCEEDED");
+        assert.equal(response.headers.get("retry-after"), "5");
+      }
+
+      assert.deepEqual(capturedInputs.map((input) => ({
+        tenantId: input.tenantId,
+        userId: input.userId,
+        collectionId: input.collectionId,
+        operation: input.operation,
+      })), [
+        {
+          tenantId: "tenant-rate",
+          userId: "user-rate",
+          collectionId: "rate-limit-col",
+          operation: "query",
+        },
+        {
+          tenantId: "tenant-rate",
+          userId: "user-rate",
+          collectionId: "rate-limit-col",
+          operation: "retrieve",
+        },
+        {
+          tenantId: "tenant-rate",
+          userId: "user-rate",
+          collectionId: "rate-limit-col",
+          operation: "reindex",
+        },
+      ]);
+      assert.ok(rateLimitLogs.some((event) => (
+        event.operation === "query"
+        && event.status === "rejected"
+        && event.errorCode === "RATE_LIMIT_EXCEEDED"
+        && event.collectionId === "rate-limit-col"
+      )));
+    } finally {
+      await stopServer(started.server);
+    }
+  });
+
+  it("includes debug latency only when includeDebugTimings is enabled", async () => {
+    const debugRegistry = createSqliteCollectionRegistry({ dbPath: ":memory:" });
+    const debugContext = { tenantId: "default", userId: "local-dev", requestId: "debug-test" };
+    let debugCollection = await debugRegistry.createCollection(debugContext, {
+      displayName: "Debug Collection",
+      sourcePath: "data/debug",
+      ozelgeDataPath: "data/ozelge_veri.json",
+      embeddingModel: "embed-debug",
+      chatModel: "chat-debug",
+      distanceMetric: "cosine",
+      chunkSize: 100,
+      chunkOverlap: 0,
+      retrievalK: 4,
+      retrievalDistanceThreshold: 0.4,
+    });
+    debugCollection = await debugRegistry.updateCollection(debugContext, debugCollection.id, {
+      status: "ready",
+      activePhysicalCollection: "debug-active-physical",
+      activeVersion: "debug_version_001",
+    });
+    const started = await startEphemeralApp({
+      registry: debugRegistry,
+      jobRunner,
+      runtimeConfig: {
+        ...config,
+        includeDebugTimings: true,
+      },
+      ragHandlers: {
+        resolveReadableCollection: async () => debugCollection,
+        answerQuestion: async (_question, options) => {
+          assert.equal(options.includeDebugTimings, true);
+          return {
+            answer: "debug-answer",
+            distanceScoreThreshold: 0.4,
+            sources: [],
+            debug: {
+              latency: {
+                retrievalMs: 1,
+                generationMs: 2,
+                totalMs: 3,
+              },
+            },
+          };
+        },
+      },
+      logEvent: () => {},
+    });
+
+    try {
+      const response = await fetch(`${started.baseUrl}/v1/rag/collections/${debugCollection.id}/query`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "debug?" }),
+      });
+      const body = await response.json() as any;
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(body.debug, {
+        latency: {
+          retrievalMs: 1,
+          generationMs: 2,
+          totalMs: 3,
+        },
+      });
+    } finally {
+      await stopServer(started.server);
+      debugRegistry.close?.();
     }
   });
 
@@ -541,6 +768,21 @@ describe("v1 admin and rag api endpoints", () => {
     const body = await response.json() as any;
     assert.equal(response.status, 404);
     assert.equal(body.code, "ROUTE_NOT_FOUND");
+  });
+
+  it("admin job lookup returns the target physical collection and emits it in structured logs", async () => {
+    operationalLogs.length = 0;
+    const response = await request(`/v1/admin/jobs/${activeJobId}`);
+    const body = await response.json() as any;
+
+    assert.equal(response.status, 200);
+    assert.equal(body.job.id, activeJobId);
+    assert.equal(typeof body.job.targetPhysicalCollection, "string");
+
+    const jobLog = operationalLogs.find((event) => event.operation === "job" && event.jobId === activeJobId);
+    assert.ok(jobLog);
+    assert.equal(jobLog.collectionId, createdCollection.id);
+    assert.equal(jobLog.physicalCollection, body.job.targetPhysicalCollection);
   });
 
   it("duplicate reindex -> 409", async () => {

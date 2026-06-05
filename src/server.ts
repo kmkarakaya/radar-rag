@@ -5,6 +5,7 @@ import { createSqliteCollectionRegistry } from "./collections/sqliteRegistry.js"
 import { createIndexJobRunner, type IndexJobRunner } from "./indexing/jobRunner.js";
 import { cleanupRetiredPhysicalCollections } from "./indexing/cleanup.js";
 import { config, type ResolvedConfig } from "./config.js";
+import { createConsoleLogSink, type OperationalLogSink } from "./observability/logger.js";
 
 type StartupLogger = Pick<Console, "log" | "error">;
 
@@ -14,6 +15,7 @@ export async function runStartupMaintenance(input: {
   staleThresholdMs?: number;
   cleanupLimit?: number;
   log?: StartupLogger;
+  logEvent?: OperationalLogSink;
   cleanupRetiredPhysicalCollectionsFn?: typeof cleanupRetiredPhysicalCollections;
 }): Promise<void> {
   const staleThresholdMs = input.staleThresholdMs ?? 2 * 60 * 60 * 1000;
@@ -36,6 +38,7 @@ export async function runStartupMaintenance(input: {
       runtimeConfig: input.runtimeConfig,
       limit: cleanupLimit,
       log: (message) => log.log(message),
+      logEvent: input.logEvent,
     });
     if (count > 0) {
       log.log(`Cleaned up ${count} retired physical collections on startup.`);
@@ -50,15 +53,22 @@ export async function startServer(input: {
   registry?: CollectionRegistry;
   jobRunner?: IndexJobRunner;
   log?: StartupLogger;
+  logEvent?: OperationalLogSink;
   startupMaintenance?: typeof runStartupMaintenance;
 } = {}) {
   const runtimeConfig = input.runtimeConfig ?? config;
   const registry = input.registry ?? createSqliteCollectionRegistry({ dbPath: runtimeConfig.registryPath });
-  const jobRunner = input.jobRunner ?? createIndexJobRunner({ registry, runtimeConfig });
   const log = input.log ?? console;
+  const logEvent = input.logEvent ?? createConsoleLogSink();
+  const jobRunner = input.jobRunner ?? createIndexJobRunner({
+    registry,
+    runtimeConfig,
+    log: (message) => log.log(message),
+    logEvent,
+  });
   const startupMaintenance = input.startupMaintenance ?? runStartupMaintenance;
 
-  const app = createApp({ registry, jobRunner });
+  const app = createApp({ registry, jobRunner, runtimeConfig, logEvent });
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
     const startedServer = app.listen(runtimeConfig.port, () => {
       log.log(`RAG backend listening on http://localhost:${runtimeConfig.port}`);
@@ -67,7 +77,7 @@ export async function startServer(input: {
   });
 
   const startupMaintenancePromise = Promise.resolve()
-    .then(() => startupMaintenance({ registry, runtimeConfig, log }))
+    .then(() => startupMaintenance({ registry, runtimeConfig, log, logEvent }))
     .catch((error) => {
       log.error("Startup maintenance crashed unexpectedly:", error);
     });

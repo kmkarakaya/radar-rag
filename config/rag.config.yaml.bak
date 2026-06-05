@@ -1,20 +1,20 @@
 server:
   port: 3010
+registry:
+  path: data/registry.sqlite
 chroma:
   url: http://localhost:8000
-  collection: test
-  distanceMetric: l2
 ollama:
   baseUrl: http://localhost:11434
-  chatModel: gpt-oss:120b-cloud
+  chatModel: gemma3:4b-cloud
   embeddingModel: bge-m3
   numCtx: 4096
   numPredict: 128
-data:
+collectionDefaults:
   sourcePath: data
   ozelgeDataPath: data/ozelge_veri.json
+  distanceMetric: l2
   indexSampleSize: 0
-rag:
   chunkSize: 500
   chunkOverlap: 200
   retrievalK: 5
@@ -24,3 +24,14 @@ readiness:
   timeoutMs: 30000
   embeddingProbeText: readiness probe
   chatProbeText: hazirlik kontrolu
+cleanup:
+  retentionMs: 3600000
+limits:
+  maxConcurrentEmbeddings: 5
+  maxConcurrentGenerations: 2
+rateLimit:
+  enabled: true
+  windowMs: 60000
+  maxRequestsPerWindow: 60
+observability:
+  includeDebugTimings: false

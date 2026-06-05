@@ -109,6 +109,31 @@ async function promptNumber(
   }
 }
 
+async function promptBoolean(
+  rl: Interface,
+  label: string,
+  currentValue: boolean,
+): Promise<boolean> {
+  while (true) {
+    const answer = await rl.question(`${label} [${currentValue ? "Y/n" : "y/N"}]: `);
+    const trimmed = answer.trim().toLowerCase();
+
+    if (trimmed.length === 0) {
+      return currentValue;
+    }
+
+    if (["y", "yes", "true", "1"].includes(trimmed)) {
+      return true;
+    }
+
+    if (["n", "no", "false", "0"].includes(trimmed)) {
+      return false;
+    }
+
+    console.log("Please answer yes or no.");
+  }
+}
+
 async function promptEnum<T extends string>(
   rl: Interface,
   label: string,
@@ -246,6 +271,32 @@ async function promptConfig(rawConfig: RawConfig): Promise<RawConfig> {
           positiveInteger,
         ),
       },
+      rateLimit: {
+        enabled: await promptBoolean(
+          rl,
+          "rateLimit.enabled",
+          rawConfig.rateLimit?.enabled ?? true,
+        ),
+        windowMs: await promptNumber(
+          rl,
+          "rateLimit.windowMs",
+          rawConfig.rateLimit?.windowMs ?? 60000,
+          positiveInteger,
+        ),
+        maxRequestsPerWindow: await promptNumber(
+          rl,
+          "rateLimit.maxRequestsPerWindow",
+          rawConfig.rateLimit?.maxRequestsPerWindow ?? 60,
+          positiveInteger,
+        ),
+      },
+      observability: {
+        includeDebugTimings: await promptBoolean(
+          rl,
+          "observability.includeDebugTimings",
+          rawConfig.observability?.includeDebugTimings ?? false,
+        ),
+      },
     };
   } finally {
     rl.close();
@@ -287,7 +338,9 @@ function printConfigSummary(runtimeConfig: ResolvedConfig): void {
   console.log(`- cleanup.retentionMs: ${runtimeConfig.cleanupRetentionMs}`);
   console.log(`- limits.maxConcurrentEmbeddings: ${runtimeConfig.maxConcurrentEmbeddings}`);
   console.log(`- limits.maxConcurrentGenerations: ${runtimeConfig.maxConcurrentGenerations}`);
-  console.log("- request rate limiting: not enabled yet; only model backpressure and the JSON body limit are active");
+  console.log(`- rateLimit.enabled: ${runtimeConfig.rateLimitEnabled}`);
+  console.log(`- rateLimit.windowMs/maxRequestsPerWindow: ${runtimeConfig.rateLimitWindowMs}/${runtimeConfig.rateLimitMaxRequestsPerWindow}`);
+  console.log(`- observability.includeDebugTimings: ${runtimeConfig.includeDebugTimings}`);
 }
 
 async function printSourceAnalysis(runtimeConfig: ResolvedConfig): Promise<number> {
@@ -387,4 +440,3 @@ main().catch((error) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });
-

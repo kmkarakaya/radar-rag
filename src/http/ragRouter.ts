@@ -3,12 +3,12 @@ import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import type { AppDependencies } from "../app.js";
 import { HttpError } from "./errors.js";
-import { config } from "../config.js";
+import { config, type ResolvedConfig } from "../config.js";
 import type { RequestContext } from "./requestContext.js";
 import { resolveReadableCollection } from "../collections/resolveReadableCollection.js";
 import { retrieveSources, answerQuestion, checkChromaHealth, checkOllamaHealth } from "../rag.js";
 
-export function createRagRouter(deps: AppDependencies) {
+export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedConfig = deps.runtimeConfig ?? config) {
   const router = express.Router();
   const retrieve = deps.ragHandlers?.retrieveSources ?? retrieveSources;
   const answer = deps.ragHandlers?.answerQuestion ?? answerQuestion;
@@ -78,7 +78,7 @@ export function createRagRouter(deps: AppDependencies) {
       }
 
       const activeJob = await deps.registry!.getActiveJobForCollection(context, collection.id);
-      const ollama = await (deps.healthChecks?.checkOllamaHealth ?? checkOllamaHealth)(config);
+      const ollama = await (deps.healthChecks?.checkOllamaHealth ?? checkOllamaHealth)(runtimeConfig);
       const availableModels = Array.isArray(ollama.details?.availableModels)
         ? ollama.details.availableModels.filter((value): value is string => typeof value === "string")
         : [];
@@ -90,7 +90,7 @@ export function createRagRouter(deps: AppDependencies) {
 
       if (collection.activePhysicalCollection) {
         const health = await (deps.healthChecks?.checkChromaHealth ?? checkChromaHealth)(
-          config,
+          runtimeConfig,
           { collectionName: collection.activePhysicalCollection },
         );
         chromaReadable = health.details?.collectionReadable === true;
@@ -137,34 +137,36 @@ export function createRagRouter(deps: AppDependencies) {
       }
 
       const context = res.locals.requestContext as RequestContext;
-      const collection = await resolveCollection(req, { registry: deps.registry! }, config);
+      const collection = await resolveCollection(req, { registry: deps.registry! }, runtimeConfig);
+      res.locals.collectionId = collection.id;
+      res.locals.physicalCollection = collection.activePhysicalCollection;
 
-      req.on("close", () => {
-        // We could abort an AbortController here if we wired one up fully, but 
-        // express request doesn't directly expose standard abort signals until Express 5 
-        // with node 16+. For now, we will just pass a local abort controller.
-      });
       const ac = new AbortController();
       req.on("close", () => ac.abort());
 
       const result = await retrieve(parsed.data.question, {
+        collectionId: collection.id,
         collectionName: collection.activePhysicalCollection!,
         k: parsed.data.k ?? collection.retrievalK,
-        runtimeConfig: config,
+        runtimeConfig,
         embeddingModel: collection.embeddingModel,
         retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,
         abortSignal: ac.signal,
+        includeDebugTimings: runtimeConfig.includeDebugTimings,
+        logEvent: deps.logEvent,
       });
+      const { debug, ...publicResult } = result;
 
       res.json({
         question: parsed.data.question,
         k: parsed.data.k ?? collection.retrievalK,
-        sourceCount: result.sources.length,
-        ...result,
+        sourceCount: publicResult.sources.length,
+        ...publicResult,
         collectionId: collection.id,
         collectionDisplayName: collection.displayName,
         activeVersion: collection.activeVersion,
+        ...(runtimeConfig.includeDebugTimings && debug ? { debug } : {}),
       });
     } catch (error) {
       next(error);
@@ -183,27 +185,34 @@ export function createRagRouter(deps: AppDependencies) {
       }
 
       const context = res.locals.requestContext as RequestContext;
-      const collection = await resolveCollection(req, { registry: deps.registry! }, config);
+      const collection = await resolveCollection(req, { registry: deps.registry! }, runtimeConfig);
+      res.locals.collectionId = collection.id;
+      res.locals.physicalCollection = collection.activePhysicalCollection;
 
       const ac = new AbortController();
       req.on("close", () => ac.abort());
 
       const result = await answer(parsed.data.question, {
+        collectionId: collection.id,
         collectionName: collection.activePhysicalCollection!,
         retrievalK: collection.retrievalK,
-        runtimeConfig: config,
+        runtimeConfig,
         embeddingModel: collection.embeddingModel,
         chatModel: collection.chatModel,
         retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,
         abortSignal: ac.signal,
+        includeDebugTimings: runtimeConfig.includeDebugTimings,
+        logEvent: deps.logEvent,
       });
+      const { debug, ...publicResult } = result;
 
       res.json({
-        ...result,
+        ...publicResult,
         collectionId: collection.id,
         collectionDisplayName: collection.displayName,
         activeVersion: collection.activeVersion,
+        ...(runtimeConfig.includeDebugTimings && debug ? { debug } : {}),
       });
     } catch (error) {
       next(error);

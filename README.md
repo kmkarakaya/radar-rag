@@ -13,7 +13,7 @@ Detaylı mimari ve endpoint sözleşmeleri için [vanilla_rag_backend_mimarisi.m
 - **Model Backpressure & Concurrency Koruması:** Eşzamanlı istek yığılmalarına karşı Ollama ve Chroma etkileşimlerinde asenkron kilitler (semaphore) kullanılır (`maxConcurrentEmbeddings`, `maxConcurrentGenerations`). Sistem kapasitesi aşıldığında veya client bağlantıyı kestiğinde (abort), istekler `503 MODEL_BACKPRESSURE` ile güvenli şekilde sonlandırılır.
 - **Gelişmiş Hata Yönetimi ve Payload Koruması:** Tüm JSON gövdeleri 1MB limit ile korunur (Aşımında `413 Payload Too Large` döner). Hatalar standart bir JSON şeması ile, Request ID izlenebilirliği (traceability) eşliğinde loglanır ve iletilir.
 - **Stale Job Recovery & Otomatik Temizlik:** Sunucu yeniden başladığında asılı kalan (stale) index kilitleri otomatik temizlenir. Yeni bir re-index başarıyla tamamlandığında, Chroma üzerinde yer kaplayan eski fiziksel koleksiyonlar `cleanup.retentionMs` süresi dolunca arka planda temizlenir.
-- **Dürüst Operasyonel Limitler:** Henüz tam bir request rate limiter yoktur. Merkezi kanca [src/app.ts](src/app.ts) içinde TODO olarak durur; bugün uygulanan korumalar model backpressure limitleri (`maxConcurrentEmbeddings`, `maxConcurrentGenerations`) ve 1MB JSON body limitidir.
+- **Dürüst Operasyonel Limitler:** Request rate limiter [src/http/rateLimit.ts](src/http/rateLimit.ts) içinde merkezi middleware olarak çalışır ve anahtarı `tenantId`, `userId`, `collectionId` ve operation (`query`, `retrieve`, `reindex`) alanlarından üretir. Model backpressure limitleri (`maxConcurrentEmbeddings`, `maxConcurrentGenerations`) ve 1MB JSON body limiti ayrı koruma katmanlarıdır.
 
 ## Nerede Ne Var?
 
@@ -27,7 +27,16 @@ Detaylı mimari ve endpoint sözleşmeleri için [vanilla_rag_backend_mimarisi.m
 - [src/rag.ts](src/rag.ts): retrieval + generation orkestrasyonu ve backpressure yönetimi
 - [src/indexing/jobs.ts](src/indexing/jobs.ts): Arka plan re-index job yönetimi
 
-## Hızlı Başlangıç
+## Hızlı Kullanım Kılavuzu
+0. **Kurulum** (sadece ilk kez): 'docker + install + run dev' -> backend kur
+1. **Onboarding** (sadece ilk kez): `npm run onboard` → config oluşturur
+2. **Collection oluştur**: `POST /v1/admin/collections` → collection ID al
+3. **İndekslemeyi başlat**: `POST /v1/admin/collections/{id}/reindex` → job ID al
+4. **Job durumunu takip et**: `GET /v1/admin/jobs/{id}` → `succeeded` olana kadar bekle
+5. **Frontend'i aç**: `http://localhost:3010/test-frontend/` → collection artık görünür
+
+
+## Kurulum
 
 Windows PowerShell:
 
@@ -39,8 +48,58 @@ ollama pull gemma3:4b-cloud
 ollama pull bge-m3
 npm.cmd run dev
 ```
+## On boarding
 
-Test arayüzünü açmak için tarayıcınızda şu adrese gidin:
+```powershell
+# **Onboarding** (sadece ilk kez):
+npm.cmd run onboard
+```
+
+## Kolleksiyon oluşturma
+```powershell
+# 1. Collection oluştur
+$collection = @{
+  displayName = "Veri Klasörü"
+  sourcePath = "C:\Codes\Vanilla Rag Backend\data"
+  ozelgeDataPath = "data/ozelge_veri.json"
+  distanceMetric = "l2"
+  chunkSize = 500
+  chunkOverlap = 200
+  retrievalK = 5
+  retrievalDistanceThreshold = 1.2
+  embeddingModel = "bge-m3"
+  chatModel = "gemma3:4b-cloud"
+} | ConvertTo-Json
+
+$response = Invoke-RestMethod -Uri http://localhost:3010/v1/admin/collections -Method Post -ContentType "application/json; charset=utf-8" -Body $collection
+$collectionId = $response.collection.id
+Write-Host "✅ Collection oluşturuldu: $collectionId" -ForegroundColor Green
+
+# 2. İndeksleme job'ını başlat
+$jobRes = Invoke-RestMethod -Uri "http://localhost:3010/v1/admin/collections/$collectionId/reindex" -Method Post -ContentType "application/json; charset=utf-8"
+$jobId = $jobRes.job.id
+Write-Host "✅ İndeksleme job'ı başlatıldı: $jobId" -ForegroundColor Green
+
+# 3. Job bitene kadar bekle ve durumu göster
+Write-Host "`n⏳ İndeksleme bekleniyor..." -ForegroundColor Yellow
+do {
+  Start-Sleep -Seconds 5
+  $jobStatus = Invoke-RestMethod -Uri "http://localhost:3010/v1/admin/jobs/$jobId"
+  $status = $jobStatus.job.status
+  Write-Host "   Durum: $status" -ForegroundColor Cyan
+} while ($status -ne "succeeded" -and $status -ne "failed")
+
+# 4. Sonucu göster
+if ($status -eq "succeeded") {
+  Write-Host "`n✅ İndeksleme tamamlandı! Frontend'de collection görünür." -ForegroundColor Green
+  Write-Host "   Collection ID: $collectionId" -ForegroundColor Cyan
+  Write-Host "   Frontend: http://localhost:3010/test-frontend/" -ForegroundColor Cyan
+} else {
+  Write-Host "`n❌ İndeksleme başarısız: $($jobStatus.job.error)" -ForegroundColor Red
+}
+```
+
+## Test arayüzünü açmak için tarayıcınızda şu adrese gidin:
 ```text
 http://localhost:3010/test-frontend/
 ```
@@ -81,12 +140,20 @@ cleanup:
 limits:
   maxConcurrentEmbeddings: 5
   maxConcurrentGenerations: 2
+rateLimit:
+  enabled: true
+  windowMs: 60000
+  maxRequestsPerWindow: 60
+observability:
+  includeDebugTimings: false
 ```
 
 - `cleanup.retentionMs`: Eski fiziksel Chroma koleksiyonlarının emekliye ayrıldıktan sonra ne kadar süre tutulacağını belirler.
 - `limits.maxConcurrentEmbeddings`: Embedding istekleri için model backpressure sınırı.
 - `limits.maxConcurrentGenerations`: Chat generation istekleri için model backpressure sınırı.
-- Henüz request bazlı bir rate limiter yoktur; bu alanlar yalnızca model concurrency/backpressure davranışını sınırlar.
+- `rateLimit.enabled`: Query, retrieve ve reindex istekleri için merkezi request rate limiter'ı açar/kapatır.
+- `rateLimit.windowMs` ve `rateLimit.maxRequestsPerWindow`: Her `tenantId:userId:collectionId:operation` anahtarı için fixed-window request limitini belirler. Limit aşılırsa API `429 RATE_LIMIT_EXCEEDED` döndürür.
+- `observability.includeDebugTimings`: `false` iken query/retrieve response shape'i sade kalır. `true` iken response'a `debug.latency` eklenir; retrieve için `retrievalMs,totalMs`, query için `retrievalMs,generationMs,totalMs` döner.
 - Rebuild başarıyla bittiğinde eski aktif fiziksel koleksiyon hemen silinmez; önce registry içinde `delete_pending` durumuna alınır ve `delete_after = now + cleanup.retentionMs` olarak işaretlenir.
 - Sunucu açılışında bir kez stale job recovery ve due cleanup çalışır. Bu tarama `delete_pending` ve `cleanup_failed` kayıtları arasından süresi dolmuş fiziksel koleksiyonları yeniden denemeye uygundur.
 
@@ -97,6 +164,8 @@ Retention cleanup state contract:
 - `deleted`: The physical collection delete succeeded, or storage reported an idempotent not-found delete. `deleted_at` is set and `cleanup_error` is cleared.
 - `failed_build`: A build target failed before pointer swap. It is not treated as an old active collection and is not selected by retention cleanup.
 - Startup maintenance is scheduled after `listen`; it is fire-and-forget, logs failures, and does not block server startup. `startServer()` returns `startupMaintenancePromise`, which tests or embedded callers can await before closing the registry during controlled shutdown.
+
+Structured operational logs share the same event shape across HTTP, RAG, indexing build/job runner and cleanup flows: `requestId`, `tenantId`, `userId`, `collectionId`, `physicalCollection`, `jobId`, `operation`, `status`, `latencyMs` and `errorCode`. Tests inject a fake log sink; production defaults to JSON lines on stdout.
 
 ### 1. Collection Yaratma (Admin API)
 Koleksiyonun mantıksal (logical) konfigürasyonunu tanımlayın. Burada belirlediğiniz mesafe metriği (distanceMetric), embedding modeli, chat modeli, retrieval eşiği ve parçalama boyutları o koleksiyonun build/query akışında gerçekten kullanılır:
@@ -243,8 +312,9 @@ Bu backend bilincli olarak kullaniciya placeholder veya fallback answer dondurme
 - `COLLECTION_NOT_READY` (`404`): Koleksiyon var ama henüz başarılı bir endekse (aktif fiziksel pointer'a) sahip değil.
 - `COLLECTION_INDEXING` (`503`): Koleksiyon şu anda sıfırdan ilk kez endeksleniyor. (Daha önce başarıyla bitmiş bir index olsaydı, `zero-downtime` prensibi gereği sorgular eski indeksten dönmeye devam ederdi).
 - `COLLECTION_INDEX_ALREADY_RUNNING` (`409`): Aynı koleksiyon için eşzamanlı çalıştırılmaya çalışılan çakışan job uyarısı.
+- `RATE_LIMIT_EXCEEDED` (`429`): Aynı tenant/user/collection/operation anahtarı için `rateLimit.maxRequestsPerWindow` aşıldı.
 - `NO_RELEVANT_CONTEXT` (`422`): `retrievalDistanceThreshold` altinda ilgili (yakın) hiçbir kaynak doküman bulunamadı.
 - `ANSWER_NOT_IN_RETRIEVED_CONTEXT` (`422`): Retrieval ile kaynaklar bulundu ama LLM, bu kaynaklardan (grounded) kesin bir cevap uretemedi.
-- `MODEL_BACKPRESSURE` (`503`): Sistem eşzamanlı limitleri (`maxConcurrentEmbeddings` / `maxConcurrentGenerations`) aştı, istek zaman aşımına uğradı veya client tarafından iptal (abort) edildi.
+- `MODEL_BACKPRESSURE` (`503`): Sistem eşzamanlı limitleri (`maxConcurrentEmbeddings` / `maxConcurrentGenerations`) aştı, vector search/generation zaman aşımına uğradı veya client tarafından iptal (abort) edildi.
 - `EMPTY_MODEL_RESPONSE` (`502`): Chat modeli boş cevap döndü.
 - `DISALLOWED_FALLBACK_ANSWER` (`502`): Model yasakli fallback (ezbere) metni döndü; backend bunu bir RAG ihlali/hatası sayar.

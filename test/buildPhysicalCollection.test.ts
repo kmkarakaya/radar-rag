@@ -3,11 +3,13 @@ import { describe, it } from "node:test";
 import { Document } from "@langchain/core/documents";
 import { buildPhysicalCollection } from "../src/indexing/buildPhysicalCollection.js";
 import { config } from "../src/config.js";
+import type { OperationalLogEvent } from "../src/observability/logger.js";
 
 describe("buildPhysicalCollection", () => {
   it("uses the collection embedding model and distance metric when building a physical collection", async () => {
     const createCalls: Array<Record<string, unknown>> = [];
     const vectorStoreCalls: Array<Record<string, unknown>> = [];
+    const logEvents: OperationalLogEvent[] = [];
 
     const result = await buildPhysicalCollection({
       collection: {
@@ -37,7 +39,11 @@ describe("buildPhysicalCollection", () => {
       targetPhysicalCollection: "rag_default_collection-1_20260604t120000_001z",
       targetVersion: "20260604t120000_001z",
       runtimeConfig: config,
+      jobId: "job-build-1",
       log: () => {},
+      logEvent: (event) => {
+        logEvents.push(event);
+      },
       deps: {
         analyzeIndexingSource: async () => ({
           sourcePath: "data",
@@ -82,6 +88,18 @@ describe("buildPhysicalCollection", () => {
     });
     assert.equal(vectorStoreCalls.length, 1);
     assert.equal(vectorStoreCalls[0]?.embeddingModel, "embed-build-specific");
+    assert.ok(logEvents.some((event) => (
+      event.operation === "index_build"
+      && event.status === "started"
+      && event.collectionId === "collection-1"
+      && event.physicalCollection === "rag_default_collection-1_20260604t120000_001z"
+      && event.jobId === "job-build-1"
+    )));
+    const succeededEvent = logEvents.find((event) => event.operation === "index_build" && event.status === "succeeded");
+    assert.ok(succeededEvent);
+    assert.equal(succeededEvent.collectionId, "collection-1");
+    assert.equal(succeededEvent.details?.chunkCount, 1);
+    assert.equal(typeof succeededEvent.latencyMs, "number");
   });
 
   it("does not mask the original build failure when best-effort target cleanup also fails", async () => {

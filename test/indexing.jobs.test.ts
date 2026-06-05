@@ -5,6 +5,7 @@ import { startReindexJob, runIndexJob } from "../src/indexing/jobs.js";
 import { addMetadataToChunks } from "../src/indexing/buildPhysicalCollection.js";
 import { config } from "../src/config.js";
 import type { CollectionRegistry } from "../src/collections/types.js";
+import type { OperationalLogEvent } from "../src/observability/logger.js";
 import { Document } from "@langchain/core/documents";
 
 describe("indexing jobs", () => {
@@ -266,12 +267,16 @@ describe("indexing jobs", () => {
     const context = { tenantId: "tenant-success", userId: "u", requestId: "r" };
     const collection = await createCollection(context, "Successful Build");
     const job = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
+    const logEvents: OperationalLogEvent[] = [];
 
     await runIndexJob({
       registry,
       jobId: job.id,
       runtimeConfig: config,
       log: () => {},
+      logEvent: (event) => {
+        logEvents.push(event);
+      },
       deps: {
         buildPhysicalCollection: async () => ({
           sourceDocumentCount: 2,
@@ -293,6 +298,17 @@ describe("indexing jobs", () => {
     assert.equal(updatedCollection?.chunkCount, 5);
     assert.equal(physical?.status, "active");
     assert.equal(physical?.version, job.targetVersion);
+    const startedEvent = logEvents.find((event) => event.operation === "index_job" && event.status === "started");
+    assert.ok(startedEvent);
+    assert.equal(startedEvent.jobId, job.id);
+    assert.equal(startedEvent.collectionId, collection.id);
+    assert.equal(startedEvent.physicalCollection, job.targetPhysicalCollection);
+
+    const succeededEvent = logEvents.find((event) => event.operation === "index_job" && event.status === "succeeded");
+    assert.ok(succeededEvent);
+    assert.equal(succeededEvent.jobId, job.id);
+    assert.equal(succeededEvent.details?.chunkCount, 5);
+    assert.equal(typeof succeededEvent.latencyMs, "number");
   });
 
   it("runIndexJob keeps the previous active pointer and marks the target record failed_build on build failure", async () => {

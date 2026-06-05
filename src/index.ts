@@ -13,6 +13,7 @@ import {
   type OzelgeRecord,
 } from "./ingestion/loaders/ozelgeJsonLoader.js";
 import { createVectorStore } from "./rag.js";
+import { createConsoleLogSink, type OperationalLogSink } from "./observability/logger.js";
 
 export type IndexingSourceHealthDetails = {
   sourcePath: string;
@@ -93,9 +94,11 @@ export async function runIndexing(
   options: {
     collectionId?: string;
     log?: (message: string) => void;
+    logEvent?: OperationalLogSink;
   } = {},
 ): Promise<void> {
   const log = options.log ?? console.log;
+  const logEvent = options.logEvent ?? createConsoleLogSink();
   const collectionId = options.collectionId;
   if (!collectionId) {
     throw new Error(
@@ -116,7 +119,7 @@ export async function runIndexing(
     const job = await startReindexJob({ registry, collectionId, context, runtimeConfig });
     log(`Started job ${job.id}`);
     
-    await runIndexJob({ registry, jobId: job.id, runtimeConfig, log });
+    await runIndexJob({ registry, jobId: job.id, runtimeConfig, log, logEvent });
   } finally {
     registry.close?.();
   }

@@ -9,10 +9,10 @@ Bu not `notes/multicollection.md` Faz 0-6 ve "Test Kabul Kriterleri" maddelerini
 - Multiple collection core hedefi: `PASS`
 - Public/admin HTTP contract hedefi: `PASS`
 - Zero-downtime rebuild ve retention cleanup hedefi: `PASS`
-- Operasyonel olgunluk hedefi: `PARTIAL`
-- Release gate sonucu: `kismen`
+- Operasyonel olgunluk hedefi: `PASS`
+- Release gate sonucu: `evet`
 
-`PARTIAL` kalan maddeler Faz 5 kapsamindadir: tam collection/user bazli request rate limiter, merkezi structured log alani standardi, response/debug seviyesinde latency kontrati ve query path'in tamamina yayilmis hard timeout/abort davranisi. Bu maddeler kucuk dokunus degil; follow-up olarak `notes/prompts.md` icine Prompt 22 eklendi.
+Prompt 22 sonrasinda Faz 5 partial maddeleri kapatildi: collection/user/operation bazli request rate limiter, merkezi structured log alani standardi, response/debug seviyesinde latency kontrati ve query path'in Chroma/Ollama timeout/abort hardening davranisi kod, test ve dokumanla hizalandi.
 
 ## Faz 0: Davranis Sozlesmesini Netlestir
 
@@ -88,13 +88,13 @@ Bu not `notes/multicollection.md` Faz 0-6 ve "Test Kabul Kriterleri" maddelerini
 ## Faz 5: Backend Operasyonel Olgunluk
 
 - `PASS` Request ID middleware var. Kanit: `src/http/requestContext.ts`, `test/app.foundation.test.ts`.
-- `PARTIAL` Structured log alanlari merkezi contract olarak tam degil. RAG loglari `requestId` ve latency yaziyor, job/build loglari job/physical baglam tasiyor; ancak collectionId, physicalCollection, jobId, latency alanlari tum katmanlarda standardize edilmis structured event olarak cikmiyor. Kanit: `src/rag.ts`, `src/indexing/jobs.ts`, `src/indexing/buildPhysicalCollection.ts`.
+- `PASS` Structured log alanlari merkezi event contract olarak standardize edildi: `requestId`, `tenantId`, `userId`, `collectionId`, `physicalCollection`, `jobId`, `operation`, `status`, `latencyMs`, `errorCode`. HTTP, RAG query/retrieve, admin reindex/job, index build/job runner ve cleanup akislari fake sink ile testlenebilir. Kanit: `src/observability/logger.ts`, `src/app.ts`, `src/rag.ts`, `src/indexing/jobs.ts`, `src/indexing/buildPhysicalCollection.ts`, `src/indexing/jobRunner.ts`, `src/indexing/cleanup.ts`, `test/acceptance/api.endpoints.test.ts`, `test/buildPhysicalCollection.test.ts`, `test/indexing.jobs.test.ts`, `test/indexing.cleanup.test.ts`, `test/observability.test.ts`.
 - `PASS` Model backpressure icin semaphore/queue var. Kanit: `src/rag.ts`, `src/http/semaphore.ts`, `test/acceptance/api.endpoints.test.ts`.
-- `PARTIAL` Body limit var ve collection/user rate limit icin merkezi TODO var; gercek collection/user bazli request rate limiter yok. Kanit: `src/app.ts`, `test/runtime.static.test.ts`, `README.md`.
-- `PARTIAL` Tenant scope var; gercek auth yok. Plan "yer ayir" dedigi icin ana hedefe uygun, production auth henuz uygulanmadi. Kanit: `src/http/requestContext.ts`, `src/collections/sqliteRegistry.ts`.
+- `PASS` Body limit var ve query/retrieve/reindex icin merkezi request rate limiter eklendi. Limit anahtari `tenantId:userId:collectionId:operation`; asimda structured `429 RATE_LIMIT_EXCEEDED` donuyor. Kanit: `src/http/rateLimit.ts`, `src/app.ts`, `src/config.ts`, `config/rag.config.yaml`, `test/acceptance/api.endpoints.test.ts`, `test/observability.test.ts`, `test/runtime.static.test.ts`.
+- `PASS` Tenant scope ve user dimension request context uzerinden destekleniyor; production auth entegrasyonu planin "yer ayir" kapsaminda takip riski olarak kaliyor. Kanit: `src/http/requestContext.ts`, `src/collections/sqliteRegistry.ts`, `src/http/rateLimit.ts`.
 - `PASS` `/ready` registry-aware. Kanit: `src/app.ts`, `test/app.foundation.test.ts`.
-- `PARTIAL` Retrieval/generation latency olculuyor ve loglaniyor; response/debug seviyesinde stabil kontrat yok. Kanit: `src/rag.ts`, `test/app.foundation.test.ts`.
-- `PARTIAL` Ollama generation timeout/abort ve readiness timeout'lari var; Chroma/vector search query path'inin tamamina explicit abortable timeout yayilmis degil. Kanit: `src/rag.ts`, `src/app.ts`.
+- `PASS` Retrieval/generation latency response'ta yalniz `observability.includeDebugTimings=true` iken `debug.latency` olarak donuyor; debug kapaliyken response shape sabit kaliyor. Kanit: `src/rag.ts`, `src/http/ragRouter.ts`, `src/config.ts`, `test/acceptance/api.endpoints.test.ts`, `test/runtime.static.test.ts`, `README.md`, `vanilla_rag_backend_mimarisi.md`.
+- `PASS` Query path'te Chroma readability, Chroma vector search ve Ollama generation timeout/abort hardening ile korunuyor; timeout/abort hatalari typed `RagQueryError` / operational helper seviyesinde testli. Kanit: `src/collections/chromaCollections.ts`, `src/rag.ts`, `src/observability/timeout.ts`, `test/observability.test.ts`, `test/acceptance/api.endpoints.test.ts`.
 
 ## Faz 6: Test Frontend ve Dokumantasyon
 
@@ -130,11 +130,8 @@ Prompt 21 audit basinda Prompt 19 davranislarinda working-tree regresyonu bulund
 - `markPhysicalCollectionDeleted` ve `markPhysicalCollectionCleanupFailed` affected-row guard'lari geri getirildi; basarili delete `cleanup_error` temizliyor. Kanit: `src/collections/sqliteRegistry.ts`, `test/collections.registry.test.ts`.
 - Startup maintenance server start'i bloklamadan logluyor ve drain promise expose ediyor. Kanit: `src/server.ts`, `test/indexing.cleanup.test.ts`.
 
-## Kalan Takip
+## Prompt 22 Re-audit
 
-Prompt 22, Faz 5 operational maturity partial'larini hedeflemelidir:
-
-- collection/user bazli request rate limiter,
-- standard structured logging fields,
-- response/debug seviyesinde latency contract,
-- Chroma/Ollama query path timeout/abort hardening.
+- `PASS` Faz 5 operational maturity partial'lari kapatildi. Kanit: `src/http/rateLimit.ts`, `src/observability/logger.ts`, `src/observability/timeout.ts`, `src/rag.ts`, `src/collections/chromaCollections.ts`, `test/acceptance/api.endpoints.test.ts`, `test/observability.test.ts`, `test/runtime.static.test.ts`.
+- `PASS` Re-audit sirasinda bulunan ek implementation bosluklari kapatildi: readiness smoke check runtime config propagation'i (`src/app.ts`, `test/app.foundation.test.ts`), RAG core/query structured log'larinda `collectionId` (`src/rag.ts`, `src/http/ragRouter.ts`, `test/acceptance/api.endpoints.test.ts`), admin HTTP structured log'larinda `physicalCollection` (`src/http/adminRouter.ts`, `test/acceptance/api.endpoints.test.ts`) ve onboarding/config yazma yolunda `rateLimit`/`observability` yuzeyi (`src/admin/onboard.ts`, `config/rag.config.yaml`, `test/runtime.static.test.ts`).
+- Kalan risk: production auth entegrasyonu yok; tenant/user degerleri su an header tabanli request context'ten geliyor. Bu Prompt 22 kapsaminda yeni eksik degil, deployment entegrasyon riskidir.

@@ -93,7 +93,7 @@ Bu repodaki gerçek multi-collection davranışı aşağıdaki control-plane kur
 7. `GET /ready` registry-aware'dir; ama collection-aware değildir. Registry, Chroma, Ollama, model availability ve indexing source erişimini kontrol eder. Default collection yok diye fail etmez.
 8. `GET /v1/rag/collections/:collectionId/ready` seçili logical collection'ın `activeJob`, `activeVersion`, `chromaReadable`, `chromaCount` ve capability alanlarını döndürür.
 9. Access kontrolünde `403/404` ayrımı vardır. Collection global olarak varsa ama request tenant'ı göremiyorsa `403 COLLECTION_FORBIDDEN`; hiç yoksa `404 COLLECTION_NOT_FOUND` döner.
-10. Model tarafında gerçek koruma `maxConcurrentEmbeddings` ve `maxConcurrentGenerations` ile sağlanan backpressure'dır. Collection/user bazlı tam request rate limiter henüz yoktur; `src/app.ts` içinde TODO kancası olarak bırakılmıştır.
+10. HTTP katmanında request rate limiter merkezi middleware olarak çalışır; limit anahtarı `tenantId`, `userId`, `collectionId` ve operation (`query`, `retrieve`, `reindex`) alanlarından oluşur. Model tarafında ayrıca `maxConcurrentEmbeddings` ve `maxConcurrentGenerations` ile backpressure uygulanır.
 
 ## 5. Temel Bileşenler
 
@@ -320,6 +320,8 @@ Başarılı çıktı:
 - `collectionDisplayName: string`
 - `activeVersion: string`
 
+`observability.includeDebugTimings=false` iken query response bu alanlarla sınırlı kalır. Config `true` yapılırsa response'a `debug.latency.retrievalMs`, `debug.latency.generationMs` ve `debug.latency.totalMs` eklenir.
+
 Örnek hata durumları:
 
 - `400`: body geçersizse veya `question` boşsa
@@ -328,6 +330,7 @@ Başarılı çıktı:
 - `503`: Koleksiyon ilk defa endeksleniyorsa (`COLLECTION_INDEXING`)
 - `422`: retrieval eşiği altında chunk kalmazsa (`NO_RELEVANT_CONTEXT`) veya retrieved chunk'lar cevap üretmeye yetmezse (`ANSWER_NOT_IN_RETRIEVED_CONTEXT`)
 - `502`: model boş cevap dönerse (`EMPTY_MODEL_RESPONSE`) veya yasaklı fallback answer dönerse (`DISALLOWED_FALLBACK_ANSWER`)
+- `429`: request rate limiter tenant/user/collection/operation anahtarı için limiti aştığında (`RATE_LIMIT_EXCEEDED`)
 - `503`: Eşzamanlı istek limiti aşıldığında veya client timeout'a düştüğünde (`MODEL_BACKPRESSURE`)
 - `500`: beklenmeyen başka backend hatası oluşursa
 
@@ -370,9 +373,12 @@ Başarılı çıktı:
 - `collectionDisplayName: string`
 - `activeVersion: string`
 
+`observability.includeDebugTimings=false` iken retrieve response bu alanlarla sınırlı kalır. Config `true` yapılırsa response'a `debug.latency.retrievalMs` ve `debug.latency.totalMs` eklenir.
+
 Örnek hata durumları:
 - `400`: body geçersizse, `question` boşsa veya `k` geçersizse
 - `404`: Koleksiyon aktif değilse
+- `429`: request rate limiter tenant/user/collection/operation anahtarı için limiti aştığında (`RATE_LIMIT_EXCEEDED`)
 - `503`: Eşzamanlı limitten (`MODEL_BACKPRESSURE`) dolayı kaynak tükenmişse
 - `422`: `retrievalDistanceThreshold` altında hiç chunk kalmazsa (`NO_RELEVANT_CONTEXT`)
 
@@ -520,6 +526,8 @@ Bu katman sayesinde sistem şu kararlar için repoda görünür ve doğrulanabil
 - readiness probe timeout ve metinleri
 - `cleanup.retentionMs`
 - `limits.maxConcurrentEmbeddings` / `limits.maxConcurrentGenerations`
+- `rateLimit.enabled`, `rateLimit.windowMs`, `rateLimit.maxRequestsPerWindow`
+- `observability.includeDebugTimings`
 
 Bu, backend mimarisi açısından doğru bir ayrımdır. Ancak config schema validation halen sınırlıdır.
 
@@ -527,12 +535,15 @@ Bu, backend mimarisi açısından doğru bir ayrımdır. Ancak config schema val
 
 Bir istemci `POST /v1/rag/collections/:collectionId/query` çağırdığında bu repoda şu olay zinciri çalışır:
 
-1. Express JSON body'yi parse eder.
-2. Zod, `question` alanının boş olmayan bir string olduğunu doğrular.
-3. `resolveReadableCollection` registry + tenant + active physical + Chroma readability kontrolünü yapar.
-4. Collection görünür ama yetkisizse `403 COLLECTION_FORBIDDEN`, hiç yoksa `404 COLLECTION_NOT_FOUND` döner.
-5. `answerQuestion(question, { collectionName, retrievalK, ... })` çağrılır.
-6. `similaritySearchWithScore(question, k)` ile ilgili chunk'lar çekilir.
+1. Request context middleware `requestId`, `tenantId` ve `userId` üretir.
+2. Operational HTTP logger response sonunda structured event yazmak üzere isteği izler.
+3. Express JSON body'yi parse eder.
+4. Merkezi rate limiter `tenantId:userId:collectionId:operation` anahtarıyla query/retrieve/reindex isteklerini sınırlar; aşımda `429 RATE_LIMIT_EXCEEDED` döner.
+5. Zod, `question` alanının boş olmayan bir string olduğunu doğrular.
+6. `resolveReadableCollection` registry + tenant + active physical + Chroma readability kontrolünü yapar.
+7. Collection görünür ama yetkisizse `403 COLLECTION_FORBIDDEN`, hiç yoksa `404 COLLECTION_NOT_FOUND` döner.
+8. `answerQuestion(question, { collectionName, retrievalK, ... })` çağrılır.
+9. `assertChromaCollectionReadable` ve `similaritySearchWithScore(question, k)` timeout/abort koruması altında çalışır.
 7. Chunk'lar `distanceScore` alanı ile sıralanır ve collection threshold üstündekiler elenir.
 8. Hiç chunk kalmazsa `422 NO_RELEVANT_CONTEXT` hatası döner.
 9. Model context bütçesine sığacak kadar chunk prompt içinde birleştirilir.
@@ -725,8 +736,8 @@ Aşağıdaki temel backend noktalarının implement edildiğini söyleyebiliriz:
 - Chroma tabanlı vector retrieval var.
 - LLM generation var.
 - Retrieved source'ları API cevabına dahil etme var.
-- Basit timeout mekanizması var.
-- Temel loglama var.
+- Query path genelinde Chroma readability/vector search ve Ollama generation için timeout/abort hardening var.
+- Structured operational logging var.
 
 Bu nedenle sistem, "backend olarak çalışan bir Vanilla RAG" sınıfına girmektedir.
 
@@ -758,7 +769,7 @@ Repoda eksik olanlar:
 - endpoint test
 - config validation test
 
-### 11.3 Retrieval observability eksik
+### 11.3 Retrieval observability durumu
 
 Vanilla RAG backend'te en azından şu görünürlük faydalıdır:
 
@@ -767,7 +778,7 @@ Vanilla RAG backend'te en azından şu görünürlük faydalıdır:
 - retrieval latency
 - generation latency
 
-Repoda temel loglar ve query hata payload'larinda kompakt `retrievedSources` ozeti var; buna ragmen retrieval kalite gozlemi icin yeterli telemetry yok.
+Repoda retrieval/generation latency iki yerde görünürdür: structured operational logs her zaman `latencyMs` ve ilgili detayları taşır; `observability.includeDebugTimings=true` olduğunda query/retrieve response'ları kontrollü `debug.latency` alanı döndürür. Debug kapalıyken response shape sabit ve sade kalır.
 
 ### 11.4 Readiness katmanı var, ama gerçek RAG akışını bire bir garanti etmiyor
 
@@ -810,18 +821,20 @@ Bu şu anlama gelir:
 
 Vanilla RAG için kabul edilebilir. Ancak aktif koleksiyon yerinde silinmez; tüm işlemler yeni yaratılan versiyonlu fiziksel koleksiyon (zero-downtime pointer swap) üzerine inşa edilir, başarı halinde pointer değişir ve eski hedef `cleanup.retentionMs` sonrasında otomatik temizlenir.
 
-### 11.7 API hardening eksik
+### 11.7 API hardening durumu
 
 Åu backend özellikleri büyük oranda sisteme dahil edilmiştir:
 
 - request id (app katmanından `requestContext` ile dağıtılır)
 - auth/tenant (hazırlık var, sahte olarak `default` tenant çalışıyor)
 - versioning (`/v1` endpointleri aktif)
-- structured logging (logStep aracılığıyla requestId, latency, model timeout vb. izlenir)
+- structured logging (HTTP, query/retrieve, admin reindex/job, index build/job runner ve cleanup akışları aynı event shape'i kullanır)
 - concurrency & backpressure (Embeddings ve generation için asenkron semaphore mekanizması eklendi)
 - payload limit (`1mb` JSON sınır aşımında HTML yerine düzgün `413` hatası dönülüyor)
+- request rate limiter (`tenantId:userId:collectionId:operation` anahtarıyla `429 RATE_LIMIT_EXCEEDED`)
+- debug latency contract (`observability.includeDebugTimings` açıkken response `debug.latency` döndürür)
 
-Henüz tam bir request rate limiter yoktur. Collection/user bazlı rate limiting `app.ts` içerisinde TODO kancası (hook) olarak bırakılmıştır; bugün üretimdeki gerçek koruma model backpressure limitleri ve JSON body limitidir.
+Üretim auth hâlâ gerçek kimlik sağlayıcıya bağlı değildir; tenant/user bilgisi bugün header tabanlı request context'ten gelir. Bu nedenle rate limiting tenant/user boyutunu destekler, ancak kimlik doğrulama entegrasyonu ayrı bir üretim gereksinimi olarak kalır.
 
 ## 12. Tasarım Trade-off'ları
 

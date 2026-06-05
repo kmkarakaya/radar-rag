@@ -48,6 +48,14 @@ export const configSchema = z.object({
     maxConcurrentEmbeddings: z.number().int().positive().default(5),
     maxConcurrentGenerations: z.number().int().positive().default(2),
   }).strict().optional(),
+  rateLimit: z.object({
+    enabled: z.boolean().default(true),
+    windowMs: z.number().int().positive().default(60000),
+    maxRequestsPerWindow: z.number().int().positive().default(60),
+  }).strict().optional(),
+  observability: z.object({
+    includeDebugTimings: z.boolean().default(false),
+  }).strict().optional(),
 }).strict().superRefine((value, ctx) => {
   if (value.collectionDefaults.chunkOverlap >= value.collectionDefaults.chunkSize) {
     ctx.addIssue({
@@ -127,6 +135,10 @@ export function resolveConfig(
     cleanupRetentionMs: rawConfig.cleanup?.retentionMs ?? 3600000,
     maxConcurrentEmbeddings: rawConfig.limits?.maxConcurrentEmbeddings ?? 5,
     maxConcurrentGenerations: rawConfig.limits?.maxConcurrentGenerations ?? 2,
+    rateLimitEnabled: rawConfig.rateLimit?.enabled ?? true,
+    rateLimitWindowMs: rawConfig.rateLimit?.windowMs ?? 60000,
+    rateLimitMaxRequestsPerWindow: rawConfig.rateLimit?.maxRequestsPerWindow ?? 60,
+    includeDebugTimings: rawConfig.observability?.includeDebugTimings ?? false,
   };
 }
 

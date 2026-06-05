@@ -3,11 +3,11 @@ import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import type { AppDependencies } from "../app.js";
 import { HttpError } from "./errors.js";
-import { config } from "../config.js";
+import { config, type ResolvedConfig } from "../config.js";
 import { startReindexJob } from "../indexing/jobs.js";
 import type { RequestContext } from "./requestContext.js";
 
-export function createAdminRouter(deps: AppDependencies) {
+export function createAdminRouter(deps: AppDependencies, runtimeConfig: ResolvedConfig = deps.runtimeConfig ?? config) {
   const router = express.Router();
 
   const requireRegistry = (req: Request, _res: Response, next: NextFunction) => {
@@ -43,15 +43,15 @@ export function createAdminRouter(deps: AppDependencies) {
   const createCollectionSchema = z.object({
     displayName: z.string().trim().min(1),
     description: z.string().optional(),
-    sourcePath: z.string().trim().min(1).default(config.sourcePath),
-    ozelgeDataPath: z.string().trim().min(1).default(config.ozelgeDataPath),
-    distanceMetric: z.enum(["l2", "cosine", "ip"]).default(config.chromaDistanceMetric),
-    chunkSize: z.number().int().positive().default(config.chunkSize),
-    chunkOverlap: z.number().int().nonnegative().default(config.chunkOverlap),
-    retrievalK: z.number().int().positive().default(config.retrievalK),
-    retrievalDistanceThreshold: z.number().nonnegative().default(config.retrievalDistanceThreshold),
-    embeddingModel: z.string().trim().min(1).default(config.ollamaEmbeddingModel),
-    chatModel: z.string().trim().min(1).default(config.ollamaChatModel),
+    sourcePath: z.string().trim().min(1).default(runtimeConfig.sourcePath),
+    ozelgeDataPath: z.string().trim().min(1).default(runtimeConfig.ozelgeDataPath),
+    distanceMetric: z.enum(["l2", "cosine", "ip"]).default(runtimeConfig.chromaDistanceMetric),
+    chunkSize: z.number().int().positive().default(runtimeConfig.chunkSize),
+    chunkOverlap: z.number().int().nonnegative().default(runtimeConfig.chunkOverlap),
+    retrievalK: z.number().int().positive().default(runtimeConfig.retrievalK),
+    retrievalDistanceThreshold: z.number().nonnegative().default(runtimeConfig.retrievalDistanceThreshold),
+    embeddingModel: z.string().trim().min(1).default(runtimeConfig.ollamaEmbeddingModel),
+    chatModel: z.string().trim().min(1).default(runtimeConfig.ollamaChatModel),
   }).strict();
 
   router.post("/collections", requireRegistry, async (req, res, next) => {
@@ -120,10 +120,13 @@ export function createAdminRouter(deps: AppDependencies) {
         registry: deps.registry!,
         collectionId,
         context,
-        runtimeConfig: config,
+        runtimeConfig,
       });
 
       deps.jobRunner!.start(job.id);
+      res.locals.collectionId = collectionId;
+      res.locals.jobId = job.id;
+      res.locals.physicalCollection = job.targetPhysicalCollection;
 
       res.status(202).json({
         job: {
@@ -145,6 +148,9 @@ export function createAdminRouter(deps: AppDependencies) {
       if (!job || job.tenantId !== context.tenantId) {
         throw new HttpError(404, "ROUTE_NOT_FOUND", "Job not found.");
       }
+      res.locals.collectionId = job.collectionId;
+      res.locals.jobId = job.id;
+      res.locals.physicalCollection = job.targetPhysicalCollection;
       res.json({ job });
     } catch (error) {
       next(error);

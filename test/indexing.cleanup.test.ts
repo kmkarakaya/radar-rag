@@ -18,6 +18,7 @@ import type {
 } from "../src/collections/types.js";
 import { startServer, runStartupMaintenance } from "../src/server.js";
 import type { IndexJobRunner } from "../src/indexing/jobRunner.js";
+import type { OperationalLogEvent } from "../src/observability/logger.js";
 
 let tempDir: string;
 let dbPath: string;
@@ -169,6 +170,7 @@ describe("retention cleanup", () => {
       cleanupError: "old cleanup error",
     });
     const deletedNames: string[] = [];
+    const logEvents: OperationalLogEvent[] = [];
 
     const count = await cleanupRetiredPhysicalCollections({
       registry,
@@ -176,6 +178,9 @@ describe("retention cleanup", () => {
       now: new Date("2026-06-04T12:00:00.000Z"),
       deletePhysicalCollection: async ({ name: recordName }) => {
         deletedNames.push(recordName);
+      },
+      logEvent: (event) => {
+        logEvents.push(event);
       },
     });
 
@@ -185,6 +190,12 @@ describe("retention cleanup", () => {
     assert.equal(record?.status, "deleted");
     assert.ok(record?.deletedAt);
     assert.equal(record?.cleanupError, undefined);
+    const event = logEvents.find((item) => item.operation === "cleanup" && item.status === "succeeded");
+    assert.ok(event);
+    assert.equal(event.collectionId, record?.collectionId);
+    assert.equal(event.physicalCollection, name);
+    assert.equal(event.details?.idempotentStorageMissing, false);
+    assert.equal(typeof event.latencyMs, "number");
   });
 
   it("marks cleanup failures as cleanup_failed and stores the error", async () => {
@@ -194,6 +205,8 @@ describe("retention cleanup", () => {
       deleteAfter: "2026-06-04T11:00:00.000Z",
     });
 
+    const logEvents: OperationalLogEvent[] = [];
+
     const count = await cleanupRetiredPhysicalCollections({
       registry,
       runtimeConfig: createRuntimeConfig(),
@@ -201,12 +214,20 @@ describe("retention cleanup", () => {
       deletePhysicalCollection: async () => {
         throw new Error("delete boom");
       },
+      logEvent: (event) => {
+        logEvents.push(event);
+      },
     });
 
     const record = await registry.getPhysicalCollection(name);
     assert.equal(count, 0);
     assert.equal(record?.status, "cleanup_failed");
     assert.equal(record?.cleanupError, "delete boom");
+    const event = logEvents.find((item) => item.operation === "cleanup" && item.status === "failed");
+    assert.ok(event);
+    assert.equal(event.errorCode, "PHYSICAL_CLEANUP_FAILED");
+    assert.equal(event.physicalCollection, name);
+    assert.equal(event.message, "delete boom");
   });
 
   it("retries due cleanup_failed records", async () => {

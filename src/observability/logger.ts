@@ -34,7 +34,21 @@ export function emitOperationalLog(
   event: OperationalLogEvent,
 ): void {
   const target = sink ?? noopLogSink;
-  target(normalizeLogEvent(event));
+  const normalizedEvent = normalizeLogEvent(event);
+
+  try {
+    target(normalizedEvent);
+  } catch (error) {
+    try {
+      console.error("Operational log sink failed", {
+        operation: normalizedEvent.operation,
+        status: normalizedEvent.status,
+        error,
+      });
+    } catch {
+      // Best-effort fallback only; logging must not affect the primary workflow.
+    }
+  }
 }
 
 export function normalizeLogEvent(event: OperationalLogEvent): OperationalLogEvent {

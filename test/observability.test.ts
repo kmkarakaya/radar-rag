@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createInMemoryRequestRateLimiter, createRateLimitKey } from "../src/http/rateLimit.js";
-import { normalizeLogEvent } from "../src/observability/logger.js";
+import { emitOperationalLog, normalizeLogEvent } from "../src/observability/logger.js";
 import {
   OperationAbortError,
   OperationTimeoutError,
@@ -70,6 +70,26 @@ describe("operational observability helpers", () => {
     assert.equal(normalized.physicalCollection, "physical-c");
     assert.equal(normalized.jobId, "job-1");
     assert.equal(normalized.latencyMs, 12);
+  });
+
+  it("does not throw when the operational log sink throws", () => {
+    let capturedEvent: Parameters<typeof emitOperationalLog>[1] | undefined;
+
+    assert.doesNotThrow(() => {
+      emitOperationalLog((event) => {
+        capturedEvent = event;
+        throw new Error("sink exploded");
+      }, {
+        requestId: "req-1",
+        operation: "query",
+        status: "succeeded",
+      });
+    });
+
+    assert.equal(capturedEvent?.requestId, "req-1");
+    assert.equal(capturedEvent?.operation, "query");
+    assert.equal(capturedEvent?.status, "succeeded");
+    assert.equal(typeof capturedEvent?.timestamp, "string");
   });
 
   it("rejects operations that exceed the configured timeout", async () => {

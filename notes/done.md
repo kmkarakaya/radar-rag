@@ -502,3 +502,19 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
     - `rg "/rag/query|/rag/retrieve|chroma\\.collection|data\\.indexSampleSize|rag\\.retrievalK" src README.md vanilla_rag_backend_mimarisi.md test_frontend config`: PASS, eslesme yok.
   - Kalan risk/not:
     - Production auth entegrasyonu halen ayri deployment sorumlulugudur; rate limiter tenant/user boyutunu desteklese de bu alanlar bugun header tabanli request context'ten geliyor.
+
+## Log Sink Isolation Bug Fix
+
+- `src/observability/logger.ts` icinde `emitOperationalLog(...)` sink cagrisi izole edildi. Sink exception firlatsa bile hata ana query/retrieve/reindex/cleanup akisina tasinmiyor; event once normalize edilip best-effort fallback olarak recursive olmayan `console.error` kullaniliyor.
+- `test/observability.test.ts` icine failing regression testi eklendi. Hata firlatan sink ile `emitOperationalLog(...)` cagrisi throw etmiyor ve sink'e giden event'in normalize edilmis `timestamp` alani korundugu dogrulaniyor.
+- Degisen dosyalar:
+  - `src/observability/logger.ts`
+  - `test/observability.test.ts`
+  - `notes/done.md`
+- Calistirilan komutlar ve sonuclar:
+  - `node --import tsx --test test/observability.test.ts`: PASS
+  - `npm.cmd run typecheck`: PASS
+  - `npm.cmd run typecheck:test`: PASS
+  - `npm.cmd run build`: PASS
+  - `npm.cmd test`: PASS (87 test)
+  - `npm.cmd run test:integration`: PASS (1 test)

@@ -9,7 +9,7 @@ ollama:
   chatModel: gemma3:4b-cloud
   embeddingModel: bge-m3
   numCtx: 4096
-  numPredict: 128
+  numPredict: 512
 collectionDefaults:
   sourcePath: C:\Codes\Vanilla Rag Backend\data
   ozelgeDataPath: data/ozelge_veri.json
@@ -19,7 +19,7 @@ collectionDefaults:
   chunkOverlap: 200
   retrievalK: 5
   retrievalDistanceThreshold: 1.2
-  timeoutMs: 90000
+  timeoutMs: 180000
 readiness:
   timeoutMs: 30000
   embeddingProbeText: Merhaba

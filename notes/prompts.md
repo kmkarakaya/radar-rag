@@ -1999,3 +1999,345 @@ Final cevapta:
 - Komut sonuclarini yaz.
 - notes/done.md icine `Prompt 23: NO_RELEVANT_CONTEXT RetrievalK Metadata Accuracy` kaydini ekledigini belirt.
 ```
+
+## Prompt 24: Query Resolve Abort and Timeout Propagation
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin query/retrieve request akisinin ilk Chroma readability preflight adimini da request abort ve RAG timeout zincirine dahil etmektir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "Query/Retrieve Path"
+- "Ollama ve Chroma Backpressure"
+- "Faz 5: Backend Operasyonel Olgunluk"
+- "Test Kabul Kriterleri"
+
+Ayrica calismaya baslamadan once notes/done.md ve notes/plan-parity-audit.md dosyalarini oku. Prompt 22 ve Prompt 23 sonrasindaki mevcut durumu dikkate al.
+
+Bug:
+`src/http/ragRouter.ts` icinde query/retrieve handler'lari `AbortController`'i `resolveReadableCollection(...)` cagrisi bittikten sonra olusturuyor. `src/collections/resolveReadableCollection.ts` ise Chroma `assertChromaCollectionReadable(...)` cagrisi yaparken `abortSignal` almiyor ve default olarak `readyTimeoutMs` kullaniyor. Bu nedenle request, active physical collection resolve/readability preflight sirasinda client disconnect veya query-level timeout tarafindan tam korunmuyor.
+
+Amac:
+Request basinda tek bir abort controller olusturulsun ve ayni `AbortSignal` hem `resolveReadableCollection` Chroma guard'ina hem de RAG core'a iletilsin. Query/retrieve request boyunca ayni physical collection ile calissin, fakat preflight da abort/timeout aware olsun.
+
+Yapilacaklar:
+1. Once failing regression test ekle:
+   - Uygun dosya: `test/acceptance/api.endpoints.test.ts` ve/veya yeni `test/collections.resolveReadable.test.ts`.
+   - Test, `resolveReadableCollection` veya router cagrisi uzerinden sunlari kanitlamali:
+     - Chroma readability guard'a `abortSignal` iletiliyor.
+     - Timeout olarak query path icin `runtimeConfig.ragTimeoutMs` kullaniliyor; default `readyTimeoutMs` ile sinirli kalmiyor.
+     - Abort edilmis signal veya timeout durumunda HTTP/RAG error typed kaliyor: `503 COLLECTION_STORAGE_INCONSISTENT` veya mevcut typed error mapping ile uyumlu bir code.
+   - Test gercek Chroma/Ollama istememeli; dependency injection veya fake guard kullan.
+2. `src/collections/resolveReadableCollection.ts` imzasini geriye uyumlu sekilde genislet:
+   - Mevcut kullanimi kirmadan opsiyonel bir options object kabul et:
+     `resolveReadableCollection(req, deps, runtimeConfig, options?)`
+   - `options` icinde en az:
+     - `timeoutMs?: number`
+     - `abortSignal?: AbortSignal`
+     - test edilebilirlik icin `assertChromaCollectionReadable?: typeof assertChromaCollectionReadable`
+   - Chroma readability cagrisi bu `timeoutMs` ve `abortSignal` degerlerini kullanmali.
+3. `src/http/ragRouter.ts` guncelle:
+   - `AbortController` query/retrieve handler basinda, body validationdan sonra ve `resolveCollection(...)` cagrısından once olusturulsun.
+   - `req.on("close", ...)` ayni controller'i abort etsin.
+   - `resolveCollection(...)` cagrisi `timeoutMs: runtimeConfig.ragTimeoutMs` ve `abortSignal: ac.signal` alsin.
+   - Ayni `ac.signal` RAG handler'a da iletilmeye devam etsin.
+4. Error mapping'i bozma:
+   - Missing logical collection halen `404 COLLECTION_NOT_FOUND`.
+   - Forbidden collection halen `403 COLLECTION_FORBIDDEN`.
+   - Active physical Chroma'da yoksa halen `503 COLLECTION_STORAGE_INCONSISTENT`.
+   - Eski `/rag/query` ve `/rag/retrieve` geri gelmemeli.
+5. notes/done.md guncelle:
+   - Dosyanin sonuna `## Prompt 24: Query Resolve Abort and Timeout Propagation` basligi altinda kisa kayit ekle.
+
+Dikkat:
+- Collection list endpoint'ini pahali readiness probe'a cevirmeye calisma.
+- RAG core'daki ikinci readability guard'i kaldirma; bu guard LangChain read path icin ek savunmadir.
+- Testleri gercek Chroma/Ollama'ya baglama.
+- Kapsami rate limit, registry schema veya frontend degisikliklerine genisletme.
+
+Dogrulama:
+1. `npm.cmd run typecheck`
+2. `npm.cmd run typecheck:test`
+3. `npm.cmd run build`
+4. `npm.cmd test`
+5. `npm.cmd run test:integration`
+
+Final cevapta:
+- Eklenen regression testini ozetle.
+- `resolveReadableCollection` ve router abort/timeout propagation fix'ini ozetle.
+- Degisen dosyalari listele.
+- Komut sonuclarini yaz.
+- notes/done.md icine Prompt 24 kaydini ekledigini belirt.
+```
+
+## Prompt 25: Active Embedding Model Snapshot for Zero-Downtime Reads
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin aktif physical collection ile query-time embedding modeli arasindaki tutarsizlik riskini gidermektir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "Chroma Dokumanlariyla Uyum Notlari"
+- "Index/Rebuild Path"
+- "Query/Retrieve Path"
+- "Zero-Downtime Index/Rebuild"
+- "Test Kabul Kriterleri"
+
+Ayrica calismaya baslamadan once notes/done.md ve notes/plan-parity-audit.md dosyalarini oku. Prompt 24 yapildiysa onun abort/timeout imza degisikliklerini dikkate al.
+
+Bug:
+Hazir ve aktif physical collection'i olan bir logical collection'da `PATCH /v1/admin/collections/:collectionId` ile `embeddingModel` degistirilebiliyor. Query/retrieve route'lari daha sonra yeni `collection.embeddingModel` degerini hemen kullanarak eski embedding modeliyle build edilmis aktif Chroma vectors uzerinde arama yapiyor. Bu, embedding dimension mismatch, anlamsiz skorlar veya Chroma tarafinda runtime hata uretme riski tasir. Plan, embedding modeli degisirse yeni physical collection build + active pointer swap gerektigini soyluyor.
+
+Amac:
+Aktif read path, her zaman aktif physical collection'in build edildigi embedding modelini kullanmali. Desired/future `embeddingModel` admin tarafindan degisse bile bu deger, reindex basarili olup active pointer swap tamamlanana kadar mevcut aktif physical read modelini degistirmemeli.
+
+Yapilacaklar:
+1. Once failing regression test ekle:
+   - Uygun dosyalar: `test/collections.registry.test.ts` ve `test/acceptance/api.endpoints.test.ts`.
+   - Senaryo:
+     1. Collection `embeddingModel = "embed-v1"` ile olusturulur.
+     2. Reindex job basarili tamamlanir ve active physical collection set edilir.
+     3. Admin PATCH ile collection desired `embeddingModel = "embed-v2"` yapilir.
+     4. Query/retrieve cagrisi active physical collection degismedigi surece RAG handler'a `"embed-v1"` ile gitmelidir.
+     5. Yeni reindex basarili tamamlaninca active read embedding modeli `"embed-v2"` olur ve query/retrieve artik `"embed-v2"` kullanir.
+2. Registry modelini netlestir:
+   - `RagCollection` icine aktif physical surume ait read embedding snapshot alanini ekle. Ornek:
+     - `activeEmbeddingModel?: string`
+   - Gerekirse DB kolonunu ekle. Proje henuz kullanilmadigi icin geriye donuk migration zorunlu degil, fakat test DB init temiz calismali.
+   - `completeIndexJob(...)`, job'un build ettigi collection embedding modelini `activeEmbeddingModel` olarak yazmali.
+   - `createCollection` asamasinda active snapshot bos kalabilir.
+3. Query/retrieve route'larini guncelle:
+   - `src/http/ragRouter.ts` RAG handler'a `embeddingModel: collection.activeEmbeddingModel ?? collection.embeddingModel` gondersin.
+   - Collection active physical varsa ve active snapshot yoksa fallback mevcut `collection.embeddingModel` olabilir.
+   - `GET /v1/rag/collections/:collectionId/ready` embedding model availability check'i active physical varsa active read embedding modelini kontrol etmeli.
+4. Reindex akisini koru:
+   - Yeni reindex build'i desired `collection.embeddingModel` ile yapilmali.
+   - Basarili complete sonrasi active snapshot desired modele donmeli.
+   - Failed rebuild eski active snapshot'i degistirmemeli.
+5. HTTP response/dokuman:
+   - Public response'a yeni field eklemek zorunda degilsin. Eklersen internal/desired/active ayrimini dokumanda net yaz.
+   - README veya mimari dokumanda "embeddingModel update reindex basarili olana kadar active read modelini degistirmez" davranisini kisa sekilde belirt.
+6. notes/done.md guncelle:
+   - Dosyanin sonuna `## Prompt 25: Active Embedding Model Snapshot for Zero-Downtime Reads` basligi altinda kisa kayit ekle.
+
+Dikkat:
+- Bu fix sadece `embeddingModel` mismatch bug'ini kapatmaya odaklansin.
+- `chatModel`, `retrievalK` ve `retrievalDistanceThreshold` reindex gerektirmeyen runtime ayarlar olabilir; onlari gereksiz yere dondurma.
+- Query path eski active physical collection uzerinde zero-downtime davranisini korumali.
+- Testlerde gercek Chroma/Ollama kullanma.
+
+Dogrulama:
+1. `npm.cmd run typecheck`
+2. `npm.cmd run typecheck:test`
+3. `npm.cmd run build`
+4. `npm.cmd test`
+5. `npm.cmd run test:integration`
+
+Final cevapta:
+- Eklenen failing regression senaryosunu ozetle.
+- Active embedding snapshot modelini ve query route degisikligini ozetle.
+- Failed rebuild'in eski snapshot'i korudugunu belirt.
+- Degisen dosyalari ve komut sonuclarini yaz.
+- notes/done.md icine Prompt 25 kaydini ekledigini belirt.
+```
+
+## Prompt 26: Public Collection Detail DTO Sanitization
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin public RAG collection detail endpoint'inin internal registry alanlarini acmasini engellemektir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "Son Kullanici Collection'lari Kolayca Bulabiliyor mu?"
+- "Yeni Endpoint Kontratlari"
+- "Query/Retrieve Path"
+- "Faz 3: API Endpointlerini Yeniden Tasarla"
+- "Test Kabul Kriterleri"
+
+Ayrica calismaya baslamadan once notes/done.md ve notes/plan-parity-audit.md dosyalarini oku. Prompt 25 yapildiysa active embedding snapshot alanini public DTO'ya sizdirmemeye dikkat et.
+
+Bug:
+`GET /v1/rag/collections/:collectionId` su anda `res.json({ collection })` ile tum `RagCollection` objesini donduruyor. Bu public RAG endpoint'i `sourcePath`, `ozelgeDataPath`, `tenantId`, `createdBy`, model isimleri, Chroma configuration ve olasi active physical storage detaylarini son kullaniciya acabilir. Liste endpoint'i ise daha kontrollu bir public discovery DTO donduruyor.
+
+Amac:
+Public collection detail endpoint'i, list endpoint'iyle uyumlu ve son kullaniciya uygun sanitize edilmis DTO dondursun. Internal registry/source/storage alanlari public response'ta yer almasin.
+
+Yapilacaklar:
+1. Once failing acceptance test ekle:
+   - Uygun dosya: `test/acceptance/api.endpoints.test.ts`.
+   - `GET /v1/rag/collections/:collectionId` icin response'ta bulunmasi gereken public alanlari assert et:
+     - `id`
+     - `displayName`
+     - `description`
+     - `status`
+     - `chunkCount`
+     - `activeVersion`
+     - `updatedAt`
+     - `readyUrl`
+     - `queryUrl`
+     - `retrieveUrl`
+   - Response'ta su alanlarin olmadigini assert et:
+     - `tenantId`
+     - `createdBy`
+     - `sourcePath`
+     - `ozelgeDataPath`
+     - `embeddingModel`
+     - `chatModel`
+     - `distanceMetric`
+     - `chromaCollectionConfiguration`
+     - `activePhysicalCollection`
+     - Prompt 25 eklediyse `activeEmbeddingModel`
+2. `src/http/ragRouter.ts` icinde public collection DTO mapper'i olustur:
+   - List ve detail endpoint ayni mapper'i kullanmali.
+   - `description`, `chunkCount`, `activeVersion` gibi nullable alanlar stable sekilde `null` donmeli.
+   - URL alanlari collection id uzerinden uretilmeli.
+3. Error davranisini koru:
+   - Baska tenant icin `403 COLLECTION_FORBIDDEN`.
+   - Bilinmeyen collection icin `404 COLLECTION_NOT_FOUND`.
+4. Frontend/dokuman:
+   - `test_frontend/index.html` detail endpoint'i kullanmiyorsa degistirme.
+   - README veya mimari dokumanda detail endpoint anlatimi varsa public DTO ile hizala.
+5. notes/done.md guncelle:
+   - Dosyanin sonuna `## Prompt 26: Public Collection Detail DTO Sanitization` basligi altinda kisa kayit ekle.
+
+Dikkat:
+- Admin endpointleri internal collection config gosterebilir; bu prompt sadece public `/v1/rag/collections/:collectionId` endpoint'i icindir.
+- Collection list endpoint'ini pahali readiness probe'a cevirmeyin.
+- `GET /v1/rag/collections` contract'ini bozma.
+- Eski endpointleri geri ekleme.
+
+Dogrulama:
+1. `npm.cmd run typecheck`
+2. `npm.cmd run typecheck:test`
+3. `npm.cmd run build`
+4. `npm.cmd test`
+5. `npm.cmd run test:integration`
+
+Final cevapta:
+- Public detail DTO'dan hangi internal alanlarin kaldirildigini ozetle.
+- Eklenen acceptance testini yaz.
+- Degisen dosyalari ve komut sonuclarini yaz.
+- notes/done.md icine Prompt 26 kaydini ekledigini belirt.
+```
+
+## Prompt 27: CLI Index Command Must Fail on Failed Job
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin CLI indexing akisinin basarisiz index job'larda basarili exit sinyali uretmesini engellemektir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "`src/index.ts`"
+- "`src/indexing/jobs.ts`"
+- "Index/Rebuild Path"
+- "Zero-Downtime Index/Rebuild"
+- "Coding Agent Calisma Sirasi"
+
+Ayrica calismaya baslamadan once notes/done.md ve notes/plan-parity-audit.md dosyalarini oku.
+
+Bug:
+`src/indexing/jobs.ts` icindeki `runIndexJob(...)` build failure durumunda job'u registry'de `failed` yapiyor fakat hatayi swallow edip `Promise<void>` olarak donuyor. HTTP background worker icin bu kabul edilebilir olabilir, ancak `src/index.ts` / `npm run index -- --collection-id <id>` bu fonksiyonu bekledigi icin build failure olsa bile CLI komutu basarili tamamlanmis gibi exit code 0 uretebilir.
+
+Amac:
+CLI indexing komutu, job `succeeded` degilse hata firlatsin ve process non-zero exit ile bitsin. HTTP background job runner ise mevcut davranisla job status'unu registry'de failed olarak kaydetmeye devam etsin.
+
+Yapilacaklar:
+1. Once failing test ekle:
+   - Uygun dosya: `test/indexing.jobs.test.ts` veya yeni `test/index.cli.test.ts`.
+   - Test, injected fake `buildPhysicalCollection` failure durumunda:
+     - Job registry'de `failed` olur.
+     - CLI-facing akisin hata firlattigi kanitlanir.
+   - Gercek Chroma/Ollama kullanma.
+2. `runIndexJob` sonuc sozlesmesini netlestir:
+   - Seceneklerden birini uygula:
+     - A) `runIndexJob(...)` final `IndexJob` dondursun; success'te `succeeded`, handled failure'da `failed`.
+     - B) `runIndexJob(...)` opsiyonel `throwOnFailure?: boolean` alsin; HTTP runner default false, CLI true kullansin.
+   - Hangi secimi yaparsan testle sabitle.
+3. `src/index.ts` guncelle:
+   - `runIndexing(...)`, job tamamlandiktan sonra final job status'unu kontrol etmeli.
+   - Final status `succeeded` degilse job error mesajiyla `throw new Error(...)` yapmali.
+   - `main().catch(...)` zaten process exit code 1 set ediyor; bunu koru.
+4. `src/indexing/jobRunner.ts` davranisini bozma:
+   - HTTP background runner, job failure'i registry status'u olarak kaydetmeye devam etmeli.
+   - Unhandled exception log davranisi gereksiz duplicate log uretmeyecek sekilde dikkatli ol.
+5. notes/done.md guncelle:
+   - Dosyanin sonuna `## Prompt 27: CLI Index Command Must Fail on Failed Job` basligi altinda kisa kayit ekle.
+
+Dikkat:
+- Destructive reset veya eski single-collection indexing geri gelmemeli.
+- `npm run index` halen explicit `--collection-id` istemeli.
+- HTTP `POST /v1/admin/collections/:collectionId/reindex` halen `202 Accepted` donmeli; build failure daha sonra job status'unda gorulmeli.
+
+Dogrulama:
+1. `npm.cmd run typecheck`
+2. `npm.cmd run typecheck:test`
+3. `npm.cmd run build`
+4. `npm.cmd test`
+5. `npm.cmd run test:integration`
+
+Final cevapta:
+- CLI failure contract'ini nasil sabitledigini ozetle.
+- HTTP background job davranisinin korundugunu belirt.
+- Eklenen testi, degisen dosyalari ve komut sonuclarini yaz.
+- notes/done.md icine Prompt 27 kaydini ekledigini belirt.
+```
+
+## Prompt 28: Rate Limit Key Collision Hardening
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin request rate limiter anahtar uretimini collision-safe hale getirmektir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "Ollama ve Chroma Backpressure"
+- "Faz 5: Backend Operasyonel Olgunluk"
+- "Test Kabul Kriterleri"
+
+Ayrica calismaya baslamadan once notes/done.md ve notes/plan-parity-audit.md dosyalarini oku.
+
+Bug:
+`src/http/rateLimit.ts` icindeki `createRateLimitKey(...)`, `tenantId`, `userId`, `collectionId`, `operation` degerlerini `:` ile join ediyor. Header tabanli tenant/user degerleri `:` karakteri icerebilir. Bu durumda farkli tenant/user kombinasyonlari ayni key'e duserek yanlis rate limit uygulanmasina veya limit bypass/false-positive durumuna yol acabilir.
+
+Ornek collision:
+- `{ tenantId: "a:b", userId: "c", collectionId: "d", operation: "query" }`
+- `{ tenantId: "a", userId: "b:c", collectionId: "d", operation: "query" }`
+Mevcut join ile ikisi de `a:b:c:d:query` olabilir.
+
+Amac:
+Rate limit key uretimi structured ve collision-safe olsun. Farkli tenant/user/collection/operation tuple'lari asla sadece ayirici karakter yuzunden ayni bucket'a dusmemeli.
+
+Yapilacaklar:
+1. Once failing unit test ekle:
+   - Uygun dosya: `test/observability.test.ts` veya yeni `test/rateLimit.test.ts`.
+   - Yukaridaki collision ornegini kullan.
+   - `maxRequestsPerWindow: 1` ile ilk tuple allowed olduktan sonra ikinci farkli tuple da allowed olmali.
+   - Mevcut kodda ikinci tuple ayni key'e dusecegi icin test fail etmeli.
+2. `createRateLimitKey(...)` guncelle:
+   - Structured key kullan. Ornek kabul edilebilir yaklasimlar:
+     - `JSON.stringify([tenantId, userId, collectionId, operation])`
+     - veya her parcayi length-prefix ile encode etmek.
+   - Key deterministik olmali.
+   - Testlerde exact string'e gereksiz baglanma; collision-free davranisi test et.
+3. Opsiyonel ama onerilir:
+   - `createInMemoryRequestRateLimiter` expired bucket'lari firsat buldukca prune etsin veya map'in suresiz buyumesini engelleyen basit bir cleanup mekanizmasi eklesin.
+   - Eger prune eklersen bunu disari debug API acmadan davranis testiyle veya kucuk internal helper unit testiyle kanitla.
+4. Rate limit HTTP contract'ini koru:
+   - `429 RATE_LIMIT_EXCEEDED`.
+   - `Retry-After`, `X-RateLimit-*` header'lari.
+   - Rate limit input boyutlari tenant/user/collection/operation olarak kalmali.
+5. notes/done.md guncelle:
+   - Dosyanin sonuna `## Prompt 28: Rate Limit Key Collision Hardening` basligi altinda kisa kayit ekle.
+
+Dikkat:
+- Collection/user/tenant boyutlarini kaldirma.
+- Limiter'i route icine tasima; merkezi middleware contract'i korunmali.
+- Testler gercek HTTP server gerektirmeden unit seviyesinde calisabilmeli; istersen mevcut acceptance rate limit testini de koru.
+
+Dogrulama:
+1. `npm.cmd run typecheck`
+2. `npm.cmd run typecheck:test`
+3. `npm.cmd run build`
+4. `npm.cmd test`
+5. `npm.cmd run test:integration`
+
+Final cevapta:
+- Key collision regression testini ozetle.
+- Yeni key encoding yaklasimini yaz.
+- Degisen dosyalari ve komut sonuclarini yaz.
+- notes/done.md icine Prompt 28 kaydini ekledigini belirt.
+```

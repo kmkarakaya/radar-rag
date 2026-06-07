@@ -862,3 +862,42 @@ describe("v1 admin and rag api endpoints", () => {
     }
   });
 });
+
+  it("forbidden collection query/retrieve still returns 403 COLLECTION_FORBIDDEN after Prompt 24", async () => {
+    for (const endpoint of ["query", "retrieve"]) {
+      const response = await request(/v1/rag/collections//, {
+        method: "POST",
+        headers: {
+            "content-type": "application/json",
+            "x-tenant-id": "other-tenant",
+          },
+        body: JSON.stringify({ question: "hello?" }),
+      });
+
+      const body = await response.json() as any;
+      assert.equal(response.status, 403);
+      assert.equal(body.code, "COLLECTION_FORBIDDEN");
+        }
+      });
+    });
+});
+
+
+  // ---------------------------------------------------------------------------
+  // Prompt 24: Query Resolve Abort and Timeout Propagation
+  // ---------------------------------------------------------------------------
+
+  it('resolveReadableCollection forwards abortSignal to Chroma readability guard', async () => {
+    const ctx = { tenantId: 'default', userId: 'local-dev', requestId: 'p24-signal-forward' };
+    const activePhysicalCollection = 'p24-signal-forward-physical';
+    readablePhysicalCollections.set(activePhysicalCollection, 10);
+
+    await registry.updateCollection(ctx, createdCollection.id, {
+      status: 'ready',
+      activePhysicalCollection,
+      activeVersion: 'v-p24-signal',
+     });
+
+    let signalCapturedInGuard: AbortSignal | undefined;
+
+    resolveReadableCollectionOverride = async (req: any, deps: any, runtimeConfig: any)

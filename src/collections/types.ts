@@ -28,6 +28,7 @@ export type RagCollection = {
   chunkOverlap: number;
   retrievalK: number;
   retrievalDistanceThreshold: number;
+  activeEmbeddingModel?: string;
   documentCount?: number;
   chunkCount?: number;
   createdBy: string;
@@ -43,6 +44,7 @@ export type IndexJob = {
   status: IndexJobStatus;
   targetPhysicalCollection: string;
   targetVersion: string;
+  targetEmbeddingModel: string;
   targetChromaConfiguration: Record<string, unknown>;
   startedAt?: string;
   finishedAt?: string;
@@ -83,6 +85,7 @@ export type UpdateCollectionPatch = {
   chunkOverlap?: RagCollection["chunkOverlap"];
   retrievalK?: RagCollection["retrievalK"];
   retrievalDistanceThreshold?: RagCollection["retrievalDistanceThreshold"];
+  activeEmbeddingModel?: RagCollection["activeEmbeddingModel"] | null;
   activePhysicalCollection?: RagCollection["activePhysicalCollection"] | null;
   activeVersion?: RagCollection["activeVersion"] | null;
   documentCount?: RagCollection["documentCount"] | null;
@@ -139,6 +142,7 @@ export interface CollectionRegistry {
     input?: BeginIndexJobInput,
   ): Promise<IndexJob>;
   markIndexJobRunning(jobId: string, input?: { lockToken?: string }): Promise<IndexJob>;
+  cancelIndexJob(jobId: string): Promise<IndexJob>;
   completeIndexJob(jobId: string, result: CompleteIndexJobResult): Promise<IndexJob>;
   failIndexJob(jobId: string, error: string): Promise<IndexJob>;
   failStaleJobs(staleThresholdMs: number): Promise<number>;
@@ -154,6 +158,7 @@ export interface CollectionRegistry {
   markPhysicalCollectionDeleted(name: string): Promise<void>;
   markPhysicalCollectionCleanupFailed(name: string, error: string): Promise<void>;
   listDuePhysicalCollectionsForCleanup(nowIso: string, limit: number): Promise<PhysicalCollectionRecord[]>;
+  deleteCollection(context: RequestContext, collectionId: string): Promise<void>;
   collectionExists(collectionId: string): Promise<boolean>;
 
   close?(): void;

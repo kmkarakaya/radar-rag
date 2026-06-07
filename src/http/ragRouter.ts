@@ -7,6 +7,22 @@ import { config, type ResolvedConfig } from "../config.js";
 import type { RequestContext } from "./requestContext.js";
 import { resolveReadableCollection } from "../collections/resolveReadableCollection.js";
 import { retrieveSources, answerQuestion, checkChromaHealth, checkOllamaHealth } from "../rag.js";
+import type { RagCollection } from "../collections/types.js";
+
+function mapToPublicCollectionDTO(c: RagCollection) {
+  return {
+    id: c.id,
+    displayName: c.displayName,
+    description: c.description ?? null,
+    status: c.status,
+    chunkCount: c.chunkCount ?? null,
+    activeVersion: c.activeVersion ?? null,
+    updatedAt: c.updatedAt,
+    readyUrl: `/v1/rag/collections/${c.id}/ready`,
+    queryUrl: `/v1/rag/collections/${c.id}/query`,
+    retrieveUrl: `/v1/rag/collections/${c.id}/retrieve`,
+  };
+}
 
 export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedConfig = deps.runtimeConfig ?? config) {
   const router = express.Router();
@@ -27,18 +43,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
       const context = res.locals.requestContext as RequestContext;
       const collections = await deps.registry!.listVisibleCollections(context);
       
-      const mapped = collections.map(c => ({
-        id: c.id,
-        displayName: c.displayName,
-        description: c.description ?? null,
-        status: c.status,
-        chunkCount: c.chunkCount ?? null,
-        activeVersion: c.activeVersion ?? null,
-        updatedAt: c.updatedAt,
-        readyUrl: `/v1/rag/collections/${c.id}/ready`,
-        queryUrl: `/v1/rag/collections/${c.id}/query`,
-        retrieveUrl: `/v1/rag/collections/${c.id}/retrieve`,
-      }));
+      const mapped = collections.map(mapToPublicCollectionDTO);
 
       res.json({ collections: mapped });
     } catch (error) {
@@ -58,7 +63,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         }
         throw new HttpError(404, "COLLECTION_NOT_FOUND", "Collection not found");
       }
-      res.json({ collection });
+      res.json({ collection: mapToPublicCollectionDTO(collection) });
     } catch (error) {
       next(error);
     }
@@ -82,7 +87,9 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
       const availableModels = Array.isArray(ollama.details?.availableModels)
         ? ollama.details.availableModels.filter((value): value is string => typeof value === "string")
         : [];
-      const embeddingModelAvailable = ollama.ok && hasConfiguredModel(availableModels, collection.embeddingModel);
+
+      const readEmbeddingModel = collection.activeEmbeddingModel ?? collection.embeddingModel;
+      const embeddingModelAvailable = ollama.ok && hasConfiguredModel(availableModels, readEmbeddingModel);
       const chatModelAvailable = ollama.ok && hasConfiguredModel(availableModels, collection.chatModel);
 
       let chromaCount = -1;
@@ -108,10 +115,11 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         chromaReadable,
         chromaCount,
         modelAvailability: {
-          embeddingModel: collection.embeddingModel,
+          embeddingModel: readEmbeddingModel,
           embeddingModelAvailable,
           chatModel: collection.chatModel,
           chatModelAvailable,
+          desiredEmbeddingModel: collection.embeddingModel !== readEmbeddingModel ? collection.embeddingModel : undefined,
         },
         capabilities: {
           query: chromaReadable && embeddingModelAvailable && chatModelAvailable,
@@ -137,19 +145,23 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
       }
 
       const context = res.locals.requestContext as RequestContext;
-      const collection = await resolveCollection(req, { registry: deps.registry! }, runtimeConfig);
-      res.locals.collectionId = collection.id;
-      res.locals.physicalCollection = collection.activePhysicalCollection;
-
+      
       const ac = new AbortController();
       req.on("close", () => ac.abort());
+
+      const collection = await resolveCollection(req, { registry: deps.registry! }, runtimeConfig, {
+        abortSignal: ac.signal,
+        timeoutMs: runtimeConfig.ragTimeoutMs,
+      });
+      res.locals.collectionId = collection.id;
+      res.locals.physicalCollection = collection.activePhysicalCollection;
 
       const result = await retrieve(parsed.data.question, {
         collectionId: collection.id,
         collectionName: collection.activePhysicalCollection!,
         k: parsed.data.k ?? collection.retrievalK,
         runtimeConfig,
-        embeddingModel: collection.embeddingModel,
+        embeddingModel: collection.activeEmbeddingModel ?? collection.embeddingModel,
         retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,
         abortSignal: ac.signal,
@@ -185,19 +197,23 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
       }
 
       const context = res.locals.requestContext as RequestContext;
-      const collection = await resolveCollection(req, { registry: deps.registry! }, runtimeConfig);
-      res.locals.collectionId = collection.id;
-      res.locals.physicalCollection = collection.activePhysicalCollection;
-
+      
       const ac = new AbortController();
       req.on("close", () => ac.abort());
+
+      const collection = await resolveCollection(req, { registry: deps.registry! }, runtimeConfig, {
+        abortSignal: ac.signal,
+        timeoutMs: runtimeConfig.ragTimeoutMs,
+      });
+      res.locals.collectionId = collection.id;
+      res.locals.physicalCollection = collection.activePhysicalCollection;
 
       const result = await answer(parsed.data.question, {
         collectionId: collection.id,
         collectionName: collection.activePhysicalCollection!,
         retrievalK: collection.retrievalK,
         runtimeConfig,
-        embeddingModel: collection.embeddingModel,
+        embeddingModel: collection.activeEmbeddingModel ?? collection.embeddingModel,
         chatModel: collection.chatModel,
         retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,

@@ -42,7 +42,7 @@ export type AnalyzeIndexingSourceOptions = {
   indexSampleSize: number;
 };
 
-export function toDocuments(records: OzelgeRecord[]): Document[] {
+export function toDocuments(records: OzelgeRecord[], sourceHash: string): Document[] {
   const documents = records
     .map((record, index) => {
       const pageContent = typeof record.pdfText === "string"
@@ -63,6 +63,7 @@ export function toDocuments(records: OzelgeRecord[]): Document[] {
           sayi: record.sayi ?? "",
           tarih: record.tarih ?? "",
           konu: record.konu ?? "",
+          sourceHash,
         },
       });
     });
@@ -74,9 +75,11 @@ export async function analyzeOzelgeIndexingSource(
   dataPath: string,
   indexSampleSize: number,
 ): Promise<IndexingSourceAnalysis> {
+  const rawContent = await fs.readFile(dataPath);
+  const hash = createHash("sha256").update(rawContent).digest("hex");
   const records = await loadOzelgeRecords(dataPath);
   const sampledRecords = sampleRecords(records, indexSampleSize);
-  const documents = toDocuments(sampledRecords).map((document) => withSourcePath(document, dataPath));
+  const documents = toDocuments(sampledRecords, hash).map((document) => withSourcePath(document, dataPath));
 
   return {
     sourcePath: dataPath,
@@ -183,11 +186,26 @@ async function collectSourceFiles(sourcePath: string): Promise<string[]> {
     throw new Error(`Indexing source path is neither a file nor a directory: ${sourcePath}`);
   }
 
-  const entries = await fs.readdir(sourcePath, { withFileTypes: true });
-  return entries
-    .filter((entry) => entry.isFile())
-    .map((entry) => path.join(sourcePath, entry.name))
-    .sort((left, right) => left.localeCompare(right));
+  return walkDirectory(sourcePath);
+}
+
+async function walkDirectory(dir: string): Promise<string[]> {
+  let files: string[] = [];
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue;
+    if (entry.name === "node_modules") continue;
+
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files = files.concat(await walkDirectory(fullPath));
+    } else if (entry.isFile()) {
+      files.push(fullPath);
+    }
+  }
+
+  return files.sort((left, right) => left.localeCompare(right));
 }
 
 function sourceTypeForExtension(extension: string): string | null {
@@ -212,6 +230,8 @@ async function loadFileDocuments(
   extension: string,
   sourceType: string,
 ): Promise<Document[]> {
+  const content = await fs.readFile(filePath);
+  const hash = createHash("sha256").update(content).digest("hex");
   const loader = createLoader(filePath, extension);
   const rawDocuments = await loader.load();
 
@@ -221,6 +241,7 @@ async function loadFileDocuments(
       filePath,
       sourceType,
       loaderDocumentIndex,
+      hash,
     ))
     .filter((document): document is Document => document !== null);
 }
@@ -246,6 +267,7 @@ function normalizeLoadedDocument(
   sourcePath: string,
   sourceType: string,
   loaderDocumentIndex: number,
+  sourceHash: string,
 ): Document | null {
   const pageContent = normalizeText(document.pageContent);
   if (pageContent.length === 0) {
@@ -262,6 +284,7 @@ function normalizeLoadedDocument(
       documentId: `file:${hashPath(sourcePath)}:${loaderDocumentIndex}`,
       sourcePath,
       sourceType,
+      sourceHash,
     },
   });
 }

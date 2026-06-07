@@ -8,7 +8,12 @@ import { config, type ResolvedConfig } from "../config.js";
 export async function resolveReadableCollection(
   req: Request,
   deps: { registry: CollectionRegistry },
-  runtimeConfig: ResolvedConfig = config
+  runtimeConfig: ResolvedConfig = config,
+  options?: {
+    timeoutMs?: number;
+    abortSignal?: AbortSignal;
+    assertChromaCollectionReadable?: typeof assertChromaCollectionReadable;
+  }
 ): Promise<RagCollection> {
   const collectionId = Array.isArray(req.params.collectionId) ? req.params.collectionId[0] : req.params.collectionId;
   if (!collectionId || typeof collectionId !== "string") {
@@ -38,9 +43,12 @@ export async function resolveReadableCollection(
   }
 
   try {
-    await assertChromaCollectionReadable({
+    const assertFn = options?.assertChromaCollectionReadable ?? assertChromaCollectionReadable;
+    await assertFn({
       name: collection.activePhysicalCollection,
       runtimeConfig,
+      timeoutMs: options?.timeoutMs,
+      abortSignal: options?.abortSignal,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -30,6 +30,7 @@ export async function buildPhysicalCollection(input: {
   targetPhysicalCollection: string;
   targetVersion: string;
   runtimeConfig: ResolvedConfig;
+  signal?: AbortSignal;
   jobId?: string;
   log?: (message: string) => void;
   logEvent?: OperationalLogSink;
@@ -46,7 +47,7 @@ export async function buildPhysicalCollection(input: {
   parsedSourceDocumentCount: number;
   chunkCount: number;
 }> {
-  const { collection, targetPhysicalCollection, targetVersion, runtimeConfig } = input;
+  const { collection, targetPhysicalCollection, targetVersion, runtimeConfig, signal } = input;
   const log = input.log ?? console.log;
   const deps = input.deps ?? {};
   const startedAt = Date.now();
@@ -73,6 +74,7 @@ export async function buildPhysicalCollection(input: {
   });
 
   try {
+    if (signal?.aborted) throw new Error("Build aborted");
     log(`Creating physical collection "${targetPhysicalCollection}" (version: ${targetVersion})`);
     const chromaConfiguration = collection.chromaCollectionConfiguration ?? {
       hnsw: {
@@ -87,6 +89,7 @@ export async function buildPhysicalCollection(input: {
       runtimeConfig,
     });
 
+    if (signal?.aborted) throw new Error("Build aborted");
     log(`Analyzing indexing source from ${collection.sourcePath}`);
     const analysis = await loadSource({
       sourcePath: collection.sourcePath,
@@ -96,6 +99,7 @@ export async function buildPhysicalCollection(input: {
 
     const documents = analysis.documents;
 
+    if (signal?.aborted) throw new Error("Build aborted");
     log(`Loaded ${documents.length} indexable documents from ${analysis.loadedDocumentCount} parsed source documents`);
 
     const chunks = await splitDocuments(documents, {
@@ -109,6 +113,7 @@ export async function buildPhysicalCollection(input: {
       targetVersion,
     );
 
+    if (signal?.aborted) throw new Error("Build aborted");
     log(`Split documents into ${indexedChunks.length} chunks. Indexing into Chroma...`);
 
     const vectorStore = vectorStoreFactory({
@@ -121,6 +126,7 @@ export async function buildPhysicalCollection(input: {
       ids: indexedChunks.map((chunk) => `${chunk.metadata.documentId}:${chunk.metadata.chunkIndex}`),
     });
 
+    if (signal?.aborted) throw new Error("Build aborted");
     log(`Verifying readability of physical collection "${targetPhysicalCollection}"`);
     await assertReadable({
       name: targetPhysicalCollection,

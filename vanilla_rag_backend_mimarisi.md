@@ -94,6 +94,7 @@ Bu repodaki gerçek multi-collection davranışı aşağıdaki control-plane kur
 8. `GET /v1/rag/collections/:collectionId/ready` seçili logical collection'ın `activeJob`, `activeVersion`, `chromaReadable`, `chromaCount` ve capability alanlarını döndürür.
 9. Access kontrolünde `403/404` ayrımı vardır. Collection global olarak varsa ama request tenant'ı göremiyorsa `403 COLLECTION_FORBIDDEN`; hiç yoksa `404 COLLECTION_NOT_FOUND` döner.
 10. HTTP katmanında request rate limiter merkezi middleware olarak çalışır; limit anahtarı `tenantId`, `userId`, `collectionId` ve operation (`query`, `retrieve`, `reindex`) alanlarından oluşur. Model tarafında ayrıca `maxConcurrentEmbeddings` ve `maxConcurrentGenerations` ile backpressure uygulanır.
+11. Aktif read path, her zaman aktif fiziksel koleksiyonun build edildiği embedding modelini (`activeEmbeddingModel`) kullanır. Admin tarafından `embeddingModel` (desired) değeri değiştirilse bile, bu değer yeni bir reindex işi başarıyla tamamlanıp aktif pointer swap yapılana kadar mevcut okuma modelini etkilemez. Bu, model uyuşmazlığı (dimension mismatch vb.) riskini ortadan kaldırarak zero-downtime okuma sağlar. Failed reindex durumunda eski aktif snapshot korunur.
 
 ## 5. Temel Bileşenler
 

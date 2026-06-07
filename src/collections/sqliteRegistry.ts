@@ -41,6 +41,7 @@ type CollectionRow = {
   chunk_overlap: number;
   retrieval_k: number;
   retrieval_distance_threshold: number;
+  active_embedding_model: string | null;
   document_count: number | null;
   chunk_count: number | null;
   created_by: string;
@@ -56,6 +57,7 @@ type IndexJobRow = {
   status: IndexJobStatus;
   target_physical_collection: string;
   target_version: string;
+  target_embedding_model: string;
   target_chroma_configuration_json: string;
   started_at: string | null;
   finished_at: string | null;
@@ -123,6 +125,7 @@ function initializeSchema(db: SqliteDatabase): void {
       chunk_overlap INTEGER NOT NULL,
       retrieval_k INTEGER NOT NULL,
       retrieval_distance_threshold REAL NOT NULL,
+      active_embedding_model TEXT,
       document_count INTEGER,
       chunk_count INTEGER,
       created_by TEXT NOT NULL,
@@ -138,6 +141,7 @@ function initializeSchema(db: SqliteDatabase): void {
       status TEXT NOT NULL,
       target_physical_collection TEXT NOT NULL,
       target_version TEXT NOT NULL,
+      target_embedding_model TEXT NOT NULL,
       target_chroma_configuration_json TEXT NOT NULL,
       started_at TEXT,
       finished_at TEXT,
@@ -335,6 +339,13 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       values,
     );
     addNullablePatch(
+      "activeEmbeddingModel",
+      "active_embedding_model",
+      patch.activeEmbeddingModel,
+      updates,
+      values,
+    );
+    addNullablePatch(
       "activePhysicalCollection",
       "active_physical_collection",
       patch.activePhysicalCollection,
@@ -406,7 +417,8 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           collectionId,
           version,
         }),
-          targetVersion: version,
+        targetVersion: version,
+        targetEmbeddingModel: collection.embedding_model,
         targetChromaConfiguration,
         lockToken: input.lockToken ?? randomUUID(),
         createdAt: now,
@@ -420,8 +432,9 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           tenant_id,
           status,
           target_physical_collection,
-            target_version,
-            target_chroma_configuration_json,
+          target_version,
+          target_embedding_model,
+          target_chroma_configuration_json,
           lock_token,
           created_at,
           updated_at
@@ -431,8 +444,9 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           @tenantId,
           @status,
           @targetPhysicalCollection,
-            @targetVersion,
-            @targetChromaConfigurationJson,
+          @targetVersion,
+          @targetEmbeddingModel,
+          @targetChromaConfigurationJson,
           @lockToken,
           @createdAt,
           @updatedAt
@@ -444,6 +458,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         status: job.status,
         targetPhysicalCollection: job.targetPhysicalCollection,
         targetVersion: job.targetVersion,
+        targetEmbeddingModel: job.targetEmbeddingModel,
         targetChromaConfigurationJson: JSON.stringify(job.targetChromaConfiguration),
         lockToken: job.lockToken,
         createdAt: job.createdAt,
@@ -492,6 +507,68 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       const updated = this.getJobRow(jobId);
       if (!updated) {
         throw new Error(`Running job ${jobId} could not be loaded.`);
+      }
+
+      return mapIndexJobRow(updated);
+    });
+
+    return transaction();
+  }
+
+  async cancelIndexJob(jobId: string): Promise<IndexJob> {
+    const transaction = this.db.transaction(() => {
+      const existing = this.getJobRow(jobId);
+      if (!existing) {
+        throw new Error(`Index job not found: ${jobId}`);
+      }
+
+      if (existing.status !== "queued" && existing.status !== "running") {
+        throw new Error(`Job ${jobId} is in status '${existing.status}', cannot be cancelled.`);
+      }
+
+      const now = new Date().toISOString();
+      this.db.prepare(`
+        UPDATE index_jobs
+        SET status = 'cancelled', finished_at = @finishedAt, updated_at = @updatedAt
+        WHERE id = @id AND status IN ('queued', 'running')
+      `).run({
+        id: jobId,
+        finishedAt: now,
+        updatedAt: now,
+      });
+
+      if (existing.status === 'running') {
+        this.db.prepare(`
+          UPDATE physical_collections
+          SET status = 'failed_build', cleanup_error = 'Cancelled by user'
+          WHERE name = @name
+            AND tenant_id = @tenantId
+            AND collection_id = @collectionId
+            AND version = @version
+            AND status = 'building'
+        `).run({
+          name: existing.target_physical_collection,
+          tenantId: existing.tenant_id,
+          collectionId: existing.collection_id,
+          version: existing.target_version,
+        });
+
+        const collection = this.getCollectionRow(existing.tenant_id, existing.collection_id);
+        this.db.prepare(`
+          UPDATE collections
+          SET status = @status, updated_at = @updatedAt
+          WHERE tenant_id = @tenantId AND id = @collectionId
+        `).run({
+          status: collection?.active_physical_collection ? "ready" : "failed",
+          tenantId: existing.tenant_id,
+          collectionId: existing.collection_id,
+          updatedAt: now,
+        });
+      }
+
+      const updated = this.getJobRow(jobId);
+      if (!updated) {
+        throw new Error(`Cancelled job ${jobId} could not be loaded.`);
       }
 
       return mapIndexJobRow(updated);
@@ -605,6 +682,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           status = 'ready',
           active_physical_collection = @activePhysicalCollection,
           active_version = @activeVersion,
+          active_embedding_model = @activeEmbeddingModel,
           document_count = @documentCount,
           chunk_count = @chunkCount,
           last_indexed_at = @lastIndexedAt,
@@ -615,6 +693,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         collectionId: existing.collection_id,
         activePhysicalCollection,
         activeVersion,
+        activeEmbeddingModel: existing.target_embedding_model,
         documentCount: result.documentCount ?? existing.document_count,
         chunkCount: result.chunkCount ?? existing.chunk_count,
         lastIndexedAt: now,
@@ -842,6 +921,34 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     return rows.map(mapPhysicalCollectionRow);
   }
 
+  async deleteCollection(context: RequestContext, collectionId: string): Promise<void> {
+    const transaction = this.db.transaction(() => {
+      const collection = this.getCollectionRow(context.tenantId, collectionId);
+      if (!collection) {
+        throw new Error(`Collection not found: ${collectionId}`);
+      }
+
+      const now = new Date().toISOString();
+      this.db.prepare(`
+        UPDATE physical_collections
+        SET status = 'delete_pending', delete_after = @now
+        WHERE tenant_id = @tenantId AND collection_id = @collectionId
+      `).run({ now, tenantId: context.tenantId, collectionId });
+
+      this.db.prepare(`
+        DELETE FROM collections
+        WHERE tenant_id = @tenantId AND id = @collectionId
+      `).run({ tenantId: context.tenantId, collectionId });
+    });
+
+    this.db.pragma("foreign_keys = OFF");
+    try {
+      transaction();
+    } finally {
+      this.db.pragma("foreign_keys = ON");
+    }
+  }
+
   async collectionExists(collectionId: string): Promise<boolean> {
     const row = this.db.prepare("SELECT id FROM collections WHERE id = ?").get(collectionId);
     return !!row;
@@ -965,6 +1072,7 @@ function mapCollectionRow(row: CollectionRow): RagCollection {
     chunkOverlap: row.chunk_overlap,
     retrievalK: row.retrieval_k,
     retrievalDistanceThreshold: row.retrieval_distance_threshold,
+    activeEmbeddingModel: row.active_embedding_model ?? undefined,
     documentCount: row.document_count ?? undefined,
     chunkCount: row.chunk_count ?? undefined,
     createdBy: row.created_by,
@@ -982,6 +1090,7 @@ function mapIndexJobRow(row: IndexJobRow): IndexJob {
     status: row.status,
     targetPhysicalCollection: row.target_physical_collection,
     targetVersion: row.target_version,
+    targetEmbeddingModel: row.target_embedding_model,
     targetChromaConfiguration: JSON.parse(row.target_chroma_configuration_json) as Record<string, unknown>,
     startedAt: row.started_at ?? undefined,
     finishedAt: row.finished_at ?? undefined,

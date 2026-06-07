@@ -37,6 +37,7 @@ before(async () => {
     start: () => {},
     drain: async () => {},
     shutdown: async () => {},
+    abort: async () => {},
   };
   const app = createApp({
     registry,
@@ -63,12 +64,12 @@ before(async () => {
           sources: [],
         };
       },
-      resolveReadableCollection: async (req, deps, runtimeConfig) => {
+      resolveReadableCollection: async (req, deps, runtimeConfig, options) => {
         if (resolveReadableCollectionOverride) {
-          return resolveReadableCollectionOverride(req, deps, runtimeConfig);
+          return resolveReadableCollectionOverride(req, deps, runtimeConfig, options);
         }
 
-        return actualResolveReadableCollection(req, deps, runtimeConfig);
+        return actualResolveReadableCollection(req, deps, runtimeConfig, options);
       },
     },
     healthChecks: {
@@ -861,27 +862,23 @@ describe("v1 admin and rag api endpoints", () => {
       resolveReadableCollectionOverride = undefined;
     }
   });
-});
 
   it("forbidden collection query/retrieve still returns 403 COLLECTION_FORBIDDEN after Prompt 24", async () => {
     for (const endpoint of ["query", "retrieve"]) {
-      const response = await request(/v1/rag/collections//, {
+      const response = await request(`/v1/rag/collections/${createdCollection.id}/${endpoint}`, {
         method: "POST",
         headers: {
-            "content-type": "application/json",
-            "x-tenant-id": "other-tenant",
-          },
+          "content-type": "application/json",
+          "x-tenant-id": "other-tenant",
+        },
         body: JSON.stringify({ question: "hello?" }),
       });
 
       const body = await response.json() as any;
       assert.equal(response.status, 403);
       assert.equal(body.code, "COLLECTION_FORBIDDEN");
-        }
-      });
-    });
-});
-
+    }
+  });
 
   // ---------------------------------------------------------------------------
   // Prompt 24: Query Resolve Abort and Timeout Propagation
@@ -892,12 +889,212 @@ describe("v1 admin and rag api endpoints", () => {
     const activePhysicalCollection = 'p24-signal-forward-physical';
     readablePhysicalCollections.set(activePhysicalCollection, 10);
 
-    await registry.updateCollection(ctx, createdCollection.id, {
+    // Ensure registry has the collection for this test specifically
+    const created = await registry.createCollection(ctx, {
+      displayName: 'Signal Test',
+      sourcePath: 'data/signal',
+      ozelgeDataPath: 'data/signal.json',
+      embeddingModel: 'embed-test',
+      chatModel: 'chat-test',
+      distanceMetric: 'cosine',
+      chunkSize: 1000,
+      chunkOverlap: 200,
+      retrievalK: 4,
+      retrievalDistanceThreshold: 0.5,
+    });
+    const collectionId = created.id;
+
+    await registry.updateCollection(ctx, collectionId, {
       status: 'ready',
       activePhysicalCollection,
       activeVersion: 'v-p24-signal',
-     });
+    });
 
+    let resolveCalled = false;
     let signalCapturedInGuard: AbortSignal | undefined;
+    resolveReadableCollectionOverride = async (req: any, deps: any, runtimeConfig: any, options?: any) => {
+      resolveCalled = true;
+      signalCapturedInGuard = options?.abortSignal;
+      
+      if (signalCapturedInGuard) {
+        // If signal exists, we can wait a bit to ensure we see the abort
+        if (signalCapturedInGuard.aborted) return { id: collectionId, status: 'ready', activePhysicalCollection, activeVersion: 'v-p24-signal' } as any;
+        
+        await new Promise((resolve) => {
+          const timeout = setTimeout(resolve, 100); // Max wait 100ms
+          signalCapturedInGuard!.addEventListener('abort', () => {
+            clearTimeout(timeout);
+            resolve(true);
+          }, { once: true });
+        });
+      }
 
-    resolveReadableCollectionOverride = async (req: any, deps: any, runtimeConfig: any)
+      return {
+        id: collectionId,
+        status: 'ready',
+        activePhysicalCollection,
+        activeVersion: 'v-p24-signal',
+      } as any;
+    };
+
+    const controller = new AbortController();
+    try {
+      const fetchPromise = request(`/v1/rag/collections/${collectionId}/retrieve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "signal?" }),
+        signal: controller.signal,
+      });
+
+      // Give it a bit more time to reach the handler and start waiting
+      await new Promise(resolve => setTimeout(resolve, 20));
+      
+      controller.abort();
+      
+      await fetchPromise;
+    } catch (err: any) {
+      if (err.name !== 'AbortError') throw err;
+    } finally {
+      resolveReadableCollectionOverride = undefined;
+    }
+
+    assert.ok(resolveCalled, 'resolveReadableCollectionOverride should have been called');
+    assert.ok(signalCapturedInGuard, 'Signal should have been captured in guard (req.signal might be missing in this Node/Express version)');
+    assert.ok(signalCapturedInGuard?.aborted, 'Captured signal should be aborted');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Prompt 25: Active Embedding Model Snapshot
+  // ---------------------------------------------------------------------------
+
+  it('query and retrieve use the snapshotted activeEmbeddingModel until a new reindex completes', async () => {
+    const ctx = { tenantId: 'default', userId: 'local-dev', requestId: 'p25-test' };
+    const activePhysicalCollection = 'p25-active-physical';
+    readablePhysicalCollections.set(activePhysicalCollection, 5);
+    retrieveCalls.length = 0;
+
+    // 1. Create collection with v1 model
+    const created = await registry.createCollection(ctx, {
+      displayName: 'Snapshot Test',
+      sourcePath: 'data/p25',
+      ozelgeDataPath: 'data/p25.json',
+      embeddingModel: 'embed-v1',
+      chatModel: 'chat-v1',
+      distanceMetric: 'cosine',
+      chunkSize: 1000,
+      chunkOverlap: 200,
+      retrievalK: 4,
+      retrievalDistanceThreshold: 0.5,
+    });
+    const collectionId = created.id;
+
+    // 2. Mock a successful reindex that was built with v1
+    await registry.updateCollection(ctx, collectionId, {
+      status: 'ready',
+      activePhysicalCollection,
+      activeVersion: 'v-p25-1',
+      activeEmbeddingModel: 'embed-v1', // Snapshot the model used for build
+    });
+    
+    // We need to override resolveReadableCollection to avoid real Chroma calls
+    resolveReadableCollectionOverride = async (req: any, deps: any, _runtimeConfig: any) => {
+      const collection = await deps.registry.getVisibleCollection(ctx, req.params.collectionId);
+      assert.ok(collection);
+      return collection;
+    };
+
+    try {
+      // We need to verify what the router sends to the RAG handler
+      const responseV1 = await request(`/v1/rag/collections/${collectionId}/retrieve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "v1?" }),
+      });
+      assert.equal(responseV1.status, 200);
+      assert.equal(retrieveCalls.length, 1);
+      assert.equal(retrieveCalls[0].embeddingModel, 'embed-v1');
+
+      // 3. Admin PATCH to v2 model
+      const patchResponse = await request(`/v1/admin/collections/${collectionId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ embeddingModel: 'embed-v2' }),
+      });
+      assert.equal(patchResponse.status, 200);
+
+      // 4. Verify query still uses v1 because reindex hasn't finished
+      const responseStillV1 = await request(`/v1/rag/collections/${collectionId}/retrieve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "still v1?" }),
+      });
+      assert.equal(responseStillV1.status, 200);
+      assert.equal(retrieveCalls.length, 2);
+      // THIS IS THE FAILING ASSERTION before fix: it will likely be 'embed-v2'
+      assert.equal(retrieveCalls[1].embeddingModel, 'embed-v1', 'Should still use v1 model even after patch');
+    } finally {
+      resolveReadableCollectionOverride = undefined;
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Prompt 26: Public Collection Detail DTO Sanitization
+  // ---------------------------------------------------------------------------
+
+  it('GET /v1/rag/collections/:collectionId returns a sanitized public DTO', async () => {
+    const ctx = { tenantId: 'default', userId: 'local-dev', requestId: 'p26-test' };
+    
+    // 1. Create a collection with some internal fields
+    const created = await registry.createCollection(ctx, {
+      displayName: 'Sanitization Test',
+      description: 'Public description',
+      sourcePath: 'internal/path',
+      ozelgeDataPath: 'internal/data.json',
+      embeddingModel: 'embed-internal',
+      chatModel: 'chat-internal',
+      distanceMetric: 'cosine',
+      chunkSize: 1000,
+      chunkOverlap: 200,
+      retrievalK: 4,
+      retrievalDistanceThreshold: 0.5,
+    });
+    const collectionId = created.id;
+
+    // 2. Fetch the collection via public detail endpoint
+    const response = await request(`/v1/rag/collections/${collectionId}`);
+    assert.equal(response.status, 200);
+    
+    const body = await response.json() as any;
+    const collection = body.collection;
+
+    // 3. Assert public fields exist
+    assert.equal(collection.id, collectionId);
+    assert.equal(collection.displayName, 'Sanitization Test');
+    assert.equal(collection.description, 'Public description');
+    assert.equal(collection.status, 'creating');
+    assert.ok('chunkCount' in collection);
+    assert.ok('activeVersion' in collection);
+    assert.ok('updatedAt' in collection);
+    assert.equal(collection.readyUrl, `/v1/rag/collections/${collectionId}/ready`);
+    assert.equal(collection.queryUrl, `/v1/rag/collections/${collectionId}/query`);
+    assert.equal(collection.retrieveUrl, `/v1/rag/collections/${collectionId}/retrieve`);
+
+    // 4. Assert internal fields are NOT present
+    const forbiddenFields = [
+      'tenantId',
+      'createdBy',
+      'sourcePath',
+      'ozelgeDataPath',
+      'embeddingModel',
+      'chatModel',
+      'distanceMetric',
+      'chromaCollectionConfiguration',
+      'activePhysicalCollection',
+      'activeEmbeddingModel'
+    ];
+
+    for (const field of forbiddenFields) {
+      assert.ok(!(field in collection), `Field "${field}" should not be in public response`);
+    }
+  });
+});

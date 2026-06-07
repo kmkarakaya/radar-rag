@@ -38,7 +38,7 @@ export async function loadOzelgeRecords(): Promise<OzelgeRecord[]> {
 }
 
 export function toDocuments(records: OzelgeRecord[]) {
-  return mapOzelgeRecordsToDocuments(records);
+  return mapOzelgeRecordsToDocuments(records, "");
 }
 
 export async function analyzeIndexingSource(runtimeConfig = config) {
@@ -95,6 +95,9 @@ export async function runIndexing(
     collectionId?: string;
     log?: (message: string) => void;
     logEvent?: OperationalLogSink;
+    deps?: {
+      buildPhysicalCollection?: any;
+    };
   } = {},
 ): Promise<void> {
   const log = options.log ?? console.log;
@@ -119,7 +122,18 @@ export async function runIndexing(
     const job = await startReindexJob({ registry, collectionId, context, runtimeConfig });
     log(`Started job ${job.id}`);
     
-    await runIndexJob({ registry, jobId: job.id, runtimeConfig, log, logEvent });
+    const finishedJob = await runIndexJob({ 
+      registry, 
+      jobId: job.id, 
+      runtimeConfig, 
+      log, 
+      logEvent,
+      deps: options.deps
+    });
+
+    if (finishedJob.status !== "succeeded") {
+      throw new Error(`Indexing job failed: ${finishedJob.error ?? "unknown error"}`);
+    }
   } finally {
     registry.close?.();
   }

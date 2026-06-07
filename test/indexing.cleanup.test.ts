@@ -347,6 +347,7 @@ describe("startup maintenance", () => {
       start: () => {},
       drain: async () => {},
       shutdown: async () => {},
+      abort: async () => {},
     };
     const { errors, logger } = createLogger();
     const runtimeConfig = createRuntimeConfig({ port: 0 });

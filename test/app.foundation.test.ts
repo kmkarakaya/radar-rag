@@ -41,6 +41,8 @@ function createHealthyRegistryStub(): CollectionRegistry {
     markPhysicalCollectionCleanupFailed: async () => {},
     listDuePhysicalCollectionsForCleanup: async () => [],
     collectionExists: async () => false,
+    cancelIndexJob: async () => ({} as any),
+    deleteCollection: async () => {},
   };
 }
 

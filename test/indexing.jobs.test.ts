@@ -178,6 +178,7 @@ describe("indexing jobs", () => {
       targetVersion: "explicit-version",
       targetChromaConfiguration: { hnsw: { space: "l2" } },
       lockToken: "lock-1",
+      targetEmbeddingModel: "embed-test",
       createdAt: "2026-06-04T00:00:00.000Z",
       updatedAt: "2026-06-04T00:00:00.000Z",
     } as const;
@@ -212,7 +213,13 @@ describe("indexing jobs", () => {
       updateCollection: async () => {
         throw new Error("not used");
       },
+      deleteCollection: async () => {
+        throw new Error("not used");
+      },
       beginIndexJob: async () => {
+        throw new Error("not used");
+      },
+      cancelIndexJob: async () => {
         throw new Error("not used");
       },
       markIndexJobRunning: async () => {

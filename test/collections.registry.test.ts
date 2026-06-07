@@ -422,6 +422,80 @@ describe("sqlite collection registry", () => {
     assert.equal(secondPhysical?.status, "building");
   });
 
+  it("snapshots and preserves activeEmbeddingModel during reindexing", async () => {
+    // 1. Create collection with embed-v1
+    const collection = await registry.createCollection(context, {
+      ...collectionInput,
+      embeddingModel: "embed-v1",
+    });
+    assert.equal(collection.activeEmbeddingModel, undefined);
+
+    // 2. Reindex completes with embed-v1
+    const job1Queued = await registry.beginIndexJob(context, collection.id);
+    const job1 = await registry.markIndexJobRunning(job1Queued.id);
+    await registry.createPhysicalCollectionRecord({
+      name: job1.targetPhysicalCollection,
+      tenantId: context.tenantId,
+      collectionId: collection.id,
+      version: job1.targetVersion,
+      chromaConfiguration: job1.targetChromaConfiguration,
+    });
+    await registry.completeIndexJob(job1.id, {
+      activePhysicalCollection: job1.targetPhysicalCollection,
+      activeVersion: job1.targetVersion,
+      documentCount: 1,
+      chunkCount: 1,
+      retentionMs: 0,
+    });
+
+    const readyV1 = await registry.getVisibleCollection(context, collection.id);
+    assert.equal(readyV1?.embeddingModel, "embed-v1");
+    assert.equal(readyV1?.activeEmbeddingModel, "embed-v1");
+
+    // 3. Patch to embed-v2 (desired changes, active read snapshot stays v1)
+    await registry.updateCollection(context, collection.id, {
+      embeddingModel: "embed-v2",
+    });
+
+    const patched = await registry.getVisibleCollection(context, collection.id);
+    assert.equal(patched?.embeddingModel, "embed-v2");
+    assert.equal(patched?.activeEmbeddingModel, "embed-v1"); // Snapshot should be preserved
+
+    // 4. Start reindex - it should snapshot embed-v2 from the record
+    const job2Queued = await registry.beginIndexJob(context, collection.id);
+    assert.equal(job2Queued.targetEmbeddingModel, "embed-v2");
+
+    // 5. If reindex fails, snapshot stays v1
+    await registry.markIndexJobRunning(job2Queued.id);
+    await registry.failIndexJob(job2Queued.id, "failed build v2");
+
+    const failed = await registry.getVisibleCollection(context, collection.id);
+    assert.equal(failed?.embeddingModel, "embed-v2");
+    assert.equal(failed?.activeEmbeddingModel, "embed-v1");
+
+    // 6. Successful reindex with v2 updates snapshot
+    const job3Queued = await registry.beginIndexJob(context, collection.id);
+    const job3 = await registry.markIndexJobRunning(job3Queued.id);
+    await registry.createPhysicalCollectionRecord({
+      name: job3.targetPhysicalCollection,
+      tenantId: context.tenantId,
+      collectionId: collection.id,
+      version: job3.targetVersion,
+      chromaConfiguration: job3.targetChromaConfiguration,
+    });
+    await registry.completeIndexJob(job3.id, {
+      activePhysicalCollection: job3.targetPhysicalCollection,
+      activeVersion: job3.targetVersion,
+      documentCount: 2,
+      chunkCount: 2,
+      retentionMs: 0,
+    });
+
+    const readyV2 = await registry.getVisibleCollection(context, collection.id);
+    assert.equal(readyV2?.embeddingModel, "embed-v2");
+    assert.equal(readyV2?.activeEmbeddingModel, "embed-v2");
+  });
+
   it("marks a building physical record as failed_build when a job fails", async () => {
     const { job } = await createRunningJob();
 
@@ -611,5 +685,31 @@ describe("sqlite collection registry", () => {
     assert.equal(active?.cleanupError, undefined);
     assert.equal(failedBuild?.status, "failed_build");
     assert.equal(failedBuild?.cleanupError, "build failed");
+  });
+
+  it("deletes a collection and sets physical collections to delete_pending", async () => {
+    const collection = await registry.createCollection(context, collectionInput);
+    const physicalName = createPhysicalCollectionName({
+      tenantId: context.tenantId,
+      collectionId: collection.id,
+      version: "v1",
+    });
+
+    await registry.createPhysicalCollectionRecord({
+      name: physicalName,
+      tenantId: context.tenantId,
+      collectionId: collection.id,
+      version: "v1",
+      chromaConfiguration: { hnsw: { space: "l2" } },
+    });
+
+    await registry.deleteCollection(context, collection.id);
+
+    const exists = await registry.collectionExists(collection.id);
+    assert.equal(exists, false);
+
+    const physical = await registry.getPhysicalCollection(physicalName);
+    assert.equal(physical?.status, "delete_pending");
+    assert.ok(physical?.deleteAfter);
   });
 });

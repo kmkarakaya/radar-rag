@@ -86,7 +86,48 @@ export async function startServer(input: {
 }
 
 async function main(): Promise<void> {
-  await startServer();
+  const { server, jobRunner, registry } = await startServer();
+
+  const shutdown = async (signal: string) => {
+    console.log(`Received ${signal}. Starting graceful shutdown...`);
+
+    // Set a timeout to force exit if graceful shutdown takes too long
+    const forceExitTimeout = setTimeout(() => {
+      console.error("Shutdown timed out after 10s, forcing exit.");
+      process.exit(1);
+    }, 10000);
+
+    try {
+      // 1. Close HTTP server
+      await new Promise<void>((resolve, reject) => {
+        server.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      console.log("HTTP server closed.");
+
+      // 2. Shutdown job runner
+      await jobRunner.shutdown();
+      console.log("Job runner shut down.");
+
+      // 3. Close registry
+      if (registry) {
+        registry.close?.();
+        console.log("Registry closed.");
+      }
+
+      console.log("Shutdown complete.");
+      process.exit(0);
+    } catch (error) {
+      console.error("Error during graceful shutdown:", error);
+      clearTimeout(forceExitTimeout);
+      process.exit(1);
+    }
+  };
+
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
 
 const isDirectExecution = process.argv[1] === fileURLToPath(import.meta.url);

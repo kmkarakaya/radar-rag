@@ -10,12 +10,13 @@ import {
 
 describe("operational observability helpers", () => {
   it("builds rate limit keys from tenant, user, collection and operation", () => {
-    assert.equal(createRateLimitKey({
+    const key = createRateLimitKey({
       tenantId: "tenant-a",
       userId: "user-b",
       collectionId: "collection-c",
       operation: "query",
-    }), "tenant-a:user-b:collection-c:query");
+    });
+    assert.equal(key, JSON.stringify(["tenant-a", "user-b", "collection-c", "query"]));
   });
 
   it("keeps request rate limits isolated by operation", () => {

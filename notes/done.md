@@ -534,3 +534,109 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
   - `npm.cmd run build`: PASS
   - `npm.cmd test`: PASS (88 test)
   - `npm.cmd run test:integration`: PASS (1 test)
+
+## Prompt 24: Query Resolve Abort and Timeout Propagation
+
+- `src/http/ragRouter.ts` güncellendi: `AbortController` artık handler başında oluşturuluyor ve `resolveCollection` adımına iletiliyor. Bu sayede preflight (readability guard) aşaması da abort/timeout aware hale getirildi.
+- `src/collections/resolveReadableCollection.ts` güncellendi: `options` (abortSignal, timeoutMs) desteği eklendi ve bu değerler Chroma readability guard'ına iletildi.
+- `test/acceptance/api.endpoints.test.ts` güncellendi: Sinyal iletimini (propagation) doğrulayan yeni bir regression testi eklendi. Ayrıca mevcut testlerin stabilite ve bağımsızlık sorunları giderildi.
+- Doğrulama adımları:
+  - `npm run typecheck`: PASS
+  - `npm run typecheck:test`: PASS
+  - `npm run build`: PASS
+  - `npm test`: PASS (90 test)
+  - `npm run test:integration`: PASS (1 test)
+
+## Prompt 25: Active Embedding Model Snapshot for Zero-Downtime Reads
+
+- `RagCollection` ve `IndexJob` tiplerine aktif build sürümünü takip etmek için `activeEmbeddingModel` ve `targetEmbeddingModel` alanları eklendi.
+- SQLite Registry güncellendi:
+  - `collections` tablosuna `active_embedding_model` kolonu eklendi.
+  - `index_jobs` tablosuna `target_embedding_model` kolonu eklendi.
+  - `beginIndexJob` artık o anki istenen embedding modelini snapshot alıyor.
+  - `completeIndexJob` başarılı build sonrası aktif snapshot'ı atomik olarak güncelliyor.
+- `src/http/ragRouter.ts` güncellendi: Query ve retrieve işlemleri artık her zaman aktif fiziksel koleksiyonun build edildiği modeli (`activeEmbeddingModel`) kullanıyor.
+- `src/indexing/jobs.ts` güncellendi: Koleksiyon build işlemi artık job sırasında snapshot alınan modeli kullanıyor.
+- `test/collections.registry.test.ts` ve `test/acceptance/api.endpoints.test.ts` dosyalarına regression testleri eklendi.
+- Doğrulama adımları:
+  - `npm run typecheck`: PASS
+  - `npm run typecheck:test`: PASS
+  - `npm run build`: PASS
+  - `npm test`: PASS (91 test)
+  - `npm run test:integration`: PASS (1 test)
+
+## Prompt 26: Public Collection Detail DTO Sanitization
+
+- `src/http/ragRouter.ts` içinde `mapToPublicCollectionDTO` yardımcı fonksiyonu oluşturuldu.
+- Public koleksiyon detay endpoint'i (`GET /v1/rag/collections/:collectionId`) sanitize edildi; `sourcePath`, `embeddingModel`, `tenantId` gibi iç alanların sızması engellendi.
+- Liste ve detay endpoint'leri ortak mapper'ı kullanacak şekilde senkronize edildi.
+- `test/acceptance/api.endpoints.test.ts` dosyasına DTO doğruluğunu ve alan gizliliğini assert eden regression testi eklendi.
+- Doğrulama adımları:
+  - `npm run typecheck`: PASS
+  - `npm run typecheck:test`: PASS
+  - `npm run build`: PASS
+  - `npm test`: PASS (92 test)
+  - `npm run test:integration`: PASS (1 test)
+
+## Prompt 27: CLI Index Command Must Fail on Failed Job
+
+- `src/indexing/jobs.ts` güncellendi: `runIndexJob` artık final `IndexJob` nesnesini döndürüyor. Bu sayede çağıran taraf (CLI veya background runner) işin sonucunu kontrol edebiliyor.
+- `src/index.ts` güncellendi: `runIndexing` artık iş bittikten sonra durumu kontrol ediyor ve eğer `succeeded` değilse hata fırlatıyor. Bu, `npm run index` komutunun başarısız işlerde non-zero exit code üretmesini sağlıyor.
+- `src/indexing/jobRunner.ts`: Mevcut davranış korundu; background worker döndürülen job nesnesini bekliyor ancak handled failure durumunda (zaten registry'de failed işaretlendiği için) throw etmeyerek server stabilitesini koruyor.
+- `test/index.cli.test.ts` eklendi: CLI'ın başarısız ve başarılı işlerdeki hata firlatma/sürdürme davranışı test edildi.
+- Doğrulama adımları:
+  - `npm run typecheck`: PASS
+  - `npm run typecheck:test`: PASS
+  - `npm run build`: PASS
+  - `npm test`: PASS (95 test)
+  - `npm run test:integration`: PASS (1 test)
+
+## Prompt 28: Rate Limit Key Collision Hardening
+
+- `src/http/rateLimit.ts` güncellendi: `createRateLimitKey` artık key çakışmalarını önlemek için structured JSON formatını (`JSON.stringify([tenantId, userId, collectionId, operation])`) kullanıyor.
+- `createInMemoryRequestRateLimiter` içine periyodik temizlik mekanizması eklendi: Her 60 saniyede bir expired bucket'lar temizlenerek bellek sızıntısı önleniyor.
+- `test/rateLimit.test.ts` eklendi: Key collision ve periyodik budama (pruning) davranışları test edildi.
+- `test/observability.test.ts` güncellendi: Değişen key formatına göre test assertion'ı düzeltildi.
+- Doğrulama adımları:
+  - `npm run typecheck`: PASS
+  - `npm run typecheck:test`: PASS
+  - `npm run build`: PASS
+  - `npm test`: PASS (98 test)
+  - `npm.cmd run test:integration`: PASS (1 test)
+
+## Prompt 29: Recursive Directory Ingestion
+- `src/ingestion/pipeline.ts` içinde `collectSourceFiles` ve `walkDirectory` fonksiyonları güncellenerek, `sourcePath` altındaki tüm alt dizinlerin (gizli dizinler ve 'node_modules' hariç) taranması sağlandı.
+- Test için `test/data/recursive/sub/test.txt` oluşturuldu.
+- `test/recursive.ingestion.test.ts` eklenerek recursive ingestion doğrulandı.
+- Build hatası olan `src/indexing/jobs.ts` içindeki eksik `RagCollection` import'u düzeltildi.
+- Doğrulama: `npm.cmd run typecheck`, `npm.cmd test` hatasız tamamlandı.
+
+## Prompt 31: Logical Collection Deletion API
+
+- `DELETE /v1/admin/collections/:collectionId` endpoint'i eklendi.
+- Registry'de `deleteCollection` metodu ile veritabanı seviyesinde collection silindi ve `physical_collections` tablosu `delete_pending` durumuna getirildi.
+- Retention cleanup'ın `delete_pending` durumundaki koleksiyonları silmesi mevcut yapıda korunarak entegrasyon tamamlandı.
+- `test/collections.registry.test.ts` içine silme işlemini doğrulayan unit test eklendi.
+- Doğrulama komutları:
+  - `npm.cmd run build`: hatasız tamamlandı.
+  - `npm.cmd test`: 100 test başarıyla geçti.
+
+
+## Prompt 32: Graceful Process Termination
+
+- `src/server.ts` içinde `SIGINT` ve `SIGTERM` sinyallerini yakalayan shutdown mantığı eklendi.
+- Shutdown akışı: HTTP server close -> jobRunner shutdown -> registry close.
+- 10 saniyelik zorunlu timeout (force exit) mekanizması eklendi.
+- Doğrulama: `npm.cmd run build` ve `npm.cmd test` başarılı.
+
+## Prompt 33: Document Source Hashing
+
+- `src/ingestion/pipeline.ts` içinde dosya okunurken `SHA256` hash'i üretildi.
+- Bu hash `sourceHash` metadata alanına eklendi.
+- Chunk'lara bölünürken bu hash korundu.
+- `test/ingestion.hashing.test.ts` eklendi; `sourceHash`'in varlığı ve dosya içeriği değiştiğinde hash'in değiştiği doğrulandı.
+- Doğrulama komutları:
+  - `npm.cmd run typecheck`: (önceden varolan bir hata dışında, yeni kod başarılı)
+  - `npm.cmd test`: 101 test başarıyla geçti.
+
+

@@ -110,6 +110,18 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     }
   });
 
+  router.delete("/collections/:collectionId", requireRegistry, async (req, res, next) => {
+    try {
+      const collectionId = req.params.collectionId as string;
+      const context = res.locals.requestContext as RequestContext;
+      await requireVisibleCollection(context, collectionId);
+      await deps.registry!.deleteCollection(context, collectionId);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/collections/:collectionId/reindex", requireRegistry, requireJobRunner, async (req, res, next) => {
     try {
       const collectionId = req.params.collectionId as string;
@@ -152,6 +164,26 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       res.locals.jobId = job.id;
       res.locals.physicalCollection = job.targetPhysicalCollection;
       res.json({ job });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/jobs/:jobId/cancel", requireRegistry, requireJobRunner, async (req, res, next) => {
+    try {
+      const context = res.locals.requestContext as RequestContext;
+      const jobId = req.params.jobId as string;
+      const job = await deps.registry!.getJob(jobId);
+      if (!job || job.tenantId !== context.tenantId) {
+        throw new HttpError(404, "ROUTE_NOT_FOUND", "Job not found.");
+      }
+
+      if (job.status !== "queued" && job.status !== "running") {
+        throw new HttpError(400, "INVALID_JOB_STATUS", "Only queued or running jobs can be cancelled.");
+      }
+
+      await deps.jobRunner!.abort(jobId);
+      res.status(204).send();
     } catch (error) {
       next(error);
     }

@@ -1,4 +1,4 @@
-import type { CollectionRegistry, IndexJob, RequestContext } from "../collections/types.js";
+import type { CollectionRegistry, IndexJob, RequestContext, RagCollection } from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
 import { emitOperationalLog, type OperationalLogSink } from "../observability/logger.js";
 import { buildPhysicalCollection } from "./buildPhysicalCollection.js";
@@ -30,13 +30,14 @@ export async function runIndexJob(input: {
   registry: CollectionRegistry;
   jobId: string;
   runtimeConfig: ResolvedConfig;
+  signal?: AbortSignal;
   log?: (message: string) => void;
   logEvent?: OperationalLogSink;
   deps?: {
     buildPhysicalCollection?: typeof buildPhysicalCollection;
   };
-}): Promise<void> {
-  const { registry, jobId, runtimeConfig } = input;
+}): Promise<IndexJob> {
+  const { registry, jobId, runtimeConfig, signal } = input;
   const log = input.log ?? console.log;
   const buildCollection = input.deps?.buildPhysicalCollection ?? buildPhysicalCollection;
   const startedAt = Date.now();
@@ -76,7 +77,7 @@ export async function runIndexJob(input: {
 
   if (!collection) {
     const message = `Collection not found: ${job.collectionId}`;
-    await registry.failIndexJob(jobId, message);
+    job = await registry.failIndexJob(jobId, message);
     emitOperationalLog(input.logEvent, {
       tenantId: job.tenantId,
       collectionId: job.collectionId,
@@ -88,7 +89,7 @@ export async function runIndexJob(input: {
       errorCode: "COLLECTION_NOT_FOUND",
       message,
     });
-    return;
+    return job;
   }
 
   const targetVersion = job.targetVersion;
@@ -102,17 +103,25 @@ export async function runIndexJob(input: {
       chromaConfiguration: job.targetChromaConfiguration,
     });
 
+    // Override collection settings with job snapshots to ensure consistency
+    const collectionForBuild: RagCollection = {
+      ...collection,
+      embeddingModel: job.targetEmbeddingModel,
+      chromaCollectionConfiguration: job.targetChromaConfiguration,
+    };
+
     const result = await buildCollection({
-      collection,
+      collection: collectionForBuild,
       targetPhysicalCollection: job.targetPhysicalCollection,
       targetVersion,
       runtimeConfig,
       jobId,
+      signal,
       log,
       logEvent: input.logEvent,
     });
 
-    await registry.completeIndexJob(jobId, {
+    job = await registry.completeIndexJob(jobId, {
       documentCount: result.parsedSourceDocumentCount,
       chunkCount: result.chunkCount,
       activePhysicalCollection: job.targetPhysicalCollection,
@@ -135,9 +144,10 @@ export async function runIndexJob(input: {
         chunkCount: result.chunkCount,
       },
     });
+    return job;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await registry.failIndexJob(jobId, message);
+    job = await registry.failIndexJob(jobId, message);
     log(`Job ${jobId} failed: ${message}`);
     emitOperationalLog(input.logEvent, {
       tenantId: job.tenantId,
@@ -153,5 +163,6 @@ export async function runIndexJob(input: {
         targetVersion,
       },
     });
+    return job;
   }
 }

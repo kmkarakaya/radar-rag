@@ -42,12 +42,24 @@ export function createInMemoryRequestRateLimiter(input: {
   maxRequestsPerWindow: number;
 }): RequestRateLimiter {
   const buckets = new Map<string, Bucket>();
+  let lastPruneMs = 0;
+  const PRUNE_INTERVAL_MS = 60_000;
 
   return {
     check(request) {
       const key = createRateLimitKey(request);
       const nowMs = request.nowMs ?? Date.now();
       const resetAtMs = nowMs + input.windowMs;
+
+      // Periodic pruning of expired buckets
+      if (nowMs - lastPruneMs > PRUNE_INTERVAL_MS) {
+        for (const [k, b] of buckets.entries()) {
+          if (b.resetAtMs <= nowMs) {
+            buckets.delete(k);
+          }
+        }
+        lastPruneMs = nowMs;
+      }
 
       if (!input.enabled) {
         return {
@@ -95,12 +107,13 @@ export function createInMemoryRequestRateLimiter(input: {
 }
 
 export function createRateLimitKey(input: RateLimitInput): string {
-  return [
+  // Use structured JSON to prevent collisions from separator characters like ":"
+  return JSON.stringify([
     input.tenantId,
     input.userId,
     input.collectionId,
     input.operation,
-  ].join(":");
+  ]);
 }
 
 export function createRateLimitMiddleware(input: {

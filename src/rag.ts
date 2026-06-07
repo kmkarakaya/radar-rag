@@ -700,7 +700,7 @@ export async function answerQuestion(question: string, options: {
       422,
       {
         question,
-        retrievalK: runtimeConfig.retrievalK,
+        retrievalK: k,
         distanceScoreThreshold: retrieval.distanceScoreThreshold,
       },
     );

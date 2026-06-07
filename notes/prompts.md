@@ -1940,3 +1940,62 @@ Final cevapta:
 - Komut ve stale scan sonuclarini yaz.
 - notes/done.md ve notes/plan-parity-audit.md guncellemelerini belirt.
 ```
+
+## Prompt 23: NO_RELEVANT_CONTEXT RetrievalK Metadata Accuracy
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin tek bir kucuk dogruluk bug'ini duzeltmektir: `NO_RELEVANT_CONTEXT` hata detaylarinda `retrievalK` collection/request-specific kullanilan degeri gostermeli, global `runtimeConfig.retrievalK` degerini degil.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "Faz 1: RAG Core'u Collection-Aware Yap"
+- "Concurrency Stratejisi"
+- "Test Kabul Kriterleri"
+
+Ayrica calismaya baslamadan once notes/done.md ve notes/plan-parity-audit.md dosyalarini oku. Mevcut multi-collection release gate durumunu dikkate al, fakat bu promptun kapsamini genisletme.
+
+Bug:
+`src/rag.ts` icinde `answerQuestion(...)`, retrieved source kalmadiginda `NO_RELEVANT_CONTEXT` hatasi firlatiyor. Bu hatanin `details.retrievalK` alani su anda `runtimeConfig.retrievalK` kullaniyor. Ancak multi-collection refactor sonrasi gercek kullanilan `k`, `options.retrievalK ?? runtimeConfig.retrievalK` olarak hesaplanmis collection/request-specific degerdir. Error metadata bu gercek degeri gostermeli.
+
+Amac:
+Davranisi degistirmeden sadece hata metadata dogrulugunu duzelt. Collection-specific `retrievalK` kullanan bir collection `NO_RELEVANT_CONTEXT` hatasi aldiginda response/error details icinde ayni `retrievalK` gorunmeli.
+
+Yapilacaklar:
+1. Once failing test ekle:
+   - Uygun test dosyasini sec:
+     - `test/acceptance/api.endpoints.test.ts` HTTP response details uzerinden test etmek icin uygunsa onu kullan.
+     - Alternatif olarak `test/rag.core.test.ts` veya mevcut uygun unit test dosyasi ekleyebilirsin.
+   - Testte collection/request-specific `retrievalK` degeri global config default'undan farkli olmali.
+   - Retrieve sonucunda hic source kalmayan bir senaryo kur.
+   - Beklenti:
+     - Hata code `NO_RELEVANT_CONTEXT`.
+     - `details.retrievalK` gercek kullanilan collection/request-specific `k` degeri olmali.
+     - Global `runtimeConfig.retrievalK` degeri olmamali.
+2. Minimal fix uygula:
+   - `src/rag.ts` icinde `NO_RELEVANT_CONTEXT` error details altindaki `retrievalK` alanini `runtimeConfig.retrievalK` yerine mevcut lokal `k` degeriyle doldur.
+   - Baska error code'lari, retrieval algoritmasi, threshold davranisi, endpoint contract'i veya config shape'i degistirme.
+3. notes/done.md guncelle:
+   - Dosyanin sonuna su baslikla kisa kayit ekle:
+     `## Prompt 23: NO_RELEVANT_CONTEXT RetrievalK Metadata Accuracy`
+   - Ne yaptigini, degisen dosyalari ve calistirdigin komutlari yaz.
+
+Dikkat:
+- Bu prompt tek bug fix kapsamindadir.
+- notes/prompts.md dosyasini degistirme.
+- notes/plan-parity-audit.md dosyasini degistirme veya yeniden adlandirma.
+- Collection list, readiness, rate limit, cleanup, registry veya frontend davranislarina dokunma.
+- Testi gecirmek icin `NO_RELEVANT_CONTEXT` davranisini gevsetme; sadece metadata alanini duzelt.
+
+Dogrulama:
+1. `npm.cmd run typecheck`
+2. `npm.cmd run typecheck:test`
+3. `npm.cmd run build`
+4. `npm.cmd test`
+5. `npm.cmd run test:integration`
+
+Final cevapta:
+- Eklenen failing regression testini ozetle.
+- `src/rag.ts` icindeki metadata fix'ini ozetle.
+- Degisen dosyalari listele.
+- Komut sonuclarini yaz.
+- notes/done.md icine `Prompt 23: NO_RELEVANT_CONTEXT RetrievalK Metadata Accuracy` kaydini ekledigini belirt.
+```

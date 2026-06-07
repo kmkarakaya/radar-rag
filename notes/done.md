@@ -518,3 +518,19 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
   - `npm.cmd run build`: PASS
   - `npm.cmd test`: PASS (87 test)
   - `npm.cmd run test:integration`: PASS (1 test)
+
+## Prompt 23: NO_RELEVANT_CONTEXT RetrievalK Metadata Accuracy
+
+- `src/rag.ts` icinde `NO_RELEVANT_CONTEXT` hatasi icin `details.retrievalK` alani global `runtimeConfig.retrievalK` yerine efektif kullanilan lokal `k` degerini raporlayacak sekilde duzeltildi.
+- `test/rag.core.test.ts` eklendi. Test, collection/request-specific `retrievalK` degerini global default'tan farkli kuruyor, retrieval sonucunu threshold ustunde bir skorla bosaltiyor ve `NO_RELEVANT_CONTEXT.details.retrievalK` alaninin gercek kullanilan degeri dondugunu dogruluyor.
+- Degisen dosyalar:
+  - `src/rag.ts`
+  - `test/rag.core.test.ts`
+  - `notes/done.md`
+- Calistirilan komutlar ve sonuclar:
+  - `node --import tsx --test test/rag.core.test.ts`: PASS
+  - `npm.cmd run typecheck`: PASS
+  - `npm.cmd run typecheck:test`: PASS
+  - `npm.cmd run build`: PASS
+  - `npm.cmd test`: PASS (88 test)
+  - `npm.cmd run test:integration`: PASS (1 test)

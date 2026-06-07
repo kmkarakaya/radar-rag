@@ -37,7 +37,7 @@ before(async () => {
     start: () => {},
     drain: async () => {},
     shutdown: async () => {},
-    abort: async () => {},
+    abort: async (_jobId: string) => {},
   };
   const app = createApp({
     registry,
@@ -210,6 +210,38 @@ describe("v1 admin and rag api endpoints", () => {
     const saved = await registry.getVisibleCollection(ctx, body.collection.id);
     assert.ok(saved);
     createdCollection = saved;
+  });
+
+  it("POST /v1/admin/collections auto-fills defaults from config", async () => {
+    const response = await request("/v1/admin/collections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        displayName: "Defaults Test Collection",
+        // sourcePath and ozelgeDataPath are omitted to test auto-fill
+      }),
+    });
+
+    const body = await response.json() as any;
+    assert.equal(response.status, 201);
+    
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "test" };
+    const saved = await registry.getVisibleCollection(ctx, body.collection.id);
+    assert.ok(saved);
+    
+    assert.equal(saved.displayName, "Defaults Test Collection");
+    // Assert auto-filled paths from config
+    assert.equal(saved.sourcePath, config.collectionDefaults.sourcePath);
+    assert.equal(saved.ozelgeDataPath, config.collectionDefaults.ozelgeDataPath);
+    
+    // Assert defaults from config
+    assert.equal(saved.chunkSize, config.collectionDefaults.chunkSize);
+    assert.equal(saved.chunkOverlap, config.collectionDefaults.chunkOverlap);
+    assert.equal(saved.retrievalK, config.collectionDefaults.retrievalK);
+    assert.equal(saved.retrievalDistanceThreshold, config.collectionDefaults.retrievalDistanceThreshold);
+    assert.equal(saved.distanceMetric, config.collectionDefaults.distanceMetric);
+    assert.equal(saved.embeddingModel, config.ollamaEmbeddingModel);
+    assert.equal(saved.chatModel, config.ollamaChatModel);
   });
 
   it("GET /v1/rag/collections lists collections", async () => {
@@ -1095,6 +1127,41 @@ describe("v1 admin and rag api endpoints", () => {
 
     for (const field of forbiddenFields) {
       assert.ok(!(field in collection), `Field "${field}" should not be in public response`);
+    }
+  });
+
+  it('DELETE /v1/admin/collections/:collectionId aborts running jobs', async () => {
+    const ctx = { tenantId: 'default', userId: 'local-dev', requestId: 'p36-test' };
+    const collection = await registry.createCollection(ctx, {
+      displayName: 'Abort Test',
+      sourcePath: 'data',
+      ozelgeDataPath: 'data/ozelge.json',
+      embeddingModel: 'embed',
+      chatModel: 'chat',
+      distanceMetric: 'l2',
+      chunkSize: 500,
+      chunkOverlap: 50,
+      retrievalK: 5,
+      retrievalDistanceThreshold: 1,
+    });
+
+    const job = await registry.beginIndexJob(ctx, collection.id);
+    await registry.markIndexJobRunning(job.id);
+
+    let abortedJobId: string | undefined;
+    const originalAbort = jobRunner.abort;
+    jobRunner.abort = async (jobId) => {
+      abortedJobId = jobId;
+    };
+
+    try {
+      const response = await request(`/v1/admin/collections/${collection.id}`, {
+        method: "DELETE",
+      });
+      assert.equal(response.status, 204);
+      assert.equal(abortedJobId, job.id, 'Running job should have been aborted');
+    } finally {
+      jobRunner.abort = originalAbort;
     }
   });
 });

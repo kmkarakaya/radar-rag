@@ -75,8 +75,8 @@ export function createIndexJobRunner(deps: {
       const controller = abortControllers.get(jobId);
       if (controller) {
         controller.abort();
-        await registry.cancelIndexJob(jobId);
       }
+      await registry.cancelIndexJob(jobId);
     },
     async drain() {
       const promises = Array.from(runningPromises.values());

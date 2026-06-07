@@ -7,6 +7,7 @@ import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { DocxLoader } from "@langchain/community/document_loaders/fs/docx";
 import { loadOzelgeRecords, type OzelgeRecord } from "./loaders/ozelgeJsonLoader.js";
 import { normalizeText } from "./transformers/normalizeText.js";
+import { emitOperationalLog, type OperationalLogSink } from "../observability/logger.js";
 
 export type UnsupportedSourceFile = {
   path: string;
@@ -40,6 +41,7 @@ export type AnalyzeIndexingSourceOptions = {
   sourcePath: string;
   ozelgeDataPath: string;
   indexSampleSize: number;
+  logEvent?: OperationalLogSink;
 };
 
 export function toDocuments(records: OzelgeRecord[], sourceHash: string): Document[] {
@@ -123,12 +125,29 @@ export async function analyzeIndexingSource(
     const extension = path.extname(filePath).toLowerCase();
 
     if (path.resolve(filePath) === ozelgeDataPath) {
-      const analysis = await analyzeOzelgeIndexingSource(filePath, options.indexSampleSize);
-      loadedDocuments.push(...analysis.documents);
-      sourceFiles.push(...analysis.sourceFiles);
-      recordCount = analysis.recordCount;
-      sampledRecordCount = analysis.sampledRecordCount;
-      sourceSampleLimited = sourceSampleLimited || analysis.sampleLimited;
+      try {
+        const analysis = await analyzeOzelgeIndexingSource(filePath, options.indexSampleSize);
+        loadedDocuments.push(...analysis.documents);
+        sourceFiles.push(...analysis.sourceFiles);
+        recordCount = analysis.recordCount;
+        sampledRecordCount = analysis.sampledRecordCount;
+        sourceSampleLimited = sourceSampleLimited || analysis.sampleLimited;
+      } catch (error: any) {
+        emitOperationalLog(options.logEvent, {
+          operation: "load_ozelge_file",
+          status: "failed",
+          message: `Failed to load ozelge file: ${filePath}`,
+          details: {
+            path: filePath,
+            error: error.message,
+          },
+        });
+        unsupportedFiles.push({
+          path: filePath,
+          extension: extension || "(none)",
+          reason: `Failed to load: ${error.message}`,
+        });
+      }
       continue;
     }
 
@@ -144,14 +163,32 @@ export async function analyzeIndexingSource(
       continue;
     }
 
-    const documents = await loadFileDocuments(filePath, extension, sourceType);
-    loadedDocuments.push(...documents);
-    sourceFiles.push({
-      path: filePath,
-      extension,
-      sourceType,
-      loadedDocumentCount: documents.length,
-    });
+    try {
+      const documents = await loadFileDocuments(filePath, extension, sourceType);
+      loadedDocuments.push(...documents);
+      sourceFiles.push({
+        path: filePath,
+        extension,
+        sourceType,
+        loadedDocumentCount: documents.length,
+      });
+    } catch (error: any) {
+      emitOperationalLog(options.logEvent, {
+        operation: "load_file",
+        status: "failed",
+        message: `Failed to load file: ${filePath}`,
+        details: {
+          path: filePath,
+          extension,
+          error: error.message,
+        },
+      });
+      unsupportedFiles.push({
+        path: filePath,
+        extension: extension || "(none)",
+        reason: `Failed to load: ${error.message}`,
+      });
+    }
   }
 
   return {

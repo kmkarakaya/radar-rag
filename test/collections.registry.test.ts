@@ -52,6 +52,10 @@ beforeEach(async () => {
 afterEach(async () => {
   rawDb.close();
   registry.close?.();
+  
+  // Windows sometimes keeps a lock for a split second
+  await new Promise(resolve => setTimeout(resolve, 50));
+  
   await rm(tempDir, { recursive: true, force: true });
 });
 

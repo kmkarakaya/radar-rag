@@ -6,6 +6,7 @@ import { HttpError } from "./errors.js";
 import { config, type ResolvedConfig } from "../config.js";
 import { startReindexJob } from "../indexing/jobs.js";
 import type { RequestContext } from "./requestContext.js";
+import type { CreateCollectionInput } from "../collections/types.js";
 
 export function createAdminRouter(deps: AppDependencies, runtimeConfig: ResolvedConfig = deps.runtimeConfig ?? config) {
   const router = express.Router();
@@ -43,15 +44,15 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
   const createCollectionSchema = z.object({
     displayName: z.string().trim().min(1),
     description: z.string().optional(),
-    sourcePath: z.string().trim().min(1).default(runtimeConfig.sourcePath),
-    ozelgeDataPath: z.string().trim().min(1).default(runtimeConfig.ozelgeDataPath),
-    distanceMetric: z.enum(["l2", "cosine", "ip"]).default(runtimeConfig.chromaDistanceMetric),
-    chunkSize: z.number().int().positive().default(runtimeConfig.chunkSize),
-    chunkOverlap: z.number().int().nonnegative().default(runtimeConfig.chunkOverlap),
-    retrievalK: z.number().int().positive().default(runtimeConfig.retrievalK),
-    retrievalDistanceThreshold: z.number().nonnegative().default(runtimeConfig.retrievalDistanceThreshold),
-    embeddingModel: z.string().trim().min(1).default(runtimeConfig.ollamaEmbeddingModel),
-    chatModel: z.string().trim().min(1).default(runtimeConfig.ollamaChatModel),
+    sourcePath: z.string().trim().min(1).optional(),
+    ozelgeDataPath: z.string().trim().min(1).optional(),
+    distanceMetric: z.enum(["l2", "cosine", "ip"]).optional(),
+    chunkSize: z.number().int().positive().optional(),
+    chunkOverlap: z.number().int().nonnegative().optional(),
+    retrievalK: z.number().int().positive().optional(),
+    retrievalDistanceThreshold: z.number().nonnegative().optional(),
+    embeddingModel: z.string().trim().min(1).optional(),
+    chatModel: z.string().trim().min(1).optional(),
   }).strict();
 
   router.post("/collections", requireRegistry, async (req, res, next) => {
@@ -64,7 +65,23 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       }
 
       const context = res.locals.requestContext as RequestContext;
-      const collection = await deps.registry!.createCollection(context, parsed.data);
+
+      const input: CreateCollectionInput = {
+        displayName: parsed.data.displayName,
+        description: parsed.data.description,
+        sourcePath: parsed.data.sourcePath ?? runtimeConfig.collectionDefaults.sourcePath,
+        ozelgeDataPath: parsed.data.ozelgeDataPath ?? runtimeConfig.collectionDefaults.ozelgeDataPath,
+        distanceMetric: parsed.data.distanceMetric ?? runtimeConfig.collectionDefaults.distanceMetric,
+        chunkSize: parsed.data.chunkSize ?? runtimeConfig.collectionDefaults.chunkSize,
+        chunkOverlap: parsed.data.chunkOverlap ?? runtimeConfig.collectionDefaults.chunkOverlap,
+        retrievalK: parsed.data.retrievalK ?? runtimeConfig.collectionDefaults.retrievalK,
+        retrievalDistanceThreshold:
+          parsed.data.retrievalDistanceThreshold ?? runtimeConfig.collectionDefaults.retrievalDistanceThreshold,
+        embeddingModel: parsed.data.embeddingModel ?? runtimeConfig.ollamaEmbeddingModel,
+        chatModel: parsed.data.chatModel ?? runtimeConfig.ollamaChatModel,
+      };
+
+      const collection = await deps.registry!.createCollection(context, input);
       res.status(201).json({
         collection: {
           id: collection.id,
@@ -110,12 +127,17 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     }
   });
 
-  router.delete("/collections/:collectionId", requireRegistry, async (req, res, next) => {
+  router.delete("/collections/:collectionId", requireRegistry, requireJobRunner, async (req, res, next) => {
     try {
       const collectionId = req.params.collectionId as string;
       const context = res.locals.requestContext as RequestContext;
       await requireVisibleCollection(context, collectionId);
-      await deps.registry!.deleteCollection(context, collectionId);
+      
+      const cancelledJobIds = await deps.registry!.deleteCollection(context, collectionId);
+      for (const jobId of cancelledJobIds) {
+        await deps.jobRunner!.abort(jobId);
+      }
+
       res.status(204).send();
     } catch (error) {
       next(error);

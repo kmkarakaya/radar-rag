@@ -3,7 +3,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
 import { createApp, type AppDependencies } from "../src/app.js";
-import type { CollectionRegistry } from "../src/collections/types.js";
+import type { CollectionRegistry, RequestContext } from "../src/collections/types.js";
 import { config } from "../src/config.js";
 
 type HealthChecks = NonNullable<AppDependencies["healthChecks"]>;
@@ -41,8 +41,8 @@ function createHealthyRegistryStub(): CollectionRegistry {
     markPhysicalCollectionCleanupFailed: async () => {},
     listDuePhysicalCollectionsForCleanup: async () => [],
     collectionExists: async () => false,
-    cancelIndexJob: async () => ({} as any),
-    deleteCollection: async () => {},
+    cancelIndexJob: async (_jobId: string) => ({} as any),
+    deleteCollection: async (_context: RequestContext, _collectionId: string) => [],
   };
 }
 

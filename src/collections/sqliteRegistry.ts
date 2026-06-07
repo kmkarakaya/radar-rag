@@ -136,7 +136,7 @@ function initializeSchema(db: SqliteDatabase): void {
 
     CREATE TABLE IF NOT EXISTS index_jobs (
       id TEXT PRIMARY KEY,
-      collection_id TEXT NOT NULL,
+      collection_id TEXT,
       tenant_id TEXT NOT NULL,
       status TEXT NOT NULL,
       target_physical_collection TEXT NOT NULL,
@@ -151,13 +151,13 @@ function initializeSchema(db: SqliteDatabase): void {
       lock_token TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      FOREIGN KEY(collection_id) REFERENCES collections(id)
+      FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS physical_collections (
       name TEXT PRIMARY KEY,
       tenant_id TEXT NOT NULL,
-      collection_id TEXT NOT NULL,
+      collection_id TEXT,
       version TEXT NOT NULL,
       status TEXT NOT NULL,
       chroma_configuration_json TEXT NOT NULL,
@@ -169,7 +169,7 @@ function initializeSchema(db: SqliteDatabase): void {
       delete_after TEXT,
       deleted_at TEXT,
       cleanup_error TEXT,
-      FOREIGN KEY(collection_id) REFERENCES collections(id)
+      FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE SET NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_collections_tenant ON collections(tenant_id);
@@ -522,6 +522,10 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         throw new Error(`Index job not found: ${jobId}`);
       }
 
+      if (existing.status === "cancelled") {
+        return mapIndexJobRow(existing);
+      }
+
       if (existing.status !== "queued" && existing.status !== "running") {
         throw new Error(`Job ${jobId} is in status '${existing.status}', cannot be cancelled.`);
       }
@@ -554,16 +558,18 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         });
 
         const collection = this.getCollectionRow(existing.tenant_id, existing.collection_id);
-        this.db.prepare(`
-          UPDATE collections
-          SET status = @status, updated_at = @updatedAt
-          WHERE tenant_id = @tenantId AND id = @collectionId
-        `).run({
-          status: collection?.active_physical_collection ? "ready" : "failed",
-          tenantId: existing.tenant_id,
-          collectionId: existing.collection_id,
-          updatedAt: now,
-        });
+        if (collection) {
+          this.db.prepare(`
+            UPDATE collections
+            SET status = @status, updated_at = @updatedAt
+            WHERE tenant_id = @tenantId AND id = @collectionId
+          `).run({
+            status: collection.active_physical_collection ? "ready" : "failed",
+            tenantId: existing.tenant_id,
+            collectionId: existing.collection_id,
+            updatedAt: now,
+          });
+        }
       }
 
       const updated = this.getJobRow(jobId);
@@ -590,7 +596,17 @@ class SqliteCollectionRegistry implements CollectionRegistry {
 
       const collection = this.getCollectionRow(existing.tenant_id, existing.collection_id);
       if (!collection) {
-        throw new Error(`Collection not found for job ${jobId}: ${existing.collection_id}`);
+        // If collection is gone, just cancel the job and return it.
+        // This handles cases where collection was deleted while job was running.
+        const now = new Date().toISOString();
+        this.db.prepare(`
+          UPDATE index_jobs
+          SET status = 'cancelled', finished_at = @now, updated_at = @now
+          WHERE id = @id AND status = 'running'
+        `).run({ id: jobId, now });
+        
+        const cancelledJob = this.getJobRow(jobId);
+        return mapIndexJobRow(cancelledJob!);
       }
 
       const activePhysicalCollection = result.activePhysicalCollection ?? existing.target_physical_collection;
@@ -921,7 +937,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     return rows.map(mapPhysicalCollectionRow);
   }
 
-  async deleteCollection(context: RequestContext, collectionId: string): Promise<void> {
+  async deleteCollection(context: RequestContext, collectionId: string): Promise<string[]> {
     const transaction = this.db.transaction(() => {
       const collection = this.getCollectionRow(context.tenantId, collectionId);
       if (!collection) {
@@ -929,24 +945,38 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       }
 
       const now = new Date().toISOString();
+
+      // Find active jobs to return for aborting in memory
+      const activeJobs = this.db.prepare(`
+        SELECT id FROM index_jobs
+        WHERE collection_id = ? AND status IN ('queued', 'running')
+      `).all(collectionId) as { id: string }[];
+      const activeJobIds = activeJobs.map(j => j.id);
+
+      // Cancel active jobs
+      this.db.prepare(`
+        UPDATE index_jobs
+        SET status = 'cancelled', finished_at = @now, updated_at = @now
+        WHERE collection_id = @collectionId AND status IN ('queued', 'running')
+      `).run({ now, collectionId });
+
+      // Mark all physical collections for cleanup
       this.db.prepare(`
         UPDATE physical_collections
         SET status = 'delete_pending', delete_after = @now
-        WHERE tenant_id = @tenantId AND collection_id = @collectionId
-      `).run({ now, tenantId: context.tenantId, collectionId });
+        WHERE collection_id = @collectionId
+      `).run({ now, collectionId });
 
+      // Delete the collection (FKs will handle CASCADE for index_jobs and SET NULL for physical_collections)
       this.db.prepare(`
         DELETE FROM collections
         WHERE tenant_id = @tenantId AND id = @collectionId
       `).run({ tenantId: context.tenantId, collectionId });
+
+      return activeJobIds;
     });
 
-    this.db.pragma("foreign_keys = OFF");
-    try {
-      transaction();
-    } finally {
-      this.db.pragma("foreign_keys = ON");
-    }
+    return transaction();
   }
 
   async collectionExists(collectionId: string): Promise<boolean> {

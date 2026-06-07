@@ -95,6 +95,7 @@ export async function buildPhysicalCollection(input: {
       sourcePath: collection.sourcePath,
       ozelgeDataPath: collection.ozelgeDataPath,
       indexSampleSize: runtimeConfig.indexSampleSize,
+      logEvent: input.logEvent,
     });
 
     const documents = analysis.documents;

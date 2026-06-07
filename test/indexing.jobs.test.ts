@@ -213,9 +213,7 @@ describe("indexing jobs", () => {
       updateCollection: async () => {
         throw new Error("not used");
       },
-      deleteCollection: async () => {
-        throw new Error("not used");
-      },
+      deleteCollection: async () => [],
       beginIndexJob: async () => {
         throw new Error("not used");
       },

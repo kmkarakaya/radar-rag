@@ -605,38 +605,47 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
   - `npm.cmd run test:integration`: PASS (1 test)
 
 ## Prompt 29: Recursive Directory Ingestion
-- `src/ingestion/pipeline.ts` içinde `collectSourceFiles` ve `walkDirectory` fonksiyonları güncellenerek, `sourcePath` altındaki tüm alt dizinlerin (gizli dizinler ve 'node_modules' hariç) taranması sağlandı.
-- Test için `test/data/recursive/sub/test.txt` oluşturuldu.
-- `test/recursive.ingestion.test.ts` eklenerek recursive ingestion doğrulandı.
-- Build hatası olan `src/indexing/jobs.ts` içindeki eksik `RagCollection` import'u düzeltildi.
-- Doğrulama: `npm.cmd run typecheck`, `npm.cmd test` hatasız tamamlandı.
+- `src/ingestion/pipeline.ts` güncellendi: Özyinelemeli (recursive) dosya tarama (`walkDirectory`) eklendi, gizli dizinler yoksayıldı.
+- `test/recursive.ingestion.test.ts` eklendi: Alt dizinlerdeki dosyaların endekslendiği doğrulandı.
+
+## Prompt 30: Admin Job Cancellation and Abort Handling
+- `POST /v1/admin/jobs/:jobId/cancel` endpoint'i eklendi.
+- `IndexJobRunner` ve `sqliteRegistry` üzerinden iptal mekanizması ve fiziksel collection işaretleme (`failed_build`) implemente edildi.
+- `AbortSignal` ile build işlemi sonlandırılıyor.
 
 ## Prompt 31: Logical Collection Deletion API
-
 - `DELETE /v1/admin/collections/:collectionId` endpoint'i eklendi.
-- Registry'de `deleteCollection` metodu ile veritabanı seviyesinde collection silindi ve `physical_collections` tablosu `delete_pending` durumuna getirildi.
-- Retention cleanup'ın `delete_pending` durumundaki koleksiyonları silmesi mevcut yapıda korunarak entegrasyon tamamlandı.
-- `test/collections.registry.test.ts` içine silme işlemini doğrulayan unit test eklendi.
-- Doğrulama komutları:
-  - `npm.cmd run build`: hatasız tamamlandı.
-  - `npm.cmd test`: 100 test başarıyla geçti.
+- `CollectionRegistry.deleteCollection` implemente edildi, fiziksel kayıtlar `delete_pending` durumuna çekildi.
 
-
-## Prompt 32: Graceful Process Termination
-
-- `src/server.ts` içinde `SIGINT` ve `SIGTERM` sinyallerini yakalayan shutdown mantığı eklendi.
-- Shutdown akışı: HTTP server close -> jobRunner shutdown -> registry close.
-- 10 saniyelik zorunlu timeout (force exit) mekanizması eklendi.
-- Doğrulama: `npm.cmd run build` ve `npm.cmd test` başarılı.
+## Prompt 32: Graceful Server Termination
+- `src/server.ts` sinyal dinleyicileri (SIGINT/SIGTERM) eklendi.
+- Shutdown akışı (server close -> jobRunner shutdown -> registry close) 10s timeout ile kuruldu.
 
 ## Prompt 33: Document Source Hashing
+- `src/ingestion/pipeline.ts` dosya okurken SHA256 hash üretiyor.
+- Hash, `Document` metadata'sına `sourceHash` olarak eklendi.
+- `test/ingestion.hashing.test.ts` ile doğrulandı.
 
-- `src/ingestion/pipeline.ts` içinde dosya okunurken `SHA256` hash'i üretildi.
-- Bu hash `sourceHash` metadata alanına eklendi.
-- Chunk'lara bölünürken bu hash korundu.
-- `test/ingestion.hashing.test.ts` eklendi; `sourceHash`'in varlığı ve dosya içeriği değiştiğinde hash'in değiştiği doğrulandı.
-- Doğrulama komutları:
-  - `npm.cmd run typecheck`: (önceden varolan bir hata dışında, yeni kod başarılı)
-  - `npm.cmd test`: 101 test başarıyla geçti.
+## Prompt 34: Test Suite Typecheck and Mock Synchronization
+- `test/acceptance/api.endpoints.test.ts`, `test/app.foundation.test.ts`, `test/indexing.cleanup.test.ts` ve `test/indexing.jobs.test.ts` dosyalarındaki mock ve stub nesneleri güncel arayüzlerle (`abort`, `cancelIndexJob`, `deleteCollection` metotları ve `targetEmbeddingModel` alanı) senkronize edildi.
+- `npm run typecheck:test` komutunun hata vermeden geçmesi sağlandı.
+
+## Prompt 35: Auto-Fill Collection Creation Defaults from Config
+- `src/http/adminRouter.ts` içinde `createCollectionSchema` güncellenerek `displayName`, `sourcePath` ve `ozelgeDataPath` dışındaki alanlar opsiyonel hale getirildi.
+- Koleksiyon oluşturma handler'ında eksik alanların config'deki `collectionDefaults` ve Ollama model ayarlarıyla otomatik doldurulması sağlandı.
+- `test/acceptance/api.endpoints.test.ts` içine varsayılan değerlerin doldurulduğunu doğrulayan regression testi eklendi.
+
+## Prompt 36: Robust Collection Deletion with Job Cascade and FK Integrity
+- SQLite registry'de `initializeSchema` güncellenerek hem `index_jobs` hem de `physical_collections` için `ON DELETE SET NULL` kısıtları eklendi (ve `collection_id` kolonları nullable yapıldı). Bu sayede koleksiyon silindiğinde iş geçmişi ve fiziksel kayıtlar korunarak güvenle iptal/temizlik sürecine sokulabiliyor.
+- `deleteCollection` metodu, silinen koleksiyona ait aktif işlerin ID'lerini dönecek ve fiziksel kayıtları anında `delete_pending` yapacak şekilde güncellendi.
+- `src/http/adminRouter.ts` içinde koleksiyon silindiğinde ilişkili tüm işlerin `jobRunner.abort(jobId)` ile durdurulması sağlandı.
+- `test/acceptance/api.endpoints.test.ts` ve `test/collections.registry.test.ts` içine silme ve iptal davranışlarını doğrulayan testler eklendi.
+
+## Prompt 37: Fault-Tolerant Ingestion Pipeline
+- `src/ingestion/pipeline.ts` güncellendi: Dosya yükleme döngüsü (`analyzeIndexingSource`) `try-catch` bloğuna alındı.
+- Bozuk veya kilitli dosyalar artık tüm indeksleme işini çökertmiyor; hata loglanıyor ve dosya `unsupportedFiles` listesine hata mesajiyla eklenerek işlem devam ediyor.
+- `test/ingestion.fault-tolerance.test.ts` eklendi ve bozuk dosya senaryosunda sistemin kararlılığı doğrulandı.
+- Tüm sistem testleri (104/104) başarıyla geçti.
+
 
 

@@ -158,7 +158,7 @@ export interface CollectionRegistry {
   markPhysicalCollectionDeleted(name: string): Promise<void>;
   markPhysicalCollectionCleanupFailed(name: string, error: string): Promise<void>;
   listDuePhysicalCollectionsForCleanup(nowIso: string, limit: number): Promise<PhysicalCollectionRecord[]>;
-  deleteCollection(context: RequestContext, collectionId: string): Promise<void>;
+  deleteCollection(context: RequestContext, collectionId: string): Promise<string[]>;
   collectionExists(collectionId: string): Promise<boolean>;
 
   close?(): void;

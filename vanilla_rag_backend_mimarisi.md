@@ -285,7 +285,7 @@ Maksat:
 - `modelAvailability.chatModel`
 - `modelAvailability.chatModelAvailable`
 - `status`
-- `activePhysicalCollection`
+- `hasActivePhysicalCollection`
 - `capabilities.query`
 - `capabilities.retrieve`
 - `capabilities.reindex`

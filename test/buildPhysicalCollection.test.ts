@@ -102,6 +102,70 @@ describe("buildPhysicalCollection", () => {
     assert.equal(typeof succeededEvent.latencyMs, "number");
   });
 
+  it("propagates abort signal and timeout to assertChromaCollectionReadable", async () => {
+    let assertReadableCall: any = null;
+    const controller = new AbortController();
+
+    await buildPhysicalCollection({
+      collection: {
+        id: "col-1",
+        tenantId: "t1",
+        displayName: "Test",
+        status: "indexing",
+        sourcePath: "data",
+        ozelgeDataPath: "data/ozelge",
+        embeddingModel: "m1",
+        chatModel: "c1",
+        distanceMetric: "l2",
+        chromaCollectionConfiguration: {},
+        chunkSize: 100,
+        chunkOverlap: 0,
+        retrievalK: 5,
+        retrievalDistanceThreshold: 0.5,
+        createdBy: "u1",
+        createdAt: "2026-06-04T00:00:00.000Z",
+        updatedAt: "2026-06-04T00:00:00.000Z",
+      },
+      targetPhysicalCollection: "rag_t1_col-1_v1",
+      targetVersion: "v1",
+      runtimeConfig: { ...config, readyTimeoutMs: 12345 },
+      signal: controller.signal,
+      log: () => {},
+      deps: {
+        analyzeIndexingSource: async () => ({
+          sourcePath: "data",
+          sourceFiles: [],
+          fileCount: 1,
+          loadedDocumentCount: 1,
+          recordCount: 1,
+          sampledRecordCount: 1,
+          indexSampleSize: 0,
+          sampleLimited: false,
+          unsupportedFiles: [],
+          documents: [
+            new Document({
+              pageContent: "content",
+              metadata: { documentId: "doc-1" },
+            }),
+          ],
+        }),
+        splitDocuments: async (documents) => documents,
+        createPhysicalChromaCollection: async () => {},
+        createVectorStore: () => ({
+          addDocuments: async () => {},
+        } as any),
+        assertChromaCollectionReadable: async (input) => {
+          assertReadableCall = input;
+          return { count: 0 };
+        },
+      },
+    });
+
+    assert.ok(assertReadableCall);
+    assert.equal(assertReadableCall.timeoutMs, 12345);
+    assert.equal(assertReadableCall.abortSignal, controller.signal);
+  });
+
   it("does not mask the original build failure when best-effort target cleanup also fails", async () => {
     const messages: string[] = [];
 
@@ -150,5 +214,96 @@ describe("buildPhysicalCollection", () => {
     );
 
     assert.ok(messages.some((message) => message.includes("Best-effort target physical cleanup failed")));
+  });
+
+  it("fails if no documents are found and cleans up the collection", async () => {
+    let deleteCalledWith: string | null = null;
+    const collection = {
+      id: "col-empty-docs",
+      tenantId: "t1",
+      displayName: "Empty Docs",
+      status: "indexing" as const,
+      sourcePath: "empty/path",
+      ozelgeDataPath: "empty/ozelge",
+      embeddingModel: "m1",
+      chatModel: "c1",
+      distanceMetric: "l2" as const,
+      chromaCollectionConfiguration: {},
+      chunkSize: 100,
+      chunkOverlap: 0,
+      retrievalK: 5,
+      retrievalDistanceThreshold: 0.5,
+      createdBy: "u1",
+      createdAt: "2026-06-04T00:00:00.000Z",
+      updatedAt: "2026-06-04T00:00:00.000Z",
+    };
+
+    await assert.rejects(
+      () => buildPhysicalCollection({
+        collection,
+        targetPhysicalCollection: "rag_t1_col-empty-docs_v1",
+        targetVersion: "v1",
+        runtimeConfig: config,
+        deps: {
+          createPhysicalChromaCollection: async () => {},
+          analyzeIndexingSource: async () => ({
+            documents: [],
+            loadedDocumentCount: 0,
+          } as any),
+          deletePhysicalChromaCollection: async ({ name }) => {
+            deleteCalledWith = name;
+          },
+        },
+      }),
+      /No indexable documents found/
+    );
+
+    assert.equal(deleteCalledWith, "rag_t1_col-empty-docs_v1");
+  });
+
+  it("fails if no chunks are produced and cleans up the collection", async () => {
+    let deleteCalledWith: string | null = null;
+    const collection = {
+      id: "col-empty-chunks",
+      tenantId: "t1",
+      displayName: "Empty Chunks",
+      status: "indexing" as const,
+      sourcePath: "path",
+      ozelgeDataPath: "ozelge",
+      embeddingModel: "m1",
+      chatModel: "c1",
+      distanceMetric: "l2" as const,
+      chromaCollectionConfiguration: {},
+      chunkSize: 100,
+      chunkOverlap: 0,
+      retrievalK: 5,
+      retrievalDistanceThreshold: 0.5,
+      createdBy: "u1",
+      createdAt: "2026-06-04T00:00:00.000Z",
+      updatedAt: "2026-06-04T00:00:00.000Z",
+    };
+
+    await assert.rejects(
+      () => buildPhysicalCollection({
+        collection,
+        targetPhysicalCollection: "rag_t1_col-empty-chunks_v1",
+        targetVersion: "v1",
+        runtimeConfig: config,
+        deps: {
+          createPhysicalChromaCollection: async () => {},
+          analyzeIndexingSource: async () => ({
+            documents: [new Document({ pageContent: "content", metadata: { documentId: "doc-1" } })],
+            loadedDocumentCount: 1,
+          } as any),
+          splitDocuments: async () => [], // Simulating zero chunks
+          deletePhysicalChromaCollection: async ({ name }) => {
+            deleteCalledWith = name;
+          },
+        },
+      }),
+      /No indexable chunks produced/
+    );
+
+    assert.equal(deleteCalledWith, "rag_t1_col-empty-chunks_v1");
   });
 });

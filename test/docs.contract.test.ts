@@ -48,5 +48,7 @@ describe('docs static contract', () => {
     assert.ok(content.includes('idempotent başarı'), 'Should describe idempotent storage missing delete behavior');
     assert.ok(content.includes('COLLECTION_FORBIDDEN'), 'Should describe 403 vs 404 access behavior');
     assert.ok(content.includes('modelAvailability'), 'Should describe collection-level model availability in readiness');
+    assert.ok(content.includes('hasActivePhysicalCollection'), 'Should document hasActivePhysicalCollection boolean in readiness');
+    assert.ok(!content.includes('activePhysicalCollection'), 'Should not expose internal activePhysicalCollection name in public documentation');
   });
 });

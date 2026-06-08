@@ -109,7 +109,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
       res.json({
         id: collection.id,
         status: collection.status,
-        activePhysicalCollection: collection.activePhysicalCollection ?? null,
+        hasActivePhysicalCollection: Boolean(collection.activePhysicalCollection),
         activeVersion: collection.activeVersion ?? null,
         activeJob: activeJob ? { id: activeJob.id, status: activeJob.status } : null,
         chromaReadable,

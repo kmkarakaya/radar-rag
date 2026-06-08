@@ -100,6 +100,10 @@ export async function buildPhysicalCollection(input: {
 
     const documents = analysis.documents;
 
+    if (documents.length === 0) {
+      throw new Error(`No indexable documents found in ${collection.sourcePath}. To prevent empty collections, build is aborted.`);
+    }
+
     if (signal?.aborted) throw new Error("Build aborted");
     log(`Loaded ${documents.length} indexable documents from ${analysis.loadedDocumentCount} parsed source documents`);
 
@@ -113,6 +117,10 @@ export async function buildPhysicalCollection(input: {
       targetPhysicalCollection,
       targetVersion,
     );
+
+    if (indexedChunks.length === 0) {
+      throw new Error(`No indexable chunks produced from ${documents.length} documents. To prevent empty collections, build is aborted.`);
+    }
 
     if (signal?.aborted) throw new Error("Build aborted");
     log(`Split documents into ${indexedChunks.length} chunks. Indexing into Chroma...`);
@@ -132,6 +140,8 @@ export async function buildPhysicalCollection(input: {
     await assertReadable({
       name: targetPhysicalCollection,
       runtimeConfig,
+      abortSignal: signal,
+      timeoutMs: runtimeConfig.readyTimeoutMs,
     });
 
     const output = {

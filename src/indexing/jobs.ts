@@ -147,6 +147,19 @@ export async function runIndexJob(input: {
     return job;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const isAbort = message === "Build aborted" || signal?.aborted;
+
+    if (isAbort) {
+      job = await registry.getJob(jobId) || job;
+      if (job.status === "cancelled") {
+        return job;
+      }
+      if (job.status === "queued" || job.status === "running") {
+        job = await registry.cancelIndexJob(jobId);
+        return job;
+      }
+    }
+
     job = await registry.failIndexJob(jobId, message);
     log(`Job ${jobId} failed: ${message}`);
     emitOperationalLog(input.logEvent, {

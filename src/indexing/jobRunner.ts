@@ -2,6 +2,7 @@ import type { CollectionRegistry } from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
 import { emitOperationalLog, type OperationalLogSink } from "../observability/logger.js";
 import { runIndexJob } from "./jobs.js";
+import { isTimeoutOrAbortError } from "../observability/timeout.js";
 
 export interface IndexJobRunner {
   start(jobId: string): void;
@@ -40,8 +41,8 @@ export function createIndexJobRunner(deps: {
     try {
       await runIndexJob({ registry, jobId, runtimeConfig, signal, log, logEvent });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message !== "Build aborted") {
+      if (!isTimeoutOrAbortError(error)) {
+        const message = error instanceof Error ? error.message : String(error);
         log(`Background job ${jobId} failed with unhandled error: ${error}`);
         emitOperationalLog(logEvent, {
           jobId,

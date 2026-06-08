@@ -37,7 +37,9 @@ before(async () => {
     start: () => {},
     drain: async () => {},
     shutdown: async () => {},
-    abort: async (_jobId: string) => {},
+    abort: async (jobId: string) => {
+      await registry.cancelIndexJob(jobId);
+    },
   };
   const app = createApp({
     registry,
@@ -361,7 +363,8 @@ describe("v1 admin and rag api endpoints", () => {
     const readyBody = await readyResponse.json() as any;
 
     assert.equal(readyResponse.status, 200);
-    assert.equal(readyBody.activePhysicalCollection, null);
+    assert.strictEqual(readyBody.hasActivePhysicalCollection, false);
+    assert.ok(!("activePhysicalCollection" in readyBody));
     assert.equal(readyBody.activeVersion, null);
     assert.deepEqual(readyBody.activeJob, { id: activeJobId, status: "queued" });
     assert.equal(readyBody.chromaReadable, false);
@@ -389,7 +392,8 @@ describe("v1 admin and rag api endpoints", () => {
 
     assert.equal(response.status, 200);
     assert.equal(body.status, "indexing");
-    assert.equal(body.activePhysicalCollection, activePhysicalCollection);
+    assert.strictEqual(body.hasActivePhysicalCollection, true);
+    assert.ok(!("activePhysicalCollection" in body));
     assert.equal(body.activeVersion, "v-active-1");
     assert.deepEqual(body.activeJob, { id: activeJobId, status: "queued" });
     assert.equal(body.chromaReadable, true);
@@ -1130,6 +1134,45 @@ describe("v1 admin and rag api endpoints", () => {
     }
   });
 
+  it("soft-delete: DELETE /v1/admin/collections/:id returns 204 and hides collection from public and admin API", async () => {
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "soft-delete-api" };
+    
+    // 1. Create a collection
+    const createRes = await request("/v1/admin/collections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        displayName: "Soft Delete API Test",
+      }),
+    });
+    const createBody = await createRes.json() as any;
+    const collectionId = createBody.collection.id;
+    
+    // 2. DELETE it
+    const deleteRes = await request(`/v1/admin/collections/${collectionId}`, {
+      method: "DELETE",
+    });
+    assert.equal(deleteRes.status, 204);
+    
+    // 3. Verify subsequent public calls return 404
+    const getPublic = await request(`/v1/rag/collections/${collectionId}`);
+    assert.equal(getPublic.status, 404);
+    const getPublicBody = await getPublic.json() as any;
+    assert.equal(getPublicBody.code, "COLLECTION_NOT_FOUND");
+    
+    const listPublic = await request("/v1/rag/collections");
+    const listPublicBody = await listPublic.json() as any;
+    assert.ok(!listPublicBody.collections.find((c: any) => c.id === collectionId));
+    
+    // 4. Verify admin calls also return 404
+    const patchAdmin = await request(`/v1/admin/collections/${collectionId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ displayName: "Will Fail" }),
+    });
+    assert.equal(patchAdmin.status, 404);
+  });
+
   it('DELETE /v1/admin/collections/:collectionId aborts running jobs', async () => {
     const ctx = { tenantId: 'default', userId: 'local-dev', requestId: 'p36-test' };
     const collection = await registry.createCollection(ctx, {
@@ -1163,5 +1206,46 @@ describe("v1 admin and rag api endpoints", () => {
     } finally {
       jobRunner.abort = originalAbort;
     }
+  });
+
+  it('POST /v1/admin/jobs/:jobId/cancel for a queued job restores collection status', async () => {
+    const ctx = { tenantId: 'default', userId: 'local-dev', requestId: 'p38-api-test' };
+    
+    // 1. Create a new collection
+    const created = await registry.createCollection(ctx, {
+      displayName: 'API Cancel Test',
+      sourcePath: 'data',
+      ozelgeDataPath: 'data/ozelge.json',
+      embeddingModel: 'embed',
+      chatModel: 'chat',
+      distanceMetric: 'l2',
+      chunkSize: 500,
+      chunkOverlap: 50,
+      retrievalK: 5,
+      retrievalDistanceThreshold: 1,
+    });
+    
+    // 2. Start a job (queued)
+    const reindexRes = await request(`/v1/admin/collections/${created.id}/reindex`, {
+      method: "POST",
+    });
+    const reindexBody = await reindexRes.json() as any;
+    const jobId = reindexBody.job.id;
+    
+    const indexing = await registry.getVisibleCollection(ctx, created.id);
+    assert.equal(indexing?.status, 'indexing');
+    
+    // 3. Cancel the job via API
+    const cancelRes = await request(`/v1/admin/jobs/${jobId}/cancel`, {
+      method: "POST",
+    });
+    assert.equal(cancelRes.status, 204);
+    
+    // 4. Verify collection status is restored to 'failed' (since it was the first job)
+    const restored = await registry.getVisibleCollection(ctx, created.id);
+    assert.equal(restored?.status, 'failed');
+    
+    const cancelledJob = await registry.getJob(jobId);
+    assert.equal(cancelledJob?.status, 'cancelled');
   });
 });

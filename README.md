@@ -238,7 +238,7 @@ Spesifik bir koleksiyonun Chroma üzerindeki fiziksel karşılığının erişil
 Invoke-RestMethod -Uri "http://localhost:3010/v1/rag/collections/$collectionId/ready"
 ```
 
-Bu readiness cevabı artık yalnızca `activePhysicalCollection` ve `chromaCount` bilgilerini değil, seçili koleksiyonun `embeddingModel` ve `chatModel` değerlerinin Ollama tarafında gerçekten bulunup bulunmadığını da `modelAvailability` alanı altında raporlar. `capabilities.query` ancak aktif fiziksel collection okunabiliyor ve koleksiyonun chat+embedding modelleri mevcutsa `true` olur.
+Bu readiness cevabı artık yalnızca `hasActivePhysicalCollection` ve `chromaCount` bilgilerini değil, seçili koleksiyonun `embeddingModel` ve `chatModel` değerlerinin Ollama tarafında gerçekten bulunup bulunmadığını da `modelAvailability` alanı altında raporlar. `capabilities.query` ancak aktif fiziksel collection okunabiliyor ve koleksiyonun chat+embedding modelleri mevcutsa `true` olur.
 
 ## Health ve Readiness
 

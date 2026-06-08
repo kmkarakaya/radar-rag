@@ -351,4 +351,71 @@ describe("indexing jobs", () => {
     assert.equal(physical?.status, "failed_build");
     assert.equal(physical?.cleanupError, "Injected build failure");
   });
+
+  it("runIndexJob fails and does not swap pointer when buildPhysicalCollection throws due to empty source", async () => {
+    const context = { tenantId: "tenant-empty-fail", userId: "u", requestId: "r" };
+    const collection = await createCollection(context, "Empty Fail Test");
+    await registry.updateCollection(context, collection.id, {
+      status: "ready",
+      activePhysicalCollection: "rag_tenant-empty-fail_v_old",
+      activeVersion: "v_old",
+    });
+
+    const job = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
+
+    await runIndexJob({
+      registry,
+      jobId: job.id,
+      runtimeConfig: config,
+      log: () => {},
+      deps: {
+        buildPhysicalCollection: async () => {
+          throw new Error("No indexable documents found in data. To prevent empty collections, build is aborted.");
+        },
+      },
+    });
+
+    const failedJob = await registry.getJob(job.id);
+    const updatedCollection = await registry.getVisibleCollection(context, collection.id);
+    const physical = await registry.getPhysicalCollection(job.targetPhysicalCollection);
+
+    assert.equal(failedJob?.status, "failed");
+    assert.match(failedJob?.error || "", /No indexable documents found/);
+    assert.equal(updatedCollection?.status, "ready");
+    assert.equal(updatedCollection?.activePhysicalCollection, "rag_tenant-empty-fail_v_old");
+    assert.equal(physical?.status, "failed_build");
+  });
+
+  it("runIndexJob returns cancelled status and does not emit failure log when aborted", async () => {
+    const context = { tenantId: "tenant-abort", userId: "u", requestId: "r" };
+    const collection = await createCollection(context, "Abort Test");
+    const job = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
+    const logEvents: OperationalLogEvent[] = [];
+
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await runIndexJob({
+      registry,
+      jobId: job.id,
+      runtimeConfig: config,
+      signal: controller.signal,
+      log: () => {},
+      logEvent: (event) => {
+        logEvents.push(event);
+      },
+      deps: {
+        buildPhysicalCollection: async () => {
+          throw new Error("Build aborted");
+        },
+      },
+    });
+
+    assert.equal(result.status, "cancelled");
+    const failedEvent = logEvents.find((event) => event.operation === "index_job" && event.status === "failed");
+    assert.ok(!failedEvent, "Should not emit failure log for abort");
+    
+    const jobInRegistry = await registry.getJob(job.id);
+    assert.equal(jobInRegistry?.status, "cancelled");
+  });
 });

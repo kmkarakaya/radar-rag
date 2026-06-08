@@ -2658,3 +2658,385 @@ Final cevapta:
 - Hata yakalama ve tolerans mantigini ozetle.
 - notes/done.md icine Prompt 37 kaydini ekledigini belirt.
 ```
+
+## Prompt 38: Queued Job Cancellation Must Restore Collection State
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin queued durumdaki bir index job iptal edildiginde collection state'inin tutarli kalmasini saglamaktir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "Index/Rebuild Path"
+- "HTTP Hata Kodlari"
+- "Yeni Endpoint Kontratlari"
+- "Registry Semasi"
+
+Ayrica calismaya baslamadan once notes/done.md dosyasini oku. Prompt 30, 31, 36 ve 37 kayitlarini ozellikle kontrol et. Daha once yapilanlari tekrar yazma; sadece bu prompttaki bug'i kapat.
+
+Problem:
+`src/collections/sqliteRegistry.ts` icindeki `cancelIndexJob(jobId)` queued job'u `cancelled` yapiyor ama collection status'unu guncellemiyor. Ilk build icin queued job iptal edilirse collection `indexing` durumunda, active job olmadan ve active physical olmadan takili kalabiliyor. Bu da kullanicinin collection'i "indeksleniyor" sanmasina ve backend'in sonsuz not-ready state uretmesine neden olur.
+
+Amac:
+Queued veya running job iptal edildiginde collection status her zaman deterministik olmali:
+- Collection'in `active_physical_collection` degeri varsa status `ready` olmali.
+- Collection'in `active_physical_collection` degeri yoksa status `failed` olmali.
+- Iptalden sonra ayni collection icin `getActiveJobForCollection(...)` null donmeli.
+- Queued job iptalinde fiziksel Chroma collection kaydi olusturulmamis olabilir; bu normaldir.
+
+Yapilacaklar:
+1. `src/collections/sqliteRegistry.ts` icindeki `cancelIndexJob(jobId)` metodunu dar kapsamda duzelt:
+   - `existing.status === "queued"` ve `existing.status === "running"` icin collection status'unu ayni kuralla guncelle.
+   - Running job icin var olan target physical `failed_build` isaretleme davranisini koru.
+   - Queued job icin target physical record yoksa yeni physical record yaratma.
+   - `updated_at` alanini collection ve job icin guncel tut.
+   - `existing.status === "cancelled"` idempotent kalmali ve ayni job'u tekrar dondurmeli.
+2. `src/http/adminRouter.ts` icindeki `POST /v1/admin/jobs/:jobId/cancel` endpoint'i bu registry davranisini kullanmaya devam etmeli. Endpoint response kontratini genisletme.
+3. Baska endpoint, Chroma helper veya RAG query/retrieve davranisini degistirme.
+
+Testleri once ekle, sonra fix'i yaz:
+1. `test/collections.registry.test.ts` icine queued ilk build iptali testi ekle:
+   - Collection yarat.
+   - `beginIndexJob(...)` ile job'u queued baslat.
+   - `cancelIndexJob(job.id)` cagir.
+   - Job status `cancelled` olmali.
+   - `getActiveJobForCollection(...)` null olmali.
+   - Collection status `failed` olmali.
+   - Collection `activePhysicalCollection` undefined kalmali.
+   - Target physical record yoksa bu kabul edilmeli; varsa `active` olmamali.
+   - `cancelIndexJob(job.id)` ikinci kez cagrildiginda hata firlatmamali.
+2. `test/collections.registry.test.ts` icine ready collection rebuild iptali testi ekle:
+   - Collection'i once active physical ile `ready` yap.
+   - Yeni queued reindex job baslat.
+   - Job'u iptal et.
+   - Collection status tekrar `ready` olmali.
+   - Eski `activePhysicalCollection` ve `activeVersion` korunmali.
+3. Mumkunse `test/acceptance/api.endpoints.test.ts` icinde admin cancel endpoint'i icin queued job testi ekle:
+   - Fake `jobRunner.abort(jobId)` registry `cancelIndexJob(jobId)` cagirsin.
+   - `POST /v1/admin/jobs/:jobId/cancel` 204 donsun.
+   - Sonrasinda ready response `activeJob: null`, `status: "failed"` ve query/retrieve capability false donsun.
+
+Atomik komutlar:
+1. `node --import tsx --test test/collections.registry.test.ts`
+2. `node --import tsx --test test/acceptance/api.endpoints.test.ts`
+3. `npm.cmd run typecheck`
+4. `npm.cmd run typecheck:test`
+5. `npm.cmd test`
+
+Dikkat:
+- Bu prompt deletion, Chroma cleanup veya build pipeline refactor'u yapmayacak.
+- Collection'i `indexing` veya `creating` durumunda active job olmadan birakma.
+- Iptal edilen job'u `failed` yapma; job status `cancelled` kalmali.
+
+notes/done.md:
+- Is bitince dosyanin sonuna `## Prompt 38: Queued Job Cancellation Must Restore Collection State` basligi altinda yaptiklarini, ekledigin testleri ve calistirdigin komutlari yaz.
+
+Final cevapta:
+- Queued cancel sonrasi collection status kuralini ozetle.
+- Eklenen testleri ve komut sonuclarini yaz.
+- notes/done.md kaydini ekledigini belirt.
+```
+
+## Prompt 39: Cancelled Running Jobs Must Not Become Failed After Abort Race
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin running index job iptal edilirken worker ile registry arasindaki yarisi idempotent ve hatasiz hale getirmektir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "Index/Rebuild Path"
+- "`src/indexing/jobs.ts`"
+- "Backpressure / Timeout / Coklu Kullanici"
+
+Ayrica calismaya baslamadan once notes/done.md dosyasini oku. Prompt 30, Prompt 32, Prompt 36 ve Prompt 38 kayitlarini ozellikle kontrol et.
+
+Problem:
+`src/indexing/jobs.ts` icindeki `runIndexJob(...)` catch blogu her hatada `registry.failIndexJob(jobId, message)` cagiriyor. Ancak `jobRunner.abort(jobId)` once registry'de job'u `cancelled` yaparsa, build daha sonra `Build aborted` firlattiginda `failIndexJob` cancelled job'u failed yapmaya calisir ve hata firlatir. Bu durum background runner'da gereksiz `INDEX_JOB_UNHANDLED_ERROR` log'una veya job state tutarsizligina yol acabiliyor.
+
+Ayrica `src/indexing/buildPhysicalCollection.ts` icindeki final `assertReadable(...)` cagrisi mevcut `AbortSignal` bilgisini Chroma readability helper'ina gecirmiyor. Iptal edilen build, readability check sirasinda gereksiz bekleyebilir.
+
+Amac:
+Iptal edilmis veya abort sinyali almis running job asla `failed` durumuna zorlanmamali. Iptal akisi su sekilde olmali:
+- Registry job status `cancelled` ise `runIndexJob(...)` bunu final state kabul edip return etmeli.
+- `signal.aborted === true` ve job henuz running ise `registry.cancelIndexJob(jobId)` cagrilip job `cancelled` yapilmali.
+- Abort kaynakli hata icin `INDEX_JOB_FAILED` veya `INDEX_JOB_UNHANDLED_ERROR` operasyonel log'u uretilmemeli.
+- Normal build hatalari eskisi gibi `failed` kalmali.
+
+Yapilacaklar:
+1. `src/indexing/jobs.ts` icindeki catch blogunu guncelle:
+   - Hata mesaji `"Build aborted"` ise veya `signal?.aborted` true ise once `registry.getJob(jobId)` ile current state'i oku.
+   - Current job `cancelled` ise onu return et.
+   - Current job `queued` veya `running` ise `registry.cancelIndexJob(jobId)` cagir ve cancelled job'u return et.
+   - Bu abort/cancel branch'inde failed log uretme; istersen `status: "cancelled"` operasyonel log ekle.
+   - Normal hata branch'i eskisi gibi `failIndexJob` kullanmali.
+2. `src/indexing/buildPhysicalCollection.ts` icinde `assertReadable(...)` cagrisi su bilgileri almali:
+   - `abortSignal: signal`
+   - `timeoutMs: runtimeConfig.readyTimeoutMs`
+3. `src/indexing/jobRunner.ts` icinde abort kaynakli hata zaten `runIndexJob` tarafindan swallow/return ediliyorsa runner ek unhandled log uretmemeli. Gerekirse sadece dar kapsamli adjustment yap.
+4. Bu promptta collection deletion davranisini veya registry semasini degistirme.
+
+Testleri once ekle, sonra fix'i yaz:
+1. `test/indexing.jobs.test.ts` icine "cancelled running job returns cancelled instead of failed" testi ekle:
+   - Collection yarat ve reindex job baslat.
+   - `runIndexJob(...)` icin fake `buildPhysicalCollection` kullan.
+   - Fake build once `registry.cancelIndexJob(job.id)` cagirsin, sonra `new Error("Build aborted")` firlatsin.
+   - `runIndexJob(...)` hata firlatmamali.
+   - Final job status `cancelled` olmali.
+   - Final job status `failed` olmamali.
+   - Operational log'larda `INDEX_JOB_FAILED` veya `INDEX_JOB_UNHANDLED_ERROR` olmamali.
+2. `test/indexing.jobs.test.ts` icine "aborted signal cancels running job when registry has not cancelled yet" testi ekle:
+   - AbortController olustur ve build fake'i icinde `controller.abort()` yapip `Build aborted` firlat.
+   - Final job `cancelled` olmali.
+3. `test/buildPhysicalCollection.test.ts` icine assertReadable signal propagation testi ekle:
+   - Mock `assertChromaCollectionReadable` input'unu yakala.
+   - `buildPhysicalCollection(...)` icine bir `AbortController.signal` gecir.
+   - Mock'un `abortSignal` alaninin ayni signal oldugunu assert et.
+   - `timeoutMs` de runtimeConfig.readyTimeoutMs olmali.
+
+Atomik komutlar:
+1. `node --import tsx --test test/indexing.jobs.test.ts`
+2. `node --import tsx --test test/buildPhysicalCollection.test.ts`
+3. `npm.cmd run typecheck`
+4. `npm.cmd run typecheck:test`
+5. `npm.cmd test`
+
+Dikkat:
+- Normal build failure semantigini bozma: abort olmayan hata hala failed olmali.
+- Cancelled job'u tekrar failed yapma.
+- Bu prompt Chroma create/delete timeout refactor'u yapmayacak; sadece mevcut readability helper'ina signal gecirecek.
+
+notes/done.md:
+- Is bitince dosyanin sonuna `## Prompt 39: Cancelled Running Jobs Must Not Become Failed After Abort Race` basligi altinda yaptiklarini, ekledigin testleri ve calistirdigin komutlari yaz.
+
+Final cevapta:
+- Abort/cancel branch'inin nasil calistigini ozetle.
+- Eklenen testleri ve komut sonuclarini yaz.
+- notes/done.md kaydini ekledigini belirt.
+```
+
+## Prompt 40: Empty Indexing Source Must Fail Instead Of Publishing Empty Collection
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin hic indexlenebilir dokuman veya hic chunk uretilmeyen build'lerin basarili collection olarak yayinlanmasini engellemektir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "Index/Rebuild Path"
+- "Yeni Endpoint Kontratlari"
+- "HTTP Hata Kodlari"
+
+Ayrica calismaya baslamadan once notes/done.md dosyasini oku. Prompt 37 kaydini ozellikle kontrol et.
+
+Problem:
+Prompt 37 fault-tolerant ingestion ile bozuk dosyalar tek tek atlanabiliyor. Ancak dizindeki tum dosyalar bozuksa veya desteklenen hic dokuman yoksa `buildPhysicalCollection(...)` su an `documents.length === 0` veya `indexedChunks.length === 0` durumunu acikca fail etmiyor. Bu, Chroma'ya bos `addDocuments([])` denemesi veya 0 chunk'li bir physical collection'in ready yayinlanmasi ile sonuclanabilir.
+
+Amac:
+Bos kaynaklar basarili index gibi yayinlanmamali:
+- Hic indexlenebilir dokuman yoksa build fail etmeli.
+- Hic chunk uretilmezse build fail etmeli.
+- Target physical collection best-effort Chroma delete ile temizlenmeli.
+- `runIndexJob(...)` bu normal build hatasini `failed` job olarak kaydetmeli.
+- Eski active physical varsa collection `ready` kalmali; yoksa collection `failed` olmali.
+
+Yapilacaklar:
+1. `src/indexing/buildPhysicalCollection.ts` icinde acik guard ekle:
+   - `analysis.documents.length === 0` ise `Error("No indexable documents found for collection ...")` veya benzer net mesaj firlat.
+   - Split sonrasi `indexedChunks.length === 0` ise `Error("No indexable chunks produced for collection ...")` veya benzer net mesaj firlat.
+   - Bu guard'lar catch bloguna dusmeli ve mevcut best-effort `deletePhysicalChromaCollection` calismali.
+2. `src/ingestion/pipeline.ts` icindeki fault-tolerant file handling'i geri alma:
+   - Tek bozuk dosya diger saglam dosyalari engellememeli.
+   - Sadece sonuc tamamen bos ise build fail etmeli.
+3. `src/indexing/jobs.ts` normal build error akisini bozma:
+   - Bu hata abort/cancel degil; job `failed` olmali.
+
+Testleri once ekle, sonra fix'i yaz:
+1. `test/buildPhysicalCollection.test.ts` icine "fails when analysis returns no documents" testi ekle:
+   - Mock `analyzeIndexingSource` bos `documents: []` dondursun.
+   - Mock `createPhysicalChromaCollection` cagrildigini assert edebilirsin.
+   - Mock `splitDocuments` ve `vectorStore.addDocuments` cagrilmamali.
+   - Mock `deletePhysicalChromaCollection` target physical ile cagrilmali.
+   - Promise reject olmali ve hata mesaji `No indexable documents` icermeli.
+2. `test/buildPhysicalCollection.test.ts` icine "fails when splitter returns zero chunks" testi ekle:
+   - Mock analysis bir Document dondursun.
+   - Mock `splitDocuments` bos array dondursun.
+   - `vectorStore.addDocuments` cagrilmamali.
+   - Delete cleanup cagrilmali.
+   - Hata mesaji `No indexable chunks` icermeli.
+3. `test/indexing.jobs.test.ts` icine job-level test ekle:
+   - Fake build `No indexable documents found` firlatsin.
+   - Job status `failed` olmali.
+   - No active physical varsa collection status `failed` olmali.
+   - Eski active physical varsa collection `ready` ve eski pointer korunmali.
+
+Atomik komutlar:
+1. `node --import tsx --test test/buildPhysicalCollection.test.ts`
+2. `node --import tsx --test test/indexing.jobs.test.ts`
+3. `npm.cmd run typecheck`
+4. `npm.cmd run typecheck:test`
+5. `npm.cmd test`
+
+Dikkat:
+- Bos index'i "ready" yapma.
+- Fault-tolerant ingestion'i bozma; tek dosya hatasi tum isi fail etmemeli.
+- Hata mesaji kullaniciya/debug log'a yeterince acik olmali.
+
+notes/done.md:
+- Is bitince dosyanin sonuna `## Prompt 40: Empty Indexing Source Must Fail Instead Of Publishing Empty Collection` basligi altinda yaptiklarini, ekledigin testleri ve calistirdigin komutlari yaz.
+
+Final cevapta:
+- Bos dokuman ve bos chunk guard'larini ozetle.
+- Eklenen testleri ve komut sonuclarini yaz.
+- notes/done.md kaydini ekledigini belirt.
+```
+
+## Prompt 41: Collection Deletion Must Preserve Registry Invariants
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin logical collection deletion akisini registry invariants, cleanup metadata ve foreign key tutarliligi acisindan guvenli hale getirmektir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "Onerilen Registry Modeli"
+- "Registry Semasi"
+- "Physical Chroma Collection Stratejisi"
+- "Zero-Downtime Rebuild ve Cleanup"
+
+Ayrica calismaya baslamadan once notes/done.md dosyasini oku. Prompt 31 ve Prompt 36 kayitlarini ozellikle kontrol et.
+
+Problem:
+`src/collections/sqliteRegistry.ts` semasinda `index_jobs.collection_id` ve `physical_collections.collection_id` nullable ve `ON DELETE SET NULL`. Fakat TypeScript domain tipleri `collectionId: string` bekliyor. `deleteCollection(...)` once physical kayitlari `delete_pending` yapiyor, sonra collection row'u hard-delete ediyor; FK `SET NULL` sebebiyle cleanup ve operasyonel loglar logical collection id bilgisini kaybedebiliyor. Bu planlanan registry modeline ve mevcut type'lara ters.
+
+Amac:
+Logical collection silme, public/admin gorunurlugu kaldirmali ama registry metadata'sini bozmamali:
+- Collection row hard-delete edilmemeli; `status = "archived"` ile soft-delete edilmeli.
+- `listVisibleCollections` ve `getVisibleCollection` archived collection'i dondurmemeli.
+- `collectionExists(collectionId)` public route'lar icin archived collection'i "var" saymamali; silinmis collection 404 davranisi vermeli.
+- `index_jobs.collection_id` ve `physical_collections.collection_id` domain modelde string kalmali ve cleanup sirasinda korunmali.
+- Fresh schema'da `collection_id` kolonlari `TEXT NOT NULL` olmali ve `ON DELETE SET NULL` kaldirilmali. Proje henuz gelistirme asamasinda oldugu icin migration yazma.
+- Silme sirasinda physical kayitlar Chroma cleanup icin `delete_pending` + `delete_after = now` olmali; `deleted` durumundaki physical kayitlari tekrar `delete_pending` yapma.
+- Archived collection complete/fail/cancel akisiyla tekrar `ready` veya `failed` olarak reaktive edilmemeli.
+
+Yapilacaklar:
+1. `src/collections/sqliteRegistry.ts` schema'yi taze DB icin duzelt:
+   - `index_jobs.collection_id TEXT NOT NULL`
+   - `physical_collections.collection_id TEXT NOT NULL`
+   - FK'larda `ON DELETE SET NULL` kullanma.
+2. `deleteCollection(context, collectionId)` metodunu hard-delete yerine archive yapacak sekilde guncelle:
+   - Active `queued` ve `running` job'lari `cancelled` yap.
+   - Collection status'unu `archived` yap ve `updated_at` guncelle.
+   - Physical kayitlardan `status != "deleted"` olanlari `delete_pending` ve `delete_after = now` yap.
+   - Active job id'lerini runner abort icin dondurmeye devam et.
+3. `collectionExists(collectionId)` metodunu public visibility amacina uygun hale getir:
+   - Archived collection icin false donmeli.
+   - Baska tenant'a ait non-archived collection icin true donmesi 403 ayrimi icin kabul edilebilir.
+4. `completeIndexJob(...)`, `failIndexJob(...)` ve `cancelIndexJob(...)` archived collection'i reaktive etmemeli:
+   - Collection yoksa veya `status === "archived"` ise active pointer/status update yapma.
+   - Running job target physical gerekiyorsa cleanup'a dusmeli veya failed_build kalmali; archived collection ready/failed olmamali.
+5. `src/http/adminRouter.ts` endpoint kontratini degistirme; `DELETE /v1/admin/collections/:collectionId` 204 kalmali.
+
+Testleri once ekle, sonra fix'i yaz:
+1. `test/collections.registry.test.ts` icine deletion invariant testi ekle:
+   - Collection yarat, physical record yarat.
+   - `deleteCollection(...)` cagir.
+   - `getVisibleCollection(...)` null donmeli.
+   - `collectionExists(collection.id)` false donmeli.
+   - Raw SQLite sorgusu ile `collections` tablosunda row'un kaldigini ve `status = "archived"` oldugunu dogrula.
+   - `getPhysicalCollection(physicalName)` `collectionId` olarak eski collection id'yi korumali.
+   - Physical status `delete_pending`, `deleteAfter` dolu olmali.
+   - `PRAGMA foreign_key_check` bos donmeli.
+2. `test/collections.registry.test.ts` icine "deleted physical is not resurrected" testi ekle:
+   - Collection'a ait bir physical kaydi once `deleted` yap.
+   - Collection'i sil.
+   - O physical kayit `deleted` kalmali, tekrar `delete_pending` olmamali.
+3. `test/indexing.cleanup.test.ts` veya uygun registry testine cleanup metadata testi ekle:
+   - Delete sonrasi `listDuePhysicalCollectionsForCleanup(...)` donen kaydin `collectionId` alaninin null degil eski id oldugunu assert et.
+4. `test/acceptance/api.endpoints.test.ts` icine public/admin visibility testi ekle:
+   - Admin DELETE 204 donsun.
+   - Sonrasinda public `GET /v1/rag/collections/:id` 404 donsun; 403 donmemeli.
+   - List endpoint silinen/archived collection'i dondurmemeli.
+
+Atomik komutlar:
+1. `node --import tsx --test test/collections.registry.test.ts`
+2. `node --import tsx --test test/indexing.cleanup.test.ts`
+3. `node --import tsx --test test/acceptance/api.endpoints.test.ts`
+4. `npm.cmd run typecheck`
+5. `npm.cmd run typecheck:test`
+6. `npm.cmd test`
+
+Dikkat:
+- Migration yazma; proje henuz development asamasinda.
+- Foreign key checks'i kapatma.
+- `collectionId` bilgisini null'a dusurme.
+- Archived collection'i query/retrieve veya reindex icin gorunur yapma.
+
+notes/done.md:
+- Is bitince dosyanin sonuna `## Prompt 41: Collection Deletion Must Preserve Registry Invariants` basligi altinda yaptiklarini, ekledigin testleri ve calistirdigin komutlari yaz.
+
+Final cevapta:
+- Hard-delete yerine archive kararini ve registry invariantlarini ozetle.
+- Eklenen testleri ve komut sonuclarini yaz.
+- notes/done.md kaydini ekledigini belirt.
+```
+
+## Prompt 42: Public Ready Contract Must Hide Physical Storage Names
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin public RAG ready endpoint'inin internal Chroma physical collection adlarini son kullaniciya sizdirmamasini saglamaktir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "Yeni Endpoint Kontratlari"
+- "Collection ID ve Endpoint Path Karari"
+- "Physical Chroma Collection Stratejisi"
+
+Ayrica calismaya baslamadan once notes/done.md dosyasini oku. Prompt 26 kaydini ozellikle kontrol et.
+
+Problem:
+Prompt 26 public collection detail DTO'sundan internal alanlari temizledi. Ancak `GET /v1/rag/collections/:collectionId/ready` response'u hala `activePhysicalCollection` ile Chroma physical collection adini public API'de donduruyor. Physical collection adi tenant, logical collection id ve version bilgilerini tasiyan internal storage identifier'dir. Son kullanici logical collection id ve public linklerle calismali; Chroma physical name bilmek zorunda degil.
+
+Amac:
+Public ready endpoint internal storage name dondurmemeli:
+- `activePhysicalCollection` response alanini kaldir.
+- Yerine sadece boolean `hasActivePhysicalCollection` dondur.
+- `activeVersion`, `activeJob`, `chromaReadable`, `chromaCount`, `modelAvailability` ve `capabilities` alanlari korunabilir.
+- Query/retrieve handler'lari ve operational logs internal physical name kullanmaya devam edebilir.
+- Admin job response'larinda `targetPhysicalCollection` kalabilir; bu prompt sadece public RAG ready endpoint icindir.
+
+Yapilacaklar:
+1. `src/http/ragRouter.ts` icindeki ready response'u guncelle:
+   - `activePhysicalCollection: ...` alanini kaldir.
+   - `hasActivePhysicalCollection: Boolean(collection.activePhysicalCollection)` ekle.
+2. `test/acceptance/api.endpoints.test.ts` icindeki ready endpoint beklentilerini guncelle:
+   - Response'ta `activePhysicalCollection` property olmadigini assert et.
+   - `hasActivePhysicalCollection` true/false beklentilerini ekle.
+   - Query/retrieve'in hala dogru internal physical collection'i kullandigini mevcut handler call assert'leriyle koru.
+3. `test/docs.contract.test.ts`, `README.md` ve `test_frontend/index.html` icinde public ready kontrati dokumante ediliyorsa yeni alan adina gore guncelle.
+4. Eski `activePhysicalCollection` alanina compatibility alias ekleme.
+
+Testleri once ekle, sonra fix'i yaz:
+1. Ready endpoint active physical yokken:
+   - `hasActivePhysicalCollection === false`
+   - `"activePhysicalCollection" in body === false`
+   - `capabilities.query === false`
+2. Ready endpoint active physical varken:
+   - `hasActivePhysicalCollection === true`
+   - `"activePhysicalCollection" in body === false`
+   - Chroma/model uygunsa query/retrieve capability true kalmali.
+3. Public collection detail DTO sanitization testi hala gecmeli:
+   - `activePhysicalCollection`, `sourcePath`, `ozelgeDataPath`, model/config alanlari public detail DTO'da olmamali.
+
+Atomik komutlar:
+1. `node --import tsx --test test/acceptance/api.endpoints.test.ts`
+2. `node --import tsx --test test/docs.contract.test.ts`
+3. `node --import tsx --test test/frontend.static.test.ts`
+4. `npm.cmd run typecheck`
+5. `npm.cmd run typecheck:test`
+6. `npm.cmd test`
+
+Dikkat:
+- Physical collection adini public ready response'a baska isimle tekrar koyma.
+- Query/retrieve'in internal active physical kullanmasini bozma.
+- Admin endpoint kontratini bu promptta dar kapsam disinda degistirme.
+
+notes/done.md:
+- Is bitince dosyanin sonuna `## Prompt 42: Public Ready Contract Must Hide Physical Storage Names` basligi altinda yaptiklarini, ekledigin testleri ve calistirdigin komutlari yaz.
+
+Final cevapta:
+- Public ready response'tan hangi internal alanin kaldirildigini yaz.
+- Eklenen/guncellenen testleri ve komut sonuclarini yaz.
+- notes/done.md kaydini ekledigini belirt.
+```

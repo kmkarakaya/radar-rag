@@ -691,6 +691,102 @@ describe("sqlite collection registry", () => {
     assert.equal(failedBuild?.cleanupError, "build failed");
   });
 
+  it("restores collection to 'failed' when the first queued job is cancelled", async () => {
+    const collection = await registry.createCollection(context, collectionInput);
+    const job = await registry.beginIndexJob(context, collection.id);
+    
+    assert.equal(collection.status, "creating");
+    const indexing = await registry.getVisibleCollection(context, collection.id);
+    assert.equal(indexing?.status, "indexing");
+
+    await registry.cancelIndexJob(job.id);
+    
+    const cancelledJob = await registry.getJob(job.id);
+    const restored = await registry.getVisibleCollection(context, collection.id);
+    
+    assert.equal(cancelledJob?.status, "cancelled");
+    assert.equal(restored?.status, "failed");
+  });
+
+  it("restores collection to 'ready' when a reindex queued job is cancelled", async () => {
+    const { collectionId, job: firstJob } = await createRunningJob();
+    await registry.completeIndexJob(firstJob.id, {
+      activePhysicalCollection: firstJob.targetPhysicalCollection,
+      documentCount: 5,
+      chunkCount: 10,
+      retentionMs: 0,
+    });
+
+    const ready = await registry.getVisibleCollection(context, collectionId);
+    assert.equal(ready?.status, "ready");
+
+    const secondJob = await registry.beginIndexJob(context, collectionId);
+    const indexing = await registry.getVisibleCollection(context, collectionId);
+    assert.equal(indexing?.status, "indexing");
+
+    await registry.cancelIndexJob(secondJob.id);
+    
+    const cancelledJob = await registry.getJob(secondJob.id);
+    const restored = await registry.getVisibleCollection(context, collectionId);
+    
+    assert.equal(cancelledJob?.status, "cancelled");
+    assert.equal(restored?.status, "ready");
+    assert.equal(restored?.activePhysicalCollection, firstJob.targetPhysicalCollection);
+  });
+
+  it("soft-deletes a collection: marks 'archived' and hides it, while preserving registry invariants", async () => {
+    const { collectionId, job: runningJob } = await createRunningJob();
+    
+    // 1. Delete collection
+    const cancelledIds = await registry.deleteCollection(context, collectionId);
+    
+    // 2. Verify collection is marked as archived and hidden
+    assert.deepEqual(cancelledIds, [runningJob.id]);
+    const exists = await registry.collectionExists(collectionId);
+    assert.equal(exists, false, "collectionExists should return false for archived");
+    
+    const visible = await registry.getVisibleCollection(context, collectionId);
+    assert.equal(visible, null, "getVisibleCollection should return null for archived");
+    
+    const list = await registry.listVisibleCollections(context);
+    assert.ok(!list.find(c => c.id === collectionId), "listVisibleCollections should not include archived");
+
+    // Check raw DB to verify it's still there but 'archived'
+    const row = rawDb.prepare("SELECT status FROM collections WHERE id = ?").get(collectionId) as { status: string };
+    assert.equal(row.status, "archived");
+
+    // 3. Verify jobs were cancelled
+    const cancelledJob = await registry.getJob(runningJob.id);
+    assert.equal(cancelledJob?.status, "cancelled");
+
+    // 4. Verify physical collections are marked for deletion but keep collectionId
+    const physical = await registry.getPhysicalCollection(runningJob.targetPhysicalCollection);
+    assert.equal(physical?.status, "delete_pending");
+    assert.equal(physical?.collectionId, collectionId, "physical record must preserve collectionId after archiving");
+
+    // 5. Verify it cannot be reactivated by job completion
+    // First, verify we can't begin a new job
+    await assert.rejects(
+      () => registry.beginIndexJob(context, collectionId),
+      /Collection not found/i,
+    );
+
+    // Force job and physical collection back to valid states for completion for testing race condition
+    rawDb.prepare("UPDATE index_jobs SET status = 'running' WHERE id = ?").run(runningJob.id);
+    rawDb.prepare("UPDATE physical_collections SET status = 'building' WHERE name = ?").run(runningJob.targetPhysicalCollection);
+    
+    await registry.completeIndexJob(runningJob.id, {
+      activePhysicalCollection: runningJob.targetPhysicalCollection,
+      activeVersion: runningJob.targetVersion,
+      documentCount: 100,
+      chunkCount: 1000,
+      retentionMs: 0,
+    });
+
+    const archivedAgain = rawDb.prepare("SELECT status FROM collections WHERE id = ?").get(collectionId) as { status: string };
+    assert.equal(archivedAgain.status, "archived", "archived collection should not be reactivated by job completion");
+  });
+
   it("deletes a collection and sets physical collections to delete_pending", async () => {
     const collection = await registry.createCollection(context, collectionInput);
     const physicalName = createPhysicalCollectionName({
@@ -715,5 +811,6 @@ describe("sqlite collection registry", () => {
     const physical = await registry.getPhysicalCollection(physicalName);
     assert.equal(physical?.status, "delete_pending");
     assert.ok(physical?.deleteAfter);
+    assert.equal(physical?.collectionId, collection.id);
   });
 });

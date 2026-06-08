@@ -136,7 +136,7 @@ function initializeSchema(db: SqliteDatabase): void {
 
     CREATE TABLE IF NOT EXISTS index_jobs (
       id TEXT PRIMARY KEY,
-      collection_id TEXT,
+      collection_id TEXT NOT NULL,
       tenant_id TEXT NOT NULL,
       status TEXT NOT NULL,
       target_physical_collection TEXT NOT NULL,
@@ -151,13 +151,13 @@ function initializeSchema(db: SqliteDatabase): void {
       lock_token TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE SET NULL
+      FOREIGN KEY(collection_id) REFERENCES collections(id)
     );
 
     CREATE TABLE IF NOT EXISTS physical_collections (
       name TEXT PRIMARY KEY,
       tenant_id TEXT NOT NULL,
-      collection_id TEXT,
+      collection_id TEXT NOT NULL,
       version TEXT NOT NULL,
       status TEXT NOT NULL,
       chroma_configuration_json TEXT NOT NULL,
@@ -169,7 +169,7 @@ function initializeSchema(db: SqliteDatabase): void {
       delete_after TEXT,
       deleted_at TEXT,
       cleanup_error TEXT,
-      FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE SET NULL
+      FOREIGN KEY(collection_id) REFERENCES collections(id)
     );
 
     CREATE INDEX IF NOT EXISTS idx_collections_tenant ON collections(tenant_id);
@@ -541,35 +541,33 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         updatedAt: now,
       });
 
-      if (existing.status === 'running') {
+      this.db.prepare(`
+        UPDATE physical_collections
+        SET status = 'failed_build', cleanup_error = 'Cancelled by user'
+        WHERE name = @name
+          AND tenant_id = @tenantId
+          AND collection_id = @collectionId
+          AND version = @version
+          AND status = 'building'
+      `).run({
+        name: existing.target_physical_collection,
+        tenantId: existing.tenant_id,
+        collectionId: existing.collection_id,
+        version: existing.target_version,
+      });
+
+      const collection = this.getCollectionRow(existing.tenant_id, existing.collection_id);
+      if (collection && collection.status !== "archived") {
         this.db.prepare(`
-          UPDATE physical_collections
-          SET status = 'failed_build', cleanup_error = 'Cancelled by user'
-          WHERE name = @name
-            AND tenant_id = @tenantId
-            AND collection_id = @collectionId
-            AND version = @version
-            AND status = 'building'
+          UPDATE collections
+          SET status = @status, updated_at = @updatedAt
+          WHERE tenant_id = @tenantId AND id = @collectionId
         `).run({
-          name: existing.target_physical_collection,
+          status: collection.active_physical_collection ? "ready" : "failed",
           tenantId: existing.tenant_id,
           collectionId: existing.collection_id,
-          version: existing.target_version,
+          updatedAt: now,
         });
-
-        const collection = this.getCollectionRow(existing.tenant_id, existing.collection_id);
-        if (collection) {
-          this.db.prepare(`
-            UPDATE collections
-            SET status = @status, updated_at = @updatedAt
-            WHERE tenant_id = @tenantId AND id = @collectionId
-          `).run({
-            status: collection.active_physical_collection ? "ready" : "failed",
-            tenantId: existing.tenant_id,
-            collectionId: existing.collection_id,
-            updatedAt: now,
-          });
-        }
       }
 
       const updated = this.getJobRow(jobId);
@@ -703,7 +701,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           chunk_count = @chunkCount,
           last_indexed_at = @lastIndexedAt,
           updated_at = @updatedAt
-        WHERE tenant_id = @tenantId AND id = @collectionId
+        WHERE tenant_id = @tenantId AND id = @collectionId AND status != 'archived'
       `).run({
         tenantId: existing.tenant_id,
         collectionId: existing.collection_id,
@@ -785,16 +783,18 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       });
 
       const collection = this.getCollectionRow(existing.tenant_id, existing.collection_id);
-      this.db.prepare(`
-        UPDATE collections
-        SET status = @status, updated_at = @updatedAt
-        WHERE tenant_id = @tenantId AND id = @collectionId
-      `).run({
-        status: collection?.active_physical_collection ? "ready" : "failed",
-        tenantId: existing.tenant_id,
-        collectionId: existing.collection_id,
-        updatedAt: now,
-      });
+      if (collection && collection.status !== "archived") {
+        this.db.prepare(`
+          UPDATE collections
+          SET status = @status, updated_at = @updatedAt
+          WHERE tenant_id = @tenantId AND id = @collectionId
+        `).run({
+          status: collection.active_physical_collection ? "ready" : "failed",
+          tenantId: existing.tenant_id,
+          collectionId: existing.collection_id,
+          updatedAt: now,
+        });
+      }
 
       const updated = this.getJobRow(jobId);
       if (!updated) {
@@ -850,16 +850,18 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         });
 
         const collection = this.getCollectionRow(job.tenant_id, job.collection_id);
-        this.db.prepare(`
-          UPDATE collections
-          SET status = ?, updated_at = ?
-          WHERE tenant_id = ? AND id = ? AND status = 'indexing'
-        `).run(
-          collection?.active_physical_collection ? "ready" : "failed",
-          now,
-          job.tenant_id,
-          job.collection_id
-        );
+        if (collection && collection.status !== "archived") {
+          this.db.prepare(`
+            UPDATE collections
+            SET status = ?, updated_at = ?
+            WHERE tenant_id = ? AND id = ? AND status = 'indexing'
+          `).run(
+            collection.active_physical_collection ? "ready" : "failed",
+            now,
+            job.tenant_id,
+            job.collection_id,
+          );
+        }
       }
 
       return staleJobs.length;
@@ -964,14 +966,15 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       this.db.prepare(`
         UPDATE physical_collections
         SET status = 'delete_pending', delete_after = @now
-        WHERE collection_id = @collectionId
+        WHERE collection_id = @collectionId AND status != 'deleted'
       `).run({ now, collectionId });
 
-      // Delete the collection (FKs will handle CASCADE for index_jobs and SET NULL for physical_collections)
+      // Soft delete the collection
       this.db.prepare(`
-        DELETE FROM collections
+        UPDATE collections
+        SET status = 'archived', updated_at = @now
         WHERE tenant_id = @tenantId AND id = @collectionId
-      `).run({ tenantId: context.tenantId, collectionId });
+      `).run({ tenantId: context.tenantId, collectionId, now });
 
       return activeJobIds;
     });
@@ -980,7 +983,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
   }
 
   async collectionExists(collectionId: string): Promise<boolean> {
-    const row = this.db.prepare("SELECT id FROM collections WHERE id = ?").get(collectionId);
+    const row = this.db.prepare("SELECT id FROM collections WHERE id = ? AND status != 'archived'").get(collectionId);
     return !!row;
   }
 

@@ -641,11 +641,57 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
 - `src/http/adminRouter.ts` içinde koleksiyon silindiğinde ilişkili tüm işlerin `jobRunner.abort(jobId)` ile durdurulması sağlandı.
 - `test/acceptance/api.endpoints.test.ts` ve `test/collections.registry.test.ts` içine silme ve iptal davranışlarını doğrulayan testler eklendi.
 
-## Prompt 37: Fault-Tolerant Ingestion Pipeline
-- `src/ingestion/pipeline.ts` güncellendi: Dosya yükleme döngüsü (`analyzeIndexingSource`) `try-catch` bloğuna alındı.
-- Bozuk veya kilitli dosyalar artık tüm indeksleme işini çökertmiyor; hata loglanıyor ve dosya `unsupportedFiles` listesine hata mesajiyla eklenerek işlem devam ediyor.
-- `test/ingestion.fault-tolerance.test.ts` eklendi ve bozuk dosya senaryosunda sistemin kararlılığı doğrulandı.
-- Tüm sistem testleri (104/104) başarıyla geçti.
+## Prompt 38: Queued Job Cancellation Must Restore Collection State
+
+- `src/collections/sqliteRegistry.ts` güncellendi: `cancelIndexJob(jobId)` metodu artık hem `queued` hem de `running` durumundaki işler için koleksiyon durumunu (`status`) güncelliyor.
+- İptal edilen iş eğer koleksiyonun ilk işi ise koleksiyon durumu `failed` olarak işaretleniyor. Eğer koleksiyonun zaten aktif bir versiyonu varsa, durum `ready` olarak korunuyor.
+- `queued` işlerin iptali sırasında, eğer fiziksel kayıt (`physical_collections`) henüz oluşturulmamışsa yeni bir kayıt oluşturulması engellendi.
+- İptal işlemi `cancelled` durumu için idempotent hale getirildi.
+- Testler eklendi/güncellendi:
+  - `test/collections.registry.test.ts` içine ilk işin iptali (`failed`) ve reindex işinin iptali (`ready`) senaryolarını doğrulayan testler eklendi.
+  - test/acceptance/api.endpoints.test.ts içine POST /v1/admin/jobs/:jobId/cancel endpoint'inin koleksiyon durumunu doğru şekilde restore ettiğini doğrulayan acceptance testi eklendi.
+  - API Endpoint testlerindeki jobRunner.abort stub'ı, registry durumunu güncellemesi için cancelIndexJob çağrısı yapacak şekilde düzeltildi.
+  - Tüm sistem testleri (107/107) başarıyla geçti.
+
+  ## Prompt 39: Cancelled Running Jobs Must Not Become Failed After Abort Race
+
+  - `src/indexing/jobs.ts` catch bloğu güncellendi: İptal edilen veya abort edilen işler artık `failed` olarak işaretlenmek yerine registry durumuna göre `cancelled` olarak bırakılıyor ve `INDEX_JOB_FAILED` operasyonel logu üretilmiyor.
+  - `src/indexing/buildPhysicalCollection.ts` güncellendi: `assertChromaCollectionReadable` çağrısına `abortSignal` ve `timeoutMs` (readyTimeoutMs) parametreleri iletildi.
+  - `src/indexing/jobRunner.ts` güncellendi: `isTimeoutOrAbortError` helper'ı kullanılarak beklenen iptal/timeout durumlarında unhandled error logu basılması engellendi.
+  - `test/indexing.jobs.test.ts` içine iptal edilen işin `cancelled` döndüğünü ve failure log üretmediğini doğrulayan test eklendi.
+  - `test/buildPhysicalCollection.test.ts` içine sinyal ve timeout propagation doğrulaması eklendi.
+  - Tüm sistem testleri (109/109) başarıyla geçti.
+
+## Prompt 40: Empty Indexing Source Must Fail Instead Of Publishing Empty Collection
+
+- `src/indexing/buildPhysicalCollection.ts` güncellendi: `analysis.documents.length === 0` veya `indexedChunks.length === 0` durumlarında hata fırlatılması sağlandı. Bu sayede boş koleksiyonların 'ready' olarak işaretlenmesi engellendi.
+- Hata durumunda mevcut `catch` bloğu üzerinden fiziksel koleksiyonun (`deletePhysicalChromaCollection`) temizlenmesi garanti altına alındı.
+- `test/buildPhysicalCollection.test.ts` içine boş doküman ve boş chunk durumlarında build'in başarısız olduğunu ve temizleme işleminin yapıldığını doğrulayan testler eklendi.
+- `test/indexing.jobs.test.ts` içine boş build sonucunda işin `failed` durumuna geçtiğini ve aktif koleksiyon pointer'ının değişmediğini doğrulayan test eklendi.
+- Tüm sistem testleri (112/112) başarıyla geçti.
+
+## Prompt 41: Collection Deletion Must Preserve Registry Invariants
+
+- Hard-delete yerine soft-delete ('archived') yapısına geçildi. `src/collections/sqliteRegistry.ts` içindeki `deleteCollection` metodu artık koleksiyonu silmek yerine `status = 'archived'` olarak işaretliyor.
+- Registry şeması sıkılaştırıldı: `index_jobs.collection_id` ve `physical_collections.collection_id` artık `TEXT NOT NULL` ve `ON DELETE SET NULL` kısıtları kaldırıldı. Bu sayede ilişkisel bütünlük her zaman korunuyor.
+- `collectionExists(collectionId)` ve `getVisibleCollection` metodları güncellenerek 'archived' durumundaki koleksiyonlar için `false` veya `null` dönmesi sağlandı. Bu, tüm API katmanında arşivlenen koleksiyonların otomatik olarak 404 dönmesini garanti altına alıyor.
+- İş döngüsü (`completeIndexJob`, `failIndexJob`, `cancelIndexJob`, `failStaleJobs`) güncellenerek arşivlenmiş bir koleksiyonun durumunun yanlışlıkla 'ready' veya 'failed' gibi aktif durumlara geri çekilmesi (`reactivation`) engellendi.
+- `deleteCollection` sırasında aktif işler iptal ediliyor ve fiziksel koleksiyonlar `delete_pending` durumuna alınarak `delete_after = now` ile temizlik kuyruğuna sokuluyor. Fiziksel kayıtların `collection_id` referansı arşivleme sonrasında da korunuyor.
+- Testler eklendi/güncellendi:
+  - `test/collections.registry.test.ts` içine koleksiyonun arşivlenmesi, görünürlükten kalkması, ilişkili işlerin ve fiziksel kayıtların durumu ve reactivation engelleme mantığını doğrulayan kapsamlı testler eklendi.
+  - `test/acceptance/api.endpoints.test.ts` içine `DELETE` sonrası hem public hem admin API'ların 404 döndüğünü doğrulayan acceptance testi eklendi.
+- Tüm sistem testleri (114/114) başarıyla geçti.
+
+## Prompt 42: Public Ready Contract Must Hide Physical Storage Names
+
+- Kamuoyuna açık (public) RAG ready endpoint'i (`GET /v1/rag/collections/:collectionId/ready`) güncellendi: Yanıttaki `activePhysicalCollection` (fiziksel Chroma koleksiyon adı) alanı kaldırıldı ve yerine boolean tipinde `hasActivePhysicalCollection` alanı eklendi.
+- Bu değişiklik ile iç depolama isimlerinin (tenant, logical ID ve versiyon içeren) son kullanıcıya sızması engellendi ve API soyutlama katmanı güçlendirildi.
+- `src/http/ragRouter.ts` içinde yanıt nesnesi yeni kontrata uygun hale getirildi.
+- `test/acceptance/api.endpoints.test.ts` güncellenerek fiziksel ismin yanıtta olmadığı ve yeni boolean bayrağının doğruluğu test edildi.
+- `test/docs.contract.test.ts` güncellenerek dokümantasyonun (`README.md` ve mimari doküman) fiziksel isimleri içermediği ve yeni bayrağı açıkladığı otomatik olarak doğrulanmaya başlandı.
+- `README.md` ve `vanilla_rag_backend_mimarisi.md` güncellenerek yeni API kontratı yansıtıldı.
+- Tüm sistem testleri (114/114) başarıyla geçti.
+
 
 
 

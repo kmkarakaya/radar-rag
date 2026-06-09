@@ -152,6 +152,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
       const collection = await resolveCollection(req, { registry: deps.registry! }, runtimeConfig, {
         abortSignal: ac.signal,
         timeoutMs: runtimeConfig.ragTimeoutMs,
+        logEvent: deps.logEvent,
       });
       res.locals.collectionId = collection.id;
       res.locals.physicalCollection = collection.activePhysicalCollection;
@@ -204,6 +205,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
       const collection = await resolveCollection(req, { registry: deps.registry! }, runtimeConfig, {
         abortSignal: ac.signal,
         timeoutMs: runtimeConfig.ragTimeoutMs,
+        logEvent: deps.logEvent,
       });
       res.locals.collectionId = collection.id;
       res.locals.physicalCollection = collection.activePhysicalCollection;

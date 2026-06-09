@@ -4,6 +4,7 @@ import type { CollectionRegistry, RagCollection } from "./types.js";
 import { assertChromaCollectionReadable } from "./chromaCollections.js";
 import { HttpError } from "../http/errors.js";
 import { config, type ResolvedConfig } from "../config.js";
+import { emitOperationalLog, type OperationalLogSink } from "../observability/logger.js";
 
 export async function resolveReadableCollection(
   req: Request,
@@ -13,6 +14,7 @@ export async function resolveReadableCollection(
     timeoutMs?: number;
     abortSignal?: AbortSignal;
     assertChromaCollectionReadable?: typeof assertChromaCollectionReadable;
+    logEvent?: OperationalLogSink;
   }
 ): Promise<RagCollection> {
   const collectionId = Array.isArray(req.params.collectionId) ? req.params.collectionId[0] : req.params.collectionId;
@@ -53,6 +55,15 @@ export async function resolveReadableCollection(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (/not found|does not exist|404|could not be found/i.test(message)) {
+      emitOperationalLog(options?.logEvent, {
+        tenantId: collection.tenantId,
+        collectionId,
+        physicalCollection: collection.activePhysicalCollection,
+        operation: "collection_readiness",
+        status: "failed",
+        errorCode: "COLLECTION_STORAGE_INCONSISTENT",
+        message: "Active physical collection is missing in Chroma.",
+      });
       throw new HttpError(503, "COLLECTION_STORAGE_INCONSISTENT", "Active physical collection is missing in Chroma.", {
         collectionId,
         physicalCollection: collection.activePhysicalCollection,

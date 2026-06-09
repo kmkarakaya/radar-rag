@@ -137,6 +137,27 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isNetworkError(error: unknown): boolean {
+  const message = errorMessage(error);
+  return (
+    message.includes("fetch failed") ||
+    message.includes("ECONNREFUSED") ||
+    message.includes("ETIMEDOUT") ||
+    message.includes("ENOTFOUND")
+  );
+}
+
+function wrapNetworkError(error: unknown, context: string): never {
+  if (isNetworkError(error)) {
+    throw new RagQueryError(
+      "MODEL_BACKPRESSURE",
+      `Network error during ${context}: ${errorMessage(error)}`,
+      503,
+    );
+  }
+  throw error;
+}
+
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string, abortSignal?: AbortSignal): Promise<T> {
   return withTimeoutAndAbort({ promise, timeoutMs, label, abortSignal });
 }
@@ -550,7 +571,7 @@ export async function retrieveSources(
           },
         );
       }
-      throw error;
+      wrapNetworkError(error, "retrieval");
     }
 
     const sources = docsWithScores
@@ -769,7 +790,7 @@ export async function answerQuestion(question: string, options: {
           503,
         );
       }
-      throw error;
+      wrapNetworkError(error, "chat generation");
     }
     
     const generationElapsedMs = Date.now() - generationStartedAt;

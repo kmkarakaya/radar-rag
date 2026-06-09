@@ -695,3 +695,18 @@ Her agent çalışmaya başlamadan önce bu dosyayı okumalıdır. Her agent iş
 
 
 
+
+ # #   P r o m p t   3 9 :   C a n c e l l e d   R u n n i n g   J o b s   M u s t   N o t   B e c o m e   F a i l e d   A f t e r   A b o r t   R a c e 
+ 
+ -   I m p l e m e n t a t i o n   v e r i f i e d :   J o b   l i f e c y c l e   h a n d l e s   c a n c e l l e d   s t a t e   c o r r e c t l y   t o   p r e v e n t   t r a n s i t i o n   t o    a i l e d   u p o n   a b o r t ,   a n d   a b o r t   s i g n a l s   a r e   c o r r e c t l y   p r o p a g a t e d . 
+ -   T e s t s   v e r i f i e d :   	 e s t / i n d e x i n g . j o b s . t e s t . t s   a n d   	 e s t / b u i l d P h y s i c a l C o l l e c t i o n . t e s t . t s   p a s s ,   c o v e r i n g   c a n c e l l a t i o n   r a c e   a n d   s i g n a l   p r o p a g a t i o n . 
+ -   S t a t u s :   P A S S 
+  
+ 
+ # #   P r o m p t   4 3 :   C o m p l e t e   O p e r a t i o n a l   A l a r m   a n d   E r r o r   C o d e   M a p p i n g 
+ 
+ -   I m p l e m e n t a t i o n   v e r i f i e d :   M a p p e d   n e t w o r k - r e l a t e d   e r r o r s   ( E C O N N R E F U S E D ,   f e t c h   f a i l u r e s )   t o   M O D E L _ B A C K P R E S S U R E   i n   s r c / r a g . t s   a n d   s r c / c o l l e c t i o n s / c h r o m a C o l l e c t i o n s . t s . 
+ -   I m p l e m e n t a t i o n   v e r i f i e d :   A d d e d   e m i t O p e r a t i o n a l L o g   i n   s r c / c o l l e c t i o n s / r e s o l v e R e a d a b l e C o l l e c t i o n . t s   f o r   C O L L E C T I O N _ S T O R A G E _ I N C O N S I S T E N T   e r r o r s ,   a n d   c o r r e c t l y   p r o p a g a t e d   l o g E v e n t   s i n k   i n    a g R o u t e r . t s . 
+ -   S t a t u s :   P A S S 
+  
+ 

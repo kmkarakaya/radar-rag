@@ -3040,3 +3040,37 @@ Final cevapta:
 - Eklenen/guncellenen testleri ve komut sonuclarini yaz.
 - notes/done.md kaydini ekledigini belirt.
 ```
+
+## Prompt 43: Complete Operational Alarm and Error Code Mapping
+
+```text
+Bu repo Vanilla RAG Backend repo'sudur. Gorevin plan hedeflerinde belirtilen fakat atlanmis olan "ECONNREFUSED / Network errors map to MODEL_BACKPRESSURE" ve "COLLECTION_STORAGE_INCONSISTENT alarm/log uretimi" eksiklerini kapatmaktir.
+
+Bu prompt cold-start calisacak bir coding agent'a verilecektir. Once mutlaka notes/multicollection.md dosyasini oku. Ozellikle su bolumlere gore calis:
+- "Ollama ve Chroma Backpressure"
+- "HTTP Hata Kodlari"
+
+Problem:
+1. `src/rag.ts` ve `src/collections/chromaCollections.ts` icinde Ollama/Chroma'dan gelen native network hatalari (ornegin `ECONNREFUSED`, `TypeError: fetch failed`) ozel `MODEL_BACKPRESSURE` veya typed error'lara donusmuyor, `throw error` olarak yukari firlayip `src/http/errors.ts` uzerinden jenerik 500 `INTERNAL_ERROR` donuyor. Plan: "limit asilirsa 503 MODEL_BACKPRESSURE don... request timeout ve abort propagation... Chroma retrieval timeout" gerektiriyor. Bu network erisilemezlik durumlari 503 ve `MODEL_BACKPRESSURE` ile map edilmelidir.
+2. `src/collections/resolveReadableCollection.ts` Chroma physical collection eksikligini dogru sekilde 503 `COLLECTION_STORAGE_INCONSISTENT` olarak map ediyor, ancak plandaki "Chroma missing hatasi registry ile celisirse 503 COLLECTION_STORAGE_INCONSISTENT ve alarm/log uret" kosuluna ragmen `emitOperationalLog` cagirmiyor.
+
+Amac:
+Network fallback mapping ve operational alarm missing log durumlarini kodla, testlerle dogrula ve planin gerisinde kalan bu iki hatayi tamir et.
+
+Yapilacaklar:
+1. `src/rag.ts` icindeki RAG generation/retrieval `catch` bloklarina `error.name === "TypeError"` veya fetch connection error check'i ekle. Raw network failure durumlarinda da Timeout/Abort'da oldugu gibi `MODEL_BACKPRESSURE` RagQueryError firlat. Ayni durumu `src/collections/chromaCollections.ts` icindeki `assertChromaCollectionReadable` helper'i icin de uygula (bu durumda `COLLECTION_STORAGE_INCONSISTENT` verilebilir veya RAG servisinde `MODEL_BACKPRESSURE` olarak cevrilmeli).
+2. `src/collections/resolveReadableCollection.ts` icinde 503 `COLLECTION_STORAGE_INCONSISTENT` HttpError'u firlatmadan hemen once options'dan eklenecek logEvent sink'i uzerinden `emitOperationalLog` cagir. Log `status: "failed"`, `errorCode: "COLLECTION_STORAGE_INCONSISTENT"` olmali.
+3. Uygun `api.endpoints.test.ts` veya `rag.core.test.ts` testlerinde gercek bir ECONNREFUSED/fetch failed simulasyonu firlatip 503 `MODEL_BACKPRESSURE` (veya Chroma baglantisi icin 503) alindigini assert et.
+4. `api.endpoints.test.ts` icindeki `COLLECTION_STORAGE_INCONSISTENT` testinde (varsa) mock logEvent uzerinden log/alarm atildigini dogrula veya ekle.
+
+Dogrulama:
+1. `npm.cmd run typecheck`
+2. `npm.cmd run typecheck:test`
+3. `npm.cmd run build`
+4. `npm.cmd test`
+
+Final cevapta:
+- Network error fallback mapping islemini nerede ve nasil yaptigini acikla.
+- Storage Inconsistent operational alarm eklemesini ozetle.
+- notes/done.md dosyasina `## Prompt 43: Complete Operational Alarm and Error Code Mapping` basligiyla kayit ekledigini belirt.
+```

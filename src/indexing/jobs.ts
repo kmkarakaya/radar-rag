@@ -156,6 +156,15 @@ export async function runIndexJob(input: {
       }
       if (job.status === "queued" || job.status === "running") {
         job = await registry.cancelIndexJob(jobId);
+        emitOperationalLog(input.logEvent, {
+            tenantId: job.tenantId,
+            collectionId: job.collectionId,
+            physicalCollection: job.targetPhysicalCollection,
+            jobId,
+            operation: "index_job",
+            status: "cancelled",
+            latencyMs: Date.now() - startedAt,
+        });
         return job;
       }
     }

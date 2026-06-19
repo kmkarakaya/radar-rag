@@ -182,6 +182,7 @@ function configureApp(app: Express): void {
   app.use("/v1/admin", createAdminRouter(app.locals.dependencies, runtimeConfig));
   app.use("/v1/rag", createRagRouter(app.locals.dependencies, runtimeConfig));
 
+  app.use("/admin", express.static(path.resolve(process.cwd(), "admin")));
   app.use("/test-frontend", express.static(path.resolve(process.cwd(), "test_frontend")));
 
 async function getReadinessPayload(registry?: CollectionRegistry) {

@@ -21,6 +21,15 @@ function mapToPublicCollectionDTO(c: RagCollection) {
     readyUrl: `/v1/rag/collections/${c.id}/ready`,
     queryUrl: `/v1/rag/collections/${c.id}/query`,
     retrieveUrl: `/v1/rag/collections/${c.id}/retrieve`,
+    sourcePath: c.sourcePath,
+    ozelgeDataPath: c.ozelgeDataPath,
+    embeddingModel: c.embeddingModel,
+    chatModel: c.chatModel,
+    distanceMetric: c.distanceMetric,
+    chunkSize: c.chunkSize,
+    chunkOverlap: c.chunkOverlap,
+    retrievalK: c.retrievalK,
+    retrievalDistanceThreshold: c.retrievalDistanceThreshold,
   };
 }
 

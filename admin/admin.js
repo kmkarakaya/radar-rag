@@ -1,488 +1,380 @@
-/**
- * RAG Backend Admin Logic
- * Covers all implemented API endpoints:
- * - GET /v1/rag/collections (list)
- * - GET /v1/rag/collections/:id (details)
- * - GET /v1/rag/collections/:id/ready (readiness)
- * - POST /v1/admin/collections (create)
- * - PATCH /v1/admin/collections/:id (update)
- * - DELETE /v1/admin/collections/:id (delete)
- * - POST /v1/admin/collections/:id/reindex (reindex)
- * - GET /v1/admin/jobs/:id (job status)
- * - POST /v1/admin/jobs/:id/cancel (cancel job)
- * - POST /v1/rag/collections/:id/retrieve (retrieve sources)
- * - POST /v1/rag/collections/:id/query (chat query)
- * - GET /health (health check)
- * - GET /ready (readiness check)
+﻿/**
+ * RAG Ops Dashboard - Core Implementation
+ * This script manages the state and orchestration for the high-productivity admin panel.
  */
 
 const API = {
     rag: '/v1/rag',
-    admin: '/v1/admin'
+    admin: '/v1/admin',
+    health: '/health',
+    ready: '/ready'
 };
 
-// State management
+// State Management
 let state = {
+    currentView: 'collections',
     collections: [],
-    selectedCollectionId: null,
+    selectedCollection: null,
     activeJobs: [],
-    healthStatus: {}
+    healthStatus: null,
+    readiness: null
 };
 
-// DOM Elements
+// --- DOM Elements ---
 const elements = {
-    collectionsTableBody: document.getElementById('collectionsTableBody'),
-    btnCreateCollection: document.getElementById('btnCreateCollection'),
-    collectionModal: document.getElementById('collectionModal'),
-    btnCloseModal: document.getElementById('btnCloseModal'),
-    btnCancelModal: document.getElementById('btnCancelModal'),
-    collectionForm: document.getElementById('collectionForm'),
-    modalTitle: document.getElementById('modalTitle'),
+    navItems: document.querySelectorAll('.nav-item'),
+    viewContainers: document.querySelectorAll('.view-container'),
+    viewTitle: document.getElementById('viewTitle'),
+    collectionsGrid: document.getElementById('collectionsGrid'),
+    jobsTableBody: document.getElementById('jobsTableBody'),
+    healthGrid: document.getElementById('healthGrid'),
+    readinessDetail: document.getElementById('readinessDetail'),
     btnRefresh: document.getElementById('btnRefresh'),
-    jobsList: document.getElementById('jobsList'),
-    healthStatus: document.getElementById('healthStatus'),
-    playgroundSection: document.getElementById('playgroundSection'),
-    playgroundCollectionName: document.getElementById('playgroundCollectionName'),
-    btnClosePlayground: document.getElementById('btnClosePlayground'),
-    playgroundQuestion: document.getElementById('playgroundQuestion'),
-    playgroundResult: document.getElementById('playgroundResult'),
-    btnRetrieve: document.getElementById('btnRetrieve'),
-    btnQuery: document.getElementById('btnQuery'),
-    toast: document.getElementById('toast'),
-    toastMessage: document.getElementById('toastMessage'),
-    collectionDetailsPanel: document.getElementById('collectionDetailsPanel'),
-    collectionDetailsContent: document.getElementById('collectionDetailsContent'),
-    btnCloseDetails: document.getElementById('btnCloseDetails')
+    btnCreateCollection: document.getElementById('btnCreateCollection'),
+    
+    // Inspector
+    inspectorOverlay: document.getElementById('inspectorOverlay'),
+    inspectorPanel: document.getElementById('inspectorPanel'),
+    inspectorTitle: document.getElementById('inspectorTitle'),
+    inspectorStatusBadge: document.getElementById('inspectorStatusBadge'),
+    btnCloseInspector: document.getElementById('btnCloseInspector'),
+    
+    // Inspector Tabs
+    tabBtns: document.querySelectorAll('.tab-btn'),
+    tabContents: document.querySelectorAll('.tab-content'),
+    
+    // Readiness Tab
+    readinessStatusGrid: document.getElementById('readinessStatusGrid'),
+    readinessBlockers: document.getElementById('readinessBlockers'),
+    blockerList: document.getElementById('blockerList'),
+    
+    // Playground Tab
+    pgModeBtns: document.querySelectorAll('.mode-btn'),
+    pgQuestion: document.getElementById('pgQuestion'),
+    pgResult: document.getElementById('pgResult'),
+    btnPgRun: document.getElementById('btnPgRun'),
+    
+    // Editor Tab
+    colEditForm: document.getElementById('colEditForm'),
+    
+    // Inspector Actions
+    btnReindex: document.getElementById('btnReindex'),
+    btnDeleteCol: document.getElementById('btnDeleteCol'),
+    
+    // Toast
+    toastContainer: document.getElementById('toastContainer')
 };
 
-// Form Fields
-const fields = {
-    id: document.getElementById('fieldCollectionId'),
-    displayName: document.getElementById('fieldDisplayName'),
-    description: document.getElementById('fieldDescription'),
-    sourcePath: document.getElementById('fieldSourcePath'),
-    ozelgeDataPath: document.getElementById('fieldOzelgeDataPath'),
-    distanceMetric: document.getElementById('fieldDistanceMetric'),
-    chunkSize: document.getElementById('fieldChunkSize'),
-    chunkOverlap: document.getElementById('fieldChunkOverlap'),
-    retrievalK: document.getElementById('fieldRetrievalK'),
-    retrievalDistanceThreshold: document.getElementById('fieldRetrievalDistanceThreshold'),
-    embeddingModel: document.getElementById('fieldEmbeddingModel'),
-    chatModel: document.getElementById('fieldChatModel')
-};
-
-// --- Utilities ---
-
-async function request(url, options = {}) {
-    console.log(`[API] ${options.method || 'GET'} ${url}`);
-
+// --- API Wrapper ---
+async function apiRequest(url, options = {}) {
     const defaultOptions = {
         headers: { 'Content-Type': 'application/json' }
     };
-
+    
     try {
         const response = await fetch(url, { ...defaultOptions, ...options });
-        console.log(`[API] Response: ${response.status} ${response.statusText}`);
-
-        if (response.status === 204) {
-            console.log('[API] No content');
-            return null;
-        }
-
+        
+        if (response.status === 204) return null;
+        
         const data = await response.json();
-
         if (!response.ok) {
-            console.error('[API] Error:', data);
-            throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            throw { 
+                message: data.message || `HTTP ${response.status}`, 
+                issues: data.issues, 
+                status: response.status 
+            };
         }
-
-        console.log('[API] Success:', data);
         return data;
     } catch (error) {
-        console.error(`[API] Fetch failed for ${url}:`, error);
+        console.error(`[API Error] ${url}:`, error);
         throw error;
     }
 }
 
+// --- UI Utilities ---
 function showToast(message, type = 'info') {
-    elements.toastMessage.textContent = message;
-    elements.toast.classList.remove('translate-y-20', 'opacity-0');
-
+    const toast = document.createElement('div');
+    toast.className = `p-4 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 flex items-center gap-3 animate-in ${
+        type === 'success' ? 'bg-emerald-600 text-white' : 
+        type === 'error' ? 'bg-rose-600 text-white' : 
+        'bg-slate-800 text-white'
+    }`;
+    
+    let icon = 'ℹ️';
+    if (type === 'success') icon = '✅';
+    if (type === 'error') icon = '❌';
+    
+    toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+    elements.toastContainer.appendChild(toast);
+    
     setTimeout(() => {
-        elements.toast.classList.add('translate-y-20', 'opacity-0');
+        toast.classList.add('opacity-0', 'translate-x-10');
+        setTimeout(() => toast.remove(), 300);
     }, 3000);
 }
 
-function getStatusClass(status) {
-    switch (status) {
-        case 'ready':
-            return 'bg-green-100 text-green-700';
-        case 'indexing':
-            return 'bg-blue-100 text-blue-700';
-        case 'error':
-            return 'bg-red-100 text-red-700';
-        default:
-            return 'bg-gray-100 text-gray-700';
-    }
+function getStatusBadge(status) {
+    const styles = {
+        ready: 'bg-emerald-100 text-emerald-700',
+        indexing: 'bg-blue-100 text-blue-700',
+        error: 'bg-rose-100 text-rose-700',
+        default: 'bg-slate-100 text-slate-700'
+    };
+    const style = styles[status] || styles.default;
+    return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${style}">${status}</span>`;
 }
 
-// --- Core Logic ---
+// --- View Management ---
+function switchView(viewId) {
+    state.currentView = viewId;
+    
+    elements.navItems.forEach(item => {
+        item.classList.toggle('active', item.dataset.view === viewId);
+    });
+    
+    elements.viewContainers.forEach(container => {
+        container.classList.toggle('hidden', container.id !== `view-${viewId}`);
+    });
+    
+    const titleMap = {
+        collections: 'Collections',
+        jobs: 'Job Monitor',
+        health: 'System Health'
+    };
+    elements.viewTitle.textContent = titleMap[viewId];
+}
 
+// --- Collections Logic ---
 async function loadCollections() {
-    console.log('[UI] Loading collections...');
-
     try {
-        const data = await request(`${API.rag}/collections`);
-        console.log('[UI] Collections loaded:', data);
-
-        state.collections = data.collections || [];
-        console.log('[UI] State collections:', state.collections);
-
+        const data = await apiRequest(`${API.rag}/collections`);
+        state.collections = data.collections;
         renderCollections();
     } catch (err) {
-        console.error('[UI] Failed to load collections:', err);
-        showToast(`Failed to load collections: ${err.message}`, 'error');
-
-        elements.collectionsTableBody.innerHTML = `
-            <tr>
-                <td colspan="3" class="px-6 py-8 text-center">
-                    <p class="text-red-600 font-medium">Failed to load collections</p>
-                    <p class="text-gray-500 text-sm mt-2">Check browser console (F12) for details</p>
-                    <button onclick="loadCollections()" class="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Retry</button>
-                </td>
-            </tr>
-        `;
+        showToast(err.message, 'error');
     }
 }
 
 function renderCollections() {
-    console.log('[UI] Rendering collections:', state.collections);
-
-    if (state.collections.length === 0) {
-        elements.collectionsTableBody.innerHTML = `
-            <tr>
-                <td colspan="3" class="px-6 py-12 text-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                    </svg>
-                    <p class="text-gray-600 font-medium">No collections found</p>
-                    <p class="text-gray-500 text-sm mt-1">Create your first collection to get started</p>
-                    <button onclick="elements.btnCreateCollection.click()" class="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
-                        + New Collection
-                    </button>
-                </td>
-            </tr>
-        `;
-        return;
-    }
-
-    elements.collectionsTableBody.innerHTML = state.collections.map(c => `
-        <tr class="hover:bg-gray-50 transition-colors">
-            <td class="px-6 py-4">
-                <div class="font-medium text-gray-900">${c.displayName}</div>
-                <div class="text-xs text-gray-500 font-mono">${c.id}</div>
-            </td>
-
-            <td class="px-6 py-4">
-                <span class="px-2 py-1 text-xs font-semibold rounded-full ${getStatusClass(c.status)}">
-                    ${c.status}
-                </span>
-            </td>
-
-            <td class="px-6 py-4 text-right space-x-2">
-                <button onclick="viewDetails('${c.id}')" class="text-blue-600 hover:text-blue-800 text-sm font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors">View</button>
-                <button onclick="openEditModal('${c.id}')" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium px-2 py-1 rounded hover:bg-indigo-50 transition-colors">Edit</button>
-                <button onclick="triggerReindex('${c.id}')" class="text-green-600 hover:text-green-800 text-sm font-medium px-2 py-1 rounded hover:bg-green-50 transition-colors">Reindex</button>
-                <button onclick="openPlayground('${c.id}', '${c.displayName}')" class="text-purple-600 hover:text-purple-800 text-sm font-medium px-2 py-1 rounded hover:bg-purple-50 transition-colors">Test</button>
-                <button onclick="deleteCollection('${c.id}')" class="text-red-600 hover:text-red-800 text-sm font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors">Delete</button>
-            </td>
-        </tr>
-    `).join('');
-}
-
-async function viewDetails(id) {
-    try {
-        const data = await request(`${API.rag}/collections/${id}`);
-        const c = data.collection;
-
-        // Also fetch readiness info for this collection
-        let readyInfo = null;
-
-        try {
-            readyInfo = await request(`${API.rag}/collections/${id}/ready`);
-        } catch (e) {
-            // Ignore if readiness check fails
-        }
-
-        let detailsHtml = `
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <span class="text-gray-500">ID:</span>
-                    <p class="font-mono text-sm">${c.id}</p>
+    elements.collectionsGrid.innerHTML = state.collections.map(col => `
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer group relative" onclick="openInspector('${col.id}')">
+            <div class="flex justify-between items-start mb-4">
+                <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600 font-bold">
+                    ${col.displayName.charAt(0)}
                 </div>
-
-                <div>
-                    <span class="text-gray-500">Status:</span>
-                    <span class="px-2 py-1 text-xs font-semibold rounded-full ${getStatusClass(c.status)} ml-2">${c.status}</span>
-                </div>
-
-                <div class="col-span-2">
-                    <span class="text-gray-500">Description:</span>
-                    <p class="text-sm">${c.description || 'N/A'}</p>
-                </div>
-
-                <div>
-                    <span class="text-gray-500">Chunk Count:</span>
-                    <p class="text-sm">${c.chunkCount ?? 'N/A'}</p>
-                </div>
-
-                <div>
-                    <span class="text-gray-500">Active Version:</span>
-                    <p class="text-sm">${c.activeVersion ?? 'N/A'}</p>
-                </div>
-
-                <div class="col-span-2">
-                    <span class="text-gray-500">Updated At:</span>
-                    <p class="text-sm">${new Date(c.updatedAt).toLocaleString()}</p>
-                </div>
+                ${getStatusBadge(col.status)}
             </div>
-        `;
-
-        // Add readiness information if available
-        if (readyInfo) {
-            detailsHtml += `
-                <div class="mt-4 pt-4 border-t border-gray-200">
-                    <h3 class="text-sm font-semibold text-gray-700 mb-2">Readiness & Health</h3>
-
-                    <div class="grid grid-cols-2 gap-2 text-xs">
-                        <div class="p-2 bg-gray-50 rounded">
-                            <span class="text-gray-500">Chroma:</span>
-                            <span class="${readyInfo.chromaReadable ? 'text-green-600' : 'text-red-600'} ml-1 font-semibold">
-                                ${readyInfo.chromaReadable ? 'Readable' : 'Not Readable'}
-                            </span>
-                        </div>
-
-                        <div class="p-2 bg-gray-50 rounded">
-                            <span class="text-gray-500">Chroma Count:</span>
-                            <span class="ml-1">${readyInfo.chromaCount >= 0 ? readyInfo.chromaCount : 'N/A'}</span>
-                        </div>
-
-                        <div class="p-2 bg-gray-50 rounded">
-                            <span class="text-gray-500">Embedding Model:</span>
-                            <span class="${readyInfo.modelAvailability.embeddingModelAvailable ? 'text-green-600' : 'text-red-600'} ml-1 font-semibold">
-                                ${readyInfo.modelAvailability.embeddingModelAvailable ? '✓ Available' : '✗ Missing'}
-                            </span>
-                        </div>
-
-                        <div class="p-2 bg-gray-50 rounded">
-                            <span class="text-gray-500">Chat Model:</span>
-                            <span class="${readyInfo.modelAvailability.chatModelAvailable ? 'text-green-600' : 'text-red-600'} ml-1 font-semibold">
-                                ${readyInfo.modelAvailability.chatModelAvailable ? '✓ Available' : '✗ Missing'}
-                            </span>
-                        </div>
-
-                        <div class="p-2 bg-gray-50 rounded">
-                            <span class="text-gray-500">Query Ready:</span>
-                            <span class="${readyInfo.capabilities.query ? 'text-green-600' : 'text-red-600'} ml-1 font-semibold">
-                                ${readyInfo.capabilities.query ? 'Yes' : 'No'}
-                            </span>
-                        </div>
-
-                        <div class="p-2 bg-gray-50 rounded">
-                            <span class="text-gray-500">Retrieve Ready:</span>
-                            <span class="${readyInfo.capabilities.retrieve ? 'text-green-600' : 'text-red-600'} ml-1 font-semibold">
-                                ${readyInfo.capabilities.retrieve ? 'Yes' : 'No'}
-                            </span>
-                        </div>
-                    </div>
-
-                    ${readyInfo.activeJob ? `
-                        <div class="mt-2 p-2 bg-blue-50 rounded text-xs">
-                            <span class="text-blue-700 font-semibold">Active Job:</span>
-                            <span class="text-blue-600 ml-1">${readyInfo.activeJob.id} (${readyInfo.activeJob.status})</span>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-        }
-
-        elements.collectionDetailsContent.innerHTML = detailsHtml;
-        elements.collectionDetailsPanel.classList.remove('hidden');
-    } catch (err) {
-        showToast(err.message, 'error');
-    }
-}
-
-async function openEditModal(id) {
-    const col = state.collections.find(c => c.id === id);
-    if (!col) return;
-
-    try {
-        const data = await request(`${API.rag}/collections/${id}`);
-        const c = data.collection;
-
-        fields.id.value = c.id;
-        fields.displayName.value = c.displayName;
-        fields.description.value = c.description || '';
-        fields.sourcePath.value = c.sourcePath || '';
-        fields.ozelgeDataPath.value = c.ozelgeDataPath || '';
-        fields.distanceMetric.value = c.distanceMetric || 'l2';
-        fields.chunkSize.value = c.chunkSize || '';
-        fields.chunkOverlap.value = c.chunkOverlap || '';
-        fields.retrievalK.value = c.retrievalK || '';
-        fields.retrievalDistanceThreshold.value = c.retrievalDistanceThreshold || '';
-        fields.embeddingModel.value = c.embeddingModel || '';
-        fields.chatModel.value = c.chatModel || '';
-
-        elements.modalTitle.textContent = 'Edit Collection';
-        elements.collectionModal.classList.remove('hidden');
-    } catch (err) {
-        showToast(err.message, 'error');
-    }
-}
-
-async function triggerReindex(id) {
-    if (!confirm('Are you sure you want to reindex this collection?')) return;
-
-    try {
-        const data = await request(`${API.admin}/collections/${id}/reindex`, {
-            method: 'POST'
-        });
-
-        showToast(`Reindexing started. Job ID: ${data.job.id}`);
-
-        // Track the new job
-        if (!state.activeJobs.includes(data.job.id)) {
-            state.activeJobs.push(data.job.id);
-        }
-
-        loadJobs();
-        loadCollections();
-    } catch (err) {
-        showToast(err.message, 'error');
-    }
-}
-
-async function deleteCollection(id) {
-    if (!confirm('Are you sure? This will permanently delete the collection and its data.')) return;
-
-    try {
-        await request(`${API.admin}/collections/${id}`, {
-            method: 'DELETE'
-        });
-
-        showToast('Collection deleted successfully');
-
-        // Remove from active jobs if present
-        state.activeJobs = state.activeJobs.filter(jobId => !jobId.startsWith(id));
-
-        loadCollections();
-    } catch (err) {
-        showToast(err.message, 'error');
-    }
-}
-
-function openPlayground(id, name) {
-    state.selectedCollectionId = id;
-    elements.playgroundCollectionName.textContent = name;
-    elements.playgroundSection.classList.remove('hidden');
-    elements.playgroundResult.textContent = '';
-    elements.playgroundQuestion.value = '';
-
-    // Scroll to playground
-    elements.playgroundSection.scrollIntoView({ behavior: 'smooth' });
-}
-
-async function runRetrieve() {
-    const question = elements.playgroundQuestion.value.trim();
-    if (!question) return showToast('Please enter a question');
-    if (!state.selectedCollectionId) return showToast('Please select a collection first');
-
-    try {
-        elements.playgroundResult.textContent = 'Retrieving sources...';
-        const data = await request(`${API.rag}/collections/${state.selectedCollectionId}/retrieve`, {
-            method: 'POST',
-            body: JSON.stringify({ question })
-        });
-        elements.playgroundResult.textContent = JSON.stringify(data, null, 2);
-    } catch (err) {
-        elements.playgroundResult.textContent = `Error: ${err.message}`;
-    }
-}
-
-async function runQuery() {
-    const question = elements.playgroundQuestion.value.trim();
-    if (!question) return showToast('Please enter a question');
-    if (!state.selectedCollectionId) return showToast('Please select a collection first');
-
-    try {
-        elements.playgroundResult.textContent = 'Generating answer...';
-        const data = await request(`${API.rag}/collections/${state.selectedCollectionId}/query`, {
-            method: 'POST',
-            body: JSON.stringify({ question })
-        });
-        elements.playgroundResult.textContent = JSON.stringify(data, null, 2);
-    } catch (err) {
-        elements.playgroundResult.textContent = `Error: ${err.message}`;
-    }
-}
-
-async function loadJobs() {
-    if (state.activeJobs.length === 0) {
-        elements.jobsList.innerHTML = '<p class="text-sm text-gray-500 italic text-center py-4">No active jobs</p>';
-        return;
-    }
-
-    const results = await Promise.all(state.activeJobs.map(async id => {
-        try {
-            return await request(`${API.admin}/jobs/${id}`);
-        } catch {
-            return null;
-        }
-    }));
-
-    const validJobs = results.filter(j => j !== null);
-
-    // Filter out completed jobs
-    state.activeJobs = validJobs.map(j => j.job.id);
-
-    renderJobs(validJobs);
-}
-
-function renderJobs(jobs) {
-    if (jobs.length === 0) {
-        elements.jobsList.innerHTML = '<p class="text-sm text-gray-500 italic text-center py-4">No active jobs</p>';
-        return;
-    }
-
-    elements.jobsList.innerHTML = jobs.map(j => `
-        <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg flex justify-between items-center">
-            <div>
-                <div class="text-xs font-mono text-gray-400">${j.job.id}</div>
-                <div class="text-sm font-medium ${j.job.status === 'running' ? 'text-blue-600' : 'text-gray-700'}">
-                    ${j.job.status.toUpperCase()}
-                </div>
+            <h3 class="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">${col.displayName}</h3>
+            <p class="text-xs text-slate-500 line-clamp-2 mb-4">${col.description || 'No description provided.'}</p>
+            <div class="flex items-center justify-between pt-4 border-t border-slate-100">
+                <span class="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Chunks: ${col.chunkCount ?? 'N/A'}</span>
+                <span class="text-[10px] text-slate-400 font-medium uppercase tracking-wider">${new Date(col.updatedAt).toLocaleDateString()}</span>
             </div>
-
-            <button onclick="cancelJob('${j.job.id}')" class="text-red-500 hover:text-red-700 text-xs font-bold uppercase tracking-wider">Cancel</button>
         </div>
     `).join('');
 }
 
-async function cancelJob(id) {
-    if (!confirm('Cancel this job?')) return;
+async function openInspector(id) {
+    const col = state.collections.find(c => c.id === id);
+    
+    if (id === null) {
+        state.selectedCollection = null;
+        elements.inspectorTitle.textContent = 'Create Collection';
+        elements.inspectorStatusBadge.classList.add('hidden');
+        
+        // Reset form
+        document.getElementById('editId').value = '';
+        document.getElementById('editDisplayName').value = '';
+        document.getElementById('editDescription').value = '';
+        document.getElementById('editSourcePath').value = '';
+        document.getElementById('editOzelgeDataPath').value = '';
+        document.getElementById('editDistanceMetric').value = 'l2';
+        document.getElementById('editChunkSize').value = '';
+        document.getElementById('editChunkOverlap').value = '';
+        document.getElementById('editRetrievalK').value = '';
+        document.getElementById('editRetrievalDistanceThreshold').value = '';
+        document.getElementById('editEmbeddingModel').value = '';
+        document.getElementById('editChatModel').value = '';
+        
+        // Focus Editor
+        document.querySelector('[data-tab="editor"]').click();
+    } else {
+        if (!col) return;
+        state.selectedCollection = col;
+        elements.inspectorTitle.textContent = col.displayName;
+        elements.inspectorStatusBadge.classList.remove('hidden');
+        elements.inspectorStatusBadge.className = `px-2 py-1 text-xs font-bold rounded-full uppercase ${
+            col.status === 'ready' ? 'bg-emerald-100 text-emerald-700' : 
+            col.status === 'indexing' ? 'bg-blue-100 text-blue-700' : 
+            'bg-rose-100 text-rose-700'
+        }`;
+        elements.inspectorStatusBadge.textContent = col.status;
+
+        await updateReadinessTab();
+        setupEditorTab(col);
+    }
+    
+    elements.inspectorOverlay.classList.remove('hidden');
+    setTimeout(() => elements.inspectorOverlay.classList.add('opacity-100'), 10);
+    elements.inspectorPanel.classList.remove('translate-x-full');
+}
+
+function closeInspector() {
+    elements.inspectorPanel.classList.add('translate-x-full');
+    elements.inspectorOverlay.classList.remove('opacity-100');
+    setTimeout(() => elements.inspectorOverlay.classList.add('hidden'), 200);
+}
+
+async function updateReadinessTab() {
+    if (!state.selectedCollection) return;
+    const id = state.selectedCollection.id;
+    
+    try {
+        const data = await apiRequest(`${API.rag}/collections/${id}/ready`);
+        const payload = data.payload;
+        
+        const healthMap = [
+            { label: 'Chroma DB', ok: payload.dependencies.chroma.ok, detail: 'Chroma availability' },
+            { label: 'Ollama', ok: payload.dependencies.ollama.ok, detail: 'Inference engine' },
+            { label: 'Embedding Model', ok: payload.capabilities.retrieve, detail: payload.embeddingModelAvailable ? 'Model loaded' : 'Model missing' },
+            { label: 'Chat Model', ok: payload.capabilities.query, detail: payload.chatModelAvailable ? 'Model loaded' : 'Model missing' }
+        ];
+
+        elements.readinessStatusGrid.innerHTML = healthMap.map(item => `
+            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <div class="flex items-center gap-3">
+                    <div class="w-2 h-2 rounded-full ${item.ok ? 'bg-emerald-500' : 'bg-rose-500'}"></div>
+                    <span class="text-sm font-medium text-slate-700">${item.label}</span>
+                </div>
+                <span class="text-xs text-slate-500">${item.detail}</span>
+            </div>
+        `).join('');
+
+        if (payload.blockers && payload.blockers.length > 0) {
+            elements.readinessBlockers.classList.remove('hidden');
+            elements.blockerList.innerHTML = payload.blockers.map(b => `<li class="mb-1">${b.message}</li>`).join('');
+        } else {
+            elements.readinessBlockers.classList.add('hidden');
+        }
+    } catch (err) {
+        elements.readinessStatusGrid.innerHTML = `<p class="text-rose-500 text-sm">Error loading readiness: ${err.message}</p>`;
+    }
+}
+
+function setupEditorTab(col) {
+    document.getElementById('editId').value = col.id;
+    document.getElementById('editDisplayName').value = col.displayName;
+    document.getElementById('editDescription').value = col.description || '';
+    document.getElementById('editSourcePath').value = col.sourcePath || '';
+    document.getElementById('editOzelgeDataPath').value = col.ozelgeDataPath || '';
+    document.getElementById('editDistanceMetric').value = col.distanceMetric;
+    document.getElementById('editChunkSize').value = col.chunkSize || '';
+    document.getElementById('editChunkOverlap').value = col.chunkOverlap || '';
+    document.getElementById('editRetrievalK').value = col.retrievalK || '';
+    document.getElementById('editRetrievalDistanceThreshold').value = col.retrievalDistanceThreshold || '';
+    document.getElementById('editEmbeddingModel').value = col.embeddingModel || '';
+    document.getElementById('editChatModel').value = col.chatModel || '';
+}
+
+async function saveCollection() {
+    const id = document.getElementById('editId').value;
+    const payload = {
+        displayName: document.getElementById('editDisplayName').value,
+        description: document.getElementById('editDescription').value || null,
+        sourcePath: document.getElementById('editSourcePath').value || undefined,
+        ozelgeDataPath: document.getElementById('editOzelgeDataPath').value || undefined,
+        distanceMetric: document.getElementById('editDistanceMetric').value,
+        chunkSize: parseInt(document.getElementById('editChunkSize').value) || undefined,
+        chunkOverlap: parseInt(document.getElementById('editChunkOverlap').value) || undefined,
+        retrievalK: parseInt(document.getElementById('editRetrievalK').value) || undefined,
+        retrievalDistanceThreshold: parseFloat(document.getElementById('editRetrievalDistanceThreshold').value) || undefined,
+        embeddingModel: document.getElementById('editEmbeddingModel').value || undefined,
+        chatModel: document.getElementById('editChatModel').value || undefined
+    };
 
     try {
-        await request(`${API.admin}/jobs/${id}/cancel`, {
-            method: 'POST'
-        });
+        if (id) {
+            await apiRequest(`${API.admin}/collections/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+            showToast('Collection updated');
+        } else {
+            const data = await apiRequest(`${API.admin}/collections`, { method: 'POST', body: JSON.stringify(payload) });
+            showToast(`Collection created: ${data.collection.id}`);
+        }
+        await loadCollections();
+        closeInspector();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
 
-        showToast('Job cancelled');
+async function runPlayground() {
+    if (!state.selectedCollection) return;
+    
+    const mode = document.querySelector('.mode-btn.active').dataset.mode;
+    const question = document.getElementById('pgQuestion').value;
+    
+    if (!question) return showToast('Question is required', 'error');
+    
+    const id = state.selectedCollection.id;
+    const resultEl = document.getElementById('pgResult');
+    
+    resultEl.innerHTML = '<span class="text-slate-400 animate-pulse">Processing...</span>';
+    
+    try {
+        let data;
+        if (mode === 'retrieve') {
+            data = await apiRequest(`${API.rag}/collections/${id}/retrieve`, {
+                method: 'POST',
+                body: JSON.stringify({ question, k: 5 })
+            });
+        } else {
+            data = await apiRequest(`${API.rag}/collections/${id}/query`, {
+                method: 'POST',
+                body: JSON.stringify({ question })
+            });
+        }
+        resultEl.textContent = JSON.stringify(data, null, 2);
+    } catch (err) {
+        resultEl.innerHTML = `<span class="text-rose-500">Error: ${err.message}</span>`;
+    }
+}
 
-        // Remove from active jobs
-        state.activeJobs = state.activeJobs.filter(jobId => jobId !== id);
+async function reindexCollection() {
+    if (!state.selectedCollection) return;
+    try {
+        await apiRequest(`${API.admin}/collections/${state.selectedCollection.id}/reindex`, { method: 'POST' });
+        showToast('Re-indexing started');
+        loadCollections();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
 
-        loadJobs();
+async function deleteCollection() {
+    if (!state.selectedCollection) return;
+    if (!confirm('Are you sure you want to delete this collection?')) return;
+    
+    try {
+        await apiRequest(`${API.admin}/collections/${state.selectedCollection.id}`, { method: 'DELETE' });
+        showToast('Collection deleted');
+        await loadCollections();
+        closeInspector();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+// --- Jobs & Health Logic ---
+async function loadJobs() {
+    try {
+        elements.jobsTableBody.innerHTML = `
+            <tr>
+                <td colspan="4" class="px-6 py-12 text-center text-slate-400 italic">
+                    No active jobs. Trigger a re-index to see jobs here.
+                    <br><span class="text-xs">(Backend does not support job listing yet)</span>
+                </td>
+            </tr>
+        `;
     } catch (err) {
         showToast(err.message, 'error');
     }
@@ -490,176 +382,125 @@ async function cancelJob(id) {
 
 async function loadHealth() {
     try {
-        const [healthData, readyData] = await Promise.all([
-            request('/health'),
-            request('/ready')
+        const [health, ready] = await Promise.all([
+            apiRequest(API.health),
+            apiRequest(API.ready)
         ]);
+        
+        state.healthStatus = health;
+        state.readiness = ready;
 
-        state.healthStatus = {
-            health: healthData,
-            ready: readyData
-        };
-
-        renderHealth();
-    } catch (err) {
-        elements.healthStatus.innerHTML = `<p class="text-red-600 text-sm">Failed to load health: ${err.message}</p>`;
-    }
-}
-
-function renderHealth() {
-    const { health, ready } = state.healthStatus;
-
-    if (!health && !ready) {
-        elements.healthStatus.innerHTML = '<p class="text-gray-500 text-sm">No health data available</p>';
-        return;
-    }
-
-    let html = '';
-
-    // Health status
-    if (health) {
-        const healthColor = health.status === 'ok' ? 'text-green-600' : 'text-red-600';
-
-        html += `
-            <div class="flex justify-between items-center p-2 bg-gray-50 rounded">
-                <span class="text-sm font-medium">Health</span>
-                <span class="${healthColor} text-sm font-semibold">${health.status}</span>
+        elements.healthGrid.innerHTML = `
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <h4 class="text-sm font-bold text-slate-500 uppercase mb-4">System Health</h4>
+                <div class="flex items-center gap-3">
+                    <div class="w-3 h-3 rounded-full ${health.status === 'ok' ? 'bg-emerald-500' : 'bg-rose-500'}"></div>
+                    <span class="text-lg font-semibold">${health.status === 'ok' ? 'Healthy' : 'Degraded'}</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-2">Uptime: ${health.uptimeSec}s | Port: ${health.port}</p>
             </div>
-        `;
-    }
-
-    // Ready status
-    if (ready) {
-        const readyColor = ready.ready === true ? 'text-green-600' : 'text-red-600';
-
-        html += `
-            <div class="flex justify-between items-center p-2 bg-gray-50 rounded">
-                <span class="text-sm font-medium">Ready</span>
-                <span class="${readyColor} text-sm font-semibold">${ready.ready ? 'Yes' : 'No'}</span>
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <h4 class="text-sm font-bold text-slate-500 uppercase mb-4">Readiness</h4>
+                <div class="flex items-center gap-3">
+                    <div class="w-3 h-3 rounded-full ${ready.ready ? 'bg-emerald-500' : 'bg-rose-500'}"></div>
+                    <span class="text-lg font-semibold">${ready.ready ? 'Ready' : 'Not Ready'}</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-2">${ready.overallSummary}</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <h4 class="text-sm font-bold text-slate-500 uppercase mb-4">Dependencies</h4>
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-500">Registry</span>
+                        <span class="${ready.dependencies.registry.ok ? 'text-emerald-600' : 'text-rose-600'} font-bold">${ready.dependencies.registry.ok ? 'OK' : 'FAIL'}</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-500">Chroma</span>
+                        <span class="${ready.dependencies.chroma.ok ? 'text-emerald-600' : 'text-rose-600'} font-bold">${ready.dependencies.chroma.ok ? 'OK' : 'FAIL'}</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-500">Ollama</span>
+                        <span class="${ready.dependencies.ollama.ok ? 'text-emerald-600' : 'text-rose-600'} font-bold">${ready.dependencies.ollama.ok ? 'OK' : 'FAIL'}</span>
+                    </div>
+                </div>
             </div>
         `;
 
-        // Show blockers if any
-        if (ready.blockers && ready.blockers.length > 0) {
-            html += '<div class="mt-2 space-y-1">';
-
-            ready.blockers.forEach(issue => {
-                html += `<p class="text-xs text-red-600">• ${issue.message}</p>`;
-            });
-
-            html += '</div>';
-        }
-
-        // Show warnings if any
-        if (ready.warnings && ready.warnings.length > 0) {
-            html += '<div class="mt-2 space-y-1">';
-
-            ready.warnings.forEach(issue => {
-                html += `<p class="text-xs text-yellow-600">⚠ ${issue.message}</p>`;
-            });
-
-            html += '</div>';
-        }
-
-        // Show system ready info
-        if (ready.systemReadyFor) {
-            html += `<div class="mt-2 text-xs text-gray-600">System ready for: ${ready.systemReadyFor}</div>`;
-        }
-    }
-
-    elements.healthStatus.innerHTML = html;
-}
-
-// --- Event Handlers ---
-
-elements.btnCreateCollection.onclick = () => {
-    fields.id.value = '';
-    fields.displayName.value = '';
-    fields.description.value = '';
-    fields.sourcePath.value = '';
-    fields.ozelgeDataPath.value = '';
-    fields.distanceMetric.value = 'l2';
-    fields.chunkSize.value = '';
-    fields.chunkOverlap.value = '';
-    fields.retrievalK.value = '';
-    fields.retrievalDistanceThreshold.value = '';
-    fields.embeddingModel.value = '';
-    fields.chatModel.value = '';
-
-    elements.modalTitle.textContent = 'Create Collection';
-    elements.collectionModal.classList.remove('hidden');
-};
-
-elements.btnCloseModal.onclick = () => {
-    elements.collectionModal.classList.add('hidden');
-};
-
-elements.btnCancelModal.onclick = () => {
-    elements.collectionModal.classList.add('hidden');
-};
-
-elements.collectionForm.onsubmit = async e => {
-    e.preventDefault();
-
-    const id = fields.id.value;
-
-    const payload = {
-        displayName: fields.displayName.value,
-        description: fields.description.value || null,
-        sourcePath: fields.sourcePath.value || undefined,
-        ozelgeDataPath: fields.ozelgeDataPath.value || undefined,
-        distanceMetric: fields.distanceMetric.value,
-        chunkSize: parseInt(fields.chunkSize.value) || undefined,
-        chunkOverlap: parseInt(fields.chunkOverlap.value) || undefined,
-        retrievalK: parseInt(fields.retrievalK.value) || undefined,
-        retrievalDistanceThreshold: parseFloat(fields.retrievalDistanceThreshold.value) || undefined,
-        embeddingModel: fields.embeddingModel.value || undefined,
-        chatModel: fields.chatModel.value || undefined
-    };
-
-    try {
-        if (id) {
-            await request(`${API.admin}/collections/${id}`, {
-                method: 'PATCH',
-                body: JSON.stringify(payload)
-            });
-
-            showToast('Collection updated');
-        } else {
-            const data = await request(`${API.admin}/collections`, {
-                method: 'POST',
-                body: JSON.stringify(payload)
-            });
-
-            showToast(`Collection created: ${data.collection.id}`);
-        }
-
-        elements.collectionModal.classList.add('hidden');
-        loadCollections();
+        elements.readinessDetail.innerHTML = `
+            <h4 class="text-sm font-bold text-slate-500 uppercase mb-4">Recommended Actions</h4>
+            <div class="space-y-2">
+                ${ready.recommendedActions.map(action => `
+                    <div class="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 text-xs text-slate-600">
+                        <svg class="w-4 h-4 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        ${action}
+                    </div>
+                `).join('')}
+            </div>
+        `;
     } catch (err) {
         showToast(err.message, 'error');
     }
-};
+}
+
+// --- Event Handlers ---
+elements.navItems.forEach(item => {
+    item.onclick = (e) => {
+        e.preventDefault();
+        switchView(item.dataset.view);
+    };
+});
 
 elements.btnRefresh.onclick = () => {
     loadCollections();
+    loadJobs();
     loadHealth();
 };
 
-elements.btnClosePlayground.onclick = () => {
-    elements.playgroundSection.classList.add('hidden');
+elements.btnCreateCollection.onclick = () => {
+    openInspector(null);
 };
 
-elements.btnCloseDetails.onclick = () => {
-    elements.collectionDetailsPanel.classList.add('hidden');
-};
+elements.btnCloseInspector.onclick = closeInspector;
+elements.inspectorOverlay.onclick = closeInspector;
 
-elements.btnRetrieve.onclick = runRetrieve;
-elements.btnQuery.onclick = runQuery;
+elements.tabBtns.forEach(btn => {
+    btn.onclick = () => {
+        elements.tabContents.forEach(content => {
+            content.classList.toggle('hidden', content.id !== `tab-${btn.dataset.tab}`);
+        });
+        elements.tabBtns.forEach(t => {
+            t.classList.remove('active', 'border-indigo-600', 'text-indigo-600');
+            t.classList.add('border-transparent', 'text-slate-500');
+        });
+        btn.classList.add('active', 'border-indigo-600', 'text-indigo-600');
+        btn.classList.remove('border-transparent', 'text-slate-500');
+    });
+});
+
+elements.pgModeBtns.forEach(btn => {
+    btn.onclick = () => {
+        elements.pgModeBtns.forEach(b => {
+            b.classList.remove('active', 'bg-indigo- la600', 'text-white');
+            b.classList.add('bg-slate-200', 'text-slate-600');
+        });
+        btn.classList.add('active', 'bg-indigo-600', 'text-white');
+        btn.classList.remove('bg-slate-200', 'text-slate-600');
+    });
+});
+
+elements.colEditForm.onsubmit = (e) => {
+    e.preventDefault();
+    saveCollection();
+};
+elements.btnReindex.onclick = reindexCollection;
+elements.btnDeleteCol.onclick = deleteCollection;
+elements.btnPgRun.onclick = runPlayground;
 
 // Init
+switchView('collections');
 loadCollections();
+loadJobs();
 loadHealth();
 
-setInterval(loadJobs, 5000);
-setInterval(loadHealth, 10000);
+setInterval(loadJobs, 10000);
+setInterval(loadHealth, 30000);

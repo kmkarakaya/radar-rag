@@ -175,14 +175,11 @@ function renderCollections() {
 }
 
 async function openInspector(id) {
-    const col = state.collections.find(c => c.id === id);
-    
     if (id === null) {
         state.selectedCollection = null;
         elements.inspectorTitle.textContent = 'Create Collection';
         elements.inspectorStatusBadge.classList.add('hidden');
         
-        // Reset form
         document.getElementById('editId').value = '';
         document.getElementById('editDisplayName').value = '';
         document.getElementById('editDescription').value = '';
@@ -196,9 +193,10 @@ async function openInspector(id) {
         document.getElementById('editEmbeddingModel').value = '';
         document.getElementById('editChatModel').value = '';
         
-        // Focus Editor
-        document.querySelector('[data-tab="editor"]').click();
+        const editorTab = document.querySelector('[data-tab="editor"]');
+        if (editorTab) editorTab.click();
     } else {
+        const col = state.collections.find(c => c.id === id);
         if (!col) return;
         state.selectedCollection = col;
         elements.inspectorTitle.textContent = col.displayName;
@@ -295,10 +293,10 @@ async function saveCollection() {
     try {
         if (id) {
             await apiRequest(`${API.admin}/collections/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
-            showToast('Collection updated');
+            showToast('Collection updated', 'success');
         } else {
             const data = await apiRequest(`${API.admin}/collections`, { method: 'POST', body: JSON.stringify(payload) });
-            showToast(`Collection created: ${data.collection.id}`);
+            showToast(`Collection created: ${data.collection.id}`, 'success');
         }
         await loadCollections();
         closeInspector();
@@ -343,7 +341,7 @@ async function reindexCollection() {
     if (!state.selectedCollection) return;
     try {
         await apiRequest(`${API.admin}/collections/${state.selectedCollection.id}/reindex`, { method: 'POST' });
-        showToast('Re-indexing started');
+        showToast('Re-indexing started', 'success');
         loadCollections();
     } catch (err) {
         showToast(err.message, 'error');
@@ -356,7 +354,7 @@ async function deleteCollection() {
     
     try {
         await apiRequest(`${API.admin}/collections/${state.selectedCollection.id}`, { method: 'DELETE' });
-        showToast('Collection deleted');
+        showToast('Collection deleted', 'success');
         await loadCollections();
         closeInspector();
     } catch (err) {
@@ -480,7 +478,7 @@ elements.tabBtns.forEach(btn => {
 elements.pgModeBtns.forEach(btn => {
     btn.onclick = () => {
         elements.pgModeBtns.forEach(b => {
-            b.classList.remove('active', 'bg-indigo- la600', 'text-white');
+            b.classList.remove('active', 'bg-indigo-600', 'text-white');
             b.classList.add('bg-slate-200', 'text-slate-600');
         });
         btn.classList.add('active', 'bg-indigo-600', 'text-white');

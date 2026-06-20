@@ -208,7 +208,6 @@ async function openInspector(id) {
         }`;
         elements.inspectorStatusBadge.textContent = col.status;
 
-        await updateReadinessTab();
         setupEditorTab(col);
     }
     
@@ -229,13 +228,19 @@ async function updateReadinessTab() {
     
     try {
         const data = await apiRequest(`${API.rag}/collections/${id}/ready`);
-        const payload = data.payload;
-        
+
+        const hasActivePhysical = data.hasActivePhysicalCollection;
+        const chromaReadable = data.chromaReadable || false;
+        const embeddingModel = data.modelAvailability?.embeddingModel || '';
+        const embeddingModelAvailable = data.modelAvailability?.embeddingModelAvailable || false;
+        const chatModelAvailable = data.modelAvailability?.chatModelAvailable || false;
+        const capabilities = data.capabilities || {};
+
         const healthMap = [
-            { label: 'Chroma DB', ok: payload.dependencies.chroma.ok, detail: 'Chroma availability' },
-            { label: 'Ollama', ok: payload.dependencies.ollama.ok, detail: 'Inference engine' },
-            { label: 'Embedding Model', ok: payload.capabilities.retrieve, detail: payload.embeddingModelAvailable ? 'Model loaded' : 'Model missing' },
-            { label: 'Chat Model', ok: payload.capabilities.query, detail: payload.chatModelAvailable ? 'Model loaded' : 'Model missing' }
+            { label: 'Chroma DB', ok: chromaReadable, detail: hasActivePhysical ? 'Collection readable' : 'No active collection' },
+            { label: 'Ollama', ok: true, detail: 'Inference engine' },
+            { label: 'Embedding Model', ok: embeddingModelAvailable, detail: embeddingModelAvailable ? `Loaded (${embeddingModel})` : 'Model not found in Ollama' },
+            { label: 'Chat Model', ok: chatModelAvailable, detail: chatModelAvailable ? 'Loaded' : 'Model not found in Ollama' }
         ];
 
         elements.readinessStatusGrid.innerHTML = healthMap.map(item => `
@@ -248,9 +253,18 @@ async function updateReadinessTab() {
             </div>
         `).join('');
 
-        if (payload.blockers && payload.blockers.length > 0) {
+        // Show blockers for conditions that prevent query/retrieve
+        const blockers = [];
+        if (!hasActivePhysical) blockers.push('No active physical collection — run a re-index to populate the collection.');
+        if (!chromaReadable) blockers.push('Chroma DB is not accessible or the collection is not readable.');
+        if (!embeddingModelAvailable) blockers.push(`Embedding model "${embeddingModel}" is not available in Ollama.`);
+        if (!chatModelAvailable) blockers.push('Chat model is not available in Ollama.');
+        if (!capabilities.retrieve) blockers.push('Retrieval is not available (embedding model or Chroma unavailable).');
+        if (!capabilities.query) blockers.push('Query is not available (chat model or embedding model unavailable).');
+
+        if (blockers.length > 0) {
             elements.readinessBlockers.classList.remove('hidden');
-            elements.blockerList.innerHTML = payload.blockers.map(b => `<li class="mb-1">${b.message}</li>`).join('');
+            elements.blockerList.innerHTML = blockers.map(b => `<li class="mb-1">${b}</li>`).join('');
         } else {
             elements.readinessBlockers.classList.add('hidden');
         }
@@ -323,7 +337,7 @@ async function runPlayground() {
         if (mode === 'retrieve') {
             data = await apiRequest(`${API.rag}/collections/${id}/retrieve`, {
                 method: 'POST',
-                body: JSON.stringify({ question, k: 5 })
+                body: JSON.stringify({ question })
             });
         } else {
             data = await apiRequest(`${API.rag}/collections/${id}/query`, {
@@ -472,7 +486,7 @@ elements.tabBtns.forEach(btn => {
         });
         btn.classList.add('active', 'border-indigo-600', 'text-indigo-600');
         btn.classList.remove('border-transparent', 'text-slate-500');
-    });
+    };
 });
 
 elements.pgModeBtns.forEach(btn => {
@@ -483,7 +497,7 @@ elements.pgModeBtns.forEach(btn => {
         });
         btn.classList.add('active', 'bg-indigo-600', 'text-white');
         btn.classList.remove('bg-slate-200', 'text-slate-600');
-    });
+    };
 });
 
 elements.colEditForm.onsubmit = (e) => {

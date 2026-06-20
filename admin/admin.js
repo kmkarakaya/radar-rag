@@ -10,11 +10,42 @@ const API = {
     ready: '/ready'
 };
 
-// State Management
+// --- Endpoint Helpers ---
+function collectionReadyUrl(collection) {
+    return collection?.readyUrl || `/v1/rag/collections/${collection?.id}/ready`;
+}
+
+function collectionQueryUrl(collection) {
+    return collection?.queryUrl || `/v1/rag/collections/${collection?.id}/query`;
+}
+
+function collectionRetrieveUrl(collection) {
+    return collection?.retrieveUrl || `/v1/rag/collections/${collection?.id}/retrieve`;
+}
+
+function adminCollectionUrl(id) {
+    return `${API.admin}/collections/${id}`;
+}
+
+function adminJobUrl(id) {
+    return `${API.admin}/jobs/${id}`;
+}
+
+// --- State Management ---
 let state = {
     currentView: 'collections',
     collections: [],
     selectedCollection: null,
+    selectedReadiness: null,
+    playgroundMode: 'retrieve',
+    knownJobs: [],
+    isLoading: {
+        collections: false,
+        jobs: false,
+        health: false,
+        readiness: false
+    },
+    lastError: null,
     activeJobs: [],
     healthStatus: null,
     readiness: null
@@ -65,6 +96,57 @@ const elements = {
     toastContainer: document.getElementById('toastContainer')
 };
 
+// --- DOM Helpers ---
+function clearNode(node) {
+    if (node && typeof node.clearChildren === 'function') {
+        node.clearChildren();
+    } else if (node) {
+        while (node.firstChild) {
+            node.removeChild(node.firstChild);
+        }
+    }
+    return node;
+}
+
+function appendText(node, text) {
+    if (!node) return;
+    node.appendChild(document.createTextNode(String(text ?? '')));
+    return node;
+}
+
+function createBadge(text, colorClass) {
+    const badge = document.createElement('span');
+    badge.className = `px-2 py-1 text-xs font-bold rounded-full uppercase ${colorClass || 'bg-slate-100 text-slate-600'}`;
+    appendText(badge, text);
+    return badge;
+}
+
+function formatDateTime(isoString) {
+    if (!isoString) return 'N/A';
+    try {
+        return new Date(isoString).toLocaleString();
+    } catch {
+        return String(isoString);
+    }
+}
+
+function formatCount(value) {
+    if (value === null || value === undefined) return 'N/A';
+    return Number(value).toLocaleString();
+}
+
+function setButtonLoading(btn, loading) {
+    if (!btn) return;
+    if (loading) {
+        btn.disabled = true;
+        btn.dataset.originalText = btn.dataset.originalText || btn.textContent;
+        btn.textContent = 'Loading...';
+    } else {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.originalText || btn.textContent;
+    }
+}
+
 // --- API Wrapper ---
 async function apiRequest(url, options = {}) {
     const defaultOptions = {
@@ -74,20 +156,54 @@ async function apiRequest(url, options = {}) {
     try {
         const response = await fetch(url, { ...defaultOptions, ...options });
         
+        // 204 No Content - return null safely
         if (response.status === 204) return null;
         
-        const data = await response.json();
+        // Handle empty or non-JSON response bodies
+        const contentType = response.headers.get('content-type') || '';
+        let data;
+        if (contentType.includes('application/json')) {
+            const text = await response.text();
+            data = text.trim() ? JSON.parse(text) : null;
+        } else {
+            const text = await response.text();
+            data = text.trim() ? JSON.parse(text) : null;
+        }
+
         if (!response.ok) {
-            throw { 
-                message: data.message || `HTTP ${response.status}`, 
-                issues: data.issues, 
-                status: response.status 
+            // Normalize error using ApiErrorResponse shape
+            const code = data?.code || `HTTP_${response.status}`;
+            const message = data?.message || `HTTP ${response.status}`;
+            const requestId = data?.requestId;
+            const details = data?.details;
+            const issues = data?.details?.issues;
+
+            throw {
+                status: response.status,
+                code: code,
+                message: message,
+                requestId: requestId,
+                details: details,
+                issues: issues
             };
         }
         return data;
     } catch (error) {
+        // If it's already a normalized error object, re-throw it
+        if (error && error.status !== undefined) {
+            console.error(`[API Error] ${url}:`, error);
+            throw error;
+        }
+        // Network / fetch errors
         console.error(`[API Error] ${url}:`, error);
-        throw error;
+        throw {
+            status: 0,
+            code: 'NETWORK_ERROR',
+            message: error?.message || 'Network request failed',
+            requestId: null,
+            details: null,
+            issues: null
+        };
     }
 }
 
@@ -100,11 +216,18 @@ function showToast(message, type = 'info') {
         'bg-slate-800 text-white'
     }`;
     
-    let icon = 'ℹ️';
-    if (type === 'success') icon = '✅';
-    if (type === 'error') icon = '❌';
+    let icon = '\u2139\uFE0F';
+    if (type === 'success') icon = '\u2705';
+    if (type === 'error') icon = '\u274C';
     
-    toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+    const iconSpan = document.createElement('span');
+    iconSpan.textContent = icon;
+    toast.appendChild(iconSpan);
+    
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = message || '';
+    toast.appendChild(msgSpan);
+    
     elements.toastContainer.appendChild(toast);
     
     setTimeout(() => {
@@ -114,64 +237,141 @@ function showToast(message, type = 'info') {
 }
 
 function getStatusBadge(status) {
-    const styles = {
+    const colors = {
         ready: 'bg-emerald-100 text-emerald-700',
         indexing: 'bg-blue-100 text-blue-700',
-        error: 'bg-rose-100 text-rose-700',
-        default: 'bg-slate-100 text-slate-700'
+        creating: 'bg-amber-100 text-amber-700',
+        failed: 'bg-rose-100 text-rose-700',
+        archived: 'bg-slate-100 text-slate-600',
+        queued: 'bg-blue-100 text-blue-700',
+        running: 'bg-indigo-100 text-indigo-700',
+        succeeded: 'bg-emerald-100 text-emerald-700',
+        cancelled: 'bg-slate-100 text-slate-500'
     };
-    const style = styles[status] || styles.default;
-    return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${style}">${status}</span>`;
+    const colorClass = colors[status] || 'bg-slate-100 text-slate-600';
+    return `<span class="px-2 py-1 text-[10px] font-bold rounded-full uppercase ${colorClass}">${status || 'unknown'}</span>`;
 }
 
 // --- View Management ---
 function switchView(viewId) {
     state.currentView = viewId;
     
+    // Update nav
     elements.navItems.forEach(item => {
-        item.classList.toggle('active', item.dataset.view === viewId);
+        const isActive = item.dataset.view === viewId;
+        item.classList.toggle('active', isActive);
     });
     
+    // Update view containers
     elements.viewContainers.forEach(container => {
-        container.classList.toggle('hidden', container.id !== `view-${viewId}`);
+        const viewName = container.id.replace('view-', '');
+        container.classList.toggle('hidden', viewName !== viewId);
     });
     
-    const titleMap = {
+    // Update title
+    const titles = {
         collections: 'Collections',
         jobs: 'Job Monitor',
         health: 'System Health'
     };
-    elements.viewTitle.textContent = titleMap[viewId];
+    elements.viewTitle.textContent = titles[viewId] || 'Dashboard';
 }
 
 // --- Collections Logic ---
 async function loadCollections() {
+    if (state.isLoading.collections) return;
+    state.isLoading.collections = true;
     try {
         const data = await apiRequest(`${API.rag}/collections`);
-        state.collections = data.collections;
+        state.collections = Array.isArray(data?.collections) ? data.collections : [];
+        state.lastError = null;
         renderCollections();
     } catch (err) {
-        showToast(err.message, 'error');
+        state.lastError = err;
+        state.collections = [];
+        renderCollections();
+        showToast(err.message || 'Failed to load collections', 'error');
+    } finally {
+        state.isLoading.collections = false;
     }
 }
 
 function renderCollections() {
-    elements.collectionsGrid.innerHTML = state.collections.map(col => `
-        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer group relative" onclick="openInspector('${col.id}')">
-            <div class="flex justify-between items-start mb-4">
-                <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600 font-bold">
-                    ${col.displayName.charAt(0)}
-                </div>
-                ${getStatusBadge(col.status)}
+    const grid = elements.collectionsGrid;
+    clearNode(grid);
+    
+    if (state.isLoading.collections) {
+        grid.innerHTML = `
+            <div class="col-span-full py-12 text-center text-slate-400 italic">
+                Loading collections...
             </div>
-            <h3 class="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">${col.displayName}</h3>
-            <p class="text-xs text-slate-500 line-clamp-2 mb-4">${col.description || 'No description provided.'}</p>
-            <div class="flex items-center justify-between pt-4 border-t border-slate-100">
-                <span class="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Chunks: ${col.chunkCount ?? 'N/A'}</span>
-                <span class="text-[10px] text-slate-400 font-medium uppercase tracking-wider">${new Date(col.updatedAt).toLocaleDateString()}</span>
+        `;
+        return;
+    }
+    
+    if (state.collections.length === 0) {
+        grid.innerHTML = `
+            <div class="col-span-full py-12 text-center text-slate-400 italic">
+                No collections found. Click "New Collection" to get started.
             </div>
-        </div>
-    `).join('');
+        `;
+        return;
+    }
+    
+    // Build card elements with safe text rendering
+    state.collections.forEach(col => {
+        const card = document.createElement('div');
+        card.className = 'bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer group relative';
+        
+        // Click handler for inspector
+        card.addEventListener('click', (e) => {
+            if (e.target.closest('[data-action]')) return;
+            openInspector(col.id);
+        });
+        
+        // Icon
+        const iconWrap = document.createElement('div');
+        iconWrap.className = 'w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600 font-bold mb-4';
+        const initial = col.displayName ? col.displayName.charAt(0).toUpperCase() : '?';
+        iconWrap.textContent = initial;
+        card.appendChild(iconWrap);
+        
+        // Status badge
+        card.appendChild(createBadge(col.status || 'unknown', 
+            col.status === 'ready' ? 'bg-emerald-100 text-emerald-700' : 
+            col.status === 'indexing' ? 'bg-blue-100 text-blue-700' : 
+            'bg-rose-100 text-rose-700'
+        ));
+        
+        // Display name
+        const title = document.createElement('h3');
+        title.className = 'font-bold text-slate-800 group-hover:text-indigo-600 transition-colors mt-3 mb-1';
+        appendText(title, col.displayName || 'Unnamed Collection');
+        card.appendChild(title);
+        
+        // Description
+        const desc = document.createElement('p');
+        desc.className = 'text-xs text-slate-500 line-clamp-2 mb-4';
+        appendText(desc, col.description || 'No description provided.');
+        card.appendChild(desc);
+        
+        // Footer
+        const footer = document.createElement('div');
+        footer.className = 'flex items-center justify-between pt-4 border-t border-slate-100';
+        
+        const chunkInfo = document.createElement('span');
+        chunkInfo.className = 'text-[10px] text-slate-400 font-medium uppercase tracking-wider';
+        appendText(chunkInfo, 'Chunks: ' + formatCount(col.chunkCount));
+        footer.appendChild(chunkInfo);
+        
+        const dateInfo = document.createElement('span');
+        dateInfo.className = 'text-[10px] text-slate-400 font-medium uppercase tracking-wider';
+        appendText(dateInfo, formatDateTime(col.updatedAt));
+        footer.appendChild(dateInfo);
+        
+        card.appendChild(footer);
+        grid.appendChild(card);
+    });
 }
 
 async function openInspector(id) {
@@ -224,66 +424,63 @@ function closeInspector() {
 
 async function updateReadinessTab() {
     if (!state.selectedCollection) return;
-    const id = state.selectedCollection.id;
+    
+    const readinessEl = document.getElementById('readinessStatusGrid');
+    clearNode(readinessEl);
     
     try {
-        const data = await apiRequest(`${API.rag}/collections/${id}/ready`);
-
-        const hasActivePhysical = data.hasActivePhysicalCollection;
-        const chromaReadable = data.chromaReadable || false;
-        const embeddingModel = data.modelAvailability?.embeddingModel || '';
-        const embeddingModelAvailable = data.modelAvailability?.embeddingModelAvailable || false;
-        const chatModelAvailable = data.modelAvailability?.chatModelAvailable || false;
-        const capabilities = data.capabilities || {};
-
-        const healthMap = [
-            { label: 'Chroma DB', ok: chromaReadable, detail: hasActivePhysical ? 'Collection readable' : 'No active collection' },
-            { label: 'Ollama', ok: true, detail: 'Inference engine' },
-            { label: 'Embedding Model', ok: embeddingModelAvailable, detail: embeddingModelAvailable ? `Loaded (${embeddingModel})` : 'Model not found in Ollama' },
-            { label: 'Chat Model', ok: chatModelAvailable, detail: chatModelAvailable ? 'Loaded' : 'Model not found in Ollama' }
-        ];
-
-        elements.readinessStatusGrid.innerHTML = healthMap.map(item => `
-            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <div class="flex items-center gap-3">
-                    <div class="w-2 h-2 rounded-full ${item.ok ? 'bg-emerald-500' : 'bg-rose-500'}"></div>
-                    <span class="text-sm font-medium text-slate-700">${item.label}</span>
-                </div>
-                <span class="text-xs text-slate-500">${item.detail}</span>
-            </div>
-        `).join('');
-
-        // Show blockers for conditions that prevent query/retrieve
-        const blockers = [];
-        if (!hasActivePhysical) blockers.push('No active physical collection — run a re-index to populate the collection.');
-        if (!chromaReadable) blockers.push('Chroma DB is not accessible or the collection is not readable.');
-        if (!embeddingModelAvailable) blockers.push(`Embedding model "${embeddingModel}" is not available in Ollama.`);
-        if (!chatModelAvailable) blockers.push('Chat model is not available in Ollama.');
-        if (!capabilities.retrieve) blockers.push('Retrieval is not available (embedding model or Chroma unavailable).');
-        if (!capabilities.query) blockers.push('Query is not available (chat model or embedding model unavailable).');
-
-        if (blockers.length > 0) {
-            elements.readinessBlockers.classList.remove('hidden');
-            elements.blockerList.innerHTML = blockers.map(b => `<li class="mb-1">${b}</li>`).join('');
-        } else {
-            elements.readinessBlockers.classList.add('hidden');
-        }
+        const data = await apiRequest(collectionReadyUrl(state.selectedCollection));
+        state.selectedReadiness = data;
+        renderReadinessData(data);
     } catch (err) {
-        elements.readinessStatusGrid.innerHTML = `<p class="text-rose-500 text-sm">Error loading readiness: ${err.message}</p>`;
+        readinessEl.innerHTML = `<span class="text-rose-500 text-sm">Failed to load readiness: ${err.message || 'unknown error'}</span>`;
     }
+}
+
+function renderReadinessData(data) {
+    if (!data) return;
+    const grid = document.getElementById('readinessStatusGrid');
+    clearNode(grid);
+    
+    const checks = [
+        { label: 'Chroma', ok: data.chromaReadable, icon: '\uD83D\uDDC4\uFE0F' },
+        { label: 'Embedding', ok: data.modelAvailability?.embeddingModelAvailable, icon: '\uD83E\uDDE0\uFE0F' },
+        { label: 'Chat', ok: data.modelAvailability?.chatModelAvailable, icon: '\uD83D\uDCAC' },
+        { label: 'Query', ok: data.capabilities?.query, icon: '\uD83D\uDD0D', color: 'text-indigo-500' },
+        { label: 'Retrieve', ok: data.capabilities?.retrieve, icon: '\uD83D\uDCC4', color: 'text-teal-500' }
+    ];
+    
+    checks.forEach(check => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100';
+        
+        const label = document.createElement('span');
+        label.className = 'text-xs font-medium text-slate-600';
+        appendText(label, `${check.icon} ${check.label}`);
+        
+        const badge = document.createElement('span');
+        badge.className = check.ok 
+            ? 'text-emerald-600 text-xs font-bold' 
+            : 'text-rose-600 text-xs font-bold';
+        appendText(badge, check.ok ? 'READY' : 'NOT READY');
+        
+        row.appendChild(label);
+        row.appendChild(badge);
+        grid.appendChild(row);
+    });
 }
 
 function setupEditorTab(col) {
     document.getElementById('editId').value = col.id;
-    document.getElementById('editDisplayName').value = col.displayName;
+    document.getElementById('editDisplayName').value = col.displayName || '';
     document.getElementById('editDescription').value = col.description || '';
     document.getElementById('editSourcePath').value = col.sourcePath || '';
     document.getElementById('editOzelgeDataPath').value = col.ozelgeDataPath || '';
-    document.getElementById('editDistanceMetric').value = col.distanceMetric;
-    document.getElementById('editChunkSize').value = col.chunkSize || '';
-    document.getElementById('editChunkOverlap').value = col.chunkOverlap || '';
-    document.getElementById('editRetrievalK').value = col.retrievalK || '';
-    document.getElementById('editRetrievalDistanceThreshold').value = col.retrievalDistanceThreshold || '';
+    document.getElementById('editDistanceMetric').value = col.distanceMetric || 'l2';
+    document.getElementById('editChunkSize').value = col.chunkSize ?? '';
+    document.getElementById('editChunkOverlap').value = col.chunkOverlap ?? '';
+    document.getElementById('editRetrievalK').value = col.retrievalK ?? '';
+    document.getElementById('editRetrievalDistanceThreshold').value = col.retrievalDistanceThreshold ?? '';
     document.getElementById('editEmbeddingModel').value = col.embeddingModel || '';
     document.getElementById('editChatModel').value = col.chatModel || '';
 }
@@ -306,7 +503,7 @@ async function saveCollection() {
 
     try {
         if (id) {
-            await apiRequest(`${API.admin}/collections/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+            await apiRequest(adminCollectionUrl(id), { method: 'PATCH', body: JSON.stringify(payload) });
             showToast('Collection updated', 'success');
         } else {
             const data = await apiRequest(`${API.admin}/collections`, { method: 'POST', body: JSON.stringify(payload) });
@@ -315,7 +512,7 @@ async function saveCollection() {
         await loadCollections();
         closeInspector();
     } catch (err) {
-        showToast(err.message, 'error');
+        showToast(err.message || 'Save failed', 'error');
     }
 }
 
@@ -330,35 +527,40 @@ async function runPlayground() {
     const id = state.selectedCollection.id;
     const resultEl = document.getElementById('pgResult');
     
-    resultEl.innerHTML = '<span class="text-slate-400 animate-pulse">Processing...</span>';
+    resultEl.textContent = 'Processing...';
     
     try {
         let data;
         if (mode === 'retrieve') {
-            data = await apiRequest(`${API.rag}/collections/${id}/retrieve`, {
+            data = await apiRequest(collectionRetrieveUrl(state.selectedCollection), {
                 method: 'POST',
                 body: JSON.stringify({ question })
             });
         } else {
-            data = await apiRequest(`${API.rag}/collections/${id}/query`, {
+            data = await apiRequest(collectionQueryUrl(state.selectedCollection), {
                 method: 'POST',
                 body: JSON.stringify({ question })
             });
         }
         resultEl.textContent = JSON.stringify(data, null, 2);
     } catch (err) {
-        resultEl.innerHTML = `<span class="text-rose-500">Error: ${err.message}</span>`;
+        resultEl.textContent = `Error: ${err.message}`;
     }
 }
 
 async function reindexCollection() {
     if (!state.selectedCollection) return;
     try {
+        setButtonLoading(elements.btnReindex, true);
         await apiRequest(`${API.admin}/collections/${state.selectedCollection.id}/reindex`, { method: 'POST' });
         showToast('Re-indexing started', 'success');
-        loadCollections();
+        await loadCollections();
+        await loadJobs();
+        await loadHealth();
     } catch (err) {
-        showToast(err.message, 'error');
+        showToast(err.message || 'Re-index failed', 'error');
+    } finally {
+        setButtonLoading(elements.btnReindex, false);
     }
 }
 
@@ -367,17 +569,22 @@ async function deleteCollection() {
     if (!confirm('Are you sure you want to delete this collection?')) return;
     
     try {
-        await apiRequest(`${API.admin}/collections/${state.selectedCollection.id}`, { method: 'DELETE' });
+        setButtonLoading(elements.btnDeleteCol, true);
+        await apiRequest(adminCollectionUrl(state.selectedCollection.id), { method: 'DELETE' });
         showToast('Collection deleted', 'success');
         await loadCollections();
         closeInspector();
     } catch (err) {
-        showToast(err.message, 'error');
+        showToast(err.message || 'Delete failed', 'error');
+    } finally {
+        setButtonLoading(elements.btnDeleteCol, false);
     }
 }
 
 // --- Jobs & Health Logic ---
 async function loadJobs() {
+    if (state.isLoading.jobs) return;
+    state.isLoading.jobs = true;
     try {
         elements.jobsTableBody.innerHTML = `
             <tr>
@@ -389,130 +596,194 @@ async function loadJobs() {
         `;
     } catch (err) {
         showToast(err.message, 'error');
+    } finally {
+        state.isLoading.jobs = false;
     }
 }
 
 async function loadHealth() {
+    if (state.isLoading.health) return;
+    state.isLoading.health = true;
     try {
         const [health, ready] = await Promise.all([
             apiRequest(API.health),
             apiRequest(API.ready)
         ]);
-        
         state.healthStatus = health;
         state.readiness = ready;
-
-        elements.healthGrid.innerHTML = `
-            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                <h4 class="text-sm font-bold text-slate-500 uppercase mb-4">System Health</h4>
-                <div class="flex items-center gap-3">
-                    <div class="w-3 h-3 rounded-full ${health.status === 'ok' ? 'bg-emerald-500' : 'bg-rose-500'}"></div>
-                    <span class="text-lg font-semibold">${health.status === 'ok' ? 'Healthy' : 'Degraded'}</span>
-                </div>
-                <p class="text-xs text-slate-400 mt-2">Uptime: ${health.uptimeSec}s | Port: ${health.port}</p>
-            </div>
-            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                <h4 class="text-sm font-bold text-slate-500 uppercase mb-4">Readiness</h4>
-                <div class="flex items-center gap-3">
-                    <div class="w-3 h-3 rounded-full ${ready.ready ? 'bg-emerald-500' : 'bg-rose-500'}"></div>
-                    <span class="text-lg font-semibold">${ready.ready ? 'Ready' : 'Not Ready'}</span>
-                </div>
-                <p class="text-xs text-slate-400 mt-2">${ready.overallSummary}</p>
-            </div>
-            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                <h4 class="text-sm font-bold text-slate-500 uppercase mb-4">Dependencies</h4>
-                <div class="space-y-2">
-                    <div class="flex justify-between text-xs">
-                        <span class="text-slate-500">Registry</span>
-                        <span class="${ready.dependencies.registry.ok ? 'text-emerald-600' : 'text-rose-600'} font-bold">${ready.dependencies.registry.ok ? 'OK' : 'FAIL'}</span>
-                    </div>
-                    <div class="flex justify-between text-xs">
-                        <span class="text-slate-500">Chroma</span>
-                        <span class="${ready.dependencies.chroma.ok ? 'text-emerald-600' : 'text-rose-600'} font-bold">${ready.dependencies.chroma.ok ? 'OK' : 'FAIL'}</span>
-                    </div>
-                    <div class="flex justify-between text-xs">
-                        <span class="text-slate-500">Ollama</span>
-                        <span class="${ready.dependencies.ollama.ok ? 'text-emerald-600' : 'text-rose-600'} font-bold">${ready.dependencies.ollama.ok ? 'OK' : 'FAIL'}</span>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        elements.readinessDetail.innerHTML = `
-            <h4 class="text-sm font-bold text-slate-500 uppercase mb-4">Recommended Actions</h4>
-            <div class="space-y-2">
-                ${ready.recommendedActions.map(action => `
-                    <div class="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 text-xs text-slate-600">
-                        <svg class="w-4 h-4 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        ${action}
-                    </div>
-                `).join('')}
-            </div>
-        `;
+        
+        renderHealthSummary(health, ready);
+        if (ready?.ready !== undefined) {
+            renderReadinessDetail(ready);
+        }
     } catch (err) {
         showToast(err.message, 'error');
+    } finally {
+        state.isLoading.health = false;
+    }
+}
+
+function renderHealthSummary(health, ready) {
+    const grid = elements.healthGrid;
+    clearNode(grid);
+    
+    if (!health && !ready) {
+        grid.innerHTML = '<div class="col-span-full text-center text-slate-400 italic py-8">Health data unavailable</div>';
+        return;
+    }
+    
+    // Process card
+    if (health) {
+        const card = document.createElement('div');
+        card.className = 'bg-white rounded-xl border border-slate-200 shadow-sm p-6';
+        
+        const title = document.createElement('h3');
+        title.className = 'text-sm font-bold text-slate-500 uppercase mb-3';
+        appendText(title, 'Process');
+        card.appendChild(title);
+        
+        const grid2 = document.createElement('div');
+        grid2.className = 'grid grid-cols-2 gap-3 text-xs';
+        
+        const statusVal = health.status || health.alive || health;
+        const statusBadge = createBadge(
+            String(statusVal), 
+            statusVal === 'ok' || statusVal === true ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+        );
+        grid2.appendChild(statusBadge);
+        
+        const portLabel = document.createElement('span');
+        appendText(portLabel, health.port ? `Port: ${health.port}` : 'Port: -');
+        grid2.appendChild(portLabel);
+        
+        card.appendChild(grid2);
+        grid.appendChild(card);
+    }
+    
+    // Readiness card
+    if (ready) {
+        const card = document.createElement('div');
+        card.className = 'bg-white rounded-xl border border-slate-200 shadow-sm p-6';
+        
+        const title = document.createElement('h3');
+        title.className = 'text-sm font-bold text-slate-500 uppercase mb-3';
+        appendText(title, 'Readiness');
+        card.appendChild(title);
+        
+        const grid2 = document.createElement('div');
+        grid2.className = 'grid grid-cols-2 gap-3 text-xs';
+        
+        const readyBadge = createBadge(
+            ready.ready ? 'READY' : 'NOT READY',
+            ready.ready ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+        );
+        grid2.appendChild(readyBadge);
+        
+        const summaryLabel = document.createElement('span');
+        appendText(summaryLabel, ready.overallSummary || 'System available');
+        grid2.appendChild(summaryLabel);
+        
+        card.appendChild(grid2);
+        grid.appendChild(card);
+    }
+}
+
+function renderReadinessDetail(ready) {
+    if (!ready) return;
+    const container = elements.readinessDetail;
+    clearNode(container);
+    
+    if (ready.recommendedActions && ready.recommendedActions.length > 0) {
+        const heading = document.createElement('h4');
+        heading.className = 'text-sm font-bold text-slate-500 uppercase mb-4';
+        appendText(heading, 'Recommended Actions');
+        container.appendChild(heading);
+        
+        const list = document.createElement('div');
+        list.className = 'space-y-2';
+        
+        ready.recommendedActions.forEach(action => {
+            const item = document.createElement('div');
+            item.className = 'flex items-start gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 text-xs text-slate-600';
+            const icon = document.createElement('span');
+            icon.className = 'w-4 h-4 text-indigo-500 shrink-0';
+            icon.textContent = '\u2139\uFE0F';
+            item.appendChild(icon);
+            appendText(item, action);
+            list.appendChild(item);
+        });
+        
+        container.appendChild(list);
     }
 }
 
 // --- Event Handlers ---
-elements.navItems.forEach(item => {
-    item.onclick = (e) => {
-        e.preventDefault();
-        switchView(item.dataset.view);
-    };
-});
+document.addEventListener('DOMContentLoaded', () => {
+    elements.navItems.forEach(item => {
+        item.onclick = (e) => {
+            e.preventDefault();
+            switchView(item.dataset.view);
+        };
+    });
 
-elements.btnRefresh.onclick = () => {
+    elements.btnRefresh.onclick = () => {
+        loadCollections();
+        loadJobs();
+        loadHealth();
+    };
+
+    elements.btnCreateCollection.onclick = () => {
+        openInspector(null);
+    };
+
+    elements.btnCloseInspector.onclick = closeInspector;
+    elements.inspectorOverlay.onclick = closeInspector;
+
+    elements.tabBtns.forEach(btn => {
+        btn.onclick = () => {
+            elements.tabContents.forEach(content => {
+                content.classList.toggle('hidden', content.id !== `tab-${btn.dataset.tab}`);
+            });
+            elements.tabBtns.forEach(t => {
+                t.classList.remove('active', 'border-indigo-600', 'text-indigo-600');
+                t.classList.add('border-transparent', 'text-slate-500');
+            });
+            btn.classList.add('active', 'border-indigo-600', 'text-indigo-600');
+            btn.classList.remove('border-transparent', 'text-slate-500');
+            
+            // Update readiness tab when switched to
+            if (btn.dataset.tab === 'ready') {
+                updateReadinessTab();
+            }
+        };
+    });
+
+    elements.pgModeBtns.forEach(btn => {
+        btn.onclick = () => {
+            state.playgroundMode = btn.dataset.mode;
+            elements.pgModeBtns.forEach(b => {
+                b.classList.remove('active', 'bg-indigo-600', 'text-white');
+                b.classList.add('bg-slate-200', 'text-slate-600');
+            });
+            btn.classList.add('active', 'bg-indigo-600', 'text-white');
+            btn.classList.remove('bg-slate-200', 'text-slate-600');
+        };
+    });
+
+    elements.colEditForm.onsubmit = (e) => {
+        e.preventDefault();
+        saveCollection();
+    };
+    elements.btnReindex.onclick = reindexCollection;
+    elements.btnDeleteCol.onclick = deleteCollection;
+    elements.btnPgRun.onclick = runPlayground;
+
+    // Init
+    switchView('collections');
     loadCollections();
     loadJobs();
     loadHealth();
-};
 
-elements.btnCreateCollection.onclick = () => {
-    openInspector(null);
-};
-
-elements.btnCloseInspector.onclick = closeInspector;
-elements.inspectorOverlay.onclick = closeInspector;
-
-elements.tabBtns.forEach(btn => {
-    btn.onclick = () => {
-        elements.tabContents.forEach(content => {
-            content.classList.toggle('hidden', content.id !== `tab-${btn.dataset.tab}`);
-        });
-        elements.tabBtns.forEach(t => {
-            t.classList.remove('active', 'border-indigo-600', 'text-indigo-600');
-            t.classList.add('border-transparent', 'text-slate-500');
-        });
-        btn.classList.add('active', 'border-indigo-600', 'text-indigo-600');
-        btn.classList.remove('border-transparent', 'text-slate-500');
-    };
+    setInterval(loadJobs, 10000);
+    setInterval(loadHealth, 30000);
 });
-
-elements.pgModeBtns.forEach(btn => {
-    btn.onclick = () => {
-        elements.pgModeBtns.forEach(b => {
-            b.classList.remove('active', 'bg-indigo-600', 'text-white');
-            b.classList.add('bg-slate-200', 'text-slate-600');
-        });
-        btn.classList.add('active', 'bg-indigo-600', 'text-white');
-        btn.classList.remove('bg-slate-200', 'text-slate-600');
-    };
-});
-
-elements.colEditForm.onsubmit = (e) => {
-    e.preventDefault();
-    saveCollection();
-};
-elements.btnReindex.onclick = reindexCollection;
-elements.btnDeleteCol.onclick = deleteCollection;
-elements.btnPgRun.onclick = runPlayground;
-
-// Init
-switchView('collections');
-loadCollections();
-loadJobs();
-loadHealth();
-
-setInterval(loadJobs, 10000);
-setInterval(loadHealth, 30000);

@@ -333,7 +333,7 @@ Değişiklik riskliyse veya backend kontratına yanlışlıkla dokunulmadığın
 
 ```powershell
 npm.cmd test
-rg -n '"/rag/query"|"/rag/retrieve"|/rag/query|/rag/retrieve' admin
+rg -n "/rag/query|/rag/retrieve" admin
 git diff -- admin
 ```
 
@@ -431,7 +431,7 @@ Amaç, sonraki adımlara sağlam temel hazırlamak. Görsel büyük değişiklik
 ```powershell
 node --check admin/admin.js
 npm.cmd run build
-rg -n '"/rag/query"|"/rag/retrieve"|/rag/query|/rag/retrieve' admin
+rg -n "/rag/query|/rag/retrieve" admin
 ```
 
 ### Manuel Test
@@ -934,7 +934,7 @@ Amaç, admin paneli günlük kullanım için daha tutarlı ve dayanıklı yapmak
 ```powershell
 node --check admin/admin.js
 npm.cmd run build
-rg -n '"/rag/query"|"/rag/retrieve"|/rag/query|/rag/retrieve' admin
+rg -n "/rag/query|/rag/retrieve" admin
 ```
 
 ### Manuel Test
@@ -973,7 +973,7 @@ Amaç, admin-only geliştirme tamamlandığında kontrat dışına çıkılmadı
 ```powershell
 node --check admin/admin.js
 npm.cmd run build
-rg -n '"/rag/query"|"/rag/retrieve"|/rag/query|/rag/retrieve' admin
+rg -n "/rag/query|/rag/retrieve" admin
 git diff -- admin
 ```
 

@@ -115,7 +115,7 @@ Small-model implementation order:
 Validation commands to run:
 node --check admin/admin.js
 npm.cmd run build
-rg -n '"/rag/query"|"/rag/retrieve"|/rag/query|/rag/retrieve' admin
+rg -n "/rag/query|/rag/retrieve" admin
 
 Final response format:
 - Changed files
@@ -690,7 +690,7 @@ Small-model implementation order:
 Validation commands to run:
 node --check admin/admin.js
 npm.cmd run build
-rg -n '"/rag/query"|"/rag/retrieve"|/rag/query|/rag/retrieve' admin
+rg -n "/rag/query|/rag/retrieve" admin
 
 Manual tests to report:
 1. Desktop: collections, inspector, jobs, health views.
@@ -749,7 +749,7 @@ Audit requirements:
 Commands to run:
 node --check admin/admin.js
 npm.cmd run build
-rg -n '"/rag/query"|"/rag/retrieve"|/rag/query|/rag/retrieve' admin
+rg -n "/rag/query|/rag/retrieve" admin
 git diff -- admin
 git status --short
 

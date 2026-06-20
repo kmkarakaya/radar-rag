@@ -86,10 +86,33 @@ const elements = {
     // Editor Tab
     colEditForm: document.getElementById('colEditForm'),
     
-    // Inspector Actions
-    btnReindex: document.getElementById('btnReindex'),
+    // Editor fields
+    editId: document.getElementById('editId'),
+    editDisplayName: document.getElementById('editDisplayName'),
+    editDescription: document.getElementById('editDescription'),
+    editSourcePath: document.getElementById('editSourcePath'),
+    editOzelgeDataPath: document.getElementById('editOzelgeDataPath'),
+    editDistanceMetric: document.getElementById('editDistanceMetric'),
+    editChunkSize: document.getElementById('editChunkSize'),
+    editChunkOverlap: document.getElementById('editChunkOverlap'),
+    editRetrievalK: document.getElementById('editRetrievalK'),
+    editRetrievalDistanceThreshold: document.getElementById('editRetrievalDistanceThreshold'),
+    editEmbeddingModel: document.getElementById('editEmbeddingModel'),
+    editChatModel: document.getElementById('editChatModel'),
     btnCancelEdit: document.getElementById('btnCancelEdit'),
+    
+    // Inspector actions
+    btnReindex: document.getElementById('btnReindex'),
     btnDeleteCol: document.getElementById('btnDeleteCol'),
+    
+    // Tab contents
+    tabReady: document.getElementById('tab-ready'),
+    tabPlayground: document.getElementById('tab-playground'),
+    tabEditor: document.getElementById('tab-editor'),
+    
+    // Create-mode tab visibility
+    readyTabBtn: document.querySelector('.tab-btn[data-tab="ready"]'),
+    playgroundTabBtn: document.querySelector('.tab-btn[data-tab="playground"]'),
     
     // Toast
     toastContainer: document.getElementById('toastContainer')
@@ -235,7 +258,7 @@ function showToast(message, type = 'info') {
     }, 3000);
 }
 
-function getStatusBadge(status) {
+function getStatusColor(status) {
     const colors = {
         ready: 'bg-emerald-100 text-emerald-700',
         indexing: 'bg-blue-100 text-blue-700',
@@ -247,8 +270,14 @@ function getStatusBadge(status) {
         succeeded: 'bg-emerald-100 text-emerald-700',
         cancelled: 'bg-slate-100 text-slate-500'
     };
-    const colorClass = colors[status] || 'bg-slate-100 text-slate-600';
-    return `<span class="px-2 py-1 text-[10px] font-bold rounded-full uppercase ${colorClass}">${status || 'unknown'}</span>`;
+    return colors[status] || 'bg-slate-100 text-slate-600';
+}
+
+function getStatusBadge(status) {
+    const badge = document.createElement('span');
+    badge.className = `px-2 py-1 text-xs font-bold rounded-full uppercase ${getStatusColor(status)}`;
+    appendText(badge, status || 'unknown');
+    return badge;
 }
 
 // --- View Management ---
@@ -299,20 +328,36 @@ function renderCollections() {
     clearNode(grid);
     
     if (state.isLoading.collections) {
-        grid.innerHTML = `
-            <div class="col-span-full py-12 text-center text-slate-400 italic">
-                Loading collections...
-            </div>
-        `;
+        const loader = document.createElement('div');
+        loader.className = 'col-span-full py-12 text-center text-slate-400 italic';
+        appendText(loader, 'Loading collections...');
+        grid.appendChild(loader);
+        return;
+    }
+    
+    if (state.lastError && state.collections.length === 0) {
+        const errDiv = document.createElement('div');
+        errDiv.className = 'col-span-full py-12 text-center';
+        
+        const errTitle = document.createElement('p');
+        errTitle.className = 'text-rose-600 font-semibold text-sm mb-2';
+        appendText(errTitle, 'Failed to load collections');
+        errDiv.appendChild(errTitle);
+        
+        const errDetail = document.createElement('p');
+        errDetail.className = 'text-slate-400 text-xs';
+        appendText(errDetail, state.lastError?.message || 'Unknown error');
+        errDiv.appendChild(errDetail);
+        
+        grid.appendChild(errDiv);
         return;
     }
     
     if (state.collections.length === 0) {
-        grid.innerHTML = `
-            <div class="col-span-full py-12 text-center text-slate-400 italic">
-                No collections found. Click "New Collection" to get started.
-            </div>
-        `;
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'col-span-full py-12 text-center text-slate-400 italic';
+        appendText(emptyDiv, 'No collections found. Click "New Collection" to get started.');
+        grid.appendChild(emptyDiv);
         return;
     }
     
@@ -371,6 +416,11 @@ function renderCollections() {
         appendText(dateInfo, formatDateTime(col.updatedAt));
         footer.appendChild(dateInfo);
         
+        const versionInfo = document.createElement('span');
+        versionInfo.className = 'text-[10px] text-slate-400 font-medium uppercase tracking-wider';
+        appendText(versionInfo, 'v' + formatCount(col.activeVersion));
+        footer.appendChild(versionInfo);
+        
         card.appendChild(footer);
         grid.appendChild(card);
     });
@@ -404,6 +454,12 @@ async function openInspector(id) {
         elements.btnDeleteCol.disabled = true;
         elements.btnDeleteCol.classList.add('opacity-50', 'cursor-not-allowed');
         
+        // Hide Readiness and Playground tabs in create mode
+        if (elements.readyTabBtn) elements.readyTabBtn.classList.add('hidden');
+        if (elements.playgroundTabBtn) elements.playgroundTabBtn.classList.add('hidden');
+        if (elements.tabReady) elements.tabReady.classList.add('hidden');
+        if (elements.tabPlayground) elements.tabPlayground.classList.add('hidden');
+        
         // Switch to editor tab
         switchTab('editor');
     } else {
@@ -413,18 +469,8 @@ async function openInspector(id) {
         state.selectedCollection = col;
         elements.inspectorTitle.textContent = col.displayName;
         elements.inspectorStatusBadge.classList.remove('hidden');
-        elements.inspectorStatusBadge.textContent = col.status;
-        
-        // Apply correct badge color
-        const statusColors = {
-            ready: 'bg-emerald-100 text-emerald-700',
-            indexing: 'bg-blue-100 text-blue-700',
-            creating: 'bg-amber-100 text-amber-700',
-            failed: 'bg-rose-100 text-rose-700',
-            archived: 'bg-slate-100 text-slate-600'
-        };
-        const badgeColor = statusColors[col.status] || 'bg-slate-100 text-slate-600';
-        elements.inspectorStatusBadge.className = `px-2 py-1 text-xs font-bold rounded-full uppercase ${badgeColor}`;
+        clearNode(elements.inspectorStatusBadge);
+        elements.inspectorStatusBadge.appendChild(getStatusBadge(col.status));
 
         // Enable Re-index and Delete in existing collection mode
         elements.btnReindex.disabled = false;
@@ -432,10 +478,16 @@ async function openInspector(id) {
         elements.btnDeleteCol.disabled = false;
         elements.btnDeleteCol.classList.remove('opacity-50', 'cursor-not-allowed');
 
+        // Show all tabs in edit mode
+        if (elements.readyTabBtn) elements.readyTabBtn.classList.remove('hidden');
+        if (elements.playgroundTabBtn) elements.playgroundTabBtn.classList.remove('hidden');
+
+        // Switch to readiness tab and load readiness data
+        switchTab('ready');
+        updateReadinessTab();
+
+        // Fill editor fields with collection data
         setupEditorTab(col);
-        
-        // Switch to editor tab
-        switchTab('editor');
     }
     
     elements.inspectorOverlay.classList.remove('hidden');
@@ -465,6 +517,13 @@ function closeInspector() {
     elements.inspectorPanel.classList.add('translate-x-full');
     elements.inspectorOverlay.classList.remove('opacity-100');
     setTimeout(() => elements.inspectorOverlay.classList.add('hidden'), 200);
+}
+
+function handleOverlayClick(e) {
+    // Only close if clicking the overlay itself, not the panel
+    if (e.target === elements.inspectorOverlay) {
+        closeInspector();
+    }
 }
 
 async function updateReadinessTab() {
@@ -785,7 +844,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     elements.btnCloseInspector.onclick = closeInspector;
-    elements.inspectorOverlay.onclick = closeInspector;
+    elements.inspectorOverlay.onclick = handleOverlayClick;
     elements.btnCancelEdit.onclick = closeInspector;
 
     // Escape key closes inspector

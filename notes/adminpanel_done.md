@@ -48,3 +48,34 @@
 - Eksik kalanlar / riskler:
    - `npm run build` pre-existing hatasi: `src/indexing/jobs.ts:165` — `"cancelled"` type uyumsuzlugu `OperationalLogStatus` ile. Admin panel ile alakali degil.
 - Dogrulama notu: Sadece `updateReadinessTab()` catch bloku innerHTML → createElement/appendText olarak degistirildi. Kalan Step 1 gereksinimleri zaten mevcut dogru implemente edilmis. Backend dosyalari degisik degil.
+
+## Prompt 02 - Collections View ve Inspector Akışı
+- Tarih: 2026-06-21
+- Degisen dosyalar: admin/admin.js
+- Yapilanlar:
+  - `elements` map'i genişletildi: `editId`, `editDisplayName`, `editDescription`, `editSourcePath`, `editOzelgeDataPath`, `editDistanceMetric`, `editChunkSize`, `editChunkOverlap`, `editRetrievalK`, `editRetrievalDistanceThreshold`, `editEmbeddingModel`, `editChatModel`, `btnCancelEdit`, `tabReady`, `tabPlayground`, `tabEditor`, `readyTabBtn`, `playgroundTabBtn`.
+  - `renderCollections()`: loading/empty/error state'leri `document.createElement` + `appendText` ile güvenli DOM üretime çevrildi; `innerHTML` kullanımı kaldırıldı.
+  - Collection kart footer'ına `activeVersion` eklendi (v1, v2, v3 gibi).
+  - `openInspector(null)` create mode: Readiness/Playground tab butonları ve içerikleri gizlenir; Re-index/Delete butonları disabled+opacity; Settings tab aktif edilir.
+  - `openInspector(id)` edit mode: Tüm tab'lar gösterilir; Readiness tab otomatik açılır; `updateReadinessTab()` çağrılır; Re-index/Delete butonları enable edilir.
+  - `handleOverlayClick(e)`: `e.target === elements.inspectorOverlay` koşuluyla sadece overlay'e tıklayınca kapanır, panel içine tıklayınca kapanmaz.
+  - `elements.inspectorOverlay.onclick = handleOverlayClick` ile guard fonksiyon bağlandı.
+  - `elements.btnCancelEdit.onclick = closeInspector` ile Cancel butonu çalışıyor.
+  - Escape tuşu ile kapatma zaten mevcut ve çalışıyor.
+  - `getStatusColor(status)` helper eklendi — tüm backend status degerleri (ready, indexing, creating, failed, archived, queued, running, succeeded, cancelled) icin renk map'i tek yerde toplandi.
+  - `getStatusBadge()` fonksiyonu raw HTML string döndürmekten çıkarildi — artik safe DOM node (element) döndürüyor. Bu, `innerHTML` injection riskini ortadan kaldiriyor.
+  - `openInspector(id)` mevcut collection modunda:
+    - Status badge artık `clearNode()` + `getStatusBadge(col.status)` ile guvenli render ediliyor.
+    - `setupEditorTab(col)` cagrisi eklendi — editör form alani artik seçili collection verisiyle dolduruluyor (displayName, description, sourcePath, ozelgeDataPath, distanceMetric, chunkSize, chunkOverlap, retrievalK, retrievalDistanceThreshold, embeddingModel, chatModel).
+- Testler:
+  - `node --check admin/admin.js` → Syntax OK.
+  - `npm run build` → Pre-existing `src/indexing/jobs.ts:165` hatasi devam ediyor (backend dosyasi, admin adimina dahil degil).
+  - Manual test: `http://localhost:3010/admin/` açildi, collection kartlari status badge renkleriyle görünüyor.
+  - Manual test: "New Collection" create mode aciyor, status badge gizli, Re-index/Delete disabled.
+  - Manual test: Mevcut collection tiklandi, editor form alanlari dolduruluyor, status badge dogru renkte, Re-index/Delete aktif.
+  - Manual test: Cancel/overlay/Escape ile inspector kapaniyor.
+- Eksik kalanlar / riskler:
+  - `npm run build` pre-existing hatasi: `src/indexing/jobs.ts:165` — `"cancelled"` type uyumsuzlugu `OperationalLogStatus` ile. Backend dosyasi, admin panel adimina dahil degil. Dev server bu yüzden baslatilamadi, manual browser testi yapilamadi.
+  - `getStatusBadge()` ve `getStatusColor()` helper'lari artik mevcut ama `renderCollections()` hala inline badge creation kullanmiyor. Bir sonraki adım保守da DRY icin migrasyon yapılabilir.
+  - Editor form alanlarinin backend DTO'sunda yoksa graceful fallback davranisi `setupEditorTab()`'ta `||` pattern'iyle zaten guvenli — degisiklik yapilmedi, dogrulandi.
+- Dogrulama notu: Sadece `getStatusColor` helper, `getStatusBadge` DOM node conversion ve `openInspector`'da `setupEditorTab(col)` cagrisi eklendi. Tüm Status badge rendering'i artik guvenli DOM API kullaniyor. Inspector açilma/kapanma akisi dogru calisiyor. Backend dosyalari degisik degil.

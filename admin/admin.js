@@ -46,9 +46,7 @@ let state = {
         readiness: false
     },
     lastError: null,
-    activeJobs: [],
-    healthStatus: null,
-    readiness: null
+    _healthRequestInProgress: false
 };
 
 // --- DOM Elements ---

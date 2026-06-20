@@ -15,6 +15,71 @@ Bu nedenle ana gorevin cekirdegi tamamlanmis sayilabilir; ancak repo urunlesme, 
 
 ## P0 - Dogrudan kapanmamis kritik eksikler
 
+### 0. Ollama modelleri saglikli yakalanmiyor, isleme giriyor
+
+Sorun:
+- Collection olusturma (`POST /v1/admin/collections`) ve re-index tetikleme (`POST /v1/admin/collections/:id/reindex`) endpoint'leri Ollama'da gerekli modellerin (embedding ve chat) mevcut olup olmadigini kontrol etmiyor.
+- Kullanici bir collection olusturup re-index tetiklediginde, backend modeli bulamazsa job'i `failed` olarak isaretle ve job ID dondurur.
+- Kullaniciya model eksik oldugu konusunda **hemen** bir hata mesajı gosterilmiyor. Job'un fail olmasini beklemek ve `GET /v1/admin/jobs/:jobId` ile durumu kontrol etmek gerekiyor.
+- Gercek senaryoda (21 Haz 2026): `bge-m3` embedding modeli ve `gemma3:4b-cloud` chat modeli Ollama'da yoktu. Collection basariyla olusturuldu, re-index job 'queued' → 'running' → 'failed' olarak tamamlandi. Hata mesaji: `model "bge-m3" not found, try pulling it first`. Bu bilgi job response'da `error` field'inda var ama endpoint response'unda acikca gosterilmiyor.
+- `GET /ready` endpoint'i modellerin eksikligini raporu ediyor (blocker codes: `CHAT_MODEL_MISSING`, `EMBED_MODEL_MISSING`), ama bu bilgi collection olusturma veya re-index tetikleme sirasinda **call-site bazinda** kontrol edilmiyor.
+
+Neden onemli:
+- Kullanici deneyimi: Collection olusturma ve indexing basarili gibi gorunuyor ama arka planda sessizce fail oluyor.
+- Operating cost: Basarisiz job'lar gereksiz kaynak harcamasi (Chroma islemleri, embedding calculation denemeleri).
+- Debug maliyeti: Kullanici "neden collection calismiyor?" sorusunun cevabini bulmak icin `GET /v1/admin/jobs/:jobId` cagirip `error` field'ina bakmak zorunda.
+- Production senaryosu: Docker deployment veya CI'da modeller otomatik pull edilmezse tum indexing pipelini basarisiz olur.
+
+Kokenler:
+- **Koken**: `POST /v1/admin/collections/:id/reindex` endpoint'i (`src/http/adminRouter.ts`) job baslatmadan once Ollama'da gerekli modelleri kontrol etmiyor.
+- **Koken**: `startReindexJob()` fonksiyonu (`src/indexing/jobs.ts`) Chroma indexing sirasinda model bulunamazsa exception throw ediyor ama bu exception job'a `failed` olarak kaydediliyor ve kullaniciya acikca geri donduruilmiyor.
+- **Koken**: `POST /v1/admin/collections` endpoint'i (`src/http/adminRouter.ts`) config'deki model isimlerini okuyor ama Ollama'ya bagli olarak kontrol etmiyor.
+- **Koken**: `GET /ready` endpoint'i (`src/app.ts`) modellari kontrol ediyor ama bu bilgi collection job'lari tarafindan kullanilmiyor.
+
+Cozumler:
+1. **Collection olusturma sirasinda model kontrolu** (On-create validation):
+   - `POST /v1/admin/collections` endpoint'inde config'deki `embeddingModel` ve `chatModel` degerleri alinir.
+   - Basit bir health check callback'i (`/api/tags` via Ollama) ile modelin mevcut oldugu dogrulanir.
+   - Eger model yoksa:
+     - `422 UNAVAILABLE_MODEL` hatasi dondur.
+     - Response'ta acikca yaz: `"message": "Embedding model 'bge-m3' not found in Ollama. Please run 'ollama pull bge-m3'."`
+     - Response'ta hangi modellerin Ollama'da mevcut oldugunu da goster (`"availableModels": ["gemma3:4b-cloud", ...]`) ki kullanici dogru ismi girebilsin.
+   - Bu kontrol config-level validation seviyesinde olmalidir: `ollama_embedding_model` ve `ollama_chat_model` config alanlari varsa (yani non-null), o anda cekilir ve dogrulanir.
+
+2. **Re-index tetikleme sirasinda model kontrolu** (On-reindex validation):
+   - `POST /v1/admin/collections/:id/reindex` endpoint'inde collection'daki `embeddingModel` ve `chatModel` degerleri alinir.
+   - Ayni model kontrolu yapilir. Eger model yoksa `422 UNAVAILABLE_MODEL` dondur ve job baslatma.
+   - Hata mesaji acik olmalidir: `"message": "Re-index cannot start. Embedding model 'bge-m3' is not available in Ollama."`
+
+3. **Job fail mesajini gorsellestirme** (API response improving):
+   - `GET /v1/admin/jobs/:jobId` response'unda `job.error` field'i zaten var ama UI (admin panel) bunu gostermiyor.
+   - Admin panel `loadJobs()` ve `renderJobs()` fonksiyonlarinda `job.error` field'ini goster.
+   - Ayrca `POST /v1/admin/collections/:id/reindex` response'unda eger job fail olmusta (overlapped jobs), o job'un `error` mesajini da response'a ekle.
+   - Bir callback ile daha iyi hata mesaji vermek mumkun olurdu.
+
+4. **Otomatik model pull veya async job** (Progressive improvement):
+   - **Secenek A**: Eger model yoksa, job'u `queued` yerine `pending_model_pull` statuye koy ve Ollama'ya bagli olarak otomatik model pull denemesi baslat (bir future tasks'da).
+   - **Secenek B**: Job'u async olarak baslat ama `embeddingModel` veya `chatModel` eksikse job baslamadan `cancelled` olarak isaretle ve acik bir hata mesaji goster.
+
+5. **Readiness endpoint'ini daha guclu hale getir** (Detect the missing model early):
+   - `GET /ready` response'unda `blockers` array'inde su model eksik oldugunu acikca yaz: `"blockers": [{ "code": "CHAT_MODEL_MISSING", "message": "Chat model 'gemma3:4b-cloud' is missing in Ollama..." }, ...]`
+   - Zaten bu yapiliyor ama admin panelde gosterilmiyor.
+
+Veri akisi:
+- `config/rag.config.yaml`: `embeddingModel: "bge-m3"`, `chatModel: "gemma3:4b-cloud"`
+- `POST /v1/admin/collections`: Kullanici collection olusturur, config'deki model isimleri kullanilir.
+- `POST /v1/admin/collections/:id/reindex`: Re-index tetiklenir, collection'daki model isimleri kullanilir.
+- `GET /v1/admin/jobs/:jobId`: Job durumu kontrol edilir, eger fail ise `error` field'inda hata mesaji olur.
+- `GET /ready`: System readiness kontrol edilir, model eksikligi `blockers` array'inde gosterilir.
+
+Kabul kriterleri:
+- [ ] `POST /v1/admin/collections` endpoint'inde config'deki `embeddingModel` ve `chatModel` degerleri alinir ve Ollama'ya bagli olarak kontrol edilir. Eger model yoksa `422 UNAVAILABLE_MODEL` hatasi dondur ve response'ta acikca yaz.
+- [ ] `POST /v1/admin/collections/:id/reindex` endpoint'inde collection'daki `embeddingModel` ve `chatModel` degerleri alinir ve Ollama'ya bagli olarak kontrol edilir. Eger model yoksa `422 UNAVAILABLE_MODEL` hatasi dondur ve job baslatma.
+- [ ] `GET /v1/admin/jobs/:jobId` response'unda `job.error` field'i UI tarafindan gosterilir.
+- [ ] Admin panel `loadJobs()` ve `renderJobs()` fonksiyonlarinda `job.error` field'ini goster.
+- [ ] `GET /ready` response'unda model eksikligi `blockers` array'inde gosterilir. (Zaten bu yapiliyor.)
+- [ ] `POST /v1/admin/collections/:id/reindex` response'unda eger job fail olmusta (overlapped jobs), o job'un `error` mesajini da response'a ekle.
+
 ### 1. Benchmark verisi var, benchmark kosusu yok
 
 Sorun:

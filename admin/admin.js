@@ -88,6 +88,7 @@ const elements = {
     
     // Inspector Actions
     btnReindex: document.getElementById('btnReindex'),
+    btnCancelEdit: document.getElementById('btnCancelEdit'),
     btnDeleteCol: document.getElementById('btnDeleteCol'),
     
     // Toast
@@ -283,14 +284,13 @@ async function loadCollections() {
         const data = await apiRequest(`${API.rag}/collections`);
         state.collections = Array.isArray(data?.collections) ? data.collections : [];
         state.lastError = null;
-        renderCollections();
     } catch (err) {
         state.lastError = err;
         state.collections = [];
-        renderCollections();
         showToast(err.message || 'Failed to load collections', 'error');
     } finally {
         state.isLoading.collections = false;
+        renderCollections();
     }
 }
 
@@ -334,12 +334,16 @@ function renderCollections() {
         iconWrap.textContent = initial;
         card.appendChild(iconWrap);
         
-        // Status badge
-        card.appendChild(createBadge(col.status || 'unknown', 
-            col.status === 'ready' ? 'bg-emerald-100 text-emerald-700' : 
-            col.status === 'indexing' ? 'bg-blue-100 text-blue-700' : 
-            'bg-rose-100 text-rose-700'
-        ));
+        // Status badge with all backend status values
+        const statusColors = {
+            ready: 'bg-emerald-100 text-emerald-700',
+            indexing: 'bg-blue-100 text-blue-700',
+            creating: 'bg-amber-100 text-amber-700',
+            failed: 'bg-rose-100 text-rose-700',
+            archived: 'bg-slate-100 text-slate-600'
+        };
+        const statusColor = statusColors[col.status] || 'bg-slate-100 text-slate-600';
+        card.appendChild(createBadge(col.status || 'unknown', statusColor));
         
         // Display name
         const title = document.createElement('h3');
@@ -373,7 +377,10 @@ function renderCollections() {
 }
 
 async function openInspector(id) {
-    if (id === null) {
+    const isCreateMode = id === null;
+    
+    if (isCreateMode) {
+        // CREATE MODE: Clear all fields, disable actions, switch to editor
         state.selectedCollection = null;
         elements.inspectorTitle.textContent = 'Create Collection';
         elements.inspectorStatusBadge.classList.add('hidden');
@@ -391,27 +398,67 @@ async function openInspector(id) {
         document.getElementById('editEmbeddingModel').value = '';
         document.getElementById('editChatModel').value = '';
         
-        const editorTab = document.querySelector('[data-tab="editor"]');
-        if (editorTab) editorTab.click();
+        // Disable Re-index and Delete in create mode
+        elements.btnReindex.disabled = true;
+        elements.btnReindex.classList.add('opacity-50', 'cursor-not-allowed');
+        elements.btnDeleteCol.disabled = true;
+        elements.btnDeleteCol.classList.add('opacity-50', 'cursor-not-allowed');
+        
+        // Switch to editor tab
+        switchTab('editor');
     } else {
+        // EXISTING COLLECTION MODE: Fill fields, enable actions
         const col = state.collections.find(c => c.id === id);
         if (!col) return;
         state.selectedCollection = col;
         elements.inspectorTitle.textContent = col.displayName;
         elements.inspectorStatusBadge.classList.remove('hidden');
-        elements.inspectorStatusBadge.className = `px-2 py-1 text-xs font-bold rounded-full uppercase ${
-            col.status === 'ready' ? 'bg-emerald-100 text-emerald-700' : 
-            col.status === 'indexing' ? 'bg-blue-100 text-blue-700' : 
-            'bg-rose-100 text-rose-700'
-        }`;
         elements.inspectorStatusBadge.textContent = col.status;
+        
+        // Apply correct badge color
+        const statusColors = {
+            ready: 'bg-emerald-100 text-emerald-700',
+            indexing: 'bg-blue-100 text-blue-700',
+            creating: 'bg-amber-100 text-amber-700',
+            failed: 'bg-rose-100 text-rose-700',
+            archived: 'bg-slate-100 text-slate-600'
+        };
+        const badgeColor = statusColors[col.status] || 'bg-slate-100 text-slate-600';
+        elements.inspectorStatusBadge.className = `px-2 py-1 text-xs font-bold rounded-full uppercase ${badgeColor}`;
+
+        // Enable Re-index and Delete in existing collection mode
+        elements.btnReindex.disabled = false;
+        elements.btnReindex.classList.remove('opacity-50', 'cursor-not-allowed');
+        elements.btnDeleteCol.disabled = false;
+        elements.btnDeleteCol.classList.remove('opacity-50', 'cursor-not-allowed');
 
         setupEditorTab(col);
+        
+        // Switch to editor tab
+        switchTab('editor');
     }
     
     elements.inspectorOverlay.classList.remove('hidden');
     setTimeout(() => elements.inspectorOverlay.classList.add('opacity-100'), 10);
     elements.inspectorPanel.classList.remove('translate-x-full');
+}
+
+function switchTab(tabName) {
+    // Update tab buttons
+    elements.tabBtns.forEach(btn => {
+        const isActive = btn.dataset.tab === tabName;
+        btn.classList.toggle('active', isActive);
+        btn.classList.toggle('border-indigo-600', isActive);
+        btn.classList.toggle('text-indigo-600', isActive);
+        btn.classList.toggle('border-transparent', !isActive);
+        btn.classList.toggle('text-slate-500', !isActive);
+    });
+    
+    // Update tab contents
+    elements.tabContents.forEach(content => {
+        const isMatch = content.id === `tab-${tabName}`;
+        content.classList.toggle('hidden', !isMatch);
+    });
 }
 
 function closeInspector() {
@@ -431,7 +478,10 @@ async function updateReadinessTab() {
         state.selectedReadiness = data;
         renderReadinessData(data);
     } catch (err) {
-        readinessEl.innerHTML = `<span class="text-rose-500 text-sm">Failed to load readiness: ${err.message || 'unknown error'}</span>`;
+        const errorSpan = document.createElement('span');
+        errorSpan.className = 'text-rose-500 text-sm';
+        appendText(errorSpan, `Failed to load readiness: ${err.message || 'unknown error'}`);
+        readinessEl.appendChild(errorSpan);
     }
 }
 
@@ -736,18 +786,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.btnCloseInspector.onclick = closeInspector;
     elements.inspectorOverlay.onclick = closeInspector;
+    elements.btnCancelEdit.onclick = closeInspector;
+
+    // Escape key closes inspector
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !elements.inspectorOverlay.classList.contains('hidden')) {
+            closeInspector();
+        }
+    });
 
     elements.tabBtns.forEach(btn => {
         btn.onclick = () => {
-            elements.tabContents.forEach(content => {
-                content.classList.toggle('hidden', content.id !== `tab-${btn.dataset.tab}`);
-            });
-            elements.tabBtns.forEach(t => {
-                t.classList.remove('active', 'border-indigo-600', 'text-indigo-600');
-                t.classList.add('border-transparent', 'text-slate-500');
-            });
-            btn.classList.add('active', 'border-indigo-600', 'text-indigo-600');
-            btn.classList.remove('border-transparent', 'text-slate-500');
+            switchTab(btn.dataset.tab);
             
             // Update readiness tab when switched to
             if (btn.dataset.tab === 'ready') {

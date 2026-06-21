@@ -30,3 +30,114 @@
 #playgroundResult {
     scrollbar-width: thin;
 }
+
+/* =====================================================
+   Prompt 8 - UX Polish, Accessibility, Responsive
+   ===================================================== */
+
+/* --- Responsive: Inspector full-width on mobile --- */
+@media (max-width: 768px) {
+    #inspectorPanel {
+        max-width: 100%;
+    }
+    
+    /* Form single column on mobile */
+    #colEditForm {
+        grid-template-columns: 1fr !important;
+    }
+    
+    /* Reduce padding on mobile */
+    #inspectorPanel .p-6 {
+        padding: 1rem;
+    }
+}
+
+/* --- Text wrapping for long content --- */
+.break-all-words {
+    word-break: break-all;
+    overflow-wrap: break-word;
+}
+
+/* Fix for long paths/model names/job ids */
+.text-truncate {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* --- Accessibility: Focus states --- */
+*:focus-visible {
+    outline: 2px solid #4f46e5;
+    outline-offset: 2px;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 2px solid #4f46e5;
+    outline-offset: 2px;
+}
+
+/* --- Accessibility: Disabled button hints --- */
+button[title]:disabled {
+    cursor: not-allowed;
+}
+
+/* --- Accessibility: Skip to main content --- */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* --- Responsive: Table scroll on mobile --- */
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* --- Fix: Long text in job table --- */
+#jobsTableBody td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+}
+
+#jobsTableBody td:hover {
+    white-space: normal;
+    overflow: visible;
+}
+
+/* --- Toast improvements --- */
+#toastContainer {
+    max-width: 400px;
+}
+
+#toastContainer > div {
+    max-width: 100%;
+    word-wrap: break-word;
+    hyphens: auto;
+}
+
+/* --- Smooth transitions for tab switching --- */
+.tab-content {
+    animation: fadeIn 0.2s ease-out;
+}
+
+/* --- Reduced motion for accessibility --- */
+@media (prefers-reduced-motion: reduce) {
+    .tab-content,
+    .animate-in,
+    #inspectorPanel {
+        animation: none;
+        transition-duration: 0.01ms;
+    }
+}

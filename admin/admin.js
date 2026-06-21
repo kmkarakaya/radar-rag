@@ -38,7 +38,7 @@ let state = {
     selectedCollection: null,
     selectedReadiness: null,
     playgroundMode: 'retrieve',
-    knownJobs: [],
+    knownJobs: loadKnownJobsFromStorage(),
     isLoading: {
         collections: false,
         jobs: false,
@@ -115,7 +115,10 @@ const elements = {
     playgroundTabBtn: document.querySelector('.tab-btn[data-tab="playground"]'),
     
     // Toast
-    toastContainer: document.getElementById('toastContainer')
+    toastContainer: document.getElementById('toastContainer'),
+    
+    // Save button
+    btnSave: document.getElementById('btnSave')
 };
 
 // --- DOM Helpers ---
@@ -536,6 +539,7 @@ async function updateReadinessTab() {
         const data = await apiRequest(collectionReadyUrl(state.selectedCollection));
         state.selectedReadiness = data;
         renderReadinessData(data);
+        mergeActiveJobFromReadiness(data);
     } catch (err) {
         const errorSpan = document.createElement('span');
         errorSpan.className = 'text-rose-500 text-sm';
@@ -548,7 +552,7 @@ function renderReadinessData(data) {
     if (!data) return;
     const grid = document.getElementById('readinessStatusGrid');
     clearNode(grid);
-    
+
     const checks = [
         { label: 'Chroma', ok: data.chromaReadable, icon: '\uD83D\uDDC4\uFE0F' },
         { label: 'Embedding', ok: data.modelAvailability?.embeddingModelAvailable, icon: '\uD83E\uDDE0\uFE0F' },
@@ -556,27 +560,128 @@ function renderReadinessData(data) {
         { label: 'Query', ok: data.capabilities?.query, icon: '\uD83D\uDD0D', color: 'text-indigo-500' },
         { label: 'Retrieve', ok: data.capabilities?.retrieve, icon: '\uD83D\uDCC4', color: 'text-teal-500' }
     ];
-    
+
     checks.forEach(check => {
         const row = document.createElement('div');
         row.className = 'flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100';
-        
+
         const label = document.createElement('span');
         label.className = 'text-xs font-medium text-slate-600';
         appendText(label, `${check.icon} ${check.label}`);
-        
+
         const badge = document.createElement('span');
         badge.className = check.ok 
             ? 'text-emerald-600 text-xs font-bold' 
             : 'text-rose-600 text-xs font-bold';
         appendText(badge, check.ok ? 'READY' : 'NOT READY');
-        
+
         row.appendChild(label);
         row.appendChild(badge);
         grid.appendChild(row);
     });
+
+    // Render blockers in #readinessBlockers
+    const blockersDiv = elements.readinessBlockers;
+    const blockerList = elements.blockerList;
+    if (blockersDiv && blockerList) {
+        clearNode(blockerList);
+        const blockers = deriveReadinessBlockers(data);
+        if (blockers.length > 0) {
+            blockersDiv.classList.remove('hidden');
+            blockers.forEach(msg => {
+                const li = document.createElement('li');
+                appendText(li, msg);
+                blockerList.appendChild(li);
+            });
+        } else {
+            blockersDiv.classList.add('hidden');
+        }
+    }
+
+    // Show active job info if present
+    if (data.activeJob) {
+        const jobRow = document.createElement('div');
+        jobRow.className = 'flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-100';
+
+        const label = document.createElement('span');
+        label.className = 'text-xs font-medium text-amber-700';
+        appendText(label, `⚙️ Active Job: ${data.activeJob.id} (${data.activeJob.status})`);
+
+        jobRow.appendChild(label);
+        grid.appendChild(jobRow);
+    }
+
+    // Update playground capability state
+    updatePlaygroundCapabilityState();
 }
 
+function deriveReadinessBlockers(readiness) {
+    if (!readiness) return [];
+    const blockers = [];
+
+    // No active physical collection
+    if (!readiness.hasActivePhysicalCollection) {
+        blockers.push('No active physical collection — collection needs indexing or is still creating.');
+    }
+
+    // Chroma not readable
+    if (!readiness.chromaReadable) {
+        blockers.push('Chroma collection is not readable — check Chroma service or collection ID.');
+    }
+
+    // Embedding model unavailable
+    if (readiness.modelAvailability?.embeddingModel && !readiness.modelAvailability.embeddingModelAvailable) {
+        blockers.push(`Embedding model "${readiness.modelAvailability.embeddingModel}" is not available.`);
+    }
+
+    // Chat model unavailable
+    if (readiness.modelAvailability?.chatModel && !readiness.modelAvailability.chatModelAvailable) {
+        blockers.push(`Chat model "${readiness.modelAvailability.chatModel}" is not available.`);
+    }
+
+    // Retrieve capability false
+    if (readiness.capabilities?.retrieve === false) {
+        blockers.push('Retrieve capability is disabled.');
+    }
+
+    // Query capability false
+    if (readiness.capabilities?.query === false) {
+        blockers.push('Query capability is disabled.');
+    }
+
+    return blockers;
+}
+
+function updatePlaygroundCapabilityState() {
+    const readiness = state.selectedReadiness;
+    if (!readiness) return;
+
+    const pgModeBtns = document.querySelectorAll('.mode-btn');
+    pgModeBtns.forEach(btn => {
+        const mode = btn.dataset.mode;
+        let enabled = false;
+        let reason = '';
+
+        if (mode === 'retrieve') {
+            enabled = readiness.capabilities?.retrieve === true;
+            reason = enabled ? '' : 'Retrieval is not available';
+        } else if (mode === 'query') {
+            enabled = readiness.capabilities?.query === true;
+            reason = enabled ? '' : 'Query is not available';
+        }
+
+        if (enabled) {
+            btn.disabled = false;
+            btn.removeAttribute('title');
+        } else {
+            btn.disabled = true;
+            btn.setAttribute('title', reason);
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+    });
+}
+
+// --- Editor Tab ---
 function setupEditorTab(col) {
     document.getElementById('editId').value = col.id;
     document.getElementById('editDisplayName').value = col.displayName || '';
@@ -594,64 +699,96 @@ function setupEditorTab(col) {
 
 async function saveCollection() {
     const id = document.getElementById('editId').value;
-    const payload = {
-        displayName: document.getElementById('editDisplayName').value,
-        description: document.getElementById('editDescription').value || null,
-        sourcePath: document.getElementById('editSourcePath').value || undefined,
-        ozelgeDataPath: document.getElementById('editOzelgeDataPath').value || undefined,
-        distanceMetric: document.getElementById('editDistanceMetric').value,
-        chunkSize: parseInt(document.getElementById('editChunkSize').value) || undefined,
-        chunkOverlap: parseInt(document.getElementById('editChunkOverlap').value) || undefined,
-        retrievalK: parseInt(document.getElementById('editRetrievalK').value) || undefined,
-        retrievalDistanceThreshold: parseFloat(document.getElementById('editRetrievalDistanceThreshold').value) || undefined,
-        embeddingModel: document.getElementById('editEmbeddingModel').value || undefined,
-        chatModel: document.getElementById('editChatModel').value || undefined
-    };
+    const mode = id ? 'update' : 'create';
+
+    // Client-side validation
+    const errors = validateCollectionForm(mode);
+    if (errors.length > 0) {
+        showToast(`Validation issues: ${errors.join(', ')}`, 'error');
+        return;
+    }
+
+    // Build strict payload matching backend schemas
+    const payload = buildCollectionPayload(mode);
+
+    // Sanitize payload: remove any NaN values that slipped through
+    const sanitized = {};
+    for (const [key, value] of Object.entries(payload)) {
+        if (value !== undefined && !(typeof value === 'number' && isNaN(value))) {
+            sanitized[key] = value;
+        }
+    }
 
     try {
-        if (id) {
-            await apiRequest(adminCollectionUrl(id), { method: 'PATCH', body: JSON.stringify(payload) });
-            showToast('Collection updated', 'success');
-        } else {
-            const data = await apiRequest(`${API.admin}/collections`, { method: 'POST', body: JSON.stringify(payload) });
+        elements.btnSave.disabled = true;
+        elements.btnSave.textContent = 'Saving...';
+
+        if (mode === 'create') {
+            const data = await apiRequest(`${API.admin}/collections`, { method: 'POST', body: JSON.stringify(sanitized) });
             showToast(`Collection created: ${data.collection.id}`, 'success');
+        } else {
+            await apiRequest(adminCollectionUrl(id), { method: 'PATCH', body: JSON.stringify(sanitized) });
+            showToast('Collection updated', 'success');
         }
+
         await loadCollections();
         closeInspector();
     } catch (err) {
-        showToast(err.message || 'Save failed', 'error');
+        // Handle INVALID_REQUEST_BODY with details.issues
+        if (err.code === 'INVALID_REQUEST_BODY' && err.details?.issues) {
+            renderPayloadIssues(err.details.issues);
+        } else {
+            showToast(err.message || 'Save failed', 'error');
+        }
+    } finally {
+        elements.btnSave.disabled = false;
+        elements.btnSave.textContent = 'Save Changes';
     }
 }
 
 async function runPlayground() {
-    if (!state.selectedCollection) return;
+    if (!state.selectedCollection) return showToast('Select a collection first', 'error');
+
+    const readiness = state.selectedReadiness;
+    const mode = document.querySelector('.mode-btn.active')?.dataset.mode;
     
-    const mode = document.querySelector('.mode-btn.active').dataset.mode;
-    const question = document.getElementById('pgQuestion').value;
-    
-    if (!question) return showToast('Question is required', 'error');
-    
-    const id = state.selectedCollection.id;
-    const resultEl = document.getElementById('pgResult');
-    
+    if (!mode) return showToast('Invalid playground mode', 'error');
+
+    // Capability guard: check readiness before allowing the request
+    if (mode === 'retrieve' && (!readiness || !readiness.capabilities?.retrieve)) {
+        return showToast('Retrieve is not available for this collection', 'error');
+    }
+    if (mode === 'query' && (!readiness || !readiness.capabilities?.query)) {
+        return showToast('Query is not available for this collection', 'error');
+    }
+
+    const question = elements.pgQuestion.value;
+    if (!question?.trim()) return showToast('Question is required', 'error');
+
+    const resultEl = elements.pgResult;
     resultEl.textContent = 'Processing...';
-    
+    setButtonLoading(elements.btnPgRun, true);
+
     try {
         let data;
         if (mode === 'retrieve') {
+            const k = elements.pgK?.value ? Number(elements.pgK.value) : undefined;
             data = await apiRequest(collectionRetrieveUrl(state.selectedCollection), {
                 method: 'POST',
-                body: JSON.stringify({ question })
+                body: JSON.stringify({ question, k })
             });
+            renderRetrieveResult(data);
         } else {
             data = await apiRequest(collectionQueryUrl(state.selectedCollection), {
                 method: 'POST',
                 body: JSON.stringify({ question })
             });
+            renderQueryResult(data);
         }
-        resultEl.textContent = JSON.stringify(data, null, 2);
     } catch (err) {
-        resultEl.textContent = `Error: ${err.message}`;
+        renderPlaygroundError(err);
+    } finally {
+        setButtonLoading(elements.btnPgRun, false);
     }
 }
 
@@ -659,7 +796,10 @@ async function reindexCollection() {
     if (!state.selectedCollection) return;
     try {
         setButtonLoading(elements.btnReindex, true);
-        await apiRequest(`${API.admin}/collections/${state.selectedCollection.id}/reindex`, { method: 'POST' });
+        const data = await apiRequest(`${API.admin}/collections/${state.selectedCollection.id}/reindex`, { method: 'POST' });
+        if (data?.job) {
+            rememberJob(data.job, state.selectedCollection);
+        }
         showToast('Re-indexing started', 'success');
         await loadCollections();
         await loadJobs();
@@ -686,46 +826,322 @@ async function deleteCollection() {
     } finally {
         setButtonLoading(elements.btnDeleteCol, false);
     }
-}
 
 // --- Jobs & Health Logic ---
+    const tbody = elements.jobsTableBody;
+    clearNode(tbody);
+    
+    if (state.knownJobs.length === 0) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td colspan="6" class="px-6 py-12 text-center text-slate-400 italic">
+                No jobs tracked. Start a re-index to see jobs here.
+                <br><span class="text-xs">This monitor tracks jobs observed by this browser/admin session.</span>
+            </td>
+        `;
+        tbody.appendChild(tr);
+        return;
+    }
+    
+    state.knownJobs.forEach(job => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50';
+        
+        // Job ID
+        const tdId = document.createElement('td');
+        tdId.className = 'px-6 py-4 text-xs font-mono text-slate-600';
+        tdId.textContent = job.id.length > 12 ? job.id.slice(0, 12) + '…' : job.id;
+        tr.appendChild(tdId);
+        
+        // Collection
+        const tdCollection = document.createElement('td');
+        tdCollection.className = 'px-6 py-4 text-xs text-slate-600';
+        appendText(tdCollection, job.collectionDisplayName || job.collectionId || '-');
+        tr.appendChild(tdCollection);
+        
+        // Status
+        const tdStatus = document.createElement('td');
+        tdStatus.className = 'px-6 py-4';
+        const statusBadge = createBadge(
+            job.status,
+            getStatusColor(job.status)
+        );
+        tdStatus.appendChild(statusBadge);
+        tr.appendChild(tdStatus);
+        
+        // Version/Progress
+        const tdProgress = document.createElement('td');
+        tdProgress.className = 'px-6 py-4 text-xs text-slate-500';
+        const parts = [];
+        if (job.version) parts.push(`v${job.version}`);
+        if (job.chunkCount) parts.push(`${job.chunkCount.toLocaleString()} chunks`);
+        appendText(tdProgress, parts.join(' • ') || '-');
+        tr.appendChild(tdProgress);
+        
+        // Updated
+        const tdUpdated = document.createElement('td');
+        tdUpdated.className = 'px-6 py-4 text-xs text-slate-500';
+        appendText(tdUpdated, formatDateTime(job.updatedAt));
+        tr.appendChild(tdUpdated);
+        
+        // Actions
+        const tdActions = document.createElement('td');
+        tdActions.className = 'px-6 py-4 text-right space-x-2';
+        
+        if (job.status === 'queued' || job.status === 'running') {
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'text-xs text-rose-500 hover:text-rose-700 font-medium';
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.onclick = () => cancelJob(job.id);
+            tdActions.appendChild(cancelBtn);
+        }
+        
+        if (job.status === 'succeeded' || job.status === 'failed' || job.status === 'cancelled') {
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'text-xs text-slate-400 hover:text-slate-600 font-medium';
+            removeBtn.textContent = 'Remove';
+            removeBtn.onclick = () => removeJobFromMonitor(job.id);
+            tdActions.appendChild(removeBtn);
+        }
+        
+        tr.appendChild(tdActions);
+        tbody.appendChild(tr);
+    });
+}
+
+// --- Jobs & State Management ---
+const JOB_STORAGE_KEY = 'ragAdmin.knownJobs.v1';
+
+function loadKnownJobsFromStorage() {
+    try {
+        const raw = localStorage.getItem(JOB_STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                return parsed.filter(j => j && j.id);
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to load knownJobs from localStorage', e);
+    }
+    return [];
+}
+
+function saveKnownJobsToStorage() {
+    try {
+        localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(state.knownJobs));
+    } catch (e) {
+        console.warn('Failed to save knownJobs to localStorage', e);
+    }
+}
+
+function rememberJob(job, collection) {
+    if (!job || !job.id) return;
+    
+    const existingIndex = state.knownJobs.findIndex(j => j.id === job.id);
+    const jobData = {
+        id: job.id,
+        status: job.status,
+        collectionId: collection?.id || null,
+        collectionDisplayName: collection?.displayName || null,
+        createdAt: job.createdAt || new Date().toISOString(),
+        updatedAt: job.updatedAt || new Date().toISOString(),
+        finishedAt: job.finishedAt || null,
+        error: job.error || null,
+        version: job.version || null,
+        documentCount: job.documentCount || null,
+        chunkCount: job.chunkCount || null
+    };
+
+    if (existingIndex >= 0) {
+        state.knownJobs[existingIndex] = jobData;
+    } else {
+        state.knownJobs.push(jobData);
+    }
+    saveKnownJobsToStorage();
+}
+
+function mergeActiveJobFromReadiness(readiness) {
+    if (!readiness || !readiness.activeJob) return;
+    const activeJob = readiness.activeJob;
+    
+    const col = state.selectedCollection;
+    rememberJob(activeJob, col);
+}
+
+async function cancelJob(jobId) {
+    try {
+        await apiRequest(`${API.admin}/jobs/${jobId}/cancel`, { method: 'POST' });
+        showToast('Job cancelled', 'success');
+        await loadJobs();
+        if (state.selectedCollection) {
+            await loadCollections();
+        }
+    } catch (err) {
+        showToast(err.message || 'Cancel failed', 'error');
+    }
+}
+
+function removeJobFromMonitor(jobId) {
+    state.knownJobs = state.knownJobs.filter(j => j.id !== jobId);
+    saveKnownJobsToStorage();
+    renderJobs();
+}
+
 async function loadJobs() {
     if (state.isLoading.jobs) return;
     state.isLoading.jobs = true;
+    
     try {
-        elements.jobsTableBody.innerHTML = `
-            <tr>
-                <td colspan="4" class="px-6 py-12 text-center text-slate-400 italic">
-                    No active jobs. Trigger a re-index to see jobs here.
-                    <br><span class="text-xs">(Backend does not support job listing yet)</span>
-                </td>
-            </tr>
-        `;
+        // Poll each known job
+        const updates = [];
+        for (const job of state.knownJobs) {
+            try {
+                const data = await apiRequest(adminJobUrl(job.id));
+                if (data) {
+                    updates.push({ id: job.id, data });
+                }
+            } catch (e) {
+                // Job might have been cleaned up on server, ignore 404s
+                if (e.status !== 404) {
+                    console.warn(`Failed to poll job ${job.id}`, e);
+                }
+            }
+        }
+        
+        // Apply updates
+        for (const { id, data } of updates) {
+            const existingIndex = state.knownJobs.findIndex(j => j.id === id);
+            if (existingIndex >= 0) {
+                state.knownJobs[existingIndex] = {
+                    ...state.knownJobs[existingIndex],
+                    status: data.status,
+                    updatedAt: data.updatedAt || state.knownJobs[existingIndex].updatedAt,
+                    finishedAt: data.finishedAt || state.knownJobs[existingIndex].finishedAt,
+                    error: data.error || state.knownJobs[existingIndex].error,
+                    version: data.version || state.knownJobs[existingIndex].version,
+                    documentCount: data.documentCount || state.knownJobs[existingIndex].documentCount,
+                    chunkCount: data.chunkCount || state.knownJobs[existingIndex].chunkCount
+                };
+            }
+        }
+        
+        saveKnownJobsToStorage();
+        renderJobs();
     } catch (err) {
-        showToast(err.message, 'error');
+        showToast(err.message || 'Failed to load jobs', 'error');
     } finally {
         state.isLoading.jobs = false;
     }
 }
 
+function renderJobs() {
+    const tbody = elements.jobsTableBody;
+    clearNode(tbody);
+    
+    if (state.knownJobs.length === 0) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td colspan="6" class="px-6 py-12 text-center text-slate-400 italic">
+                No jobs tracked. Start a re-index to see jobs here.
+                <br><span class="text-xs">This monitor tracks jobs observed by this browser/admin session.</span>
+            </td>
+        `;
+        tbody.appendChild(tr);
+        return;
+    }
+    
+    state.knownJobs.forEach(job => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50';
+        
+        // Job ID
+        const tdId = document.createElement('td');
+        tdId.className = 'px-6 py-4 text-xs font-mono text-slate-600';
+        tdId.textContent = job.id.length > 12 ? job.id.slice(0, 12) + '…' : job.id;
+        tr.appendChild(tdId);
+        
+        // Collection
+        const tdCollection = document.createElement('td');
+        tdCollection.className = 'px-6 py-4 text-xs text-slate-600';
+        appendText(tdCollection, job.collectionDisplayName || job.collectionId || '-');
+        tr.appendChild(tdCollection);
+        
+        // Status
+        const tdStatus = document.createElement('td');
+        tdStatus.className = 'px-6 py-4';
+        const statusBadge = createBadge(
+            job.status,
+            getStatusColor(job.status)
+        );
+        tdStatus.appendChild(statusBadge);
+        tr.appendChild(tdStatus);
+        
+        // Version/Progress
+        const tdProgress = document.createElement('td');
+        tdProgress.className = 'px-6 py-4 text-xs text-slate-500';
+        const parts = [];
+        if (job.version) parts.push(`v${job.version}`);
+        if (job.chunkCount) parts.push(`${job.chunkCount.toLocaleString()} chunks`);
+        appendText(tdProgress, parts.join(' • ') || '-');
+        tr.appendChild(tdProgress);
+        
+        // Updated
+        const tdUpdated = document.createElement('td');
+        tdUpdated.className = 'px-6 py-4 text-xs text-slate-500';
+        appendText(tdUpdated, formatDateTime(job.updatedAt));
+        tr.appendChild(tdUpdated);
+        
+        // Actions
+        const tdActions = document.createElement('td');
+        tdActions.className = 'px-6 py-4 text-right space-x-2';
+        
+        if (job.status === 'queued' || job.status === 'running') {
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'text-xs text-rose-500 hover:text-rose-700 font-medium';
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.onclick = () => cancelJob(job.id);
+            tdActions.appendChild(cancelBtn);
+        }
+        
+        if (job.status === 'succeeded' || job.status === 'failed' || job.status === 'cancelled') {
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'text-xs text-slate-400 hover:text-slate-600 font-medium';
+            removeBtn.textContent = 'Remove';
+            removeBtn.onclick = () => removeJobFromMonitor(job.id);
+            tdActions.appendChild(removeBtn);
+        }
+        
+        tr.appendChild(tdActions);
+        tbody.appendChild(tr);
+    });
+}
+
+// --- Health Logic ---
 async function loadHealth() {
-    if (state.isLoading.health) return;
-    state.isLoading.health = true;
+    // Prevent overlapping requests
+    if (state.isLoading.health || state._healthRequestInProgress) return;
+    state._healthRequestInProgress = true;
+    
     try {
-        const [health, ready] = await Promise.all([
+        const [health, ready, readyDetails] = await Promise.all([
             apiRequest(API.health),
-            apiRequest(API.ready)
+            apiRequest(API.ready),
+            apiRequest(`${API.ready}?details=true`)
         ]);
+        
         state.healthStatus = health;
         state.readiness = ready;
+        state.readinessDetails = readyDetails;
         
         renderHealthSummary(health, ready);
-        if (ready?.ready !== undefined) {
-            renderReadinessDetail(ready);
+        if (ready?.ready !== undefined || readyDetails) {
+            renderReadinessDetail(ready, readyDetails);
         }
     } catch (err) {
-        showToast(err.message, 'error');
+        showToast(err.message || 'Health check failed', 'error');
     } finally {
+        state._healthRequestInProgress = false;
         state.isLoading.health = false;
     }
 }
@@ -795,21 +1211,108 @@ function renderHealthSummary(health, ready) {
     }
 }
 
-function renderReadinessDetail(ready) {
-    if (!ready) return;
+function renderReadinessDetail(ready, details) {
+    if (!ready && !details) return;
     const container = elements.readinessDetail;
     clearNode(container);
     
-    if (ready.recommendedActions && ready.recommendedActions.length > 0) {
+    // Render checks section
+    if (details?.checks && details.checks.length > 0) {
         const heading = document.createElement('h4');
-        heading.className = 'text-sm font-bold text-slate-500 uppercase mb-4';
+        heading.className = 'text-sm font-bold text-slate-500 uppercase mb-3';
+        appendText(heading, 'Checks');
+        container.appendChild(heading);
+        
+        const grid = document.createElement('div');
+        grid.className = 'space-y-2 mb-6';
+        
+        details.checks.forEach(check => {
+            const item = document.createElement('div');
+            item.className = 'flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 text-xs';
+            
+            const left = document.createElement('div');
+            const name = document.createElement('span');
+            name.className = 'font-semibold text-slate-600';
+            appendText(name, check.name || check.code || 'Unknown');
+            left.appendChild(name);
+            
+            const code = document.createElement('span');
+            code.className = 'text-slate-400 ml-2';
+            appendText(code, check.code || '');
+            left.appendChild(code);
+            
+            const right = document.createElement('span');
+            const statusColor = check.status === 'ok' ? 'text-emerald-600' : check.status === 'warn' ? 'text-amber-600' : 'text-rose-600';
+            right.className = `font-bold uppercase ${statusColor}`;
+            appendText(right, check.status || 'UNKNOWN');
+            
+            item.appendChild(left);
+            item.appendChild(right);
+            grid.appendChild(item);
+        });
+        
+        container.appendChild(grid);
+    }
+    
+    // Render blockers
+    if (details?.blockers && details.blockers.length > 0) {
+        const heading = document.createElement('h4');
+        heading.className = 'text-sm font-bold text-rose-600 uppercase mb-3';
+        appendText(heading, 'Blockers');
+        container.appendChild(heading);
+        
+        const list = document.createElement('div');
+        list.className = 'space-y-2 mb-6';
+        
+        details.blockers.forEach(blocker => {
+            const item = document.createElement('div');
+            item.className = 'flex items-start gap-3 p-3 bg-rose-50 border border-rose-100 rounded-lg text-xs text-rose-700';
+            const icon = document.createElement('span');
+            icon.className = 'w-4 h-4 text-rose-500 shrink-0';
+            icon.textContent = '\uD83D\uDD34';
+            item.appendChild(icon);
+            appendText(item, blocker);
+            list.appendChild(item);
+        });
+        
+        container.appendChild(list);
+    }
+    
+    // Render warnings
+    if (details?.warnings && details.warnings.length > 0) {
+        const heading = document.createElement('h4');
+        heading.className = 'text-sm font-bold text-amber-600 uppercase mb-3';
+        appendText(heading, 'Warnings');
+        container.appendChild(heading);
+        
+        const list = document.createElement('div');
+        list.className = 'space-y-2 mb-6';
+        
+        details.warnings.forEach(warning => {
+            const item = document.createElement('div');
+            item.className = 'flex items-start gap-3 p-3 bg-amber-50 border border-amber-100 rounded-lg text-xs text-amber-700';
+            const icon = document.createElement('span');
+            icon.className = 'w-4 h-4 text-amber-500 shrink-0';
+            icon.textContent = '\u26A0\uFE0F';
+            item.appendChild(icon);
+            appendText(item, warning);
+            list.appendChild(item);
+        });
+        
+        container.appendChild(list);
+    }
+    
+    // Render recommended actions
+    if (details?.recommendedActions && details.recommendedActions.length > 0) {
+        const heading = document.createElement('h4');
+        heading.className = 'text-sm font-bold text-slate-500 uppercase mb-3';
         appendText(heading, 'Recommended Actions');
         container.appendChild(heading);
         
         const list = document.createElement('div');
-        list.className = 'space-y-2';
+        list.className = 'space-y-2 mb-6';
         
-        ready.recommendedActions.forEach(action => {
+        details.recommendedActions.forEach(action => {
             const item = document.createElement('div');
             item.className = 'flex items-start gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 text-xs text-slate-600';
             const icon = document.createElement('span');
@@ -822,6 +1325,248 @@ function renderReadinessDetail(ready) {
         
         container.appendChild(list);
     }
+    
+    // Render empty states
+    const hasContent = (details?.checks?.length > 0) || (details?.blockers?.length > 0) || 
+                       (details?.warnings?.length > 0) || (details?.recommendedActions?.length > 0);
+    if (hasContent === false) {
+        const msg = document.createElement('p');
+        msg.className = 'text-xs text-slate-400 italic';
+        appendText(msg, 'No additional details available.');
+        container.appendChild(msg);
+    }
+    
+    // Render config info
+    if (details?.dataSource?.chatModel || details?.dataSource?.embeddingModel || details?.dataSource?.chromaUrl) {
+        const heading = document.createElement('h4');
+        heading.className = 'text-sm font-bold text-slate-500 uppercase mb-3 mt-6';
+        appendText(heading, 'Configuration');
+        container.appendChild(heading);
+        
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-2 gap-3 text-xs';
+        
+        const addConfig = (label, value) => {
+            if (!value) return;
+            const row = document.createElement('div');
+            row.className = 'flex flex-col p-2 bg-slate-50 rounded border border-slate-100';
+            const lbl = document.createElement('span');
+            lbl.className = 'text-slate-400 font-semibold uppercase tracking-wider';
+            appendText(lbl, label);
+            row.appendChild(lbl);
+            const val = document.createElement('span');
+            val.className = 'text-slate-700 font-medium';
+            appendText(val, value);
+            row.appendChild(val);
+            grid.appendChild(row);
+        };
+        
+        addConfig('Chat Model', details.dataSource.chatModel);
+        addConfig('Embedding Model', details.dataSource.embeddingModel);
+        addConfig('Chroma URL', details.dataSource.chromaUrl);
+        if (ready?.port) addConfig('Port', ready.port);
+        
+        container.appendChild(grid);
+    }
+    
+    // Render dependencies
+    if (details?.dependencies) {
+        const heading = document.createElement('h4');
+        heading.className = 'text-sm font-bold text-slate-500 uppercase mb-3 mt-6';
+        appendText(heading, 'Dependencies');
+        container.appendChild(heading);
+        
+        const deps = details.dependencies;
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-3 gap-3 text-xs';
+        
+        const addDep = (label, status, url) => {
+            const row = document.createElement('div');
+            row.className = 'flex flex-col p-2 bg-slate-50 rounded border border-slate-100';
+            const lbl = document.createElement('span');
+            lbl.className = 'text-slate-400 font-semibold uppercase tracking-wider mb-1';
+            appendText(lbl, label);
+            row.appendChild(lbl);
+            const statusBadge = createBadge(status, status === 'ok' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700');
+            row.appendChild(statusBadge);
+            if (url) {
+                const urlSpan = document.createElement('span');
+                urlSpan.className = 'text-slate-500 mt-1';
+                appendText(urlSpan, url);
+                row.appendChild(urlSpan);
+            }
+            grid.appendChild(row);
+        };
+        
+        addDep('Registry', deps.registry?.status || 'unknown', deps.registry?.url);
+        addDep('Chroma', deps.chroma?.status || 'unknown', deps.chroma?.url);
+        addDep('Ollama', deps.ollama?.status || 'unknown', deps.ollama?.url);
+        
+        container.appendChild(grid);
+    }
+}
+
+// --- Form Helpers ---
+function readTrimmed(id) {
+    const el = document.getElementById(id);
+    return el ? el.value.trim() : '';
+}
+
+function readOptionalInteger(id) {
+    const el = document.getElementById(id);
+    if (!el) return undefined;
+    const val = el.value.trim();
+    if (val === '') return undefined;
+    const num = Number(val);
+    if (!Number.isInteger(num)) return NaN;
+    return num;
+}
+
+function readOptionalNumber(id) {
+    const el = document.getElementById(id);
+    if (!el) return undefined;
+    const val = el.value.trim();
+    if (val === '') return undefined;
+    const num = Number(val);
+    if (isNaN(num)) return NaN;
+    return num;
+}
+
+function renderPayloadIssues(issues) {
+    if (!issues || !Array.isArray(issues) || issues.length === 0) return;
+    const lines = issues.map(i => {
+        const path = i.path ? i.path.join('.') : '(unknown)';
+        return `${path}: ${i.message}`;
+    });
+    showToast(`Validation issues: ${lines.join(', ')}`, 'error');
+}
+
+function validateCollectionForm(mode) {
+    const errors = [];
+    const displayName = readTrimmed('editDisplayName');
+
+    if (mode === 'create' && !displayName) {
+        errors.push('displayName is required for new collections');
+    }
+    if (mode === 'update' && displayName === '') {
+        errors.push('displayName cannot be empty');
+    }
+
+    const chunkSize = readOptionalInteger('editChunkSize');
+    if (chunkSize !== undefined && (!Number.isInteger(chunkSize) || chunkSize <= 0)) {
+        errors.push('chunkSize must be a positive integer');
+    }
+
+    const chunkOverlap = readOptionalInteger('editChunkOverlap');
+    if (chunkOverlap !== undefined && (!Number.isInteger(chunkOverlap) || chunkOverlap < 0)) {
+        errors.push('chunkOverlap must be a non-negative integer');
+    }
+
+    if (chunkSize !== undefined && chunkOverlap !== undefined && !isNaN(chunkSize) && !isNaN(chunkOverlap) && chunkOverlap >= chunkSize) {
+        errors.push('chunkOverlap must be less than chunkSize');
+    }
+
+    const retrievalK = readOptionalInteger('editRetrievalK');
+    if (retrievalK !== undefined && (!Number.isInteger(retrievalK) || retrievalK <= 0)) {
+        errors.push('retrievalK must be a positive integer');
+    }
+
+    const retrievalThreshold = readOptionalNumber('editRetrievalDistanceThreshold');
+    if (retrievalThreshold !== undefined && (isNaN(retrievalThreshold) || retrievalThreshold < 0)) {
+        errors.push('retrievalDistanceThreshold must be a non-negative number');
+    }
+
+    const distanceMetric = readTrimmed('editDistanceMetric');
+    if (distanceMetric && !['l2', 'cosine', 'ip'].includes(distanceMetric)) {
+        errors.push('distanceMetric must be l2, cosine, or ip');
+    }
+
+    return errors;
+}
+
+function buildCollectionPayload(mode) {
+    const id = document.getElementById('editId').value;
+    const displayName = readTrimmed('editDisplayName');
+    const description = readTrimmed('editDescription');
+    const sourcePath = readTrimmed('editSourcePath');
+    const ozelgeDataPath = readTrimmed('editOzelgeDataPath');
+    const distanceMetric = readTrimmed('editDistanceMetric');
+    const embeddingModel = readTrimmed('editEmbeddingModel');
+    const chatModel = readTrimmed('editChatModel');
+    const chunkSize = readOptionalInteger('editChunkSize');
+    const chunkOverlap = readOptionalInteger('editChunkOverlap');
+    const retrievalK = readOptionalInteger('editRetrievalK');
+    const retrievalDistanceThreshold = readOptionalNumber('editRetrievalDistanceThreshold');
+
+    const payload = {};
+
+    // displayName
+    if (displayName) {
+        payload.displayName = displayName;
+    }
+
+    // description — omit if empty string, send null only for explicit clear in update mode
+    if (description) {
+        payload.description = description;
+    } else if (mode === 'update' && id) {
+        // Only send null for empty description in update mode (explicit clear)
+        payload.description = null;
+    }
+
+    // sourcePath
+    if (sourcePath) {
+        payload.sourcePath = sourcePath;
+    }
+
+    // ozelgeDataPath
+    if (ozelgeDataPath) {
+        payload.ozelgeDataPath = ozelgeDataPath;
+    }
+
+    // distanceMetric
+    if (distanceMetric && ['l2', 'cosine', 'ip'].includes(distanceMetric)) {
+        payload.distanceMetric = distanceMetric;
+    }
+
+    // chunkSize
+    if (chunkSize !== undefined) {
+        if (Number.isInteger(chunkSize) && chunkSize > 0) {
+            payload.chunkSize = chunkSize;
+        }
+    }
+
+    // chunkOverlap
+    if (chunkOverlap !== undefined) {
+        if (Number.isInteger(chunkOverlap) && chunkOverlap >= 0) {
+            payload.chunkOverlap = chunkOverlap;
+        }
+    }
+
+    // retrievalK
+    if (retrievalK !== undefined) {
+        if (Number.isInteger(retrievalK) && retrievalK > 0) {
+            payload.retrievalK = retrievalK;
+        }
+    }
+
+    // retrievalDistanceThreshold
+    if (retrievalDistanceThreshold !== undefined) {
+        if (!isNaN(retrievalDistanceThreshold) && retrievalDistanceThreshold >= 0) {
+            payload.retrievalDistanceThreshold = retrievalDistanceThreshold;
+        }
+    }
+
+    // embeddingModel
+    if (embeddingModel) {
+        payload.embeddingModel = embeddingModel;
+    }
+
+    // chatModel
+    if (chatModel) {
+        payload.chatModel = chatModel;
+    }
+
+    return payload;
 }
 
 // --- Event Handlers ---

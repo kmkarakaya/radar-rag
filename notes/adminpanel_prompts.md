@@ -10,6 +10,26 @@ Onemli kullanim kurali:
 - Beklenen uygulama dosyalari sadece `admin/index.html`, `admin/admin.js`, `admin/admin.css`.
 - `notes/adminpanel_plan.md` ana kaynak dokumandir. Bu promptlar o planin uygulanabilir kopyalaridir.
 
+Kapanis kaydi zorunlulugu:
+
+- Her promptu tamamlayan agent, final yanitini vermeden once `notes/adminpanel_done.md` dosyasina ayni prompt basligi ile bir kayit eklemeli.
+- Kayit formati:
+
+```md
+## Prompt XX - <prompt basligi>
+- Tarih: YYYY-MM-DD
+- Degisen dosyalar:
+- Yapilanlar:
+- Testler:
+- Eksik kalanlar / riskler:
+- Dogrulama notu:
+```
+
+- `Yapilanlar` alaninda promptta istenen degisiklikler ozetlenmeli.
+- `Eksik kalanlar / riskler` alaninda tamamlanmamis isler, manuel test gereksinimleri veya bilinen riskler yazilmali.
+- `Dogrulama notu` alaninda agentin calismayi bitirdigine dair kisa not yer almali.
+- Degisiklik yoksa `Degisen dosyalar: yok` yaz.
+
 ## Prompt 00 - Audit, Kod Degisikligi Yok
 
 ```text
@@ -52,6 +72,7 @@ Final response format:
 - Current admin panel issues
 - Risks for next step
 - Confirm: no files were changed
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
 ```
 
 ## Prompt 01 - API Client, State Model, Safe Render Temeli
@@ -123,6 +144,7 @@ Final response format:
 - Commands run and results
 - Manual test steps for http://localhost:3010/admin/
 - Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
 ```
 
 ## Prompt 02 - Collections View ve Inspector Akisi
@@ -211,6 +233,7 @@ Final response format:
 - Commands run and results
 - Manual test steps and expected results
 - Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
 ```
 
 ## Prompt 03 - Create/Edit Form ve Payload Guvenligi
@@ -292,6 +315,7 @@ Final response format:
 - Commands run and results
 - Manual test steps and expected results
 - Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
 ```
 
 ## Prompt 04 - Collection Readiness ve Capability-Driven UI
@@ -377,6 +401,7 @@ Final response format:
 - Commands run and results
 - Manual test steps and expected results
 - Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
 ```
 
 ## Prompt 05 - Playground Retrieve/Query Render
@@ -473,6 +498,7 @@ Final response format:
 - Commands run and results
 - Manual test steps and expected results
 - Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
 ```
 
 ## Prompt 06 - Re-index Job Tracking ve Job Monitor
@@ -560,6 +586,7 @@ Final response format:
 - Commands run and results
 - Manual test steps and expected results
 - Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
 ```
 
 ## Prompt 07 - System Health Dashboard
@@ -636,6 +663,7 @@ Final response format:
 - Commands run and results
 - Manual test steps and expected results
 - Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
 ```
 
 ## Prompt 08 - UX Polish, Accessibility, Responsive Stabilizasyon
@@ -705,6 +733,7 @@ Final response format:
 - Commands run and results
 - Manual test steps and expected results
 - Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
 ```
 
 ## Prompt 09 - Final Contract Audit ve Handoff
@@ -774,4 +803,5 @@ Final response format:
 - Manual test checklist
 - Residual risks
 - Explicit confirmation whether backend files were untouched
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
 ```

@@ -537,7 +537,6 @@ export async function retrieveSources(
       name: options.collectionName,
       runtimeConfig,
       timeoutMs: runtimeConfig.ragTimeoutMs,
-      abortSignal: options.abortSignal,
     });
 
     const vectorStore = createVectorStore({
@@ -555,10 +554,8 @@ export async function retrieveSources(
           vectorStore.similaritySearchWithScore(question, k),
           runtimeConfig.ragTimeoutMs,
           "Chroma vector search",
-          options.abortSignal,
         ),
         runtimeConfig.ragTimeoutMs,
-        options.abortSignal,
       );
     } catch (error) {
       if (isTimeoutOrAbortError(error)) {

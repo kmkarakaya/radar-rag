@@ -285,14 +285,13 @@ async function loadCollections() {
         const data = await apiRequest(`${API.rag}/collections`);
         state.collections = Array.isArray(data?.collections) ? data.collections : [];
         state.lastError = null;
-        renderCollections();
     } catch (err) {
         state.lastError = err;
         state.collections = [];
-        renderCollections();
         showToast(err.message || 'Failed to load collections', 'error');
     } finally {
         state.isLoading.collections = false;
+        renderCollections();
     }
 }
 
@@ -409,6 +408,7 @@ async function openInspector(id) {
         elements.inspectorStatusBadge.textContent = col.status;
 
         setupEditorTab(col);
+        updateReadinessTab();
     }
     
     elements.inspectorOverlay.classList.remove('hidden');
@@ -426,11 +426,11 @@ async function updateReadinessTab() {
     if (!state.selectedCollection) return;
     
     const readinessEl = document.getElementById('readinessStatusGrid');
-    clearNode(readinessEl);
     
     try {
         const data = await apiRequest(collectionReadyUrl(state.selectedCollection));
         state.selectedReadiness = data;
+        clearNode(readinessEl);
         renderReadinessData(data);
     } catch (err) {
         readinessEl.innerHTML = `<span class="text-rose-500 text-sm">Failed to load readiness: ${err.message || 'unknown error'}</span>`;

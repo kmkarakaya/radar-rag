@@ -28,13 +28,13 @@ Detaylı mimari ve endpoint sözleşmeleri için [vanilla_rag_backend_mimarisi.m
 - [src/indexing/jobs.ts](src/indexing/jobs.ts): Arka plan re-index job yönetimi
 
 ## Hızlı Kullanım Kılavuzu
+
 0. **Kurulum** (sadece ilk kez): 'docker + install + run dev' -> backend kur
 1. **Onboarding** (sadece ilk kez): `npm run onboard` → config oluşturur
 2. **Collection oluştur**: `POST /v1/admin/collections` → collection ID al
 3. **İndekslemeyi başlat**: `POST /v1/admin/collections/{id}/reindex` → job ID al
 4. **Job durumunu takip et**: `GET /v1/admin/jobs/{id}` → `succeeded` olana kadar bekle
 5. **Frontend'i aç**: `http://localhost:3010/test-frontend/` → collection artık görünür
-
 
 ## Kurulum
 
@@ -48,6 +48,7 @@ ollama pull gemma3:4b-cloud
 ollama pull bge-m3
 npm.cmd run dev
 ```
+
 ## On boarding
 
 ```powershell
@@ -56,6 +57,7 @@ npm.cmd run onboard
 ```
 
 ## Kolleksiyon oluşturma
+
 ```powershell
 # 1. Collection oluştur
 $collection = @{
@@ -100,6 +102,7 @@ if ($status -eq "succeeded") {
 ```
 
 ## Test arayüzünü açmak için tarayıcınızda şu adrese gidin:
+
 ```text
 http://localhost:3010/test-frontend/
 ```
@@ -119,11 +122,13 @@ npm.cmd run onboard
 ```
 
 Bu komut:
+
 1. İhtiyacınız olan Ollama/Chroma bağlantılarını, model isimlerini (örn. `gemma3:4b-cloud`) ve varsayılan limitleri sorar.
 2. Servis sağlık kontrollerini (Health Check) ve veri yolu kontrollerini yapar.
 3. Sonuçları `config/rag.config.yaml` dosyasına yazar.
 
 Hızlı bir şekilde mevcut config ile devam etmek için (etkileşimli soruları atlayarak):
+
 ```powershell
 npm.cmd run onboard -- --yes
 ```
@@ -168,6 +173,7 @@ Retention cleanup state contract:
 Structured operational logs share the same event shape across HTTP, RAG, indexing build/job runner and cleanup flows: `requestId`, `tenantId`, `userId`, `collectionId`, `physicalCollection`, `jobId`, `operation`, `status`, `latencyMs` and `errorCode`. Tests inject a fake log sink; production defaults to JSON lines on stdout.
 
 ### 1. Collection Yaratma (Admin API)
+
 Koleksiyonun mantıksal (logical) konfigürasyonunu tanımlayın. Burada belirlediğiniz mesafe metriği (distanceMetric), embedding modeli, chat modeli, retrieval eşiği ve parçalama boyutları o koleksiyonun build/query akışında gerçekten kullanılır:
 
 ```powershell
@@ -192,6 +198,7 @@ Write-Host "Created collection: $collectionId"
 Bu `collectionId`, kullanıcıya açık ve tenant-scoped bir public kimliktir; Chroma içindeki gerçek fiziksel collection adı değildir. Lokal geliştirmede farklı tenant görünürlüğünü denemek için `x-tenant-id` header'ı kullanılabilir.
 
 ### 2. Re-Index / Job Başlatma
+
 Tanımladığınız koleksiyon için verileri Chroma'ya aktaracak (ve versiyonlu physical collection üretecek) arka plan index görevini HTTP API ile başlatın:
 
 ```powershell
@@ -212,6 +219,7 @@ npm.cmd run index -- --collection-id $collectionId
 ```
 
 ### 3. Job Durumunu Görüntüleme
+
 Başlatılan görevin durumunu (`queued`, `running`, `succeeded`, `failed`) API üzerinden takip edebilirsiniz:
 
 ```powershell
@@ -223,6 +231,7 @@ Invoke-RestMethod -Uri "http://localhost:3010/v1/admin/jobs/$jobId"
 Koleksiyon durumu `ready` (yani endeksleme başarılı) olduğunda artık RAG sorguları atabilirsiniz.
 
 Sistemdeki tüm görünür koleksiyonları listelemek için:
+
 ```powershell
 Invoke-RestMethod -Uri http://localhost:3010/v1/rag/collections
 ```
@@ -234,6 +243,7 @@ Bu endpoint yalnızca request tenant'ının görebildiği logical collection kay
 Collection listesi bilinçli olarak sadece ucuz registry discovery kontratıdır; Chroma veya Ollama readiness probe çalıştırmaz ve `capabilities.query/retrieve` iddiası taşımaz. Her item en az `status`, `activeVersion`, `chunkCount`, `updatedAt`, `readyUrl`, `queryUrl` ve `retrieveUrl` alanlarıyla gelir. Gerçek query/retrieve uygunluğu için listedeki `readyUrl` (`GET /v1/rag/collections/:collectionId/ready`) çağrılmalıdır.
 
 Spesifik bir koleksiyonun Chroma üzerindeki fiziksel karşılığının erişilebilir (readable) olup olmadığını, doküman sayısını ve hazırlık durumunu doğrulamak için:
+
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:3010/v1/rag/collections/$collectionId/ready"
 ```
@@ -269,12 +279,14 @@ Invoke-RestMethod -Uri "http://localhost:3010/v1/rag/collections/$collectionId/q
 Koleksiyon yaratırken belirttiğiniz `sourcePath` (veya `ozelgeDataPath`) değerleri üzerinden indeksleme yapılır. Bu yollar yerel diskteki dosya veya klasörlere işaret edebilir.
 
 İndeksleme sırasında desteklenen dosya tipleri:
+
 - `.txt` ve `.md`: LangChain `TextLoader`
 - `.pdf`: LangChain `PDFLoader`
 - `.doc` / `.docx`: LangChain `DocxLoader`
 - Özel JSON Modeli: Sadece `ozelgeDataPath` ile işaretlenen ve projeye özgü özel formatlanmış (özelge) JSON dosyası desteklenir.
 
 İndekslenen her veri parçası (chunk) şu standart metadataları taşır:
+
 - `documentId`, `sourcePath`, `sourceType`, `chunkIndex`
 - Çoklu koleksiyon yapısı gereği eklenen: `collectionId`, `collectionVersion`, `physicalCollection`
 

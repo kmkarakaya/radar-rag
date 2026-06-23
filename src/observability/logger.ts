@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import type { RequestContext } from "../http/requestContext.js";
 
-export type OperationalLogStatus = "started" | "succeeded" | "failed" | "rejected" | "skipped";
+export type OperationalLogStatus = "started" | "succeeded" | "failed" | "rejected" | "skipped" | "cancelled";
 
 export type OperationalLogEvent = {
   timestamp?: string;

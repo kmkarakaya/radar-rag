@@ -54,8 +54,5 @@ export async function withTimeoutAndAbort<T>(input: {
 export function isTimeoutOrAbortError(error: unknown): boolean {
   return error instanceof OperationTimeoutError
     || error instanceof OperationAbortError
-    || (error instanceof Error && (
-      error.name === "AbortError"
-      || /timed out|timeout of|request aborted|aborted/i.test(error.message)
-    ));
+    || (error instanceof Error && error.name === "AbortError");
 }

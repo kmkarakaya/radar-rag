@@ -50,7 +50,6 @@ export async function resolveReadableCollection(
       name: collection.activePhysicalCollection,
       runtimeConfig,
       timeoutMs: options?.timeoutMs,
-      abortSignal: options?.abortSignal,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

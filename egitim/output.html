@@ -1,0 +1,87 @@
+<section id="giris">
+<h2>Ücretli ve Lokal LLM'leri Birlikte Kullanarak Ölçeklenebilir Kod Geliştirme</h2>
+<h3 class="subtitle">Token Harcamadan, Rate Limit'e Takılmadan Büyük Kod Değişiklikleri Nasıl Yönetilir?</h3>
+<p>Bu ders notu, büyük ve orta ölçekli yazılım projelerinde <strong>yüksek kapasiteli ücretli modelleri</strong> planlama, mimari karar ve kalite kontrol için; <strong>lokalde çalışan daha düşük kapasiteli modelleri</strong> ise kodlama, test yazma ve küçük iş paketlerini uygulama için birlikte kullanma yöntemini anlatır.</p>
+<p>Bu yöntem, özellikle RAG Backend gibi çok dosyalı, çok katmanlı ve sürekli refactoring gerektiren projelerde faydalıdır. Amaç, pahalı modeli sürekli kod yazdırmak için kullanmak değil; onu <strong>stratejist, mimar, denetçi ve prompt tasarımcısı</strong> gibi kullanmaktır. Kodlama işi ise mümkün olduğunca lokal model / lokal coding agent tarafından yapılır.</p>
+<hr>
+</section>
+<section id="bolum-1">
+<h2>1. Dersin Ana Fikri</h2>
+<p>Bu yöntemin merkezinde basit bir ayrım var:</p>
+<blockquote><p><strong>Pahalı model düşünsün, lokal model uygulasın.</strong></p></blockquote>
+<p>Yüksek kapasiteli modelin güçlü olduğu işler:</p>
+<ul>
+<li>Gereksinimi anlama</li>
+<li>Mimari riskleri görme</li>
+<li>Büyük resmi planlama</li>
+<li>İşleri küçük parçalara bölme</li>
+<li>Kalite kontrol ve audit yapma</li>
+<li>Eksikleri tespit edip yeni düzeltme promptları üretme</li>
+</ul>
+<p>Lokal modelin güçlü olduğu işler:</p>
+<ul>
+<li>Küçük ve net tanımlanmış kod değişikliklerini uygulama</li>
+<li>Tek dosya veya sınırlı dosya setinde refactoring yapma</li>
+<li>Test ekleme</li>
+<li>Basit doğrulama komutlarını çalıştırma</li>
+<li>Yapılan işi <code>done.md</code> gibi bir log dosyasına kaydetme</li>
+</ul>
+<p>Bu ayrım sayesinde pahalı modeli her küçük kod değişikliğinde token tüketen bir execution aracı gibi kullanmak yerine, onu projenin üst seviye kontrol mekanizması haline getiririz.</p>
+<hr>
+</section>
+<section id="bolum-2">
+<h2>2. Bu Yönteme Neden İhtiyaç Duydum?</h2>
+<p>RAG Backend projesi üzerinde çalışırken şu problemler ortaya çıktı:</p>
+<ol>
+<li><strong>Token tüketimi hızla arttı.</strong>Büyük bir refactoring için tüm proje bağlamını sürekli güçlü modellere göndermek, token maliyetini ciddi şekilde yükseltti.</li>
+<li><strong>Rate limit geliştirme hızını kesti.</strong>Model iyi çalışsa bile yoğun kullanımda rate limit'e takılınca geliştirme akışı durdu.</li>
+<li><strong>Büyük işleri tek promptla yaptırmak güvenilir olmadı.</strong>&ldquo;Admin panelini multi-collection destekli hale getir&rdquo; veya &ldquo;RAG backend mimarisini refactor et&rdquo; gibi büyük isteklerde model ya bazı detayları kaçırdı ya da context içinde yönünü kaybetti.</li>
+<li><strong>Uzun konuşma geçmişleri model kalitesini düşürdü.</strong>
+   Aynı coding agent session içinde çok fazla değişiklik yaptırınca context window doldu, model önceki hatalı varsayımlara tutundu veya scope dışına çıkmaya başladı.</li>
+</ol>
+<p>Bu problemler sonucunda daha disiplinli, parçalara ayrılmış ve denetlenebilir bir <strong>hybrid LLM coding workflow</strong> geliştirdim.</p>
+<hr>
+</section>
+<section id="bolum-3">
+<h2>3. Yöntemin Zihinsel Modeli</h2>
+<img src="image/egitim_icerigi/1782309976114.png" alt="Zihinsel Model Şeması" loading="lazy">
+<pre><code class="language-text">+-----------------------------------------------------------+
+|                 YÜKSEK KAPASİTELİ MODEL                  |
+|        Codex / GitHub Copilot / Claude / GPT vb.          |
+|                                                           |
+|  Rol: Mimar, planlayıcı, reviewer, denetçi                |
+|                                                           |
+|  - Büyük resmi analiz eder                                |
+|  - Uygulama planı yazar                                   |
+|  - Planı küçük iş paketlerine böler                       |
+|  - Lokal coding agent için cold start promptları üretir   |
+|  - Done logları ve git diff üzerinden audit yapar         |
+|  - Eksikler için follow-up promptları üretir              |
++-------------------------+---------------------------------+
+                          |
+                          | Plan + prompt paketleri
+                          v
++-----------------------------------------------------------+
+|                    LOKAL / DÜŞÜK KAPASİTELİ MODEL         |
+|           Qwen / Mistral / DeepSeek Coder / Llama vb.     |
+|                                                           |
+|  Rol: Uygulayıcı coding agent                             |
+|                                                           |
+|  - Küçük iş paketini uygular                              |
+|  - Kod yazar veya refactor eder                           |
+|  - Test ekler / test çalıştırır                           |
+|  - Sonucu done.md dosyasına raporlar                      |
+|  - Her prompt için temiz context ile çalışır              |
++-----------------------------------------------------------+
+</code></pre>
+<p>Bu yapı yazılım geliştirmede insan ekibine benzer:</p>
+<ul>
+<li>Pahalı model: <strong>Senior architect / tech lead / reviewer</strong></li>
+<li>Lokal model: <strong>Junior developer / implementation agent</strong></li>
+<li>İnsan geliştirici: <strong>Product owner + final decision maker + safety brake</strong></li>
+<li>Git: <strong>Gerçek durum kaydı</strong></li>
+<li>Testler: <strong>Doğrulama mekanizması</strong></li>
+<li><code>done.md</code>: <strong>Agent çalışma günlüğü</strong></li>
+</ul>
+<hr>
+</section>

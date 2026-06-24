@@ -181,6 +181,21 @@ function initializeSchema(db: SqliteDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_physical_collections_cleanup ON physical_collections(delete_after, status)
       WHERE status IN ('delete_pending', 'cleanup_failed');
   `);
+
+  migrateSchema(db);
+}
+
+function migrateSchema(db: SqliteDatabase): void {
+  ensureColumn(db, "collections", "active_embedding_model", "TEXT");
+}
+
+function ensureColumn(db: SqliteDatabase, tableName: string, columnName: string, definition: string): void {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === columnName)) {
+    return;
+  }
+
+  db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
 }
 
 class SqliteCollectionRegistry implements CollectionRegistry {

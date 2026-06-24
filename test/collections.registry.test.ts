@@ -117,6 +117,169 @@ describe("sqlite collection registry", () => {
     assert.equal(otherTenant, null);
   });
 
+  it("migrates legacy registries missing active_embedding_model before completing reindex jobs", async () => {
+    const legacyPath = path.join(tempDir, "legacy-registry.sqlite");
+    const legacyDb = new Database(legacyPath);
+    legacyDb.pragma("foreign_keys = ON");
+    legacyDb.exec(`
+      CREATE TABLE collections (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        description TEXT,
+        status TEXT NOT NULL,
+        active_physical_collection TEXT,
+        active_version TEXT,
+        source_path TEXT NOT NULL,
+        ozelge_data_path TEXT NOT NULL,
+        embedding_model TEXT NOT NULL,
+        chat_model TEXT NOT NULL,
+        distance_metric TEXT NOT NULL,
+        chroma_collection_configuration_json TEXT NOT NULL,
+        chunk_size INTEGER NOT NULL,
+        chunk_overlap INTEGER NOT NULL,
+        retrieval_k INTEGER NOT NULL,
+        retrieval_distance_threshold REAL NOT NULL,
+        document_count INTEGER,
+        chunk_count INTEGER,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_indexed_at TEXT
+      );
+
+      CREATE TABLE index_jobs (
+        id TEXT PRIMARY KEY,
+        collection_id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        target_physical_collection TEXT NOT NULL,
+        target_version TEXT NOT NULL,
+        target_embedding_model TEXT NOT NULL,
+        target_chroma_configuration_json TEXT NOT NULL,
+        started_at TEXT,
+        finished_at TEXT,
+        error TEXT,
+        document_count INTEGER,
+        chunk_count INTEGER,
+        lock_token TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(collection_id) REFERENCES collections(id)
+      );
+
+      CREATE TABLE physical_collections (
+        name TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        collection_id TEXT NOT NULL,
+        version TEXT NOT NULL,
+        status TEXT NOT NULL,
+        chroma_configuration_json TEXT NOT NULL,
+        document_count INTEGER,
+        chunk_count INTEGER,
+        created_at TEXT NOT NULL,
+        activated_at TEXT,
+        retired_at TEXT,
+        delete_after TEXT,
+        deleted_at TEXT,
+        cleanup_error TEXT,
+        FOREIGN KEY(collection_id) REFERENCES collections(id)
+      );
+    `);
+
+    const now = new Date().toISOString();
+    legacyDb.prepare(`
+      INSERT INTO collections (
+        id,
+        tenant_id,
+        display_name,
+        status,
+        source_path,
+        ozelge_data_path,
+        embedding_model,
+        chat_model,
+        distance_metric,
+        chroma_collection_configuration_json,
+        chunk_size,
+        chunk_overlap,
+        retrieval_k,
+        retrieval_distance_threshold,
+        created_by,
+        created_at,
+        updated_at
+      ) VALUES (
+        'legacy-collection',
+        @tenantId,
+        'Legacy Collection',
+        'creating',
+        @sourcePath,
+        @ozelgeDataPath,
+        @embeddingModel,
+        @chatModel,
+        @distanceMetric,
+        @chromaConfiguration,
+        @chunkSize,
+        @chunkOverlap,
+        @retrievalK,
+        @retrievalDistanceThreshold,
+        @createdBy,
+        @createdAt,
+        @updatedAt
+      )
+    `).run({
+      tenantId: context.tenantId,
+      sourcePath: collectionInput.sourcePath,
+      ozelgeDataPath: collectionInput.ozelgeDataPath,
+      embeddingModel: collectionInput.embeddingModel,
+      chatModel: collectionInput.chatModel,
+      distanceMetric: collectionInput.distanceMetric,
+      chromaConfiguration: JSON.stringify({ hnsw: { space: collectionInput.distanceMetric } }),
+      chunkSize: collectionInput.chunkSize,
+      chunkOverlap: collectionInput.chunkOverlap,
+      retrievalK: collectionInput.retrievalK,
+      retrievalDistanceThreshold: collectionInput.retrievalDistanceThreshold,
+      createdBy: context.userId,
+      createdAt: now,
+      updatedAt: now,
+    });
+    legacyDb.close();
+
+    const migratedRegistry = createSqliteCollectionRegistry({ dbPath: legacyPath });
+    try {
+      const migratedDb = new Database(legacyPath);
+      try {
+        const columns = migratedDb.prepare("PRAGMA table_info(collections)").all() as Array<{ name: string }>;
+        assert.ok(columns.some((column) => column.name === "active_embedding_model"));
+      } finally {
+        migratedDb.close();
+      }
+
+      const queued = await migratedRegistry.beginIndexJob(context, "legacy-collection", {
+        targetVersion: "legacy-v2",
+      });
+      const running = await migratedRegistry.markIndexJobRunning(queued.id);
+      await migratedRegistry.createPhysicalCollectionRecord({
+        name: running.targetPhysicalCollection,
+        tenantId: context.tenantId,
+        collectionId: "legacy-collection",
+        version: running.targetVersion,
+        chromaConfiguration: running.targetChromaConfiguration,
+      });
+
+      await migratedRegistry.completeIndexJob(running.id, {
+        documentCount: 1,
+        chunkCount: 2,
+        retentionMs: 0,
+      });
+
+      const ready = await migratedRegistry.getVisibleCollection(context, "legacy-collection");
+      assert.equal(ready?.status, "ready");
+      assert.equal(ready?.activeEmbeddingModel, collectionInput.embeddingModel);
+    } finally {
+      migratedRegistry.close?.();
+    }
+  });
+
   it("persists accepted patch fields and treats an empty patch as a no-op", async () => {
     const collection = await registry.createCollection(context, collectionInput);
     const lastIndexedAt = "2026-06-04T10:00:00.000Z";

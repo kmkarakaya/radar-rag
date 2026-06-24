@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ücretli ve Lokal LLM'leri Birlikte Kullanarak Ölçeklenebilir Kod Geliştirme</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="header">
+    <h1>Ücretli ve Lokal LLM'leri Birlikte Kullanarak Ölçeklenebilir Kod Geliştirme</h1>
+    <div class="header-controls">
+      <button class="toggle-btn" id="theme-toggle" aria-label="Koyu temaya geç">
+        <span id="theme-icon">&#9790;</span>
+      </button>
+      <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Menü">&#9776;</button>
+    </div>
+  </header>
+
+  <aside class="sidebar" id="sidebar">
+    <nav>
+      <ul>
+        <li><a href="#giris">Giri&#351;</a></li>
+        <li><a href="#bolum-1">1. Dersin Ana Fikri</a></li>
+        <li><a href="#bolum-2">2. Bu Yönteme Neden &#304;htiyaç Duydum?</a></li>
+        <li><a href="#bolum-3">3. Yöntemin Zihinsel Modeli</a></li>
+        <li><a href="#bolum-4">4. Bu Yöntemin En Önemli Prensipleri</a></li>
+        <li><a href="#bolum-5">5. Ad&#305;m Ad&#305;m Hybrid LLM Coding Workflow</a></li>
+        <li><a href="#bolum-6">6. Döngünün Tam &#350;emas&#305;</a></li>
+        <li><a href="#bolum-7">7. Örnek Dosya Organizasyonu</a></li>
+        <li><a href="#bolum-8">8. Plan Dosyas&#305; &#350;ablonu</a></li>
+        <li><a href="#bolum-9">9. Cold Start Coding Agent Prompt &#350;ablonu</a></li>
+        <li><a href="#bolum-10">10. Final Audit Prompt &#350;ablonu</a></li>
+        <li><a href="#bolum-11">11. Git Disiplini</a></li>
+        <li><a href="#bolum-12">12. Test Stratejisi</a></li>
+        <li><a href="#bolum-13">13. Kay&#305;t Tutmak (Logging) Neden Önemli?</a></li>
+        <li><a href="#bolum-14">14. Lokal Model &#304;çin Scope Nas&#305;l Küçültülür?</a></li>
+        <li><a href="#bolum-15">15. S&#305;k Yap&#305;lan Hatalar</a></li>
+        <li><a href="#bolum-16">16. Bu Workflow Ne Zaman Kullan&#305;lmal&#305;?</a></li>
+        <li><a href="#bolum-17">17. RAG Backend Projesinden Ç&#305;kan Dersler</a></li>
+        <li><a href="#bolum-18">18. K&#305;sa Kontrol Listesi</a></li>
+        <li><a href="#bolum-19">19. En K&#305;sa Özet</a></li>
+        <li><a href="#bolum-20">20. Son Söz</a></li>
+      </ul>
+    </nav>
+  </aside>
+
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+  <main class="main">
+
+    <!-- Giriş -->
+    <section id="giris">
+      <h2>Ücretli ve Lokal LLM'leri Birlikte Kullanarak Ölçeklenebilir Kod Geliştirme</h2>
+      <h3 class="subtitle">Token Harcamadan, Rate Limit'e Tak&#305;lmadan Büyük Kod Değişiklikleri Nas&#305;l Yönetilir?</h3>
+      <p>Bu ders notu, büyük ve orta ölçekli yaz&#305;l&#305;m projelerinde <strong>yüksek kapasiteli ücretli modelleri</strong> planlama, mimari karar ve kalite kontrol için; <strong>lokalde çal&#305;şan daha düşük kapasiteli modelleri</strong> ise kodlama, test yazma ve küçük iş paketlerini uygulama için birlikte kullanma yöntemini anlat&#305;r.</p>
+      <p>Bu yöntem, özellikle RAG Backend gibi çok dosyal&#305;, çok katmanl&#305; ve sürekli refactoring gerektiren projelerde faydal&#305;d&#305;r. Amaç, pahal&#305; modeli sürekli kod yazd&#305;rmak için kullanmak değil; onu <strong>stratejist, mimar, denetçi ve prompt tasar&#305;mc&#305;s&#305;</strong> gibi kullanmakt&#305;r. Kodlama işi ise mümkün olduğunca lokal model / lokal coding agent taraf&#305;ndan yap&#305;l&#305;r.</p>
+      <hr>
+    </section>
+
+    <!-- Bölüm 1 -->
+    <section id="bolum-1">
+      <h2>1. Dersin Ana Fikri</h2>
+      <p>Bu yöntemin merkezinde basit bir ayr&#305;m var:</p>
+      <blockquote><p><strong>Pahal&#305; model düşünsün, lokal model uygulas&#305;n.</strong></p></blockquote>
+      <p>Yüksek kapasiteli modelin güçlü olduğu işler:</p>
+      <ul>
+        <li>Gereksinimi anlama</li>
+        <li>Mimari riskleri görme</li>
+        <li>Büyük resmi planlama</li>
+        <li>İşleri küçük parçalara bölme</li>
+        <li>Kalite kontrol ve audit yapma</li>
+        <li>Eksikleri tespit edip yeni düzeltme promptlar&#305; üretme</li>
+      </ul>
+      <p>Lokal modelin güçlü olduğu işler:</p>
+      <ul>
+        <li>Küçük ve net tan&#305;mlanm&#305;ş kod değişikliklerini uygulama</li>
+        <li>Tek dosya veya s&#305;n&#305;rl&#305; dosya setinde refactoring yapma</li>
+        <li>Test ekleme</li>
+        <li>Basit doğrulama komutlar&#305;n&#305; çal&#305;şt&#305;rma</li>
+        <li>Yap&#305;lan işi <code>done.md</code> gibi bir log dosyas&#305;na kaydetme</li>
+      </ul>
+      <p>Bu ayr&#305;m sayesinde pahal&#305; modeli her küçük kod değişikliğinde token tüketen bir execution arac&#305; gibi kullanmak yerine, onu projenin üst seviye kontrol mekanizmas&#305; haline getiririz.</p>
+      <hr>
+    </section>
+
+    <!-- Bölüm 2 -->
+    <section id="bolum-2">
+      <h2>2. Bu Yönteme Neden İhtiyaç Duydum?</h2>
+      <p>RAG Backend projesi üzerinde çal&#305;ş&#305;rken şu problemler ortaya ç&#305;kt&#305;:</p>
+      <ol>
+        <li><strong>Token tüketimi h&#305;zla artt&#305;.</strong>Büyük bir refactoring için tüm proje bağlam&#305;n&#305; sürekli güçlü modellere göndermek, token maliyetini ciddi şekilde yükseltti.</li>
+        <li><strong>Rate limit geliştirme h&#305;z&#305;n&#305; kesti.</strong>Model iyi çal&#305;şsa bile yoğun kullan&#305;mda rate limit'e tak&#305;l&#305;nca geliştirme ak&#305;ş&#305; durdu.</li>
+        <li><strong>Büyük işleri tek promptla yapt&#305;rmak güvenilir olmad&#305;.</strong>&ldquo;Admin panelini multi-collection destekli hale getir&rdquo; veya &ldquo;RAG backend mimarisini refactor et&rdquo; gibi büyük isteklerde model ya baz&#305; detaylar&#305; kaç&#305;rd&#305; ya da context içinde yönünü kaybetti.</li>
+        <li><strong>Uzun konuşma geçmişleri model kalitesini düşürdü.</strong>Ayn&#305; coding agent session içinde çok fazla değişiklik yapt&#305;r&#305;nca context window doldu, model önceki hatal&#305; varsay&#305;mlara tutundu veya scope d&#305;ş&#305;na ç&#305;kmaya başlad&#305;.</li>
+      </ol>
+      <p>Bu problemler sonucunda daha disiplinli, parçalara ayr&#305;lm&#305;ş ve denetlenebilir bir <strong>hybrid LLM coding workflow</strong> geliştirdim.</p>
+      <hr>
+    </section>
+
+    <!-- Bölüm 3 -->
+    <section id="bolum-3">
+      <h2>3. Yöntemin Zihinsel Modeli</h2>
+      <img src="image/egitim_icerigi/1782318515814.png" alt="Zihinsel Model Şemas&#305;" loading="lazy">
+      <pre><code class="language-text">+-----------------------------------------------------------+
+|                 YÜKSEK KAPASİTELİ MODEL                  |
+|        Codex / GitHub Copilot / Claude / GPT vb.          |
+|                                                           |
+|  Rol: Mimar, planlay&#305;c&#305;, reviewer, denetçi                |
+|                                                           |
+|  - Büyük resmi analiz eder                                |
+|  - Uygulama plan&#305; yazar                                   |
+|  - Plan&#305; küçük iş paketlerine böler                       |
+|  - Lokal coding agent için cold start promptlar&#305; üretir   |
+|  - Done loglar&#305; ve git diff üzerinden audit yapar         |
+|  - Eksikler için follow-up promptlar&#305; üretir              |
++-------------------------+---------------------------------+
+                          |
+                          | Plan + prompt paketleri
+                          v
++-----------------------------------------------------------+
+|                    LOKAL / DÜŞÜK KAPASİTELİ MODEL         |
+|           Qwen / Mistral / DeepSeek Coder / Llama vb.     |
+|                                                           |
+|  Rol: Uygulay&#305;c&#305; coding agent                             |
+|                                                           |
+|  - Küçük iş paketini uygular                              |
+|  - Kod yazar veya refactor eder                           |
+|  - Test ekler / test çal&#305;şt&#305;r&#305;r                           |
+|  - Sonucu done.md dosyas&#305;na raporlar                      |
+|  - Her prompt için temiz context ile çal&#305;ş&#305;r              |
++-----------------------------------------------------------+</code></pre>
+      <p>Bu yap&#305; yaz&#305;l&#305;m geliştirmede insan ekibine benzer:</p>
+      <ul>
+        <li>Pahal&#305; model: <strong>Senior architect / tech lead / reviewer</strong></li>
+        <li>Lokal model: <strong>Junior developer / implementation agent</strong></li>
+        <li>İnsan geliştirici: <strong>Product owner + final decision maker + safety brake</strong></li>
+        <li>Git: <strong>Gerçek durum kayd&#305;</strong></li>
+        <li>Testler: <strong>Doğrulama mekanizmas&#305;</strong></li>
+        <li><code>done.md</code>: <strong>Agent çal&#305;şma günlüğü</strong></li>
+      </ul>
+      <hr>
+    </section>
+
+    <!-- Bölüm 4 -->
+    <section id="bolum-4">
+      <h2>4. Bu Yöntemin En Önemli Prensipleri</h2>
+      <img src="image/egitim_icerigi/1782318538498.png" alt="Prensipler" loading="lazy">
+      <h3>4.1. Büyük işi küçük ve bağ&#305;ms&#305;z parçalara böl</h3>
+      <p>Lokal modelden büyük bir refactoring istemek yerine ona s&#305;n&#305;rl&#305; bir görev verilir:</p>
+      <p>Yanl&#305;ş yaklaş&#305;m:</p>
+      <pre><code class="language-text">Tüm RAG backend'i multi-collection mimariye refactor et.</code></pre>
+      <p>Doğru yaklaş&#305;m:</p>
+      <pre><code class="language-text">Sadece collection registry katman&#305;n&#305; ekle.
+Sadece şu dosyalar&#305; oku.
+Sadece şu dosyalar&#305; değiştir.
+Backend API sözleşmesini değiştirme.
+Testleri çal&#305;şt&#305;r.
+Sonucu notes/done.md dosyas&#305;na yaz.</code></pre>
+      <h3>4.2. Her prompt cold start çal&#305;şabilmeli</h3>
+      <p>Her lokal coding agent oturumu s&#305;f&#305;r bağlamla başlayabilmelidir. Bunun için prompt içinde gerekli tüm talimatlar, okunacak dosyalar, hard rules, test komutlar&#305; ve raporlama format&#305; bulunmal&#305;d&#305;r.</p>
+      <h3>4.3. Kod üzerinden bilgi aktar, sohbet geçmişi üzerinden değil</h3>
+      <p>Prompt 01 bittikten sonra Prompt 02'ye önceki sohbet geçmişini taş&#305;ma. Bilgi transferi repository üzerinden yap&#305;l&#305;r:</p>
+      <pre><code class="language-text">Prompt 01 -&gt; Kod değişikliği -&gt; Test -&gt; Commit
+Prompt 02 -&gt; Repository'deki güncel kodu okur -&gt; Devam eder -&gt; Test -&gt; Commit</code></pre>
+      <h3>4.4. Her ad&#305;m sonunda iz b&#305;rak</h3>
+      <p>Her coding agent kendisinin ne yapt&#305;ğ&#305;n&#305;, hangi dosyalar&#305; değiştirdiğini, hangi testleri çal&#305;şt&#305;rd&#305;ğ&#305;n&#305; ve neyi yapamad&#305;ğ&#305;n&#305; <code>done.md</code> gibi bir dosyaya yazmal&#305;d&#305;r.</p>
+      <p>Bu dosya final audit için çok değerlidir.</p>
+      <h3>4.5. İnsan her zaman kontrol noktas&#305;nda kal&#305;r</h3>
+      <p>Bu workflow otomatik pilot değildir. İnsan geliştirici şu noktalarda aktif kal&#305;r:</p>
+      <ul>
+        <li>Plan&#305; okur ve revize eder</li>
+        <li>Promptlar&#305; gözden geçirir</li>
+        <li>Lokal modelin scope d&#305;ş&#305;na ç&#305;kmas&#305;n&#305; engeller</li>
+        <li>Test sonuçlar&#305;n&#305; inceler</li>
+        <li>Git diff'i kontrol eder</li>
+        <li>Merge karar&#305;n&#305; verir</li>
+      </ul>
+      <hr>
+    </section>
+
+    <!-- Bölüm 5 -->
+    <section id="bolum-5">
+      <h2>5. Ad&#305;m Ad&#305;m Hybrid LLM Coding Workflow</h2>
+      <img src="image/egitim_icerigi/1782318549808.png" alt="Workflow Şemas&#305;" loading="lazy">
+      <h3>Ad&#305;m 1 &mdash; Geliştirilecek işi yüksek kapasiteli modele anlat</h3>
+      <p>İlk aşamada yap&#305;lacak iş, güçlü modele geniş bağlamla anlat&#305;l&#305;r. Burada amaç kod yazd&#305;rmak değil, <strong>plan ç&#305;kartmakt&#305;r</strong>.</p>
+      <p>Örnek istek:</p>
+      <pre><code class="language-text">RAG Backend projemde admin paneli multi-collection destekli hale getirmek istiyorum.
+Bu iş için kod yazma. Önce detayl&#305; bir uygulama plan&#305; ç&#305;kar.
+
+Plan şunlar&#305; içersin:
+- Mevcut durum analizi
+- Etkilenecek dosyalar
+- Kullan&#305;lacak endpointler
+- Değişmeyecek sözleşmeler
+- Ad&#305;m ad&#305;m implementation s&#305;ras&#305;
+- Her ad&#305;m için kabul kriterleri
+- Her ad&#305;m için test komutlar&#305;
+- Riskler ve rollback stratejisi
+- Lokal coding agent için dikkat edilmesi gereken noktalar</code></pre>
+      <p>Bu aşaman&#305;n ç&#305;kt&#305;s&#305;:</p>
+      <pre><code class="language-text">notes/adminpanel_plan.md
+veya
+notes/multicollection_plan.md</code></pre>
+      <p>Plan yazd&#305;r&#305;rken özellikle şunlar&#305; isteyin:</p>
+      <ul>
+        <li>&ldquo;Kod yazma, sadece plan yaz.&rdquo;</li>
+        <li>&ldquo;Varsay&#305;m yaparsan aç&#305;kça belirt.&rdquo;</li>
+        <li>&ldquo;Endpoint uydurma; mevcut endpointleri kullan.&rdquo;</li>
+        <li>&ldquo;Kapsam d&#305;ş&#305; dosyalar&#305; aç&#305;kça listele.&rdquo;</li>
+        <li>&ldquo;Her ad&#305;m test edilebilir olsun.&rdquo;</li>
+      </ul>
+
+      <h3>Ad&#305;m 2 &mdash; Plan&#305; kendin oku ve revize ettir</h3>
+      <p>LLM'in ürettiği plan nihai gerçek değildir. Mutlaka okunmal&#305; ve gerekirse modele geri verilerek revize ettirilmelidir.</p>
+      <p>Kontrol sorular&#305;:</p>
+      <ul>
+        <li>Plan mevcut proje mimarisine uyuyor mu?</li>
+        <li>Model olmayan endpointler varsaym&#305;ş m&#305;?</li>
+        <li>Gereğinden fazla dosyaya dokunuyor mu?</li>
+        <li>Test stratejisi gerçekçi mi?</li>
+        <li>İş paketleri lokal model için fazla büyük mü?</li>
+        <li>Rollback veya risk azaltma stratejisi var m&#305;?</li>
+      </ul>
+      <p>Revizyon promptu örneği:</p>
+      <pre><code class="language-text">Bu plan&#305; gözden geçirdim. Şu eksikler var:
+
+1. Admin panel sadece admin/ dizinine dokunmal&#305;.
+2. Backend endpointleri değiştirilmeyecek.
+3. Her ad&#305;m sonunda node --check ve npm test komutlar&#305; eklenmeli.
+4. Her agent notes/done.md dosyas&#305;na rapor yazmal&#305;.
+
+Plan&#305; bu kurallara göre yeniden düzenle.
+Kod yazma.</code></pre>
+
+      <h3>Ad&#305;m 3 &mdash; Plan&#305; cold start prompt paketlerine böldür</h3>
+      <p>Plan haz&#305;r olduktan sonra yüksek kapasiteli modelden bu plan&#305; lokal coding agent oturumlar&#305;na verilecek küçük promptlara bölmesini isteyin.</p>
+      <p>Örnek istek:</p>
+      <pre><code class="language-text">Elindeki plan&#305; s&#305;f&#305;r context ile çal&#305;şabilecek coding agent promptlar&#305;na böl.
+
+Her prompt şu özelliklere sahip olsun:
+- Tek baş&#305;na anlaş&#305;labilsin.
+- Önce okunacak dosyalar&#305; söylesin.
+- Değiştirilebilecek dosyalar&#305; s&#305;n&#305;rlas&#305;n.
+- Hard rules bölümüne sahip olsun.
+- Uygulama s&#305;ras&#305;n&#305; küçük ad&#305;mlara bölsün.
+- Test ve validation komutlar&#305;n&#305; içersin.
+- Agent'tan notes/done.md dosyas&#305;na rapor yazmas&#305;n&#305; istesin.
+- Final cevap format&#305;n&#305; tan&#305;mlas&#305;n.
+- Önceki promptlar&#305;n done loglar&#305;n&#305; okumas&#305;n&#305; istesin.
+
+Ç&#305;kt&#305;y&#305; notes/adminpanel_prompts.md format&#305;nda üret.</code></pre>
+      <p>Bu aşaman&#305;n ç&#305;kt&#305;s&#305;:</p>
+      <pre><code class="language-text">notes/adminpanel_prompts.md
+veya
+notes/multicollection_prompts.md</code></pre>
+
+      <h3>Ad&#305;m 4 &mdash; Promptlar&#305; kendin denetle</h3>
+      <p>Prompt dosyas&#305;n&#305; direkt lokal modele vermeyin. Önce kendiniz okuyun.</p>
+      <p>Denetim listesi:</p>
+      <ul>
+        <li><input type="checkbox" disabled> Her prompt cold start çal&#305;şabiliyor mu?</li>
+        <li><input type="checkbox" disabled> Her promptun amac&#305; tek cümlede anlaş&#305;labiliyor mu?</li>
+        <li><input type="checkbox" disabled> Değiştirilebilecek dosyalar s&#305;n&#305;rl&#305; m&#305;?</li>
+        <li><input type="checkbox" disabled> &ldquo;Yapma&rdquo; kurallar&#305; aç&#305;k m&#305;?</li>
+        <li><input type="checkbox" disabled> Test komutlar&#305; var m&#305;?</li>
+        <li><input type="checkbox" disabled> <code>done.md</code> raporu zorunlu mu?</li>
+        <li><input type="checkbox" disabled> Önceki ad&#305;mlar&#305;n ç&#305;kt&#305;s&#305;n&#305; koddan ve logdan kontrol ediyor mu?</li>
+        <li><input type="checkbox" disabled> Prompt çok büyük veya belirsiz mi?</li>
+        <li><input type="checkbox" disabled> Lokal modelin varsay&#305;m yapmas&#305;n&#305; engelliyor mu?</li>
+      </ul>
+      <p>Eksik görürseniz promptlar&#305; tekrar yüksek kapasiteli modele revize ettirin.</p>
+
+      <h3>Ad&#305;m 5 &mdash; Temiz başlang&#305;ç için git commit al</h3>
+      <p>Plan ve promptlar haz&#305;r olduğunda repository'nin temiz bir başlang&#305;ç noktas&#305; olmal&#305;d&#305;r.</p>
+      <p>Örnek komutlar:</p>
+      <pre><code class="language-bash">git status
+git add notes/adminpanel_plan.md notes/adminpanel_prompts.md
+git commit -m "docs: add admin panel implementation plan and prompts"</code></pre>
+      <p>Bu commit, ileride yanl&#305;ş bir agent çal&#305;şmas&#305; olursa güvenli dönüş noktas&#305; sağlar.</p>
+
+      <h3>Ad&#305;m 6 &mdash; Yeni branch aç</h3>
+      <p>Her büyük iş ayr&#305; branch üzerinde yürütülmelidir.</p>
+      <pre><code class="language-bash">git checkout -b feature/admin-panel-multicollection</code></pre>
+      <p>Branch ad&#305; aç&#305;k olmal&#305;d&#305;r:</p>
+      <pre><code class="language-text">feature/admin-panel-multicollection
+feature/rag-multicollection-refactor
+refactor/vector-store-registry
+fix/admin-collection-switcher</code></pre>
+
+      <h3>Ad&#305;m 7 &mdash; Lokal modele ilk promptu temiz context ile ver</h3>
+      <p>Bu aşamada düşük kapasiteli / lokal coding agent'a geçilir.</p>
+      <p>Önemli kural:</p>
+      <blockquote><p>Her prompt yeni bir session ile çal&#305;şt&#305;r&#305;l&#305;r.</p></blockquote>
+      <p>Örnek başlang&#305;ç:</p>
+      <pre><code class="language-text">S&#305;f&#305;r context ile çal&#305;ş&#305;yorsun.
+Repository'deki notes/adminpanel_plan.md ve notes/adminpanel_prompts.md dosyalar&#305;n&#305; oku.
+Sadece Prompt 00 bölümünü uygula.
+Prompt d&#305;ş&#305;na ç&#305;kma.
+Hard rules bölümüne kesinlikle uy.
+İş bitince gerekli testleri çal&#305;şt&#305;r ve sonucu notes/done.md dosyas&#305;na yaz.</code></pre>
+
+      <h3>Ad&#305;m 8 &mdash; Lokal agent çal&#305;ş&#305;rken nezaret et</h3>
+      <p>Lokal modelin ç&#305;kt&#305;s&#305;n&#305; pasif şekilde kabul etmeyin. Şu noktalarda kontrol edin:</p>
+      <ul>
+        <li>Beklenmeyen dosyalara dokundu mu?</li>
+        <li>Backend sözleşmesini değiştirdi mi?</li>
+        <li>Testleri gerçekten çal&#305;şt&#305;rd&#305; m&#305;?</li>
+        <li><code>done.md</code> dosyas&#305;na ne yapt&#305;ğ&#305;n&#305; yazd&#305; m&#305;?</li>
+        <li>Bir hatay&#305; görmezden geldi mi?</li>
+        <li>&ldquo;Yap&#305;ld&#305;&rdquo; dediği şey gerçekten git diff'te var m&#305;?</li>
+      </ul>
+      <p>Kontrol komutlar&#305;:</p>
+      <pre><code class="language-bash">git status
+git diff --stat
+git diff
+npm test
+npm run build</code></pre>
+      <p>Projeye göre ek komutlar:</p>
+      <pre><code class="language-bash">node --check admin/admin.js
+python -m pytest
+pytest
+npm run lint
+npm run typecheck</code></pre>
+      <p>Agent hata yapt&#305;ysa ayn&#305; session içinde sadece o hatay&#305; düzeltmesini isteyin. Ancak yeni bir prompta geçmeyin.</p>
+
+      <h3>Ad&#305;m 9 &mdash; Başar&#305;l&#305; ad&#305;m&#305; commit et, sonra yeni session aç</h3>
+      <p>Prompt tamamland&#305;ysa ve testler geçtiyse commit al&#305;n:</p>
+      <pre><code class="language-bash">git add .
+git commit -m "feat: implement admin collection API client"</code></pre>
+      <p>Sonra yeni prompt için yeni session aç&#305;n.</p>
+      <p>Neden?</p>
+      <ul>
+        <li>Context window dolmas&#305;n.</li>
+        <li>Önceki konuşmadaki hatal&#305; varsay&#305;mlar taş&#305;nmas&#305;n.</li>
+        <li>Lokal model bir sonraki işi temiz şekilde okusun.</li>
+        <li>Her prompt bağ&#305;ms&#305;z ve denetlenebilir kals&#305;n.</li>
+      </ul>
+      <p>Doğru döngü:</p>
+      <pre><code class="language-text">Prompt 00 -&gt; Lokal agent session 1 -&gt; Test -&gt; done.md -&gt; Commit
+Prompt 01 -&gt; Lokal agent session 2 -&gt; Test -&gt; done.md -&gt; Commit
+Prompt 02 -&gt; Lokal agent session 3 -&gt; Test -&gt; done.md -&gt; Commit
+Prompt 03 -&gt; Lokal agent session 4 -&gt; Test -&gt; done.md -&gt; Commit</code></pre>
+      <p>Yanl&#305;ş döngü:</p>
+      <pre><code class="language-text">Ayn&#305; session içinde Prompt 00, 01, 02, 03...</code></pre>
+      <p>Bu yanl&#305;ş döngü context pollution riskini art&#305;r&#305;r.</p>
+
+      <h3>Ad&#305;m 10 &mdash; Tüm promptlar bitince yüksek kapasiteli modelle audit yap</h3>
+      <p>Tüm lokal promptlar tamamland&#305;ğ&#305;nda güçlü modele geri dönülür. Bu kez amac&#305; kod yazmak değil, <strong>plan-gerçekleşen iş karş&#305;laşt&#305;rmas&#305;</strong> yapmakt&#305;r.</p>
+      <p>Audit promptu örneği:</p>
+      <pre><code class="language-text">Şu dosyalar&#305; oku:
+
+- notes/adminpanel_plan.md
+- notes/adminpanel_prompts.md
+- notes/done.md
+
+Sonra git diff ve mevcut repository durumunu incele.
+
+Aşağ&#305;daki sorulara cevap ver:
+
+1. Orijinal plandaki her ad&#305;m gerçekten yap&#305;lm&#305;ş m&#305;?
+2. Promptlarda istenen her acceptance criteria karş&#305;lanm&#305;ş m&#305;?
+3. done.md loglar&#305; ile gerçek git diff uyumlu mu?
+4. Testler yeterli mi?
+5. Scope d&#305;ş&#305; değişiklik var m&#305;?
+6. Eksik veya hatal&#305; kalan yerler var m&#305;?
+
+Eksik veya hatal&#305; bir şey bulursan notes/followup_prompts.md dosyas&#305;na
+lokal coding agent için yeni cold start düzeltme promptlar&#305; yaz.
+Kod yazma; sadece audit ve prompt üret.</code></pre>
+      <p>Audit sonucunda iki ihtimal vard&#305;r:</p>
+      <ol>
+        <li>Eksik veya hata bulunur. Yeni follow-up promptlar&#305; üretilir ve lokal model döngüsü tekrar başlar.</li>
+        <li>Eksik bulunmaz ve testler geçer. Branch merge edilebilir.</li>
+      </ol>
+      <hr>
+    </section>
+
+    <!-- Bölüm 6 -->
+    <section id="bolum-6">
+      <h2>6. Döngünün Tam Şemas&#305;</h2>
+      <img src="image/egitim_icerigi/1782318575121.png" alt="Döngü Şemas&#305;" loading="lazy">
+      <hr>
+    </section>
+
+    <!-- Bölüm 7 -->
+    <section id="bolum-7">
+      <h2>7. Örnek Dosya Organizasyonu</h2>
+      <p>Aşağ&#305;daki yap&#305; pratikte işleri düzenli tutar:</p>
+      <pre><code class="language-text">notes/
+  adminpanel_plan.md
+  adminpanel_prompts.md
+  adminpanel_done.md
+  multicollection_plan.md
+  multicollection_prompts.md
+  multicollection_done.md
+  followup_prompts.md
+  audit_report.md</code></pre>
+      <p>Alternatif olarak her iş için ayr&#305; klasör kullan&#305;labilir:</p>
+      <pre><code class="language-text">notes/
+  2026-06-admin-panel-multicollection/
+    plan.md
+    prompts.md
+    done.md
+    audit.md
+    followup_prompts.md</code></pre>
+      <p>Bu yap&#305;, ileride ayn&#305; yöntemi tekrar anlat&#305;rken veya proje geçmişini incelerken çok işe yarar.</p>
+      <hr>
+    </section>
+
+    <!-- Bölüm 8 -->
+    <section id="bolum-8">
+      <h2>8. Plan Dosyas&#305; Şablonu</h2>
+      <p>Aşağ&#305;daki şablon yüksek kapasiteli modelden istenecek plan için kullan&#305;labilir.</p>
+      <pre><code class="language-markdown"># &lt;Proje Ad&#305;&gt;: &lt;Özellik / Refactoring&gt; Plan&#305;
+
+## 1. Amaç
+
+Bu değişiklik neyi çözüyor?
+Neden şimdi gerekli?
+Kullan&#305;c&#305;ya veya geliştiriciye etkisi ne?
+
+## 2. Kapsam
+
+### Kapsam dahilinde
+
+- ...
+
+### Kapsam d&#305;ş&#305;nda
+
+- ...
+
+## 3. Mevcut Durum Analizi
+
+- Mevcut mimari nas&#305;l çal&#305;ş&#305;yor?
+- Hangi dosyalar kritik?
+- Hangi bağ&#305;ml&#305;l&#305;klar var?
+- Hangi testler mevcut?
+
+## 4. Mimari Kararlar
+
+- Karar 1:
+- Karar 2:
+- Karar 3:
+
+Her karar için gerekçe yaz.
+
+## 5. Riskler
+
+| Risk | Etki | Önlem |
+|---|---|---|
+| Scope creep | Yüksek | Dosya s&#305;n&#305;r&#305; koy |
+| Endpoint varsay&#305;m&#305; | Yüksek | Mevcut koddan doğrula |
+| Test eksikliği | Orta | Her prompta test ekle |
+
+## 6. Ad&#305;m Ad&#305;m Uygulama Plan&#305;
+
+### Ad&#305;m 0 &mdash; Audit
+
+Amaç:
+Kod değiştirmeden mevcut durumu analiz et.
+
+Okunacak dosyalar:
+- ...
+
+Ç&#305;kt&#305;:
+- notes/done.md içine audit raporu
+
+Test:
+- ...
+
+### Ad&#305;m 1 &mdash; &lt;Başl&#305;k&gt;
+
+Amaç:
+...
+
+Değiştirilecek dosyalar:
+- ...
+
+Hard rules:
+- ...
+
+Kabul kriterleri:
+- ...
+
+Test komutlar&#305;:
+- ...
+
+## 7. Lokal Coding Agent İçin Notlar
+
+- Her prompt tek baş&#305;na çal&#305;şabilmeli.
+- Her prompt sonunda done.md güncellenmeli.
+- Agent testleri çal&#305;şt&#305;rmadan işi bitmiş saymamal&#305;.
+- Scope d&#305;ş&#305; dosyalara dokunmamal&#305;.</code></pre>
+      <hr>
+    </section>
+
+    <!-- Bölüm 9 -->
+    <section id="bolum-9">
+      <h2>9. Cold Start Coding Agent Prompt Şablonu</h2>
+      <p>Aşağ&#305;daki format lokal modele verilecek her prompt için kullan&#305;labilir.</p>
+      <pre><code class="language-markdown"># Prompt XX &mdash; &lt;K&#305;sa Başl&#305;k&gt;
+
+## Rolün
+
+Sen bu repository içinde çal&#305;şan lokal bir coding agent's&#305;n.
+S&#305;f&#305;r context ile çal&#305;ş&#305;yorsun.
+Sadece bu prompttaki talimatlar&#305; uygula.
+
+## Amaç
+
+&lt;Bu promptta yap&#305;lacak işin net aç&#305;klamas&#305;&gt;
+
+## Önce Oku
+
+Aşağ&#305;daki dosyalar&#305; önce oku, sonra değişiklik yap:
+
+- notes/&lt;plan&gt;.md
+- notes/&lt;prompts&gt;.md
+- notes/done.md
+- &lt;ilgili kaynak dosyalar&gt;
+
+## Değiştirebileceğin Dosyalar
+
+- &lt;dosya 1&gt;
+- &lt;dosya 2&gt;
+
+## Değiştirmemen Gereken Dosyalar
+
+- &lt;dosya veya klasör&gt;
+- Backend API sözleşmeleri
+- Migration dosyalar&#305;
+- Package manager dosyalar&#305;
+
+## Hard Rules
+
+- Endpoint uydurma.
+- Mevcut testleri silme.
+- Scope d&#305;ş&#305; dosyalar&#305; değiştirme.
+- Büyük refactoring yapma.
+- Emin olmad&#305;ğ&#305;n yerde varsay&#305;m&#305;n&#305; notes/done.md içine yaz.
+- İş bitince testleri çal&#305;şt&#305;r.
+
+## Uygulama S&#305;ras&#305;
+
+1. Mevcut kodu oku.
+2. Planla uyumlu en küçük değişikliği yap.
+3. Gerekirse test ekle.
+4. Validation komutlar&#305;n&#305; çal&#305;şt&#305;r.
+5. notes/done.md dosyas&#305;na rapor yaz.
+
+## Validation Komutlar&#305;
+
+```bash
+git diff --stat
+npm test
+npm run build
+```
+
+Projeye göre ekle:
+
+```bash
+node --check admin/admin.js
+pytest
+npm run typecheck
+```
+
+## done.md Format&#305;
+
+notes/done.md dosyas&#305;na şu formatta ekleme yap:
+
+```markdown
+## Prompt XX &mdash; &lt;Başl&#305;k&gt;
+
+Tarih: &lt;YYYY-MM-DD&gt;
+
+### Yap&#305;lanlar
+
+- ...
+
+### Değiştirilen Dosyalar
+
+- ...
+
+### Çal&#305;şt&#305;r&#305;lan Testler
+
+- Komut: ...
+  Sonuç: geçti / kald&#305;
+
+### Yap&#305;lamayanlar veya Riskler
+
+- ...
+
+### Sonraki Prompt İçin Notlar
+
+- ...
+```
+
+## Final Cevap Format&#305;
+
+Cevab&#305;nda sadece şunlar&#305; yaz:
+
+1. Yap&#305;lan değişiklik özeti
+2. Değişen dosyalar
+3. Çal&#305;şt&#305;r&#305;lan testler ve sonuçlar&#305;
+4. Bilinen riskler
+5. done.md güncellendi mi?</code></pre>
+      <hr>
+    </section>
+
+    <!-- Bölüm 10 -->
+    <section id="bolum-10">
+      <h2>10. Final Audit Prompt Şablonu</h2>
+      <p>Yüksek kapasiteli modele verilecek final audit promptu:</p>
+      <pre><code class="language-markdown"># Final Audit Görevi
+
+Bu repository'de bir özellik/refactoring işi tamamland&#305;.
+Kod yazma. Önce inceleme yap.
+
+## Okunacak Dosyalar
+
+- notes/&lt;plan&gt;.md
+- notes/&lt;prompts&gt;.md
+- notes/done.md
+- notes/followup_prompts.md varsa oku
+
+## İncelenecek Durum
+
+- git status
+- git diff main...HEAD
+- test sonuçlar&#305;
+- done.md loglar&#305;
+
+## Görevlerin
+
+1. Orijinal plan ile mevcut kodu karş&#305;laşt&#305;r.
+2. Promptlarda istenen tüm acceptance criteria karş&#305;lanm&#305;ş m&#305; kontrol et.
+3. done.md içinde yazanlarla gerçek git diff uyumlu mu kontrol et.
+4. Scope d&#305;ş&#305; dosya değişikliği var m&#305; kontrol et.
+5. Testler yeterli mi kontrol et.
+6. Eksik veya hatal&#305; kalan yerleri listele.
+7. Eksikler için lokal coding agent'a verilecek yeni cold start promptlar&#305; üret.
+
+## Ç&#305;kt&#305; Format&#305;
+
+### Audit Özeti
+
+- Genel durum:
+- Merge'e haz&#305;r m&#305;: Evet / Hay&#305;r
+
+### Bulunan Eksikler
+
+| No | Eksik | Etki | Kan&#305;t | Önerilen Düzeltme |
+|---|---|---|---|---|
+
+### Follow-up Promptlar&#305;
+
+Eksik varsa notes/followup_prompts.md içine yaz&#305;lacak promptlar&#305; üret.
+Eksik yoksa aç&#305;kça &quot;Follow-up prompt gerekmiyor&quot; yaz.</code></pre>
+      <hr>
+    </section>
+
+    <!-- Bölüm 11 -->
+    <section id="bolum-11">
+      <h2>11. Git Disiplini</h2>
+      <p>Bu yöntemin sağl&#305;kl&#305; çal&#305;şmas&#305; için git disiplini kritik önemdedir.</p>
+      <h3>Başlang&#305;ç</h3>
+      <pre><code class="language-bash">git status
+git add notes/&lt;plan&gt;.md notes/&lt;prompts&gt;.md
+git commit -m &quot;docs: add implementation plan and coding prompts&quot;
+git checkout -b feature/&lt;feature-name&gt;</code></pre>
+      <h3>Her prompt sonras&#305;</h3>
+      <pre><code class="language-bash">git status
+git diff --stat
+git diff
+npm test
+git add .
+git commit -m &quot;feat: complete prompt XX - &lt;short summary&gt;&quot;</code></pre>
+      <h3>Hatal&#305; agent değişikliğini geri alma</h3>
+      <pre><code class="language-bash">git restore &lt;file&gt;</code></pre>
+      <p>veya tüm uncommitted değişiklikleri geri almak için:</p>
+      <pre><code class="language-bash">git restore .</code></pre>
+      <p>Dikkat: Bu komut uncommitted değişiklikleri siler. Kullanmadan önce <code>git diff</code> ile kontrol edin.</p>
+      <h3>Final merge</h3>
+      <pre><code class="language-bash">git checkout main
+git pull
+git merge feature/&lt;feature-name&gt;
+npm test
+git branch -d feature/&lt;feature-name&gt;</code></pre>
+      <hr>
+    </section>
+
+    <!-- Bölüm 12 -->
+    <section id="bolum-12">
+      <h2>12. Test Stratejisi</h2>
+      <p>Bu workflow test olmadan güvenilir değildir.</p>
+      <p>Minimum test katmanlar&#305;:</p>
+      <ol>
+        <li><strong>Syntax kontrolü</strong> Kod parse ediliyor mu?</li>
+        <li><strong>Unit test</strong> Küçük fonksiyonlar doğru çal&#305;ş&#305;yor mu?</li>
+        <li><strong>Integration test</strong> Modüller birlikte doğru çal&#305;ş&#305;yor mu?</li>
+        <li><strong>Manual smoke test</strong> Kullan&#305;c&#305; ak&#305;ş&#305; elle deneniyor mu?</li>
+        <li><strong>Regression test</strong> Önceden çal&#305;şan davran&#305;ş bozuldu mu?</li>
+      </ol>
+      <p>Örnek validation bölümü:</p>
+      <pre><code class="language-markdown">## Validation
+
+Aşağ&#305;daki komutlar&#305; çal&#305;şt&#305;r:
+
+```bash
+npm run lint
+npm run build
+npm test
+```
+
+Eğer admin panel değiştiyse ayr&#305;ca:
+
+```bash
+node --check admin/admin.js
+```
+
+Manuel test:
+
+1. Admin paneli aç.
+2. Collection listesinin yüklendiğini doğrula.
+3. Yeni collection oluştur.
+4. Var olan collection'&#305; düzenle.
+5. Hata durumunda kullan&#305;c&#305;ya anlaml&#305; mesaj gösterildiğini doğrula.</code></pre>
+      <hr>
+    </section>
+
+    <!-- Bölüm 13 -->
+    <section id="bolum-13">
+      <h2>13. Kay&#305;t Tutmak (Logging) Neden Önemli?</h2>
+      <p>Kay&#305;t dosyam&#305;z olan <code>done.md</code>, lokal agentlar&#305;n çal&#305;şma günlüğüdür. Final audit s&#305;ras&#305;nda şu sorulara cevap verir:</p>
+      <ul>
+        <li>Hangi prompt ne yapt&#305;?</li>
+        <li>Hangi dosyalar değişti?</li>
+        <li>Hangi testler çal&#305;şt&#305;r&#305;ld&#305;?</li>
+        <li>Hangi testler başar&#305;s&#305;z oldu?</li>
+        <li>Agent hangi varsay&#305;mlar&#305; yapt&#305;?</li>
+        <li>Sonraki agent için not b&#305;rak&#305;ld&#305; m&#305;?</li>
+      </ul>
+      <p>İyi bir <code>done.md</code>, güçlü modelin final audit kalitesini art&#305;r&#305;r.</p>
+      <p>Kötü done kayd&#305;:</p>
+      <pre><code class="language-markdown">Prompt 2 yap&#305;ld&#305;.</code></pre>
+      <p>İyi done kayd&#305;:</p>
+      <pre><code class="language-markdown">## Prompt 02 &mdash; Collection List View
+
+### Yap&#305;lanlar
+
+- admin/admin.js içinde collection list rendering fonksiyonu eklendi.
+- API client'taki listCollections fonksiyonu kullan&#305;ld&#305;.
+- Empty state ve loading state eklendi.
+
+### Değiştirilen Dosyalar
+
+- admin/admin.js
+- admin/admin.css
+
+### Testler
+
+- node --check admin/admin.js: geçti
+- npm test: geçti
+
+### Riskler
+
+- Manuel taray&#305;c&#305; testi henüz yap&#305;lmad&#305;.</code></pre>
+      <hr>
+    </section>
+
+    <!-- Bölüm 14 -->
+    <section id="bolum-14">
+      <h2>14. Lokal Model İçin Scope Nas&#305;l Küçültülür?</h2>
+      <p>Lokal modelden iyi sonuç almak için işi küçültmek gerekir.</p>
+      <p>Kötü prompt:</p>
+      <pre><code class="language-text">Admin paneli baştan sona düzelt.</code></pre>
+      <p>İyi prompt:</p>
+      <pre><code class="language-text">Sadece admin/admin.js dosyas&#305;nda listCollections API çağr&#305;s&#305;n&#305; kullanan
+loadCollections fonksiyonunu ekle.
+UI rendering yapma.
+Backend dosyalar&#305;na dokunma.
+Test olarak node --check admin/admin.js çal&#305;şt&#305;r.
+Sonucu notes/done.md dosyas&#305;na yaz.</code></pre>
+      <p>Daha iyi prompt:</p>
+      <pre><code class="language-text">Sadece şu üç fonksiyonu ekle:
+
+1. normalizeCollection(raw)
+2. listCollections()
+3. setCollectionsState(collections)
+
+Başka UI fonksiyonu yazma.
+Var olan API endpointlerini değiştirme.
+node --check admin/admin.js çal&#305;şt&#305;r.</code></pre>
+      <hr>
+    </section>
+
+    <!-- Bölüm 15 -->
+    <section id="bolum-15">
+      <h2>15. S&#305;k Yap&#305;lan Hatalar</h2>
+      <h3>Hata 1 &mdash; Plan yazd&#305;rmadan kod yazd&#305;rmak</h3>
+      <p>Sonuç:</p>
+      <ul>
+        <li>Model h&#305;zl&#305; başlar ama mimariyi kaç&#305;r&#305;r.</li>
+        <li>Kapsam büyür.</li>
+        <li>Sonradan düzeltme maliyeti artar.</li>
+      </ul>
+      <p>Çözüm:</p>
+      <ul>
+        <li>Önce plan.</li>
+        <li>Sonra prompt paketleri.</li>
+        <li>En son lokal execution.</li>
+      </ul>
+      <h3>Hata 2 &mdash; Ayn&#305; session içinde çok prompt çal&#305;şt&#305;rmak</h3>
+      <p>Sonuç:</p>
+      <ul>
+        <li>Context window şiser.</li>
+        <li>Model eski varsay&#305;mlara tak&#305;l&#305;r.</li>
+        <li>Hatalar bir sonraki ad&#305;ma taş&#305;n&#305;r.</li>
+      </ul>
+      <p>Çözüm:</p>
+      <ul>
+        <li>Her prompt için yeni session.</li>
+        <li>Bilgi transferi repository ve <code>done.md</code> üzerinden.</li>
+      </ul>
+      <h3>Hata 3 &mdash; done.md istememek</h3>
+      <p>Sonuç:</p>
+      <ul>
+        <li>Final audit zorlaş&#305;r.</li>
+        <li>Agent'&#305;n gerçekten ne yapt&#305;ğ&#305; belirsizleşir.</li>
+      </ul>
+      <p>Çözüm:</p>
+      <ul>
+        <li>Her promptta done.md format&#305; zorunlu olsun.</li>
+      </ul>
+      <h3>Hata 4 &mdash; Test komutu eklememek</h3>
+      <p>Sonuç:</p>
+      <ul>
+        <li>&ldquo;Çal&#305;ş&#305;yor gibi görünen&rdquo; ama k&#305;r&#305;k kod üretilir.</li>
+      </ul>
+      <p>Çözüm:</p>
+      <ul>
+        <li>Her promptun sonunda test komutlar&#305; olsun.</li>
+        <li>Test çal&#305;şmadan prompt bitmiş say&#305;lmas&#305;n.</li>
+      </ul>
+      <h3>Hata 5 &mdash; Pahal&#305; modeli sadece kod yazd&#305;rmak için kullanmak</h3>
+      <p>Sonuç:</p>
+      <ul>
+        <li>Token maliyeti artar.</li>
+        <li>Rate limit'e tak&#305;lma ihtimali yükselir.</li>
+        <li>As&#305;l değerli olan mimari analiz gücü boşa harcan&#305;r.</li>
+      </ul>
+      <p>Çözüm:</p>
+      <ul>
+        <li>Pahal&#305; model: plan, prompt, audit.</li>
+        <li>Lokal model: uygulama.</li>
+      </ul>
+      <hr>
+    </section>
+
+    <!-- Bölüm 16 -->
+    <section id="bolum-16">
+      <h2>16. Bu Workflow Ne Zaman Kullan&#305;lmal&#305;?</h2>
+      <p>Kullan&#305;lmal&#305;:</p>
+      <ul>
+        <li>Çok dosyal&#305; refactoring yaparken</li>
+        <li>Büyük feature geliştirirken</li>
+        <li>RAG, agent, admin panel, API refactor gibi katmanl&#305; işlerde</li>
+        <li>Token maliyeti önemliyse</li>
+        <li>Rate limit geliştirmeyi yavaşlat&#305;yorsa</li>
+        <li>Lokal model altyap&#305;n&#305;z varsa</li>
+        <li>Her ad&#305;m&#305; testlerle doğrulayabiliyorsan&#305;z</li>
+      </ul>
+      <p>Kullan&#305;lmayabilir:</p>
+      <ul>
+        <li>Tek sat&#305;rl&#305;k bug fix için</li>
+        <li>Çok küçük UI metin değişikliği için</li>
+        <li>Test altyap&#305;s&#305; hiç yoksa</li>
+        <li>Repository çok dağ&#305;n&#305;ksa ve önce insan eliyle toparlanmas&#305; gerekiyorsa</li>
+      </ul>
+      <p>Ama küçük işler için bile bu yöntemin mini versiyonu kullan&#305;labilir:</p>
+      <pre><code class="language-text">
+1. Güçlü modele mini plan yazd&#305;r.
+2. Lokal modele tek prompt ver.
+3. Test et.
+4. Commit al.
+5. Güçlü modele h&#305;zl&#305; review yapt&#305;r.</code></pre>
+      <hr>
+    </section>
+
+    <!-- Bölüm 17 -->
+    <section id="bolum-17">
+      <h2>17. RAG Backend Projesinden Ç&#305;kan Dersler</h2>
+      <p>Bu yöntem RAG Backend projesinde özellikle şu noktalarda faydal&#305; oldu:</p>
+      <ol>
+        <li><strong>Multi-collection refactoring daha yönetilebilir hale geldi.</strong> Büyük mimari değişiklikler tek seferde değil, registry, API, UI, test ve audit gibi parçalara bölündü.</li>
+        <li><strong>Admin panel değişikliklerinde scope kontrolü sağland&#305;.</strong> Lokal modelin backend dosyalar&#305;na dokunmas&#305; engellendi.</li>
+        <li><strong>Token tüketimi azalt&#305;ld&#305;.</strong> Yüksek kapasiteli model tüm kodlama detaylar&#305; için değil, kritik planlama ve audit için kullan&#305;ld&#305;.</li>
+        <li><strong>Hatalar daha erken yakaland&#305;.</strong> Her prompt sonras&#305; test ve git diff kontrolü yap&#305;ld&#305;ğ&#305; için hata büyümeden görüldü.</li>
+        <li><strong>Model ç&#305;kt&#305;s&#305; izlenebilir hale geldi.</strong> <code>done.md</code> sayesinde hangi agent&#305;n ne yapt&#305;ğ&#305; sonradan incelenebildi.</li>
+      </ol>
+      <hr>
+    </section>
+
+    <!-- Bölüm 18 -->
+    <section id="bolum-18">
+      <h2>18. K&#305;sa Kontrol Listesi</h2>
+      <h3>Her iş başlamadan önce:</h3>
+      <ul>
+        <li><input type="checkbox" disabled> Plan dosyas&#305; var m&#305;?</li>
+        <li><input type="checkbox" disabled> Prompt dosyas&#305; var m&#305;?</li>
+        <li><input type="checkbox" disabled> Promptlar cold start çal&#305;ş&#305;yor mu?</li>
+        <li><input type="checkbox" disabled> Hard rules aç&#305;k m&#305;?</li>
+        <li><input type="checkbox" disabled> Test komutlar&#305; var m&#305;?</li>
+        <li><input type="checkbox" disabled> done.md format&#305; tan&#305;ml&#305; m&#305;?</li>
+        <li><input type="checkbox" disabled> Git temiz mi?</li>
+        <li><input type="checkbox" disabled> Yeni branch aç&#305;ld&#305; m&#305;?</li>
+      </ul>
+      <h3>Her prompt sonras&#305;:</h3>
+      <ul>
+        <li><input type="checkbox" disabled> Agent sadece izin verilen dosyalara dokundu mu?</li>
+        <li><input type="checkbox" disabled> Testler çal&#305;şt&#305; m&#305;?</li>
+        <li><input type="checkbox" disabled> Test sonuçlar&#305; kaydedildi mi?</li>
+        <li><input type="checkbox" disabled> done.md güncellendi mi?</li>
+        <li><input type="checkbox" disabled> Git diff incelendi mi?</li>
+        <li><input type="checkbox" disabled> Commit al&#305;nd&#305; m&#305;?</li>
+        <li><input type="checkbox" disabled> Yeni prompt için yeni session aç&#305;ld&#305; m&#305;?</li>
+      </ul>
+      <h3>Final audit sonras&#305;:</h3>
+      <ul>
+        <li><input type="checkbox" disabled> Plan ile gerçek kod uyumlu mu?</li>
+        <li><input type="checkbox" disabled> Eksik acceptance criteria var m&#305;?</li>
+        <li><input type="checkbox" disabled> Scope d&#305;ş&#305; değişiklik var m&#305;?</li>
+        <li><input type="checkbox" disabled> Tüm testler geçiyor mu?</li>
+        <li><input type="checkbox" disabled> Follow-up prompt gerekiyor mu?</li>
+        <li><input type="checkbox" disabled> Merge karar&#305; güvenli mi?</li>
+      </ul>
+      <hr>
+    </section>
+
+    <!-- Bölüm 19 -->
+    <section id="bolum-19">
+      <h2>19. En K&#305;sa Özet</h2>
+      <p>Bu yöntemi tek paragrafta şöyle özetleyebiliriz:</p>
+      <blockquote><p>Büyük kod değişikliklerinde yüksek kapasiteli ücretli modeli doğrudan kod yazd&#305;rmak için değil, planlama, prompt üretimi ve kalite kontrol için kullan&#305;yorum. Plan&#305; küçük, bağ&#305;ms&#305;z ve cold start çal&#305;şabilecek promptlara böldürüyorum. Bu promptlar&#305; lokal coding agentlara temiz context ile s&#305;rayla uygulat&#305;yorum. Her ad&#305;m test ediliyor, <code>done.md</code> dosyas&#305;na raporlan&#305;yor ve commitleniyor. Tüm ad&#305;mlar bitince güçlü model plan, promptlar, done loglar&#305; ve git diff üzerinden final audit yap&#305;yor. Eksik varsa yeni promptlar üretiyor; eksik yoksa branch merge ediliyor.</p></blockquote>
+      <hr>
+    </section>
+
+    <!-- Bölüm 20 -->
+    <section id="bolum-20">
+      <h2>20. Son Söz</h2>
+      <p>Bu workflow'un başar&#305;s&#305; model seçiminden çok süreç disiplinine bağl&#305;d&#305;r.</p>
+      <p>Küçük modeller çoğu zaman &ldquo;yetersiz&rdquo; olduklar&#305; için değil, onlara büyük, belirsiz ve denetlenmeyen işler verildiği için başar&#305;s&#305;z olur. İşi küçük parçalara böler, her parçaya net kurallar koyar, test ve log zorunluluğu eklerseniz lokal modeller oldukça verimli hale gelir.</p>
+      <p>Benim için en önemli ders şu oldu:</p>
+      <blockquote><p><strong>Context pahal&#305;d&#305;r. Dikkat de pahal&#305;d&#305;r. Bu yüzden ikisini de bilinçli yönetmek gerekir.</strong></p></blockquote>
+      <p>Pahal&#305; modeli her şeyi yapan bir sihirli araç gibi değil, doğru zamanda devreye giren bir mimar ve denetçi gibi kullanmak; lokal modeli ise iyi tan&#305;mlanm&#305;ş işleri uygulayan bir execution arac&#305; olarak konumland&#305;rmak, büyük projelerde hem maliyeti düşürür hem de kontrolü art&#305;r&#305;r.</p>
+      <p><em>Bu ders notu, RAG Backend projesinde kullan&#305;lan gerçek bir hybrid LLM coding workflow deneyiminden yola ç&#305;karak haz&#305;rlanm&#305;şt&#305;r.</em></p>
+      <hr>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p>&copy; 2026 &middot; <a href="https://github.com/anomalyco/vanilla-rag-backend" target="_blank" rel="noopener">GitHub'da görüntüle</a></p>
+  </footer>
+
+  <button class="back-to-top" id="back-to-top" aria-label="Yukar&#305; ç&#305;k">&#8593;</button>
+
+</div>
+<script src="script.js"></script>
+</body>
+</html>

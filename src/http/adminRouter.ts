@@ -108,6 +108,17 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     chatModel: z.string().trim().min(1).optional(),
   }).strict();
 
+  router.get("/collections/:collectionId", requireRegistry, async (req, res, next) => {
+    try {
+      const collectionId = req.params.collectionId as string;
+      const context = res.locals.requestContext as RequestContext;
+      const collection = await requireVisibleCollection(context, collectionId);
+      res.json({ collection });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.patch("/collections/:collectionId", requireRegistry, async (req, res, next) => {
     try {
       const collectionId = req.params.collectionId as string;

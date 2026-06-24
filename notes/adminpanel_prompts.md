@@ -805,3 +805,689 @@ Final response format:
 - Explicit confirmation whether backend files were untouched
 - Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
 ```
+
+## Prompt 10 - API Client ve Error/Toast Dayanikliligi
+
+```text
+Repo: C:\Codes\Vanilla Rag Backend
+
+You are a coding agent working in a cold-start session. Your task is ONLY Prompt 10 from notes/adminpanel_prompts.md.
+
+Hard rules:
+- Only edit files under admin/.
+- Do not edit backend files.
+- Do not add or change endpoints.
+- Keep the current static admin app shape.
+- Before editing, read:
+  - notes/adminpanel_plan.md
+  - notes/adminpanel_done.md
+  - admin/index.html
+  - admin/admin.js
+  - admin/admin.css
+  - src/http/errors.ts
+
+Why this prompt exists:
+- The 2026-06-24 audit found Prompt 01 only partially complete.
+- `apiRequest` handles JSON errors but still tries `JSON.parse(text)` for non-JSON response bodies.
+- Error/toast rendering does not consistently show `code`, `requestId`, and `details.issues`.
+
+Implement only this package:
+1. Harden `apiRequest`:
+   - Return `null` for HTTP 204.
+   - Return `null` for empty response bodies.
+   - Parse JSON only when the content type is JSON.
+   - For non-JSON successful responses, return the text body or `{ text }` consistently.
+   - For non-JSON failed responses, throw a normalized error with `status`, `code`, `message`, `requestId`, `details`, and `issues`.
+   - If JSON parsing fails, throw a normalized client error such as `RESPONSE_PARSE_ERROR`; do not mislabel it as `NETWORK_ERROR`.
+   - Continue reading Zod issues from `data.details?.issues`.
+2. Add a small safe DOM helper for rendering API errors:
+   - Show `code`, `message`, optional `requestId`, and optional `details.issues`.
+   - Use `textContent` / DOM nodes. Do not inject backend text with `innerHTML`.
+3. Improve `showToast` or add a companion helper so long error messages and issue lists are readable.
+4. Replace any admin JS `innerHTML` usage that is easy and safe to replace in this prompt, especially empty-state templates. Static developer-owned HTML can remain only if replacing it would expand scope too much.
+5. Do not touch playground success rendering, job monitor polling, health dashboard mapping, or editor payload diff in this prompt. Those have their own follow-up prompts.
+
+Validation commands to run:
+node --check admin/admin.js
+npm.cmd run build
+rg -n "/rag/query|/rag/retrieve" admin
+rg -n "data\\.issues" admin/admin.js
+
+Manual tests to report:
+1. Open http://localhost:3010/admin/.
+2. Trigger a collection load failure if possible and verify code/message/requestId/issues are readable.
+3. Verify normal collection loading still works.
+4. Verify no legacy endpoint strings are introduced.
+
+Final response format:
+- Changed files
+- API/error behavior implemented
+- Commands run and results
+- Manual test steps and expected results
+- Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
+```
+
+## Prompt 11 - Editor PATCH Payload Diff ve Description Clear
+
+```text
+Repo: C:\Codes\Vanilla Rag Backend
+
+You are a coding agent working in a cold-start session. Your task is ONLY Prompt 11 from notes/adminpanel_prompts.md.
+
+Hard rules:
+- Only edit files under admin/.
+- Do not edit backend schemas or backend routers.
+- Do not add endpoints.
+- Preserve createCollectionSchema and updateCollectionSchema compatibility.
+- Before editing, read:
+  - notes/adminpanel_plan.md
+  - notes/adminpanel_done.md
+  - admin/index.html
+  - admin/admin.js
+  - src/http/adminRouter.ts
+  - src/http/errors.ts
+
+Why this prompt exists:
+- The 2026-06-24 audit found Prompt 03 partially complete.
+- Current update payload sends all non-empty fields instead of only changed fields.
+- Current update payload sends `description: null` whenever the field is empty, even if the original value was empty or unknown.
+
+Implement only this package:
+1. Store an initial editor snapshot when `setupEditorTab(col)` fills the form.
+   - Include editable fields: displayName, description, sourcePath, ozelgeDataPath, distanceMetric, chunkSize, chunkOverlap, retrievalK, retrievalDistanceThreshold, embeddingModel, chatModel.
+   - Use normalized comparable values so `0` remains distinct from empty.
+2. Keep create payload behavior:
+   - `displayName` required.
+   - Empty optional text fields omitted.
+   - Valid numeric `0` values preserved where schema allows them.
+3. Fix update payload behavior:
+   - Send only fields that actually changed from the initial snapshot.
+   - Send `description: null` only when an existing non-empty description is intentionally cleared.
+   - If original description was empty/missing and current description is empty, omit description.
+   - Do not send empty strings, `undefined`, `NaN`, or unknown keys.
+4. If update mode has no changes, do not call PATCH. Show a short info toast and keep the inspector open.
+5. Keep current client-side validation rules:
+   - positive integer chunkSize and retrievalK
+   - nonnegative integer chunkOverlap
+   - nonnegative number retrievalDistanceThreshold
+   - chunkOverlap < chunkSize when both are present
+   - distanceMetric in `l2`, `cosine`, `ip`
+6. Keep backend issue rendering from `details.issues`.
+
+Validation commands to run:
+node --check admin/admin.js
+npm.cmd run build
+
+Manual tests to report:
+1. Create collection with only displayName sends only displayName.
+2. Update without changing any field sends no PATCH and shows an info toast.
+3. Change only retrievalDistanceThreshold to 0 and verify payload preserves 0.
+4. Change only chunkOverlap to 0 and verify payload preserves 0.
+5. Clear an existing non-empty description and verify payload sends `description: null`.
+6. Save an originally empty description unchanged and verify description is omitted.
+
+Final response format:
+- Changed files
+- Payload diff behavior implemented
+- Commands run and results
+- Manual test steps and expected results
+- Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
+```
+
+## Prompt 12 - Readiness ve Playground Capability State Stabilizasyonu
+
+```text
+Repo: C:\Codes\Vanilla Rag Backend
+
+You are a coding agent working in a cold-start session. Your task is ONLY Prompt 12 from notes/adminpanel_prompts.md.
+
+Hard rules:
+- Only edit files under admin/.
+- Do not add or change backend endpoints.
+- Do not expect collection readiness to return a `blockers` array.
+- Do not implement playground success/error rendering in this prompt; Prompt 13 owns that.
+- Before editing, read:
+  - notes/adminpanel_plan.md
+  - notes/adminpanel_done.md
+  - admin/index.html
+  - admin/admin.js
+  - src/http/ragRouter.ts
+
+Why this prompt exists:
+- The 2026-06-24 audit found Prompt 04 partially complete.
+- Mode buttons can keep disabled styling after becoming enabled.
+- `#btnPgRun` is not capability-driven.
+- `state.selectedReadiness` can stay stale after create mode, collection change, or readiness fetch failure.
+
+Implement only this package:
+1. Add a small reset helper for readiness/playground state:
+   - Clear `state.selectedReadiness` when opening create mode.
+   - Clear or reset readiness UI before fetching a different collection.
+   - Clear playground result to a neutral placeholder when changing selected collection.
+2. Avoid duplicate readiness fetches:
+   - Opening an existing collection should fetch readiness once.
+   - Selecting the Readiness tab should fetch readiness if needed or explicitly refresh when selected.
+3. Improve `updatePlaygroundCapabilityState()`:
+   - Update retrieve/query mode buttons.
+   - Remove disabled visual classes when re-enabling.
+   - Add `title` or visible helper reason when disabled.
+   - Update `#btnPgRun` disabled/title state for the current mode.
+4. On playground mode switch:
+   - Update `state.playgroundMode`.
+   - Update active mode styles.
+   - Re-run capability state so `#btnPgRun` matches the selected mode.
+5. On readiness fetch failure:
+   - Keep inspector open.
+   - Show the error inside the readiness tab.
+   - Clear `state.selectedReadiness`.
+   - Disable playground run with a clear reason.
+6. If readiness contains `activeJob`, merge it into known jobs with the selected collection id/name.
+
+Validation commands to run:
+node --check admin/admin.js
+npm.cmd run build
+
+Manual tests to report:
+1. Open an unindexed collection and verify Retrieve/Query mode buttons and Run are disabled with a reason.
+2. Open a ready collection after an unready one and verify disabled styling is removed.
+3. Switch retrieve/query modes and verify Run button state follows capabilities.
+4. Open New Collection and verify old readiness/playground state is gone.
+5. Force readiness failure if possible and verify stale readiness is not used.
+
+Final response format:
+- Changed files
+- Readiness/capability state behavior implemented
+- Commands run and results
+- Manual test steps and expected results
+- Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
+```
+
+## Prompt 13 - Playground Retrieve/Query Render Tamamlama
+
+```text
+Repo: C:\Codes\Vanilla Rag Backend
+
+You are a coding agent working in a cold-start session. Your task is ONLY Prompt 13 from notes/adminpanel_prompts.md.
+
+Hard rules:
+- Only edit files under admin/.
+- Do not change RAG endpoints.
+- Do not send requests if question is empty.
+- Use readiness capabilities before enabling or running retrieve/query.
+- Render backend text with `textContent` or safe DOM nodes, not raw `innerHTML`.
+- Before editing, read:
+  - notes/adminpanel_plan.md
+  - notes/adminpanel_done.md
+  - admin/index.html
+  - admin/admin.js
+  - src/http/ragRouter.ts
+  - src/rag.ts
+
+Why this prompt exists:
+- The 2026-06-24 audit found Prompt 05 incomplete.
+- `runPlayground()` calls `renderRetrieveResult`, `renderQueryResult`, and `renderPlaygroundError`, but these functions are not defined.
+
+Use existing endpoints:
+POST /v1/rag/collections/:collectionId/retrieve
+Body: { "question": string, "k"?: number }
+
+POST /v1/rag/collections/:collectionId/query
+Body: { "question": string }
+
+Implement only this package:
+1. Define `renderSourceFields(source)` or equivalent:
+   - Show sourcePath, sourceType, chunkIndex, ozelgeId, sayi, tarih, konu, distanceScore, and content preview when present.
+   - Use safe DOM nodes.
+   - Long content should wrap and not break layout.
+2. Define `renderRetrieveResult(data)`:
+   - Show question, k, sourceCount, distanceScoreThreshold, collectionDisplayName, activeVersion.
+   - Show a readable sources list.
+   - Optional: include raw JSON in a collapsed `<details>` element using textContent.
+3. Define `renderQueryResult(data)`:
+   - Show answer prominently.
+   - Show distanceScoreThreshold, collectionDisplayName, activeVersion.
+   - Show sources/citations list.
+   - Optional: include raw JSON in a collapsed `<details>` element using textContent.
+4. Define `renderPlaygroundError(error)`:
+   - Show code, message, requestId, and details when present.
+   - Friendly messages for:
+     - NO_RELEVANT_CONTEXT
+     - ANSWER_NOT_IN_RETRIEVED_CONTEXT
+     - COLLECTION_INDEXING
+     - COLLECTION_NOT_READY
+     - MODEL_BACKPRESSURE
+     - RATE_LIMIT_EXCEEDED
+     - EMPTY_MODEL_RESPONSE
+     - DISALLOWED_FALLBACK_ANSWER
+5. Ensure `runPlayground()`:
+   - Trims question for validation.
+   - Sends retrieve body `{ question, k? }` and query body `{ question }`.
+   - Does not include `k` when there is no k input/value.
+   - Restores button loading state in `finally`.
+6. After implementation, verify no referenced render function is undefined.
+
+Validation commands to run:
+node --check admin/admin.js
+npm.cmd run build
+rg -n "renderRetrieveResult|renderQueryResult|renderPlaygroundError|renderSourceFields" admin/admin.js
+
+Manual tests to report:
+1. Ready collection + Retrieve question shows metadata and source list.
+2. Ready collection + Query question shows answer and sources.
+3. Empty question makes no API request.
+4. No-context/RAG error shows friendly error panel, not a runtime ReferenceError.
+
+Final response format:
+- Changed files
+- Playground render behavior implemented
+- Commands run and results
+- Manual test steps and expected results
+- Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
+```
+
+## Prompt 14 - Job Monitor Polling Contract Fix
+
+```text
+Repo: C:\Codes\Vanilla Rag Backend
+
+You are a coding agent working in a cold-start session. Your task is ONLY Prompt 14 from notes/adminpanel_prompts.md.
+
+Hard rules:
+- Only edit files under admin/.
+- Do not add GET /v1/admin/jobs.
+- Do not add or change backend endpoints.
+- The backend has no job listing endpoint.
+- The Job Monitor may only track jobs observed by this browser/admin session.
+- Do not change Job Monitor table layout in this prompt unless a tiny adjustment is required. Prompt 15 owns render completeness.
+- Before editing, read:
+  - notes/adminpanel_plan.md
+  - notes/adminpanel_done.md
+  - admin/index.html
+  - admin/admin.js
+  - src/http/adminRouter.ts
+  - src/collections/types.ts
+
+Why this prompt exists:
+- The 2026-06-24 audit found Prompt 06 partially complete.
+- `loadJobs()` polls `GET /v1/admin/jobs/:jobId`, but reads `data.status` instead of `data.job.status`.
+- `deleteCollection()` accidentally contains a duplicate job-table rendering block.
+
+Use existing endpoints:
+POST /v1/admin/collections/:collectionId/reindex
+GET /v1/admin/jobs/:jobId
+POST /v1/admin/jobs/:jobId/cancel
+
+Implement only this package:
+1. Remove the accidental duplicate job-rendering block inside `deleteCollection()`.
+   - `deleteCollection()` should only delete, toast, reload collections, close inspector, and reset button loading.
+2. Fix `loadJobs()` to read the actual response shape:
+   - `const job = data?.job`
+   - Merge `job.status`, `targetPhysicalCollection`, `targetVersion`, `targetEmbeddingModel`, `startedAt`, `finishedAt`, `error`, `documentCount`, `chunkCount`, `createdAt`, `updatedAt`.
+3. Fix `rememberJob(job, collection)`:
+   - Merge new fields into existing known job instead of replacing useful existing fields with nulls.
+   - Store `collectionId` from `job.collectionId` first, then fallback to selected collection id.
+   - Store collection display name snapshot when available.
+   - Preserve valid zero counts using `??`, not `||`.
+4. Handle polling 404:
+   - Mark local job as `notFound` or attach a local error message, or keep it removable.
+   - Do not silently make the UI look fresh if the job is inaccessible.
+5. Improve `cancelJob(jobId)` behavior:
+   - POST cancel endpoint.
+   - Reload jobs.
+   - Reload collections.
+   - If selected collection is open, refresh readiness.
+6. Improve `reindexCollection()` error behavior for `409 COLLECTION_INDEX_ALREADY_RUNNING`:
+   - Show a specific message.
+   - Refresh readiness and jobs if possible.
+7. Keep real statuses only:
+   - queued
+   - running
+   - succeeded
+   - failed
+   - cancelled
+   - If you add a local-only inaccessible/notFound marker, make it visually distinct and do not confuse it with backend status.
+
+Validation commands to run:
+node --check admin/admin.js
+npm.cmd run build
+rg -n "data\\.status|data\\.updatedAt|data\\.finishedAt|data\\.chunkCount|data\\.documentCount" admin/admin.js
+
+Manual tests to report:
+1. Start re-index and verify the job is remembered.
+2. Poll a known job and verify status updates from `data.job.status`.
+3. Verify target physical collection/version are stored in localStorage.
+4. Cancel queued/running job and verify jobs, collections, and readiness reload.
+5. Duplicate re-index during active job shows a specific 409 message.
+
+Final response format:
+- Changed files
+- Job polling/state behavior implemented
+- Commands run and results
+- Manual test steps and expected results
+- Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
+```
+
+## Prompt 15 - Job Monitor Rendering Completeness
+
+```text
+Repo: C:\Codes\Vanilla Rag Backend
+
+You are a coding agent working in a cold-start session. Your task is ONLY Prompt 15 from notes/adminpanel_prompts.md.
+
+Hard rules:
+- Only edit files under admin/.
+- Do not add GET /v1/admin/jobs.
+- Do not add or change backend endpoints.
+- The Job Monitor may only track jobs observed by this browser/admin session.
+- Do not show fake deterministic progress.
+- Before editing, read:
+  - notes/adminpanel_plan.md
+  - notes/adminpanel_done.md
+  - admin/index.html
+  - admin/admin.js
+  - admin/admin.css
+  - src/collections/types.ts
+
+Why this prompt exists:
+- Prompt 14 fixes polling/state contract.
+- The 2026-06-24 audit found the Job Monitor UI still does not show all planned job information.
+
+Implement only this package:
+1. Update `admin/index.html` job table header if needed.
+2. Ensure the jobs table is horizontally scrollable on small screens.
+   - Use the existing `.table-responsive` CSS class or an equivalent wrapper.
+3. Update `renderJobs()` to show:
+   - short job id in monospace with full id in `title`
+   - collection display name and collection id when available
+   - status badge
+   - target version
+   - target physical collection
+   - target embedding model when available
+   - document count and chunk count, preserving 0
+   - created, updated, started, and finished times when available
+   - failed/error or local inaccessible message when available
+   - actions
+4. Actions:
+   - Cancel only for `queued` or `running`.
+   - Refresh single job if small and safe, otherwise refresh all known jobs.
+   - Remove from local monitor for terminal or inaccessible jobs.
+   - Buttons must have `type="button"`, clear text or `aria-label`, and title where useful.
+5. Empty state must clearly say:
+   - "This monitor tracks jobs observed by this browser/admin session."
+6. Use safe DOM nodes for all job data.
+   - No backend text via `innerHTML`.
+7. Do not implement fake percent/progress bars. Use status/timestamps/activity text only.
+
+Validation commands to run:
+node --check admin/admin.js
+npm.cmd run build
+
+Manual tests to report:
+1. Empty Job Monitor shows the browser-session limitation text.
+2. Re-index job appears with target physical collection/version.
+3. Counts and timestamps render when present.
+4. Failed job shows error text without breaking layout.
+5. Mobile viewport can scroll the table horizontally.
+
+Final response format:
+- Changed files
+- Job rendering behavior implemented
+- Commands run and results
+- Manual test steps and expected results
+- Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
+```
+
+## Prompt 16 - System Health Dashboard Contract Fix
+
+```text
+Repo: C:\Codes\Vanilla Rag Backend
+
+You are a coding agent working in a cold-start session. Your task is ONLY Prompt 16 from notes/adminpanel_prompts.md.
+
+Hard rules:
+- Only edit files under admin/.
+- Do not change /health or /ready backend behavior.
+- Do not use /ready?strict=true for dashboard fetches.
+- Prevent overlapping health polling requests.
+- Before editing, read:
+  - notes/adminpanel_plan.md
+  - notes/adminpanel_done.md
+  - admin/index.html
+  - admin/admin.js
+  - src/app.ts
+
+Why this prompt exists:
+- The 2026-06-24 audit found Prompt 07 partially complete.
+- Details fetch failure currently prevents summary rendering.
+- `/ready?details=true` fields are partially mapped incorrectly.
+
+Use existing endpoints:
+GET /health
+GET /ready
+GET /ready?details=true
+
+Implement only this package:
+1. Refactor `loadHealth()` so summary can render even if details fetch fails.
+   - Use independent try/catch or `Promise.allSettled`.
+   - Keep overlapping request guard.
+   - Do not use strict mode.
+2. Render process health summary:
+   - status
+   - alive
+   - uptimeSec
+   - timestamp
+   - port
+3. Render readiness summary:
+   - status
+   - ready
+   - systemReadyFor
+   - overallSummary
+   - queryReady
+   - indexReady
+   - querySummary
+   - indexSummary
+4. Render dependencies correctly from actual response fields:
+   - summary `/ready` has dependencies with `ok` booleans.
+   - details `/ready?details=true` has dependencies with `ok`, latency, url/model/details/error fields.
+   - Do not expect `deps.registry.status` unless it actually exists.
+5. Render details correctly:
+   - recommendedActions
+   - blockers
+   - warnings
+   - checks with `code`, `name`, `status` (`pass`, `warn`, `fail`), `capabilities`, `message`, and details/latency when present.
+   - dataSource: path, ok/error, details such as counts/unsupported files when present.
+   - config info from top-level details fields: `chatModel`, `embeddingModel`, `chromaUrl`, `port`.
+6. Empty states:
+   - No recommended actions
+   - No blockers
+   - No warnings
+   - No checks/details available
+7. Use safe DOM nodes for all backend text.
+
+Validation commands to run:
+node --check admin/admin.js
+npm.cmd run build
+rg -n "strict=true" admin/admin.js
+
+Manual tests to report:
+1. Health view renders process/readiness/dependency cards.
+2. If details fetch fails, process/readiness summary still renders.
+3. Healthy dependencies show OK using `ok: true`.
+4. Degraded dependencies show blocker/warning/action details.
+5. Checks with `pass`, `warn`, and `fail` statuses show correct colors.
+
+Final response format:
+- Changed files
+- Health dashboard contract behavior implemented
+- Commands run and results
+- Manual test steps and expected results
+- Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
+```
+
+## Prompt 17 - UX, Accessibility ve Responsive Tamamlama
+
+```text
+Repo: C:\Codes\Vanilla Rag Backend
+
+You are a coding agent working in a cold-start session. Your task is ONLY Prompt 17 from notes/adminpanel_prompts.md.
+
+Hard rules:
+- Only edit files under admin/.
+- Do not change backend endpoints.
+- Do not do a full redesign.
+- Keep existing ids/classes used by admin/admin.js.
+- Keep the app operational.
+- Before editing, read:
+  - notes/adminpanel_plan.md
+  - notes/adminpanel_done.md
+  - admin/index.html
+  - admin/admin.js
+  - admin/admin.css
+
+Why this prompt exists:
+- The 2026-06-24 audit found Prompt 08 partially complete.
+- Some CSS helpers are defined but not used.
+- Many buttons still lack `type`, `title`, or `aria-label`.
+- Polling cleanup/page visibility behavior was not implemented.
+
+Implement only this package:
+1. Add correct `type` attributes to static buttons:
+   - refresh
+   - create collection
+   - tab buttons
+   - playground mode buttons
+   - run test
+   - reindex
+   - delete
+   - close/cancel/save should remain correct
+2. Add `title` or `aria-label` where useful:
+   - icon-only refresh
+   - close inspector
+   - dynamic job actions if not already done by Prompt 15
+3. Apply responsive wrappers/classes:
+   - Jobs table should use `.table-responsive` or equivalent.
+   - Long paths/model names/job ids should wrap or truncate predictably.
+   - Inspector remains full width on mobile and constrained on desktop.
+4. Improve disabled button reasons:
+   - Disabled run/retrieve/query/reindex/delete buttons should have a title or nearby visible helper text explaining why.
+5. Toast layout:
+   - Long messages and issue lists should wrap.
+   - Toasts should not overflow the viewport on mobile.
+6. Polling cleanup:
+   - Keep current intervals, but avoid unnecessary work while the document is hidden if small and safe.
+   - Do not add complex lifecycle code; a simple visibility guard is enough.
+7. Do not alter feature behavior beyond accessibility/responsive/polling cleanup.
+
+Validation commands to run:
+node --check admin/admin.js
+npm.cmd run build
+rg -n "/rag/query|/rag/retrieve" admin
+
+Manual tests to report:
+1. Desktop: collections, inspector, jobs, health views.
+2. Mobile viewport: collections, inspector, jobs, health views.
+3. Long job ids/paths/model names do not break layout.
+4. Keyboard tab focus is visible.
+5. Escape closes inspector.
+6. Disabled controls expose a reason via title or visible helper.
+
+Final response format:
+- Changed files
+- UX/accessibility behavior implemented
+- Commands run and results
+- Manual test steps and expected results
+- Any remaining risk
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
+```
+
+## Prompt 18 - Final Admin Panel Contract Audit
+
+```text
+Repo: C:\Codes\Vanilla Rag Backend
+
+You are a coding agent working in a cold-start session. Your task is ONLY Prompt 18 from notes/adminpanel_prompts.md.
+
+Hard rules:
+- Do not implement new features unless a tiny admin-only fix is required to pass the audit.
+- Do not edit backend files.
+- Do not revert unrelated changes.
+- If backend files have changed, report it clearly; do not undo user changes without permission.
+- Before auditing, read:
+  - notes/adminpanel_plan.md
+  - notes/adminpanel_done.md
+  - notes/adminpanel_prompts.md
+  - admin/index.html
+  - admin/admin.js
+  - admin/admin.css
+  - src/http/adminRouter.ts
+  - src/http/ragRouter.ts
+  - src/app.ts
+
+Audit requirements:
+1. Verify only admin files and notes logs/prompts were changed for admin-panel work.
+2. Verify no backend endpoint/schema/test file was modified as part of admin-only work.
+3. Verify no legacy endpoint strings are used in admin:
+   - /rag/query
+   - /rag/retrieve
+4. Verify API URLs match existing backend contracts.
+5. Verify error issues are read from `details.issues`.
+6. Verify job statuses match backend:
+   - queued
+   - running
+   - succeeded
+   - failed
+   - cancelled
+7. Verify `GET /v1/admin/jobs/:jobId` response is read from `data.job`.
+8. Verify readiness code does not expect collection readiness to return a `blockers` array.
+9. Verify Job Monitor explains the backend limitation: no job list endpoint, only observed jobs.
+10. Verify create/update payloads do not send empty strings, NaN, or unknown keys.
+11. Verify PATCH update sends only changed fields.
+12. Verify playground render functions are defined:
+   - renderRetrieveResult
+   - renderQueryResult
+   - renderPlaygroundError
+13. Verify `/health`, `/ready`, and `/ready?details=true` dashboard mapping matches `src/app.ts`.
+14. Verify details fetch failure does not suppress summary health cards.
+15. Verify dynamic backend text is rendered with safe DOM APIs.
+
+Commands to run:
+node --check admin/admin.js
+npm.cmd run build
+rg -n "/rag/query|/rag/retrieve" admin
+rg -n "renderRetrieveResult|renderQueryResult|renderPlaygroundError" admin/admin.js
+rg -n "data\\.job|data\\.status|data\\.updatedAt|data\\.chunkCount|data\\.documentCount" admin/admin.js
+git diff -- admin notes/adminpanel_done.md notes/adminpanel_prompts.md
+git status --short
+
+Optional if risk is high:
+npm.cmd test
+
+Manual test scenario summary to provide:
+1. Open http://localhost:3010/admin/
+2. Collection list or empty state appears.
+3. Create collection with displayName only.
+4. Edit only one setting and verify PATCH contains only that changed field.
+5. Clear an existing description and verify `description: null`.
+6. Open readiness for unindexed collection and verify derived blockers.
+7. Start re-index and observe job monitor polling via known job id.
+8. Cancel queued/running job if available.
+9. Run retrieve/query on a ready collection.
+10. Open health dashboard in healthy and degraded states.
+11. Trigger or observe an API error and verify code/message/requestId/issues rendering.
+
+Final response format:
+- Audit result
+- Changed files
+- Commands run and results
+- Manual test checklist
+- Residual risks
+- Explicit confirmation whether backend files were untouched
+- Before final response, append a matching entry to `notes/adminpanel_done.md` using the required format and this prompt title.
+```

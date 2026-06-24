@@ -21,16 +21,20 @@ function mapToPublicCollectionDTO(c: RagCollection) {
     readyUrl: `/v1/rag/collections/${c.id}/ready`,
     queryUrl: `/v1/rag/collections/${c.id}/query`,
     retrieveUrl: `/v1/rag/collections/${c.id}/retrieve`,
-    sourcePath: c.sourcePath,
-    ozelgeDataPath: c.ozelgeDataPath,
-    embeddingModel: c.embeddingModel,
-    chatModel: c.chatModel,
-    distanceMetric: c.distanceMetric,
-    chunkSize: c.chunkSize,
-    chunkOverlap: c.chunkOverlap,
-    retrievalK: c.retrievalK,
-    retrievalDistanceThreshold: c.retrievalDistanceThreshold,
   };
+}
+
+function createRequestAbortSignal(req: Request, res: Response): AbortSignal {
+  const controller = new AbortController();
+
+  req.on("aborted", () => controller.abort());
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      controller.abort();
+    }
+  });
+
+  return controller.signal;
 }
 
 export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedConfig = deps.runtimeConfig ?? config) {
@@ -155,11 +159,10 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
 
       const context = res.locals.requestContext as RequestContext;
       
-      const ac = new AbortController();
-      req.on("close", () => ac.abort());
+      const abortSignal = createRequestAbortSignal(req, res);
 
       const collection = await resolveCollection(req, { registry: deps.registry! }, runtimeConfig, {
-        abortSignal: ac.signal,
+        abortSignal,
         timeoutMs: runtimeConfig.ragTimeoutMs,
         logEvent: deps.logEvent,
       });
@@ -174,7 +177,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         embeddingModel: collection.activeEmbeddingModel ?? collection.embeddingModel,
         retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,
-        abortSignal: ac.signal,
+        abortSignal,
         includeDebugTimings: runtimeConfig.includeDebugTimings,
         logEvent: deps.logEvent,
       });
@@ -208,11 +211,10 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
 
       const context = res.locals.requestContext as RequestContext;
       
-      const ac = new AbortController();
-      req.on("close", () => ac.abort());
+      const abortSignal = createRequestAbortSignal(req, res);
 
       const collection = await resolveCollection(req, { registry: deps.registry! }, runtimeConfig, {
-        abortSignal: ac.signal,
+        abortSignal,
         timeoutMs: runtimeConfig.ragTimeoutMs,
         logEvent: deps.logEvent,
       });
@@ -228,7 +230,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         chatModel: collection.chatModel,
         retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,
-        abortSignal: ac.signal,
+        abortSignal,
         includeDebugTimings: runtimeConfig.includeDebugTimings,
         logEvent: deps.logEvent,
       });

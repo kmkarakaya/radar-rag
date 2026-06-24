@@ -753,6 +753,29 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(saved?.retrievalDistanceThreshold, 0.33);
   });
 
+  it("admin collection detail returns the full editable collection DTO", async () => {
+    const response = await request(`/v1/admin/collections/${createdCollection.id}`);
+    const body = await response.json() as any;
+
+    assert.equal(response.status, 200);
+    assert.equal(body.collection.id, createdCollection.id);
+    assert.equal(body.collection.displayName, "API Patched Collection");
+    assert.equal(body.collection.sourcePath, "data/api-test-updated");
+    assert.equal(body.collection.ozelgeDataPath, "data/api-test-updated-ozelge.json");
+    assert.equal(body.collection.embeddingModel, "embed-patched-http");
+    assert.equal(body.collection.chatModel, "chat-patched-http");
+    assert.equal(body.collection.distanceMetric, "ip");
+    assert.equal(body.collection.chunkSize, 321);
+    assert.equal(body.collection.chunkOverlap, 12);
+    assert.equal(body.collection.retrievalK, 11);
+    assert.equal(body.collection.retrievalDistanceThreshold, 0.33);
+    assert.deepEqual(body.collection.chromaCollectionConfiguration, {
+      hnsw: {
+        space: "ip",
+      },
+    });
+  });
+
   it("admin collection update returns 404 for an unknown collection", async () => {
     const response = await request("/v1/admin/collections/unknown-collection-404", {
       method: "PATCH",
@@ -780,6 +803,18 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(response.status, 400);
     assert.equal(body.code, "INVALID_REQUEST_BODY");
     assert.ok(Array.isArray(body.details?.issues));
+  });
+
+  it("admin collection detail is tenant-scoped and returns 403 for another tenant", async () => {
+    const response = await request(`/v1/admin/collections/${createdCollection.id}`, {
+      headers: {
+        "x-tenant-id": "other-tenant",
+      },
+    });
+
+    const body = await response.json() as any;
+    assert.equal(response.status, 403);
+    assert.equal(body.code, "COLLECTION_FORBIDDEN");
   });
 
   it("admin collection update is tenant-scoped and returns 403 for another tenant", async () => {
@@ -994,9 +1029,77 @@ describe("v1 admin and rag api endpoints", () => {
       resolveReadableCollectionOverride = undefined;
     }
 
+    for (let i = 0; i < 20 && !signalCapturedInGuard?.aborted; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
     assert.ok(resolveCalled, 'resolveReadableCollectionOverride should have been called');
     assert.ok(signalCapturedInGuard, 'Signal should have been captured in guard (req.signal might be missing in this Node/Express version)');
     assert.ok(signalCapturedInGuard?.aborted, 'Captured signal should be aborted');
+  });
+
+  it("normal retrieve requests do not abort RAG work when the request body is closed", async () => {
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "normal-retrieve-signal" };
+    const activePhysicalCollection = "normal-retrieve-signal-physical";
+    readablePhysicalCollections.set(activePhysicalCollection, 3);
+
+    const created = await registry.createCollection(ctx, {
+      displayName: "Normal Signal Test",
+      sourcePath: "data/normal-signal",
+      ozelgeDataPath: "data/normal-signal.json",
+      embeddingModel: "embed-test",
+      chatModel: "chat-test",
+      distanceMetric: "cosine",
+      chunkSize: 1000,
+      chunkOverlap: 200,
+      retrievalK: 4,
+      retrievalDistanceThreshold: 0.5,
+    });
+
+    await registry.updateCollection(ctx, created.id, {
+      status: "ready",
+      activePhysicalCollection,
+      activeVersion: "v-normal-signal",
+    });
+
+    let signalAtHandler: AbortSignal | undefined;
+    let signalAbortedAfterRequestBodyClose: boolean | undefined;
+
+    resolveReadableCollectionOverride = async (req, deps) => {
+      const collection = await deps.registry.getVisibleCollection(ctx, req.params.collectionId as string);
+      assert.ok(collection);
+      return collection;
+    };
+
+    retrieveOverride = async (_question, options) => {
+      signalAtHandler = options.abortSignal;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      signalAbortedAfterRequestBodyClose = options.abortSignal?.aborted;
+
+      return {
+        distanceScoreThreshold: options.retrievalDistanceThreshold ?? -1,
+        sources: [],
+      };
+    };
+
+    try {
+      const response = await request(`/v1/rag/collections/${created.id}/retrieve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "normal signal?" }),
+      });
+      const body = await response.json() as any;
+
+      assert.equal(response.status, 200);
+      assert.equal(body.collectionId, created.id);
+    } finally {
+      retrieveOverride = undefined;
+      resolveReadableCollectionOverride = undefined;
+    }
+
+    assert.ok(signalAtHandler, "retrieve handler should receive an abort signal");
+    assert.equal(signalAtHandler?.aborted, false);
+    assert.equal(signalAbortedAfterRequestBodyClose, false);
   });
 
   // ---------------------------------------------------------------------------

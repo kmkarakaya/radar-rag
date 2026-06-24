@@ -47,10 +47,10 @@
         <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
             <h2 id="viewTitle" class="text-lg font-semibold text-slate-800">Collections</h2>
             <div class="flex items-center gap-4">
-                <button id="btnRefresh" class="p-2 text-slate-500 hover:text-indigo-600 transition-colors rounded-full hover:bg-slate-100" title="Refresh Data">
+                <button id="btnRefresh" type="button" class="p-2 text-slate-500 hover:text-indigo-600 transition-colors rounded-full hover:bg-slate-100" title="Refresh Data" aria-label="Refresh data">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11V5a8 8 0 00-16 0v12a8 8 0 008 8 8 8 0 008-8z"></path></svg>
                 </button>
-                <button id="btnCreateCollection" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2">
+                <button id="btnCreateCollection" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2" title="Create a new collection">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                     New Collection
                 </button>
@@ -68,16 +68,18 @@
 
             <!-- Jobs View -->
             <div id="view-jobs" class="view-container hidden space-y-6">
-                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <table class="w-full text-left text-sm">
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm table-responsive">
+                    <table class="w-full min-w-[1120px] text-left text-sm">
                         <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-xs font-semibold">
                             <tr>
-                                <th class="px-6 py-4">Job ID</th>
-                                <th class="px-6 py-4">Collection</th>
-                                <th class="px-6 py-4">Status</th>
-                                <th class="px-6 py-4">Version/Chunks</th>
-                                <th class="px-6 py-4">Updated</th>
-                                <th class="px-6 py-4 text-right">Actions</th>
+                                <th class="px-4 py-4">Job ID</th>
+                                <th class="px-4 py-4">Collection</th>
+                                <th class="px-4 py-4">Status</th>
+                                <th class="px-4 py-4">Target</th>
+                                <th class="px-4 py-4">Counts</th>
+                                <th class="px-4 py-4">Times</th>
+                                <th class="px-4 py-4">Error</th>
+                                <th class="px-4 py-4 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="jobsTableBody" class="divide-y divide-slate-100">
@@ -115,9 +117,9 @@
         <div class="flex-grow overflow-y-auto p-6">
             <!-- Tabs Navigation -->
             <div class="flex border-b border-slate-200 mb-6">
-                <button data-tab="ready" class="tab-btn active px-4 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">Readiness</button>
-                <button data-tab="playground" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Playground</button>
-                <button data-tab="editor" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Settings</button>
+                <button type="button" data-tab="ready" class="tab-btn active px-4 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">Readiness</button>
+                <button type="button" data-tab="playground" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Playground</button>
+                <button type="button" data-tab="editor" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Settings</button>
             </div>
 
             <!-- Tab: Readiness -->
@@ -137,17 +139,21 @@
             <!-- Tab: Playground -->
             <div id="tab-playground" class="tab-content hidden space-y-6">
                 <div class="flex gap-2 mb-4">
-                    <button data-mode="retrieve" class="mode-btn active px-3 py-1 text-xs font-bold rounded bg-indigo-600 text-white">Retrieve</button>
-                    <button data-mode="query" class="mode-btn px-3 py-1 text-xs font-bold rounded bg-slate-200 text-slate-600 hover:bg-slate-300">Query</button>
+                    <button type="button" data-mode="retrieve" class="mode-btn active px-3 py-1 text-xs font-bold rounded bg-indigo-600 text-white">Retrieve</button>
+                    <button type="button" data-mode="query" class="mode-btn px-3 py-1 text-xs font-bold rounded bg-slate-200 text-slate-600 hover:bg-slate-300">Query</button>
                 </div>
                 <div class="space-y-4">
                     <div>
                         <textarea id="pgQuestion" rows="3" class="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm" placeholder="Ask a question..."></textarea>
                     </div>
-                    <div class="flex justify-end">
-                        <button id="btnPgRun" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all shadow-sm">Run Test</button>
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                        <div class="w-full sm:w-36">
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="pgK">Retrieve K</label>
+                            <input type="number" min="1" step="1" id="pgK" class="w-full p-2 border border-slate-200 rounded-lg text-sm" placeholder="Default">
+                        </div>
+                        <button id="btnPgRun" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all shadow-sm">Run Test</button>
                     </div>
-                    <div id="pgResult" class="bg-slate-50 border border-slate-200 rounded-xl p-4 min-h-[200px] max-h-[400px] overflow-y-auto text-sm text-slate-700 whitespace-pre-wrap font-mono">
+                    <div id="pgResult" class="bg-slate-50 border border-slate-200 rounded-xl p-4 min-h-[200px] max-h-[480px] overflow-y-auto text-sm text-slate-700">
                         <span class="text-slate-400 italic">Results will appear here...</span>
                     </div>
                 </div>
@@ -229,11 +235,11 @@
         </div>
 
         <div class="p-6 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
-            <button id="btnReindex" class="bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm">
+            <button id="btnReindex" type="button" class="bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm" title="Start re-index for this collection">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11V5a8 8 0 00-16 0v12a8 8 0 008 8 8 8 0 008-8z"></path></svg>
                 Re-index Collection
             </button>
-            <button id="btnDeleteCol" class="text-red-500 hover:text-red-700 text-sm font-bold transition-colors flex items-center gap-1">
+            <button id="btnDeleteCol" type="button" class="text-red-500 hover:text-red-700 text-sm font-bold transition-colors flex items-center gap-1" title="Delete this collection">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.998-1.858L5 7m5 0v6m0-6V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                 Delete
             </button>

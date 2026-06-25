@@ -51,7 +51,7 @@ Bu problemler sonucunda daha disiplinli, parçalara ayrılmış ve denetlenebili
 
 ## 3. Yöntemin Zihinsel Modeli
 
-![1782318575121](image/egitim_icerigi/1782318575121.png)
+<img src="image/egitim_icerigi/1782318575121.png" alt="1782318575121" width="720" height="538" />
 
 ```text
 +-----------------------------------------------------------+
@@ -97,7 +97,7 @@ Bu yapı yazılım geliştirmede insan ekibine benzer:
 
 ## 4. Bu Yöntemin En Önemli Prensipleri
 
-![1782318549808](image/egitim_icerigi/1782318549808.png)
+<img src="image/egitim_icerigi/1782318549808.png" alt="1782318549808" width="724" height="543" />
 
 ### 4.1. Büyük işi küçük ve bağımsız parçalara böl
 
@@ -154,7 +154,7 @@ Bu workflow otomatik pilot değildir. İnsan geliştirici şu noktalarda aktif k
 
 ## 5. Adım Adım Hybrid LLM Coding Workflow
 
-![1782318538498](image/egitim_icerigi/1782318538498.png)
+<img src="image/egitim_icerigi/1782318538498.png" alt="1782318538498" width="724" height="543" />
 
 ### Adım 1 — Geliştirilecek işi yüksek kapasiteli modele anlat
 
@@ -427,7 +427,7 @@ Audit sonucunda iki ihtimal vardır:
 
 ## 6. Döngünün Tam Şeması
 
-![1782318515814](image/egitim_icerigi/1782318515814.png)
+<img src="image/egitim_icerigi/1782318515814.png" alt="1782318515814" width="724" height="543" />
 
 ---
 

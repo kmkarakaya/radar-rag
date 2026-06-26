@@ -369,6 +369,20 @@ describe("v1 admin and rag api endpoints", () => {
     assert.deepEqual(readyBody.activeJob, { id: activeJobId, status: "queued" });
     assert.equal(readyBody.chromaReadable, false);
     assert.equal(readyBody.chromaCount, -1);
+    assert.deepEqual(readyBody.blockers, [{
+      code: "COLLECTION_NO_ACTIVE_PHYSICAL_COLLECTION",
+      message: "No active physical collection exists. Run re-index first.",
+      recommendedAction: "Run re-index for this collection.",
+    }]);
+    assert.deepEqual(readyBody.warnings, [{
+      code: "COLLECTION_INDEX_JOB_ACTIVE",
+      message: `Index job ${activeJobId} is queued.`,
+      recommendedAction: "Wait for the current indexing job to finish before changing settings or starting another re-index.",
+    }]);
+    assert.deepEqual(readyBody.recommendedActions, [
+      "Run re-index for this collection.",
+      "Wait for the current indexing job to finish before changing settings or starting another re-index.",
+    ]);
     assert.deepEqual(readyBody.capabilities, {
       query: false,
       retrieve: false,
@@ -398,6 +412,15 @@ describe("v1 admin and rag api endpoints", () => {
     assert.deepEqual(body.activeJob, { id: activeJobId, status: "queued" });
     assert.equal(body.chromaReadable, true);
     assert.equal(body.chromaCount, 42);
+    assert.deepEqual(body.blockers, []);
+    assert.deepEqual(body.warnings, [{
+      code: "COLLECTION_INDEX_JOB_ACTIVE",
+      message: `Index job ${activeJobId} is queued.`,
+      recommendedAction: "Wait for the current indexing job to finish before changing settings or starting another re-index.",
+    }]);
+    assert.deepEqual(body.recommendedActions, [
+      "Wait for the current indexing job to finish before changing settings or starting another re-index.",
+    ]);
     assert.deepEqual(body.capabilities, {
       query: true,
       retrieve: true,
@@ -436,6 +459,20 @@ describe("v1 admin and rag api endpoints", () => {
         chatModel: "missing-chat-model",
         chatModelAvailable: false,
       });
+      assert.deepEqual(body.blockers.map((issue: any) => issue.code), [
+        "EMBED_MODEL_MISSING",
+        "CHAT_MODEL_MISSING",
+      ]);
+      assert.deepEqual(body.warnings, [{
+        code: "COLLECTION_INDEX_JOB_ACTIVE",
+        message: `Index job ${activeJobId} is queued.`,
+        recommendedAction: "Wait for the current indexing job to finish before changing settings or starting another re-index.",
+      }]);
+      assert.deepEqual(body.recommendedActions, [
+        "Pull the embedding model with: ollama pull missing-embed-model",
+        "Pull the chat model with: ollama pull missing-chat-model",
+        "Wait for the current indexing job to finish before changing settings or starting another re-index.",
+      ]);
       assert.deepEqual(body.capabilities, {
         query: false,
         retrieve: false,

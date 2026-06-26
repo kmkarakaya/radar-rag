@@ -166,7 +166,7 @@ function normalizeOllamaModelName(modelName: string): string {
   return modelName.endsWith(":latest") ? modelName.slice(0, -":latest".length) : modelName;
 }
 
-function hasConfiguredModel(availableModels: string[], configuredModel: string): boolean {
+export function hasConfiguredModel(availableModels: string[], configuredModel: string): boolean {
   const normalizedConfiguredModel = normalizeOllamaModelName(configuredModel);
   return availableModels.some(
     (availableModel) => normalizeOllamaModelName(availableModel) === normalizedConfiguredModel,

@@ -68,6 +68,8 @@ const elements = {
     jobsPageInfo: document.getElementById("jobsPageInfo"),
     healthGrid: document.getElementById("healthGrid"),
     readinessDetail: document.getElementById("readinessDetail"),
+    readinessWarnings: document.getElementById("readinessWarnings"),
+    warningList: document.getElementById("warningList"),
     btnRefresh: document.getElementById("btnRefresh"),
     btnCreateCollection: document.getElementById("btnCreateCollection"),
 
@@ -656,8 +658,27 @@ function resetReadinessAndPlayground(message) {
     elements.readinessStatusGrid.appendChild(createEl("div", "rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500", message || "Readiness has not been loaded yet."));
     clearNode(elements.blockerList);
     elements.readinessBlockers.classList.add("hidden");
+    clearNode(elements.warningList);
+    elements.readinessWarnings.classList.add("hidden");
     resetPlaygroundResult();
     updatePlaygroundCapabilityState(message || "Readiness has not been loaded yet.");
+}
+
+function renderReadinessIssueList(listElement, items) {
+    clearNode(listElement);
+    items.forEach((item) => {
+        const row = createEl("li", "list-none rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700");
+        if (isRecord(item)) {
+            row.appendChild(createEl("div", "font-semibold text-slate-800", item.code || item.name || "Issue"));
+            row.appendChild(createEl("div", "mt-1 break-all-words", item.message || stringifyForDisplay(item)));
+            if (item.recommendedAction) {
+                row.appendChild(createEl("div", "mt-1 break-all-words text-slate-500", item.recommendedAction));
+            }
+        } else {
+            appendText(row, stringifyForDisplay(item));
+        }
+        listElement.appendChild(row);
+    });
 }
 
 async function updateReadinessTab() {
@@ -678,26 +699,12 @@ async function updateReadinessTab() {
         renderApiErrorContent(elements.readinessStatusGrid, error, "Failed to load readiness");
         clearNode(elements.blockerList);
         elements.readinessBlockers.classList.add("hidden");
+        clearNode(elements.warningList);
+        elements.readinessWarnings.classList.add("hidden");
         updatePlaygroundCapabilityState("Readiness failed to load.");
     } finally {
         state.isLoading.readiness = false;
     }
-}
-
-function deriveReadinessBlockers(readiness) {
-    if (!readiness) return [];
-    const blockers = [];
-    if (!readiness.hasActivePhysicalCollection) blockers.push("No active physical collection exists. Run re-index first.");
-    if (!readiness.chromaReadable) blockers.push("Chroma collection is not readable.");
-    if (readiness.modelAvailability?.embeddingModel && !readiness.modelAvailability.embeddingModelAvailable) {
-        blockers.push(`Embedding model "${readiness.modelAvailability.embeddingModel}" is not available.`);
-    }
-    if (readiness.modelAvailability?.chatModel && !readiness.modelAvailability.chatModelAvailable) {
-        blockers.push(`Chat model "${readiness.modelAvailability.chatModel}" is not available.`);
-    }
-    if (readiness.capabilities?.retrieve === false) blockers.push("Retrieve capability is disabled.");
-    if (readiness.capabilities?.query === false) blockers.push("Query capability is disabled.");
-    return blockers;
 }
 
 function createReadinessRow(label, value, ok) {
@@ -732,13 +739,22 @@ function renderReadinessData(readiness) {
         elements.readinessStatusGrid.appendChild(active);
     }
 
-    const blockers = deriveReadinessBlockers(readiness);
-    clearNode(elements.blockerList);
+    const blockers = Array.isArray(readiness.blockers) ? readiness.blockers : [];
     if (blockers.length > 0) {
         elements.readinessBlockers.classList.remove("hidden");
-        blockers.forEach((message) => elements.blockerList.appendChild(createEl("li", "", message)));
+        renderReadinessIssueList(elements.blockerList, blockers);
     } else {
         elements.readinessBlockers.classList.add("hidden");
+        clearNode(elements.blockerList);
+    }
+
+    const warnings = Array.isArray(readiness.warnings) ? readiness.warnings : [];
+    if (warnings.length > 0) {
+        elements.readinessWarnings.classList.remove("hidden");
+        renderReadinessIssueList(elements.warningList, warnings);
+    } else {
+        elements.readinessWarnings.classList.add("hidden");
+        clearNode(elements.warningList);
     }
 
     updatePlaygroundCapabilityState();

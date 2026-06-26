@@ -10,8 +10,8 @@
     "semantic_hash": "990e827940a6196eb3aea4c6e23a605c"
   },
   "admin/admin.js": {
-    "mtime": 1782511294.544859,
-    "ast_hash": "af4fa2d21af5bc8af3d6d82793e8eb18",
+    "mtime": 1782513979.6078947,
+    "ast_hash": "5eff164aad3ed80347e1e59b479197e3",
     "semantic_hash": ""
   },
   "benchmark/benchmark.json": {
@@ -45,9 +45,9 @@
     "semantic_hash": "8229bba76e1581c7e81d2f3cb9831317"
   },
   "src/app.ts": {
-    "mtime": 1782505546.7587657,
-    "ast_hash": "d1b5e2f1ad97371408a3ac50bbf0cc0d",
-    "semantic_hash": "d1b5e2f1ad97371408a3ac50bbf0cc0d"
+    "mtime": 1782513458.3705082,
+    "ast_hash": "5933e7f6cf97a526e7116567aa614bc9",
+    "semantic_hash": ""
   },
   "src/collections/chromaCollections.ts": {
     "mtime": 1782505546.7597718,
@@ -90,9 +90,9 @@
     "semantic_hash": "eac852577db363091ac43f7e659fc7fd"
   },
   "src/http/ragRouter.ts": {
-    "mtime": 1782505546.7632773,
-    "ast_hash": "0751971cc4a8d34a520de6b806c1937b",
-    "semantic_hash": "0751971cc4a8d34a520de6b806c1937b"
+    "mtime": 1782513258.6778798,
+    "ast_hash": "8921ae48fd9b6b35af13876d23679d86",
+    "semantic_hash": ""
   },
   "src/http/rateLimit.ts": {
     "mtime": 1782505546.7642832,
@@ -160,9 +160,9 @@
     "semantic_hash": "da6250907e35b7bdb7408372d4adca0d"
   },
   "src/rag.ts": {
-    "mtime": 1782505546.7718349,
-    "ast_hash": "ba103d2eb3a77ad2a936458086d61a74",
-    "semantic_hash": "ba103d2eb3a77ad2a936458086d61a74"
+    "mtime": 1782513191.3215494,
+    "ast_hash": "5e0de5ec8a76add284dac966c43f3dff",
+    "semantic_hash": ""
   },
   "src/server.ts": {
     "mtime": 1782505546.77552,
@@ -170,14 +170,14 @@
     "semantic_hash": "4a890806f32be9a5ad6c8f7358b7e82b"
   },
   "test/acceptance/api.endpoints.test.ts": {
-    "mtime": 1782508478.6534426,
-    "ast_hash": "aaf66c350165cd869951f3613ce70e14",
+    "mtime": 1782513359.8968859,
+    "ast_hash": "e01a26724e9a936b3f3aa473f2174cf9",
     "semantic_hash": ""
   },
   "test/admin.static.test.ts": {
-    "mtime": 1782505546.776519,
-    "ast_hash": "acf9a2d26096cddef8bb32f360151ccf",
-    "semantic_hash": "acf9a2d26096cddef8bb32f360151ccf"
+    "mtime": 1782514024.9658706,
+    "ast_hash": "7108e0354e294eec9885da1fc7cb68a9",
+    "semantic_hash": ""
   },
   "test/app.foundation.test.ts": {
     "mtime": 1782508364.6059144,
@@ -285,8 +285,8 @@
     "semantic_hash": "3fe70e7676c1107478d310986297cc70"
   },
   "admin/index.html": {
-    "mtime": 1782508125.2212124,
-    "ast_hash": "b4ab1daca7ba5499ddcf0b30ab28759a",
+    "mtime": 1782513395.3235743,
+    "ast_hash": "f4dfcf96f68048596ec1f9ec90e41b51",
     "semantic_hash": ""
   },
   "config/rag.config.yaml": {
@@ -340,8 +340,8 @@
     "semantic_hash": "9cb5892dbc1e6f6c3a5ac23c4438de8b"
   },
   "notes/adminpanel_plan.md": {
-    "mtime": 1782507015.486604,
-    "ast_hash": "d8238d01c84be9c57c288de0ec315d2a",
+    "mtime": 1782513997.6429067,
+    "ast_hash": "efdcf4bf29777712abd90d76f93db6b9",
     "semantic_hash": ""
   },
   "notes/adminpanel_prompts.md": {
@@ -472,6 +472,16 @@
   "egitim/10_Ad\u0131m.png": {
     "mtime": 1782505546.6932504,
     "ast_hash": "70469d0dc8e3a38c63c90fb26c7d2082",
+    "semantic_hash": ""
+  },
+  "src/http/collectionReadiness.ts": {
+    "mtime": 1782513491.67144,
+    "ast_hash": "0c8b273682c9fd1f5cc1bca86489b81b",
+    "semantic_hash": ""
+  },
+  "src/readiness.ts": {
+    "mtime": 1782513183.1916957,
+    "ast_hash": "3789dfe139e7dc2107583b212a131c69",
     "semantic_hash": ""
   }
 }

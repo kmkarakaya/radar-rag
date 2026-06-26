@@ -58,7 +58,10 @@ describe("admin panel static contract", () => {
     assert.ok(!js.includes("data.chunkCount"), "Job polling should not read bare data.chunkCount");
     assert.ok(!js.includes("data.documentCount"), "Job polling should not read bare data.documentCount");
     assert.ok(!js.includes("completed"), "Admin UI should not expect a completed job status");
-    assert.ok(js.includes("deriveReadinessBlockers"), "Collection readiness blockers should be derived client-side");
+    assert.ok(!js.includes("deriveReadinessBlockers"), "Collection readiness blockers should come from backend issues");
+    assert.ok(js.includes("readiness.blockers"), "Collection readiness should render backend blockers");
+    assert.ok(js.includes("readiness.warnings"), "Collection readiness should render backend warnings");
+    assert.ok(js.includes("item.recommendedAction"), "Readiness issue rendering should surface backend recommended actions");
     assert.ok(!js.includes("strict=true"), "Health dashboard should not use ready?strict=true");
     assert.ok(js.includes("Promise.allSettled"), "Health dashboard should preserve summaries if details fail");
   });

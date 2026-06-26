@@ -6,7 +6,8 @@ import { HttpError } from "./errors.js";
 import { config, type ResolvedConfig } from "../config.js";
 import type { RequestContext } from "./requestContext.js";
 import { resolveReadableCollection } from "../collections/resolveReadableCollection.js";
-import { retrieveSources, answerQuestion, checkChromaHealth, checkOllamaHealth } from "../rag.js";
+import { retrieveSources, answerQuestion } from "../rag.js";
+import { buildCollectionReadinessPayload } from "./collectionReadiness.js";
 import type { RagCollection } from "../collections/types.js";
 
 function mapToPublicCollectionDTO(c: RagCollection) {
@@ -94,52 +95,15 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         }
         throw new HttpError(404, "COLLECTION_NOT_FOUND", "Collection not found");
       }
+      const readiness = await buildCollectionReadinessPayload(
+        deps.registry!,
+        context,
+        collection,
+        runtimeConfig,
+        deps.healthChecks,
+      );
 
-      const activeJob = await deps.registry!.getActiveJobForCollection(context, collection.id);
-      const ollama = await (deps.healthChecks?.checkOllamaHealth ?? checkOllamaHealth)(runtimeConfig);
-      const availableModels = Array.isArray(ollama.details?.availableModels)
-        ? ollama.details.availableModels.filter((value): value is string => typeof value === "string")
-        : [];
-
-      const readEmbeddingModel = collection.activeEmbeddingModel ?? collection.embeddingModel;
-      const embeddingModelAvailable = ollama.ok && hasConfiguredModel(availableModels, readEmbeddingModel);
-      const chatModelAvailable = ollama.ok && hasConfiguredModel(availableModels, collection.chatModel);
-
-      let chromaCount = -1;
-      let chromaReadable = false;
-
-      if (collection.activePhysicalCollection) {
-        const health = await (deps.healthChecks?.checkChromaHealth ?? checkChromaHealth)(
-          runtimeConfig,
-          { collectionName: collection.activePhysicalCollection },
-        );
-        chromaReadable = health.details?.collectionReadable === true;
-        if (chromaReadable) {
-          chromaCount = (health.details?.collectionCount as number | undefined) ?? -1;
-        }
-      }
-
-      res.json({
-        id: collection.id,
-        status: collection.status,
-        hasActivePhysicalCollection: Boolean(collection.activePhysicalCollection),
-        activeVersion: collection.activeVersion ?? null,
-        activeJob: activeJob ? { id: activeJob.id, status: activeJob.status } : null,
-        chromaReadable,
-        chromaCount,
-        modelAvailability: {
-          embeddingModel: readEmbeddingModel,
-          embeddingModelAvailable,
-          chatModel: collection.chatModel,
-          chatModelAvailable,
-          desiredEmbeddingModel: collection.embeddingModel !== readEmbeddingModel ? collection.embeddingModel : undefined,
-        },
-        capabilities: {
-          query: chromaReadable && embeddingModelAvailable && chatModelAvailable,
-          retrieve: chromaReadable && embeddingModelAvailable,
-          reindex: true,
-        }
-      });
+      res.json(readiness);
     } catch (error) {
       next(error);
     }
@@ -249,15 +213,4 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
   });
 
   return router;
-}
-
-function normalizeModelName(modelName: string): string {
-  return modelName.endsWith(":latest") ? modelName.slice(0, -":latest".length) : modelName;
-}
-
-function hasConfiguredModel(availableModels: string[], configuredModel: string): boolean {
-  const normalizedConfiguredModel = normalizeModelName(configuredModel);
-  return availableModels.some(
-    (availableModel) => normalizeModelName(availableModel) === normalizedConfiguredModel,
-  );
 }

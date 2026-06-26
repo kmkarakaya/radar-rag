@@ -70,7 +70,7 @@ Coding agent her adımda bu mevcut yapıyı baz almalı. Gereksiz büyük HTML r
 | Alan               | Mevcut selector / id     | Kullanım notu                                                                                            |
 | :----------------- | :----------------------- | :-------------------------------------------------------------------------------------------------------- |
 | Status grid        | `#readinessStatusGrid` | Collection readiness indicator'ları.                                                                     |
-| Blockers container | `#readinessBlockers`   | Backend collection readiness`blockers` dönmez; UI türetilmiş blocker mesajlarını burada gösterir. |
+| Blockers container | `#readinessBlockers`   | Backend collection readiness issue listesini doğrudan burada gösterir. |
 | Blocker list       | `#blockerList`         | Güvenli DOM node ile doldurulmalı.                                                                      |
 
 ### Playground
@@ -134,7 +134,7 @@ Admin panel sadece mevcut endpointleri kullanacak:
 | :----------------------- | :----- | :---------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------ |
 | Collection listesi       | GET    | `/v1/rag/collections`                         | Ucuz registry discovery. Chroma/Ollama probe çalıştırmaz.                                                             |
 | Collection detayı       | GET    | `/v1/rag/collections/:collectionId`           | Public DTO. Mevcut kod bazı settings alanlarını döndürüyor; agent response alanı yoksa graceful fallback yapmalı. |
-| Collection readiness     | GET    | `/v1/rag/collections/:collectionId/ready`     | `capabilities`, `modelAvailability`, `activeJob`, `chromaReadable` döner. `blockers` array'i dönmez.          |
+| Collection readiness     | GET    | `/v1/rag/collections/:collectionId/ready`     | `capabilities`, `modelAvailability`, `activeJob`, `chromaReadable`, `blockers`, `warnings`, `recommendedActions` döner. |
 | Retrieve testi           | POST   | `/v1/rag/collections/:collectionId/retrieve`  | Body:`{ "question": string, "k"?: number }`.                                                                            |
 | Query testi              | POST   | `/v1/rag/collections/:collectionId/query`     | Body:`{ "question": string }`.                                                                                          |
 | Collection oluşturma    | POST   | `/v1/admin/collections`                       | Body:`createCollectionSchema`. `displayName` zorunlu.                                                                 |
@@ -206,7 +206,7 @@ Coding agent bu alanları kullanabilir, ancak yokluklarına karşı dayanıklı 
 - `capabilities.retrieve`
 - `capabilities.reindex`
 
-Bu endpoint `blockers` array'i döndürmez. UI blocker mesajlarını şu alanlardan türetmeli:
+Bu endpoint `blockers`, `warnings` ve `recommendedActions` döndürür. UI bunları doğrudan göstermelidir:
 
 - `!hasActivePhysicalCollection`: "Aktif fiziksel collection yok; re-index çalıştırılmalı."
 - `!chromaReadable`: "Chroma collection okunamıyor."
@@ -1232,12 +1232,7 @@ Aşağıdaki sıra, bu eksikleri hangi hızda ele almak gerektiğini gösterir. 
 
 ### P1 - Panelin doğru çalışması için kritik
 
-1. **Readiness blocker/warning listesi backend'den gelmiyor**
-
-   - UI blocker metinlerini türetiyor.
-   - Doğru ve tutarlı operasyon mesajı için truth source backend olmalı.
-   - Öneri: `GET /v1/rag/collections/:id/ready` response'una `blockers`, `warnings`, `recommendedActions` eklenmesi.
-3. **Save/reindex validation endpointleri yok**
+1. **Save/reindex validation endpointleri yok**
 
    - Kullanıcı ayarların etkisini re-index sırasında öğreniyor.
    - Hatalar çok geç yakalanıyor.
@@ -1245,20 +1240,20 @@ Aşağıdaki sıra, bu eksikleri hangi hızda ele almak gerektiğini gösterir. 
 
 ### P2 - Kullanıcı deneyimini güçlendiren eksikler
 
-4. **Model discovery endpointi yok**
+2. **Model discovery endpointi yok**
 
    - Model adı serbest metin olduğu için typo riski var.
    - Öneri: `GET /v1/admin/models`
-5. **Config defaults endpointi yok**
+3. **Config defaults endpointi yok**
 
    - Create form backend varsayılanlarını görünür göstermiyor.
    - Kullanıcı boş bıraktığında ne olacağını tahmin ediyor.
    - Öneri: `GET /v1/admin/config/defaults`
-6. **Health/readiness daha zengin bir operasyon özetine dönüşmedi**
+4. **Health/readiness daha zengin bir operasyon özetine dönüşmedi**
 
    - Panel durum gösteriyor ama teşhis derinliği sınırlı.
    - Daha iyi bir özet için backend tarafında genişletme gerekebilir.
-7. **Job ilerleme verisi yok**
+5. **Job ilerleme verisi yok**
 
    - Job yalnızca terminal/ara durumlarla izlenebiliyor.
    - Gerçek aşama/event bilgisi yok.

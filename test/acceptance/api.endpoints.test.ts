@@ -857,6 +857,111 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(jobLog.physicalCollection, body.job.targetPhysicalCollection);
   });
 
+  it("GET /v1/admin/jobs lists tenant jobs with filters and cursor pagination", async () => {
+    async function createQueuedJob(displayName: string, tenantId = "default") {
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (tenantId !== "default") headers["x-tenant-id"] = tenantId;
+
+      const createResponse = await request("/v1/admin/collections", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ displayName }),
+      });
+      const createBody = await createResponse.json() as any;
+      assert.equal(createResponse.status, 201);
+
+      const reindexResponse = await request(`/v1/admin/collections/${createBody.collection.id}/reindex`, {
+        method: "POST",
+        headers,
+      });
+      const reindexBody = await reindexResponse.json() as any;
+      assert.equal(reindexResponse.status, 202);
+
+      return {
+        collectionId: createBody.collection.id,
+        jobId: reindexBody.job.id,
+        targetPhysicalCollection: reindexBody.job.targetPhysicalCollection as string,
+        targetVersion: reindexBody.job.targetVersion as string,
+        tenantId,
+      };
+    }
+
+    const queuedDefault = await createQueuedJob("Jobs List Queued");
+    const runningDefault = await createQueuedJob("Jobs List Running");
+    const succeededDefault = await createQueuedJob("Jobs List Succeeded");
+    const otherTenantQueued = await createQueuedJob("Jobs List Other Tenant", "other-tenant");
+
+    await registry.markIndexJobRunning(runningDefault.jobId);
+
+    const runningJob = await registry.getJob(runningDefault.jobId);
+    assert.ok(runningJob);
+    await registry.markIndexJobRunning(succeededDefault.jobId);
+
+    const succeededRunningJob = await registry.getJob(succeededDefault.jobId);
+    assert.ok(succeededRunningJob);
+    await registry.createPhysicalCollectionRecord({
+      name: succeededRunningJob.targetPhysicalCollection,
+      tenantId: "default",
+      collectionId: succeededDefault.collectionId,
+      version: succeededRunningJob.targetVersion,
+      chromaConfiguration: succeededRunningJob.targetChromaConfiguration,
+    });
+    await registry.completeIndexJob(succeededDefault.jobId, {
+      activePhysicalCollection: succeededRunningJob.targetPhysicalCollection,
+      activeVersion: succeededRunningJob.targetVersion,
+      documentCount: 3,
+      chunkCount: 9,
+      retentionMs: 0,
+    });
+
+    const firstPageResponse = await request("/v1/admin/jobs?limit=2");
+    const firstPage = await firstPageResponse.json() as any;
+    assert.equal(firstPageResponse.status, 200);
+    assert.equal(Array.isArray(firstPage.jobs), true);
+    assert.equal(firstPage.jobs.length, 2);
+    assert.equal(typeof firstPage.nextCursor, "string");
+    assert.equal(firstPage.jobs.every((entry: any) => entry.job.tenantId === "default"), true);
+    assert.equal(firstPage.jobs.every((entry: any) => entry.collection && entry.collection.id === entry.job.collectionId), true);
+
+    const firstPageIds = new Set(firstPage.jobs.map((entry: any) => entry.job.id));
+    assert.equal(firstPageIds.has(succeededDefault.jobId), true);
+
+    const secondPageResponse = await request(`/v1/admin/jobs?limit=2&cursor=${encodeURIComponent(firstPage.nextCursor)}`);
+    const secondPage = await secondPageResponse.json() as any;
+    assert.equal(secondPageResponse.status, 200);
+    assert.equal(Array.isArray(secondPage.jobs), true);
+    assert.equal(secondPage.jobs.every((entry: any) => !firstPageIds.has(entry.job.id)), true);
+
+    const combinedIds = new Set([...firstPage.jobs, ...secondPage.jobs].map((entry: any) => entry.job.id));
+    assert.equal(combinedIds.has(queuedDefault.jobId), true);
+    assert.equal(combinedIds.has(runningDefault.jobId), true);
+    assert.equal(combinedIds.has(succeededDefault.jobId), true);
+
+    const runningResponse = await request("/v1/admin/jobs?status=running");
+    const runningBody = await runningResponse.json() as any;
+    assert.equal(runningResponse.status, 200);
+    assert.equal(runningBody.jobs.every((entry: any) => entry.job.status === "running"), true);
+    assert.equal(runningBody.jobs.some((entry: any) => entry.job.id === runningDefault.jobId), true);
+
+    const collectionResponse = await request(`/v1/admin/jobs?collectionId=${succeededDefault.collectionId}`);
+    const collectionBody = await collectionResponse.json() as any;
+    assert.equal(collectionResponse.status, 200);
+    assert.equal(collectionBody.jobs.length, 1);
+    assert.equal(collectionBody.jobs[0]?.job.collectionId, succeededDefault.collectionId);
+    assert.equal(collectionBody.jobs[0]?.collection?.displayName, "Jobs List Succeeded");
+    assert.equal(collectionBody.jobs[0]?.collection?.status, "ready");
+
+    const otherTenantResponse = await request("/v1/admin/jobs?limit=10", {
+      headers: {
+        "x-tenant-id": "other-tenant",
+      },
+    });
+    const otherTenantBody = await otherTenantResponse.json() as any;
+    assert.equal(otherTenantResponse.status, 200);
+    assert.equal(otherTenantBody.jobs.some((entry: any) => entry.job.id === otherTenantQueued.jobId), true);
+    assert.equal(otherTenantBody.jobs.some((entry: any) => entry.job.collectionId === queuedDefault.collectionId), false);
+  });
+
   it("duplicate reindex -> 409", async () => {
 
     const res2 = await request(`/v1/admin/collections/${createdCollection.id}/reindex`, {

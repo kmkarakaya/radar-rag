@@ -26,82 +26,82 @@ Coding agent her adımda bu mevcut yapıyı baz almalı. Gereksiz büyük HTML r
 
 ### Mevcut Ana Layout
 
-| Alan | Mevcut selector / id | Kullanım notu |
-| :--- | :--- | :--- |
-| Sidebar nav | `.nav-item[data-view="collections/jobs/health"]` | `switchView(viewId)` bu dataset'i kullanıyor. |
-| View container | `.view-container`, `#view-collections`, `#view-jobs`, `#view-health` | View göster/gizle bu id pattern'ine bağlı. |
-| Başlık | `#viewTitle` | `switchView` güncelliyor. |
-| Global refresh | `#btnRefresh` | Collection, job ve health reload tetikliyor. |
-| Create button | `#btnCreateCollection` | `openInspector(null)` çağırıyor. |
+| Alan           | Mevcut selector / id                                                         | Kullanım notu                                   |
+| :------------- | :--------------------------------------------------------------------------- | :----------------------------------------------- |
+| Sidebar nav    | `.nav-item[data-view="collections/jobs/health"]`                           | `switchView(viewId)` bu dataset'i kullanıyor. |
+| View container | `.view-container`, `#view-collections`, `#view-jobs`, `#view-health` | View göster/gizle bu id pattern'ine bağlı.    |
+| Başlık       | `#viewTitle`                                                               | `switchView` güncelliyor.                     |
+| Global refresh | `#btnRefresh`                                                              | Collection, job ve health reload tetikliyor.     |
+| Create button  | `#btnCreateCollection`                                                     | `openInspector(null)` çağırıyor.           |
 
 ### Collections View
 
-| Alan | Mevcut selector / id | Kullanım notu |
-| :--- | :--- | :--- |
-| Collection grid | `#collectionsGrid` | Mevcut kod string template ve inline `onclick` ile card basıyor. Hedef: güvenli DOM node üretimi ve delegated/event listener. |
+| Alan            | Mevcut selector / id | Kullanım notu                                                                                                                    |
+| :-------------- | :------------------- | :-------------------------------------------------------------------------------------------------------------------------------- |
+| Collection grid | `#collectionsGrid` | Mevcut kod string template ve inline`onclick` ile card basıyor. Hedef: güvenli DOM node üretimi ve delegated/event listener. |
 
 ### Jobs View
 
-| Alan | Mevcut selector / id | Kullanım notu |
-| :--- | :--- | :--- |
-| Job table body | `#jobsTableBody` | Mevcut table header 4 kolon: Job ID, Collection, Status, Actions. Daha fazla kolon eklenecekse `admin/index.html` içindeki `<thead>` de aynı adımda güncellenmeli. |
+| Alan           | Mevcut selector / id | Kullanım notu                                                                                                                                                            |
+| :------------- | :------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Job table body | `#jobsTableBody`   | Mevcut table header 4 kolon: Job ID, Collection, Status, Actions. Daha fazla kolon eklenecekse`admin/index.html` içindeki `<thead>` de aynı adımda güncellenmeli. |
 
 ### Health View
 
-| Alan | Mevcut selector / id | Kullanım notu |
-| :--- | :--- | :--- |
-| Health card grid | `#healthGrid` | Summary cards burada render ediliyor. |
+| Alan             | Mevcut selector / id | Kullanım notu                                           |
+| :--------------- | :------------------- | :------------------------------------------------------- |
+| Health card grid | `#healthGrid`      | Summary cards burada render ediliyor.                    |
 | Readiness detail | `#readinessDetail` | Recommended actions/checks/blockers için kullanılacak. |
 
 ### Inspector
 
-| Alan | Mevcut selector / id | Kullanım notu |
-| :--- | :--- | :--- |
-| Overlay | `#inspectorOverlay` | Overlay click kapatır. Panel overlay'in child'ı değil sibling olduğu için panel click'i normalde overlay'e bubble etmez. |
-| Panel | `#inspectorPanel` | Slide-out transform class'ları burada. |
-| Title | `#inspectorTitle` | Create/edit mode'a göre güncellenir. |
-| Status badge | `#inspectorStatusBadge` | Create mode'da gizlenmeli. |
-| Close button | `#btnCloseInspector` | Mevcut handler var. |
-| Tab buttons | `.tab-btn[data-tab="ready/playground/editor"]` | `tab-${data-tab}` id pattern'i ile content seçiyor. |
-| Tab contents | `#tab-ready`, `#tab-playground`, `#tab-editor` | Create mode'da ready/playground devre dışı bırakılabilir. |
+| Alan         | Mevcut selector / id                                 | Kullanım notu                                                                                                                |
+| :----------- | :--------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------- |
+| Overlay      | `#inspectorOverlay`                                | Overlay click kapatır. Panel overlay'in child'ı değil sibling olduğu için panel click'i normalde overlay'e bubble etmez. |
+| Panel        | `#inspectorPanel`                                  | Slide-out transform class'ları burada.                                                                                       |
+| Title        | `#inspectorTitle`                                  | Create/edit mode'a göre güncellenir.                                                                                        |
+| Status badge | `#inspectorStatusBadge`                            | Create mode'da gizlenmeli.                                                                                                    |
+| Close button | `#btnCloseInspector`                               | Mevcut handler var.                                                                                                           |
+| Tab buttons  | `.tab-btn[data-tab="ready/playground/editor"]`     | `tab-${data-tab}` id pattern'i ile content seçiyor.                                                                        |
+| Tab contents | `#tab-ready`, `#tab-playground`, `#tab-editor` | Create mode'da ready/playground devre dışı bırakılabilir.                                                                |
 
 ### Inspector Readiness
 
-| Alan | Mevcut selector / id | Kullanım notu |
-| :--- | :--- | :--- |
-| Status grid | `#readinessStatusGrid` | Collection readiness indicator'ları. |
-| Blockers container | `#readinessBlockers` | Backend collection readiness `blockers` dönmez; UI türetilmiş blocker mesajlarını burada gösterir. |
-| Blocker list | `#blockerList` | Güvenli DOM node ile doldurulmalı. |
+| Alan               | Mevcut selector / id     | Kullanım notu                                                                                            |
+| :----------------- | :----------------------- | :-------------------------------------------------------------------------------------------------------- |
+| Status grid        | `#readinessStatusGrid` | Collection readiness indicator'ları.                                                                     |
+| Blockers container | `#readinessBlockers`   | Backend collection readiness`blockers` dönmez; UI türetilmiş blocker mesajlarını burada gösterir. |
+| Blocker list       | `#blockerList`         | Güvenli DOM node ile doldurulmalı.                                                                      |
 
 ### Playground
 
-| Alan | Mevcut selector / id | Kullanım notu |
-| :--- | :--- | :--- |
-| Mode buttons | `.mode-btn[data-mode="retrieve/query"]` | State ile senkron tutulmalı. |
-| Question textarea | `#pgQuestion` | Boş soru API'ye gönderilmemeli. |
-| Run button | `#btnPgRun` | Readiness capability'ye göre disabled/loading olmalı. |
-| Result area | `#pgResult` | Raw JSON yerine answer/source render. Backend text için `textContent`. |
+| Alan              | Mevcut selector / id                      | Kullanım notu                                                           |
+| :---------------- | :---------------------------------------- | :----------------------------------------------------------------------- |
+| Mode buttons      | `.mode-btn[data-mode="retrieve/query"]` | State ile senkron tutulmalı.                                            |
+| Question textarea | `#pgQuestion`                           | Boş soru API'ye gönderilmemeli.                                        |
+| Run button        | `#btnPgRun`                             | Readiness capability'ye göre disabled/loading olmalı.                  |
+| Result area       | `#pgResult`                             | Raw JSON yerine answer/source render. Backend text için`textContent`. |
 
 Not: Mevcut HTML'de retrieve `k` input'u yok. Eklenirse önerilen id `#pgK`; aynı adımda `elements.pgK = document.getElementById("pgK")` eklenmeli ve yoksa kod graceful çalışmalı.
 
 ### Editor
 
-| Alan | Mevcut selector / id | Kullanım notu |
-| :--- | :--- | :--- |
-| Form | `#colEditForm` | Submit `saveCollection` çağırıyor. |
-| Hidden id | `#editId` | Empty ise create mode. |
-| Text fields | `#editDisplayName`, `#editDescription`, `#editSourcePath`, `#editOzelgeDataPath`, `#editEmbeddingModel`, `#editChatModel` | Empty string payload'a gitmemeli. |
-| Number fields | `#editChunkSize`, `#editChunkOverlap`, `#editRetrievalK`, `#editRetrievalDistanceThreshold` | `0` geçerli olabilecek alanlarda `|| undefined` kullanılmamalı. |
-| Select | `#editDistanceMetric` | Sadece `l2`, `cosine`, `ip`. |
-| Cancel | `#btnCancelEdit` | HTML'de var, ancak mevcut `elements` map'inde yok; ilgili adımda eklenip handler bağlanmalı. |
+| Alan          | Mevcut selector / id                                                                                                                  | Kullanım notu                                                                                   |
+| :------------ | :------------------------------------------------------------------------------------------------------------------------------------ | :----------------------------------------------------------------------------------------------- |
+| Form          | `#colEditForm`                                                                                                                      | Submit`saveCollection` çağırıyor.                                                          |
+| Hidden id     | `#editId`                                                                                                                           | Empty ise create mode.                                                                           |
+| Text fields   | `#editDisplayName`, `#editDescription`, `#editSourcePath`, `#editOzelgeDataPath`, `#editEmbeddingModel`, `#editChatModel` | Empty string payload'a gitmemeli.                                                                |
+| Number fields | `#editChunkSize`, `#editChunkOverlap`, `#editRetrievalK`, `#editRetrievalDistanceThreshold`                                   | `0` geçerli olabilecek alanlarda `                                                            |
+| Select        | `#editDistanceMetric`                                                                                                               | Sadece`l2`, `cosine`, `ip`.                                                                |
+| Cancel        | `#btnCancelEdit`                                                                                                                    | HTML'de var, ancak mevcut`elements` map'inde yok; ilgili adımda eklenip handler bağlanmalı. |
 
 ### Inspector Footer ve Toast
 
-| Alan | Mevcut selector / id | Kullanım notu |
-| :--- | :--- | :--- |
-| Re-index | `#btnReindex` | Create mode'da disabled/gizli. Çift tıklama engellenmeli. |
-| Delete | `#btnDeleteCol` | Create mode'da disabled/gizli. Confirmation zorunlu. |
-| Toast container | `#toastContainer` | Uzun hata ve issue listesi taşmayacak şekilde render edilmeli. |
+| Alan            | Mevcut selector / id | Kullanım notu                                                   |
+| :-------------- | :------------------- | :--------------------------------------------------------------- |
+| Re-index        | `#btnReindex`      | Create mode'da disabled/gizli. Çift tıklama engellenmeli.      |
+| Delete          | `#btnDeleteCol`    | Create mode'da disabled/gizli. Confirmation zorunlu.             |
+| Toast container | `#toastContainer`  | Uzun hata ve issue listesi taşmayacak şekilde render edilmeli. |
 
 ### Mevcut JS Fonksiyonları
 
@@ -130,22 +130,22 @@ Küçük model için tercih edilen strateji: bu fonksiyonları bir anda tamamen 
 
 Admin panel sadece mevcut endpointleri kullanacak:
 
-| Amaç | Method | Endpoint | Not |
-| :--- | :--- | :--- | :--- |
-| Collection listesi | GET | `/v1/rag/collections` | Ucuz registry discovery. Chroma/Ollama probe çalıştırmaz. |
-| Collection detayı | GET | `/v1/rag/collections/:collectionId` | Public DTO. Mevcut kod bazı settings alanlarını döndürüyor; agent response alanı yoksa graceful fallback yapmalı. |
-| Collection readiness | GET | `/v1/rag/collections/:collectionId/ready` | `capabilities`, `modelAvailability`, `activeJob`, `chromaReadable` döner. `blockers` array'i dönmez. |
-| Retrieve testi | POST | `/v1/rag/collections/:collectionId/retrieve` | Body: `{ "question": string, "k"?: number }`. |
-| Query testi | POST | `/v1/rag/collections/:collectionId/query` | Body: `{ "question": string }`. |
-| Collection oluşturma | POST | `/v1/admin/collections` | Body: `createCollectionSchema`. `displayName` zorunlu. |
-| Collection güncelleme | PATCH | `/v1/admin/collections/:collectionId` | Body: `updateCollectionSchema`. Sadece değişen/valid alanlar gönderilmeli. |
-| Collection silme | DELETE | `/v1/admin/collections/:collectionId` | `204 No Content`. Soft delete. |
-| Re-index başlatma | POST | `/v1/admin/collections/:collectionId/reindex` | `202`, `{ job }` döner. Aynı collection için ikinci aktif job `409 COLLECTION_INDEX_ALREADY_RUNNING`. |
-| Job detayı | GET | `/v1/admin/jobs/:jobId` | Sadece bilinen `jobId` ile çalışır. Job list endpointi yok. |
-| Job iptal | POST | `/v1/admin/jobs/:jobId/cancel` | Sadece `queued` veya `running` job için. Başarılıysa `204`. |
-| Liveness | GET | `/health` | Process ayakta mı. |
-| Sistem readiness summary | GET | `/ready` | Non-strict çağırılmalı; hazır değilse de 200 dönebilir. |
-| Sistem readiness detay | GET | `/ready?details=true` | `checks`, `blockers`, `warnings`, `recommendedActions`, `dependencies`, `dataSource`. |
+| Amaç                    | Method | Endpoint                                        | Not                                                                                                                       |
+| :----------------------- | :----- | :---------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------ |
+| Collection listesi       | GET    | `/v1/rag/collections`                         | Ucuz registry discovery. Chroma/Ollama probe çalıştırmaz.                                                             |
+| Collection detayı       | GET    | `/v1/rag/collections/:collectionId`           | Public DTO. Mevcut kod bazı settings alanlarını döndürüyor; agent response alanı yoksa graceful fallback yapmalı. |
+| Collection readiness     | GET    | `/v1/rag/collections/:collectionId/ready`     | `capabilities`, `modelAvailability`, `activeJob`, `chromaReadable` döner. `blockers` array'i dönmez.          |
+| Retrieve testi           | POST   | `/v1/rag/collections/:collectionId/retrieve`  | Body:`{ "question": string, "k"?: number }`.                                                                            |
+| Query testi              | POST   | `/v1/rag/collections/:collectionId/query`     | Body:`{ "question": string }`.                                                                                          |
+| Collection oluşturma    | POST   | `/v1/admin/collections`                       | Body:`createCollectionSchema`. `displayName` zorunlu.                                                                 |
+| Collection güncelleme   | PATCH  | `/v1/admin/collections/:collectionId`         | Body:`updateCollectionSchema`. Sadece değişen/valid alanlar gönderilmeli.                                            |
+| Collection silme         | DELETE | `/v1/admin/collections/:collectionId`         | `204 No Content`. Soft delete.                                                                                          |
+| Re-index başlatma       | POST   | `/v1/admin/collections/:collectionId/reindex` | `202`, `{ job }` döner. Aynı collection için ikinci aktif job `409 COLLECTION_INDEX_ALREADY_RUNNING`.            |
+| Job detayı              | GET    | `/v1/admin/jobs/:jobId`                       | Sadece bilinen`jobId` ile çalışır. Job list endpointi yok.                                                          |
+| Job iptal                | POST   | `/v1/admin/jobs/:jobId/cancel`                | Sadece`queued` veya `running` job için. Başarılıysa `204`.                                                      |
+| Liveness                 | GET    | `/health`                                     | Process ayakta mı.                                                                                                       |
+| Sistem readiness summary | GET    | `/ready`                                      | Non-strict çağırılmalı; hazır değilse de 200 dönebilir.                                                           |
+| Sistem readiness detay   | GET    | `/ready?details=true`                         | `checks`, `blockers`, `warnings`, `recommendedActions`, `dependencies`, `dataSource`.                         |
 
 Opsiyonel request context header'ları backend tarafından destekleniyor:
 
@@ -258,21 +258,21 @@ Zod issue listesi `data.details.issues` altındadır. Mevcut admin JS'teki `data
 
 Bu bölüm, mevcut endpointlerin admin JS fonksiyonları tarafından nasıl kullanılacağını netleştirir. Coding agent yeni endpoint icat etmeyecek.
 
-| UI / JS akışı | Kullanılacak endpoint | Başarı davranışı | Hata davranışı |
-| :--- | :--- | :--- | :--- |
-| `loadCollections` | `GET /v1/rag/collections` | `data.collections` array değilse boş liste kabul et. Collection listesi ucuz discovery'dir; readiness iddiası taşımaz. | Toast + view içi error state. |
-| Optional detail reload | `GET /v1/rag/collections/:id` | Sadece seçili item listede yoksa veya list item tazelenmek istenirse kullan. Admin detail endpoint yok. | 404 ise inspector kapatılabilir ve liste reload edilir. |
-| `openInspector(existingId)` | Önce list item, sonra readiness | Editor list item'daki alanlarla dolar. Settings alanı DTO'da yoksa field boş/placeholder kalır ve save payload'ında gönderilmez. | Inspector açık kalır, ilgili tab içinde hata gösterilir. |
-| `updateReadinessTab` | `collection.readyUrl` veya `/v1/rag/collections/:id/ready` | `state.selectedReadiness` güncellenir. `activeJob` varsa known jobs'a merge edilir. | Readiness alanında hata göster; playground disabled kalır. |
-| `saveCollection` create | `POST /v1/admin/collections` | `data.collection.id` ile toast; liste reload; create mode kapanabilir veya yeni item seçilir. | `details.issues` field bazlı gösterilir. |
-| `saveCollection` update | `PATCH /v1/admin/collections/:id` | `data.collection` döner; selected/list state güncellenir. | 400/403/404 standart error panel/toast. |
-| `deleteCollection` | `DELETE /v1/admin/collections/:id` | `204`; inspector kapanır; liste reload. | 403/404/500 mesajı göster. |
-| `reindexCollection` | `POST /v1/admin/collections/:id/reindex` | `data.job` known jobs'a eklenir; Job Monitor ve readiness yenilenir. | `409 COLLECTION_INDEX_ALREADY_RUNNING` özel mesaj: active job zaten var; readiness/job monitor yenile. |
-| `loadJobs` | `GET /v1/admin/jobs/:jobId` | Sadece known job id'leri poll edilir. Terminal status kalıcı gösterilir. | 404 ise local job "not found/inaccessible" olarak işaretlenir veya local monitor'dan kaldırma aksiyonu sunulur. |
-| `cancelJob` | `POST /v1/admin/jobs/:jobId/cancel` | `204`; job ve collection reload. | `400 INVALID_JOB_STATUS` için buton disabled hale getir ve job reload. |
-| `runPlayground` retrieve | `POST /v1/rag/collections/:id/retrieve` | `{ question, k? }`; sources list render. | RAG error code paneli. |
-| `runPlayground` query | `POST /v1/rag/collections/:id/query` | `{ question }`; answer + sources render. | RAG error code paneli. |
-| `loadHealth` | `/health`, `/ready`, `/ready?details=true` | Summary + detail render. `strict=true` kullanılmaz. | Details fail olursa summary korunabilir. |
+| UI / JS akışı              | Kullanılacak endpoint                                         | Başarı davranışı                                                                                                                 | Hata davranışı                                                                                                 |
+| :---------------------------- | :------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------- |
+| `loadCollections`           | `GET /v1/rag/collections`                                    | `data.collections` array değilse boş liste kabul et. Collection listesi ucuz discovery'dir; readiness iddiası taşımaz.         | Toast + view içi error state.                                                                                    |
+| Optional detail reload        | `GET /v1/rag/collections/:id`                                | Sadece seçili item listede yoksa veya list item tazelenmek istenirse kullan. Admin detail endpoint yok.                              | 404 ise inspector kapatılabilir ve liste reload edilir.                                                          |
+| `openInspector(existingId)` | Önce list item, sonra readiness                               | Editor list item'daki alanlarla dolar. Settings alanı DTO'da yoksa field boş/placeholder kalır ve save payload'ında gönderilmez. | Inspector açık kalır, ilgili tab içinde hata gösterilir.                                                     |
+| `updateReadinessTab`        | `collection.readyUrl` veya `/v1/rag/collections/:id/ready` | `state.selectedReadiness` güncellenir. `activeJob` varsa known jobs'a merge edilir.                                              | Readiness alanında hata göster; playground disabled kalır.                                                     |
+| `saveCollection` create     | `POST /v1/admin/collections`                                 | `data.collection.id` ile toast; liste reload; create mode kapanabilir veya yeni item seçilir.                                      | `details.issues` field bazlı gösterilir.                                                                      |
+| `saveCollection` update     | `PATCH /v1/admin/collections/:id`                            | `data.collection` döner; selected/list state güncellenir.                                                                         | 400/403/404 standart error panel/toast.                                                                           |
+| `deleteCollection`          | `DELETE /v1/admin/collections/:id`                           | `204`; inspector kapanır; liste reload.                                                                                            | 403/404/500 mesajı göster.                                                                                      |
+| `reindexCollection`         | `POST /v1/admin/collections/:id/reindex`                     | `data.job` known jobs'a eklenir; Job Monitor ve readiness yenilenir.                                                                | `409 COLLECTION_INDEX_ALREADY_RUNNING` özel mesaj: active job zaten var; readiness/job monitor yenile.         |
+| `loadJobs`                  | `GET /v1/admin/jobs/:jobId`                                  | Sadece known job id'leri poll edilir. Terminal status kalıcı gösterilir.                                                           | 404 ise local job "not found/inaccessible" olarak işaretlenir veya local monitor'dan kaldırma aksiyonu sunulur. |
+| `cancelJob`                 | `POST /v1/admin/jobs/:jobId/cancel`                          | `204`; job ve collection reload.                                                                                                    | `400 INVALID_JOB_STATUS` için buton disabled hale getir ve job reload.                                         |
+| `runPlayground` retrieve    | `POST /v1/rag/collections/:id/retrieve`                      | `{ question, k? }`; sources list render.                                                                                            | RAG error code paneli.                                                                                            |
+| `runPlayground` query       | `POST /v1/rag/collections/:id/query`                         | `{ question }`; answer + sources render.                                                                                            | RAG error code paneli.                                                                                            |
+| `loadHealth`                | `/health`, `/ready`, `/ready?details=true`               | Summary + detail render.`strict=true` kullanılmaz.                                                                                 | Details fail olursa summary korunabilir.                                                                          |
 
 Public collection DTO konusunda önemli not: repo içinde public DTO'nun zamanla daha sanitize hale gelmesine dair test/kontrat izleri var. Bu yüzden admin panel settings alanlarını list/detail response'unda her zaman var saymamalı. Mevcut backend döndürüyorsa kullan; döndürmüyorsa form alanını boş bırak ve boş değeri update payload'ına gönderme. Admin tarafında tam settings detail ihtiyacı, bu planın sonundaki "Admin Collection Detail Endpointi" önerisine bırakılmıştır.
 
@@ -1159,6 +1159,7 @@ Yukarıdaki endpoint önerileri admin panelin mevcut adımlarında uygulanmayaca
 - admin panel entegrasyonu
 
 Admin-only geliştirme sırasında bu öneriler yalnızca doküman notu olarak kalmalıdır.
+
 ## Kalan Backend Eksikleri - Sade Özet
 
 Bu bölüm, yukarıdaki teknik önerilerin daha kısa ve anlaşılır bir özetidir. Bunlar **admin-only panel düzeltmeleri değildir**; backend kapsamı açıldığında ele alınmalıdır.
@@ -1166,60 +1167,61 @@ Bu bölüm, yukarıdaki teknik önerilerin daha kısa ve anlaşılır bir özeti
 ### Operasyonel görünürlük eksikleri
 
 1. **Job list endpointi yok**
+
    - Panel bugün tüm job'ları çekemiyor.
    - Sadece bu tarayıcı oturumunun görmüş olduğu job id'leri izlenebiliyor.
    - Etki: Job Monitor gerçek bir sistem listesi değil, oturum tabanlı bir izleyici olarak kalıyor.
-
 2. **Job ilerleme verisi yok**
+
    - Job yalnızca `queued`, `running`, `succeeded`, `failed`, `cancelled` statüsüyle izlenebiliyor.
    - Gerçek progress, aşama veya event akışı yok.
    - Etki: Kullanıcı "şu anda ne yapılıyor?" sorusuna detaylı cevap alamıyor.
-
 3. **Operasyon geçmişi kaydı yok**
+
    - Re-index, silme, query/retrieve ve hata geçmişi için kalıcı audit/log endpointi yok.
    - Etki: Eski işlemleri panel üzerinden sonradan incelemek mümkün değil.
-
 4. **Physical collection görünürlüğü eksik**
+
    - Zero-downtime rebuild sonrası eski ve yeni fiziksel koleksiyonların yaşam döngüsü panelde açıkça görülemiyor.
    - Etki: Cleanup/retention davranışı operatör için şeffaf değil.
 
 ### Konfigürasyon ve doğrulama eksikleri
 
-5. **Admin collection detail endpointi yok**
-   - Public collection DTO zamanla daraltılırsa edit formu tam veri alamaz.
-   - Etki: Settings formu public response'a fazla bağımlı kalır.
+5. **Model discovery endpointi yok**
 
-6. **Model discovery endpointi yok**
    - Model isimleri serbest metin olarak giriliyor.
    - Etki: Typo riski var, dropdown/autocomplete yapılamıyor.
+6. **Save/reindex validation endpointleri yok**
 
-7. **Save/reindex validation endpointleri yok**
    - Path, chunk, model ve distance metric uyumu önceden dry-run ile doğrulanamıyor.
    - Etki: Hatalar çoğunlukla re-index başladıktan sonra fark ediliyor.
+7. **Config defaults endpointi yok**
 
-8. **Config defaults endpointi yok**
    - Create form backend default'larını doğrudan okuyamıyor.
    - Etki: Kullanıcı varsayılanları UI'da göremediği için tahmine dayalı davranıyor.
 
 ### Readiness ve durum açıklığı eksikleri
 
-9. **Readiness blocker/warning listesi backend'den gelmiyor**
+8. **Readiness blocker/warning listesi backend'den gelmiyor**
+
    - UI blocker metinlerini mevcut readiness alanlarından türetiyor.
    - Etki: Gerçek truth source ile UI mesajı tamamen aynı değil.
+9. **Health/readiness detayları daha zengin bir operasyon özetine dönüşmedi**
 
-10. **Health/readiness detayları daha zengin bir operasyon özetine dönüşmedi**
-   - Panel `/health`, `/ready` ve `/ready?details=true` ile çalışıyor ama daha kapsamlı teşhis endpointleri yok.
-   - Etki: Panel durum gösteriyor, ancak teşhis derinliği sınırlı kalıyor.
+- Panel `/health`, `/ready` ve `/ready?details=true` ile çalışıyor ama daha kapsamlı teşhis endpointleri yok.
+- Etki: Panel durum gösteriyor, ancak teşhis derinliği sınırlı kalıyor.
 
 ### Güvenlik eksikleri
 
-11. **Auth/RBAC ve CSRF sertleştirmesi yok**
-   - Admin API şu an lokal/statik kullanım mantığına göre çalışıyor.
-   - Etki: Production-benzeri kullanım için güvenlik katmanı eksik.
+10. **Auth/RBAC ve CSRF sertleştirmesi yok**
+
+- Admin API şu an lokal/statik kullanım mantığına göre çalışıyor.
+- Etki: Production-benzeri kullanım için güvenlik katmanı eksik.
 
 ### Sonuç
 
 Bu maddeler planın ana admin panel kapsamından ayrı tutuldu. Başka bir deyişle:
+
 - `admin/` tarafındaki görevler tamamlanmış sayılabilir.
 - Yukarıdaki maddeler ise **yeni backend işi** açıldığında ele alınmalıdır.
 - Eğer bu eksikleri kapatmak istenirse, ilgili backend router, test ve dokümantasyon birlikte güncellenmelidir.
@@ -1230,60 +1232,54 @@ Aşağıdaki sıra, bu eksikleri hangi hızda ele almak gerektiğini gösterir. 
 
 ### P1 - Panelin doğru çalışması için kritik
 
-1. **Admin collection detail endpointi yok**
-   - Public collection DTO daralırsa edit formu eksik kalır.
-   - Settings ekranı tam veri olmadan güvenilir olmaz.
-   - Öneri: `GET /v1/admin/collections/:collectionId`
+1. **Readiness blocker/warning listesi backend'den gelmiyor**
 
-2. **Job list endpointi yok**
-   - Panel tüm job'ları doğrudan listeleyemiyor.
-   - Job Monitor sadece bu oturumun gördüğü job id'lerini izliyor.
-   - Öneri: `GET /v1/admin/jobs?collectionId=&status=&limit=&cursor=`
-
-3. **Readiness blocker/warning listesi backend'den gelmiyor**
    - UI blocker metinlerini türetiyor.
    - Doğru ve tutarlı operasyon mesajı için truth source backend olmalı.
    - Öneri: `GET /v1/rag/collections/:id/ready` response'una `blockers`, `warnings`, `recommendedActions` eklenmesi.
+3. **Save/reindex validation endpointleri yok**
 
-4. **Save/reindex validation endpointleri yok**
    - Kullanıcı ayarların etkisini re-index sırasında öğreniyor.
    - Hatalar çok geç yakalanıyor.
    - Öneri: `POST /v1/admin/collections/validate` ve `POST /v1/admin/collections/:id/validate`
 
 ### P2 - Kullanıcı deneyimini güçlendiren eksikler
 
-5. **Model discovery endpointi yok**
+4. **Model discovery endpointi yok**
+
    - Model adı serbest metin olduğu için typo riski var.
    - Öneri: `GET /v1/admin/models`
+5. **Config defaults endpointi yok**
 
-6. **Config defaults endpointi yok**
    - Create form backend varsayılanlarını görünür göstermiyor.
    - Kullanıcı boş bıraktığında ne olacağını tahmin ediyor.
    - Öneri: `GET /v1/admin/config/defaults`
+6. **Health/readiness daha zengin bir operasyon özetine dönüşmedi**
 
-7. **Health/readiness daha zengin bir operasyon özetine dönüşmedi**
    - Panel durum gösteriyor ama teşhis derinliği sınırlı.
    - Daha iyi bir özet için backend tarafında genişletme gerekebilir.
+7. **Job ilerleme verisi yok**
 
-8. **Job ilerleme verisi yok**
    - Job yalnızca terminal/ara durumlarla izlenebiliyor.
    - Gerçek aşama/event bilgisi yok.
    - Öneri: `GET /v1/admin/jobs/:jobId/events` veya SSE stream.
 
 ### P3 - Operasyon şeffaflığı ve bakım
 
-9. **Physical collection görünürlüğü eksik**
+8. **Physical collection görünürlüğü eksik**
+
    - Zero-downtime rebuild sonrası fiziksel koleksiyon yaşam döngüsü panelde şeffaf değil.
    - Öneri: `GET /v1/admin/collections/:id/physical-collections`
+9. **Operasyon geçmişi kaydı yok**
 
-10. **Operasyon geçmişi kaydı yok**
-   - Re-index, delete, query/retrieve ve hata geçmişi panelden sonradan okunamıyor.
-   - Öneri: `GET /v1/admin/audit-log?collectionId=&operation=&limit=&cursor=`
+- Re-index, delete, query/retrieve ve hata geçmişi panelden sonradan okunamıyor.
+- Öneri: `GET /v1/admin/audit-log?collectionId=&operation=&limit=&cursor=`
 
-11. **Auth/RBAC ve CSRF sertleştirmesi yok**
-   - Panel şu an lokal/statik kullanım mantığıyla çalışıyor.
-   - Production-benzeri kullanım için güvenlik katmanı eksik.
-   - Öneri: auth middleware, role-based izinler, destructive aksiyonlar için CSRF veya signed action token.
+10. **Auth/RBAC ve CSRF sertleştirmesi yok**
+
+- Panel şu an lokal/statik kullanım mantığıyla çalışıyor.
+- Production-benzeri kullanım için güvenlik katmanı eksik.
+- Öneri: auth middleware, role-based izinler, destructive aksiyonlar için CSRF veya signed action token.
 
 ### Kısa karar kuralı
 

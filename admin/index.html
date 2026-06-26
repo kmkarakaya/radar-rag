@@ -68,6 +68,36 @@
 
             <!-- Jobs View -->
             <div id="view-jobs" class="view-container hidden space-y-6">
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                        <div class="flex flex-wrap items-end gap-3">
+                            <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                Status
+                                <select id="jobsStatusFilter" class="min-w-40 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-500 focus:outline-none">
+                                    <option value="all">All statuses</option>
+                                    <option value="queued">Queued</option>
+                                    <option value="running">Running</option>
+                                    <option value="succeeded">Succeeded</option>
+                                    <option value="failed">Failed</option>
+                                    <option value="cancelled">Cancelled</option>
+                                </select>
+                            </label>
+                            <button id="jobsRefreshList" type="button" class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-800">
+                                Refresh list
+                            </button>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button id="jobsPrevPage" type="button" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+                                Previous
+                            </button>
+                            <span id="jobsPageInfo" class="text-xs font-semibold uppercase tracking-wider text-slate-400">Page 1</span>
+                            <button id="jobsNextPage" type="button" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                    <p class="mt-3 text-xs text-slate-500">Seeded from <code>/v1/admin/jobs</code>. Local browser cache is only used as a fallback.</p>
+                </div>
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm table-responsive">
                     <table class="w-full min-w-[1120px] text-left text-sm">
                         <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-xs font-semibold">

@@ -10,6 +10,7 @@ const API = {
 };
 
 const JOB_STORAGE_KEY = "ragAdmin.knownJobs.v1";
+const JOB_LIST_LIMIT = 25;
 
 const EDIT_FIELD_IDS = {
     displayName: "editDisplayName",
@@ -33,6 +34,13 @@ let state = {
     selectedReadiness: null,
     playgroundMode: "retrieve",
     knownJobs: loadKnownJobsFromStorage(),
+    jobList: [],
+    jobListSource: "local",
+    jobListNextCursor: null,
+    jobListCursor: null,
+    jobListCursorStack: [],
+    jobListStatusFilter: "all",
+    jobListError: null,
     editorInitialSnapshot: null,
     isLoading: {
         collections: false,
@@ -53,6 +61,11 @@ const elements = {
     viewTitle: document.getElementById("viewTitle"),
     collectionsGrid: document.getElementById("collectionsGrid"),
     jobsTableBody: document.getElementById("jobsTableBody"),
+    jobsStatusFilter: document.getElementById("jobsStatusFilter"),
+    jobsRefreshList: document.getElementById("jobsRefreshList"),
+    jobsPrevPage: document.getElementById("jobsPrevPage"),
+    jobsNextPage: document.getElementById("jobsNextPage"),
+    jobsPageInfo: document.getElementById("jobsPageInfo"),
     healthGrid: document.getElementById("healthGrid"),
     readinessDetail: document.getElementById("readinessDetail"),
     btnRefresh: document.getElementById("btnRefresh"),
@@ -122,6 +135,16 @@ function adminCollectionUrl(id) {
 
 function adminJobUrl(id) {
     return `${API.admin}/jobs/${id}`;
+}
+
+function adminJobsListUrl(options = {}) {
+    const params = new URLSearchParams();
+    params.set("limit", String(options.limit || JOB_LIST_LIMIT));
+    if (options.cursor) params.set("cursor", options.cursor);
+    if (options.status && options.status !== "all") params.set("status", options.status);
+    if (options.collectionId) params.set("collectionId", options.collectionId);
+    const query = params.toString();
+    return query ? `${API.admin}/jobs?${query}` : `${API.admin}/jobs`;
 }
 
 function clearNode(node) {
@@ -1154,15 +1177,15 @@ function saveKnownJobsToStorage() {
     }
 }
 
-function rememberJob(job, collection) {
+function buildJobRecord(job, collection, existing = {}) {
     if (!job?.id) return;
-    const existing = state.knownJobs.find((item) => item.id === job.id) || {};
     const collectionId = job.collectionId ?? collection?.id ?? existing.collectionId ?? null;
-    const merged = {
+    return {
         ...existing,
         id: job.id,
         collectionId,
         collectionDisplayName: collection?.displayName ?? existing.collectionDisplayName ?? collectionNameById(collectionId),
+        collectionStatus: collection?.status ?? existing.collectionStatus ?? null,
         status: job.status ?? existing.status ?? "queued",
         targetPhysicalCollection: job.targetPhysicalCollection ?? existing.targetPhysicalCollection ?? null,
         targetVersion: job.targetVersion ?? existing.targetVersion ?? null,
@@ -1177,12 +1200,24 @@ function rememberJob(job, collection) {
         notFound: false,
         localError: null,
     };
+}
 
+function rememberJob(job, collection, options = {}) {
+    if (!job?.id) return null;
+    const existing = state.knownJobs.find((item) => item.id === job.id) || {};
+    const merged = buildJobRecord(job, collection, existing);
     const index = state.knownJobs.findIndex((item) => item.id === job.id);
     if (index >= 0) state.knownJobs[index] = merged;
     else state.knownJobs.push(merged);
-    saveKnownJobsToStorage();
-    renderJobs();
+
+    if (options.updateCurrentView !== false) {
+        const viewIndex = state.jobList.findIndex((item) => item.id === job.id);
+        if (viewIndex >= 0) state.jobList[viewIndex] = merged;
+    }
+
+    if (options.persist !== false) saveKnownJobsToStorage();
+    if (options.render !== false) renderJobs();
+    return merged;
 }
 
 function mergeActiveJobFromReadiness(readiness) {
@@ -1193,40 +1228,173 @@ function mergeActiveJobFromReadiness(readiness) {
 function markJobInaccessible(jobId, error) {
     const index = state.knownJobs.findIndex((job) => job.id === jobId);
     if (index < 0) return;
-    state.knownJobs[index] = {
+    const merged = {
         ...state.knownJobs[index],
         notFound: true,
         localError: normalizeError(error).message || "Job not found or inaccessible.",
         updatedAt: new Date().toISOString(),
     };
+    state.knownJobs[index] = merged;
+
+    const viewIndex = state.jobList.findIndex((job) => job.id === jobId);
+    if (viewIndex >= 0) state.jobList[viewIndex] = merged;
+    saveKnownJobsToStorage();
+    renderJobs();
 }
 
 async function refreshJob(jobId) {
-    const data = await apiRequest(adminJobUrl(jobId));
-    if (!data?.job) throw normalizeError(null, { status: 0, code: "INVALID_JOB_RESPONSE", message: "Job response did not include data.job." });
-    rememberJob(data.job, { id: data.job.collectionId, displayName: collectionNameById(data.job.collectionId) });
+    try {
+        const data = await apiRequest(adminJobUrl(jobId));
+        if (!data?.job) throw normalizeError(null, { status: 0, code: "INVALID_JOB_RESPONSE", message: "Job response did not include data.job." });
+        rememberJob(data.job, { id: data.job.collectionId, displayName: collectionNameById(data.job.collectionId) });
+    } catch (error) {
+        const normalized = normalizeError(error);
+        if (normalized.status === 404) {
+            markJobInaccessible(jobId, normalized);
+            return;
+        }
+        throw error;
+    }
 }
 
-async function loadJobs() {
+function getJobViewRows() {
+    const source = state.jobListSource;
+    const rows = source === "server" ? state.jobList : state.knownJobs;
+    if (state.jobListStatusFilter === "all") return rows;
+    return rows.filter((job) => job.status === state.jobListStatusFilter);
+}
+
+function getJobViewEmptyMessage() {
+    if (state.jobListSource === "server") {
+        if (state.jobListError) {
+            return "Could not load jobs from the server.";
+        }
+
+        if (state.jobListStatusFilter !== "all") {
+            return `No jobs match the "${state.jobListStatusFilter}" filter.`;
+        }
+
+        return "No jobs returned by the server.";
+    }
+
+    if (state.jobListError) {
+        return "Server job list endpoint is unavailable. Using cached jobs and per-job refresh.";
+    }
+
+    return "This monitor tracks jobs observed by this browser/admin session.";
+}
+
+function updateJobPaginationControls() {
+    if (elements.jobsPrevPage) {
+        elements.jobsPrevPage.disabled = state.jobListSource !== "server" || state.jobListCursorStack.length === 0 || state.isLoading.jobs;
+    }
+    if (elements.jobsNextPage) {
+        elements.jobsNextPage.disabled = !state.jobListNextCursor || state.isLoading.jobs || state.jobListSource !== "server";
+    }
+    if (elements.jobsPageInfo) {
+        elements.jobsPageInfo.textContent = state.jobListSource === "server"
+            ? `Page ${state.jobListCursorStack.length + 1}`
+            : "Legacy cache";
+    }
+    if (elements.jobsRefreshList) {
+        setButtonLoading(elements.jobsRefreshList, state.isLoading.jobs, "Refreshing...");
+    }
+    if (elements.jobsStatusFilter) {
+        elements.jobsStatusFilter.disabled = state.isLoading.jobs;
+        elements.jobsStatusFilter.value = state.jobListStatusFilter;
+    }
+}
+
+function resetJobPagination() {
+    state.jobListCursor = null;
+    state.jobListCursorStack = [];
+}
+
+async function loadJobs(options = {}) {
     if (state.isLoading.jobs) return;
     state.isLoading.jobs = true;
+    updateJobPaginationControls();
+    const cursor = options.cursor !== undefined ? options.cursor : state.jobListCursor;
+    state.jobListCursor = cursor || null;
     try {
-        for (const job of [...state.knownJobs]) {
-            try {
-                await refreshJob(job.id);
-            } catch (error) {
-                const normalized = normalizeError(error);
-                if (normalized.status === 404) markJobInaccessible(job.id, normalized);
-                else console.warn(`Failed to poll job ${job.id}`, normalized);
-            }
-        }
+        const data = await apiRequest(adminJobsListUrl({
+            status: state.jobListStatusFilter,
+            cursor,
+            limit: JOB_LIST_LIMIT,
+        }));
+        const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
+        state.jobList = jobs
+            .map((entry) => rememberJob(entry?.job, entry?.collection, {
+                updateCurrentView: false,
+                persist: false,
+                render: false,
+            }))
+            .filter(Boolean);
+        state.jobListSource = "server";
+        state.jobListError = null;
+        state.jobListNextCursor = data?.nextCursor || null;
         saveKnownJobsToStorage();
     } catch (error) {
-        showErrorToast(error, "Failed to load jobs");
+        const normalized = normalizeError(error);
+        if (normalized.status === 404 || normalized.code === "ROUTE_NOT_FOUND") {
+            state.jobListSource = "legacy";
+            state.jobListNextCursor = null;
+            state.jobListError = normalized;
+            for (const job of [...state.knownJobs]) {
+                try {
+                    await refreshJob(job.id);
+                } catch (jobError) {
+                    const jobNormalized = normalizeError(jobError);
+                    if (jobNormalized.status === 404) markJobInaccessible(job.id, jobNormalized);
+                    else console.warn(`Failed to refresh legacy job ${job.id}`, jobNormalized);
+                }
+            }
+            state.jobList = getJobViewRows();
+            saveKnownJobsToStorage();
+        } else {
+            state.jobListSource = "local";
+            state.jobList = getJobViewRows();
+            state.jobListNextCursor = null;
+            state.jobListError = error;
+            showErrorToast(error, "Failed to load jobs");
+        }
     } finally {
         state.isLoading.jobs = false;
         renderJobs();
+        updateJobPaginationControls();
     }
+}
+
+async function refreshJobsList() {
+    await loadJobs({ cursor: state.jobListCursor });
+}
+
+async function goToNextJobsPage() {
+    if (!state.jobListNextCursor || state.isLoading.jobs) return;
+    state.jobListCursorStack.push(state.jobListCursor || null);
+    state.jobListCursor = state.jobListNextCursor;
+    await loadJobs({ cursor: state.jobListCursor });
+}
+
+async function goToPreviousJobsPage() {
+    if (state.jobListCursorStack.length === 0 || state.isLoading.jobs) return;
+    const previousCursor = state.jobListCursorStack.pop() || null;
+    state.jobListCursor = previousCursor;
+    await loadJobs({ cursor: previousCursor });
+}
+
+async function changeJobsStatusFilter(value) {
+    const nextFilter = value || "all";
+    if (state.jobListStatusFilter === nextFilter && state.jobListCursorStack.length === 0 && state.jobListCursor === null) {
+        return loadJobs({ cursor: null });
+    }
+
+    state.jobListStatusFilter = nextFilter;
+    resetJobPagination();
+    if (elements.jobsStatusFilter) {
+        elements.jobsStatusFilter.value = nextFilter;
+    }
+    await loadJobs({ cursor: null });
 }
 
 async function cancelJob(jobId) {
@@ -1244,6 +1412,7 @@ async function cancelJob(jobId) {
 
 function removeJobFromMonitor(jobId) {
     state.knownJobs = state.knownJobs.filter((job) => job.id !== jobId);
+    state.jobList = state.jobList.filter((job) => job.id !== jobId);
     saveKnownJobsToStorage();
     renderJobs();
 }
@@ -1259,19 +1428,22 @@ function appendCell(row, className, content) {
 function renderJobs() {
     const tbody = elements.jobsTableBody;
     clearNode(tbody);
+    const jobs = getJobViewRows();
 
-    if (state.knownJobs.length === 0) {
+    if (jobs.length === 0) {
         const row = createEl("tr");
         const cell = createEl("td", "px-6 py-12 text-center text-slate-400 italic");
         cell.colSpan = 8;
-        cell.appendChild(createEl("div", "", "No jobs tracked. Start a re-index to see jobs here."));
-        cell.appendChild(createEl("div", "mt-1 text-xs", "This monitor tracks jobs observed by this browser/admin session."));
+        cell.appendChild(createEl("div", "", getJobViewEmptyMessage()));
+        if (state.jobListSource !== "server") {
+            cell.appendChild(createEl("div", "mt-1 text-xs", "This monitor tracks jobs observed by this browser/admin session."));
+        }
         row.appendChild(cell);
         tbody.appendChild(row);
         return;
     }
 
-    state.knownJobs.forEach((job) => {
+    jobs.forEach((job) => {
         const row = createEl("tr", "hover:bg-slate-50");
         const idNode = createEl("span", "font-mono text-slate-700");
         idNode.title = job.id;
@@ -1281,6 +1453,9 @@ function renderJobs() {
         const collectionNode = createEl("div", "space-y-1");
         collectionNode.appendChild(createEl("div", "font-semibold text-slate-700 break-all-words", job.collectionDisplayName || "-"));
         collectionNode.appendChild(createEl("div", "font-mono text-[11px] text-slate-400 break-all-words", job.collectionId || "-"));
+        if (job.collectionStatus) {
+            collectionNode.appendChild(createEl("div", "text-[11px] uppercase tracking-wider text-slate-400", `Snapshot: ${job.collectionStatus}`));
+        }
         appendCell(row, "", collectionNode);
 
         const statusText = job.notFound ? "inaccessible" : job.status;
@@ -1314,7 +1489,7 @@ function renderJobs() {
         if (job.status === "queued" || job.status === "running") {
             actions.appendChild(createButton("Cancel", "text-xs font-medium text-rose-600 hover:text-rose-800", () => cancelJob(job.id), { title: "Cancel this job" }));
         }
-        if (["succeeded", "failed", "cancelled"].includes(job.status) || job.notFound) {
+        if ((["succeeded", "failed", "cancelled"].includes(job.status) || job.notFound) && state.jobListSource !== "server") {
             actions.appendChild(createButton("Remove", "text-xs font-medium text-slate-500 hover:text-slate-700", () => removeJobFromMonitor(job.id), { title: "Remove from local monitor" }));
         }
         appendCell(row, "text-right", actions);
@@ -1518,6 +1693,26 @@ function bindEvents() {
         loadHealth();
         if (state.selectedCollection) updateReadinessTab();
     });
+    if (elements.jobsRefreshList) {
+        elements.jobsRefreshList.addEventListener("click", () => {
+            refreshJobsList();
+        });
+    }
+    if (elements.jobsPrevPage) {
+        elements.jobsPrevPage.addEventListener("click", () => {
+            goToPreviousJobsPage();
+        });
+    }
+    if (elements.jobsNextPage) {
+        elements.jobsNextPage.addEventListener("click", () => {
+            goToNextJobsPage();
+        });
+    }
+    if (elements.jobsStatusFilter) {
+        elements.jobsStatusFilter.addEventListener("change", (event) => {
+            changeJobsStatusFilter(event.target.value);
+        });
+    }
     elements.btnCreateCollection.addEventListener("click", () => openInspector(null));
     elements.btnCloseInspector.addEventListener("click", closeInspector);
     elements.inspectorOverlay.addEventListener("click", handleOverlayClick);
@@ -1563,6 +1758,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     setInterval(() => {
         if (!document.hidden) loadJobs();
+    }, 10000);
+
+    setInterval(() => {
+        if (!document.hidden) loadCollections();
+    }, 10000);
+
+    setInterval(() => {
+        if (!document.hidden && state.selectedCollection) updateReadinessTab();
     }, 10000);
 
     setInterval(() => {

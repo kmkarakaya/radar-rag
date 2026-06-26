@@ -56,6 +56,25 @@ export type IndexJob = {
   updatedAt: string;
 };
 
+export type IndexJobCollectionSnapshot = Pick<RagCollection, "id" | "displayName" | "status">;
+
+export type IndexJobListItem = {
+  job: IndexJob;
+  collection: IndexJobCollectionSnapshot | null;
+};
+
+export type ListJobsInput = {
+  collectionId?: string;
+  statuses?: IndexJobStatus[];
+  limit?: number;
+  cursor?: string | null;
+};
+
+export type ListJobsResult = {
+  jobs: IndexJobListItem[];
+  nextCursor: string | null;
+};
+
 export type CreateCollectionInput = {
   displayName: string;
   description?: string;
@@ -128,6 +147,7 @@ export type PhysicalCollectionRecord = {
 export interface CollectionRegistry {
   listVisibleCollections(context: RequestContext): Promise<RagCollection[]>;
   getVisibleCollection(context: RequestContext, collectionId: string): Promise<RagCollection | null>;
+  listJobs(context: RequestContext, filters?: ListJobsInput): Promise<ListJobsResult>;
   getJob(jobId: string): Promise<IndexJob | null>;
   getActiveJobForCollection(context: RequestContext, collectionId: string): Promise<IndexJob | null>;
   createCollection(context: RequestContext, input: CreateCollectionInput): Promise<RagCollection>;

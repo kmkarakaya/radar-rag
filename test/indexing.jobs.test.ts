@@ -205,6 +205,7 @@ describe("indexing jobs", () => {
         createdAt: "2026-06-04T00:00:00.000Z",
         updatedAt: "2026-06-04T00:00:00.000Z",
       }),
+      listJobs: async () => ({ jobs: [], nextCursor: null }),
       getJob: async () => ({ ...job, status: currentStatus }),
       getActiveJobForCollection: async () => null,
       createCollection: async () => {

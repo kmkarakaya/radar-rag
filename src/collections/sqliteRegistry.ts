@@ -11,7 +11,10 @@ import type {
   CompleteIndexJobResult,
   CreateCollectionInput,
   IndexJob,
+  IndexJobListItem,
   IndexJobStatus,
+  ListJobsInput,
+  ListJobsResult,
   PhysicalCollectionRecord,
   PhysicalCollectionStatus,
   RagCollection,
@@ -67,6 +70,12 @@ type IndexJobRow = {
   lock_token: string;
   created_at: string;
   updated_at: string;
+};
+
+type IndexJobSummaryRow = IndexJobRow & {
+  collection_snapshot_id: string | null;
+  collection_snapshot_display_name: string | null;
+  collection_snapshot_status: CollectionStatus | null;
 };
 
 type PhysicalCollectionRow = {
@@ -215,6 +224,60 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       .get(context.tenantId, collectionId) as CollectionRow | undefined;
 
     return row ? mapCollectionRow(row) : null;
+  }
+
+  async listJobs(context: RequestContext, filters: ListJobsInput = {}): Promise<ListJobsResult> {
+    const limit = clampInteger(filters.limit ?? 25, 1, 100);
+    const where: string[] = ["j.tenant_id = @tenantId"];
+    const params: Record<string, unknown> = {
+      tenantId: context.tenantId,
+      limit: limit + 1,
+    };
+
+    if (filters.collectionId) {
+      where.push("j.collection_id = @collectionId");
+      params.collectionId = filters.collectionId;
+    }
+
+    if (Array.isArray(filters.statuses) && filters.statuses.length > 0) {
+      const statusPlaceholders = filters.statuses.map((_, index) => `@status${index}`);
+      where.push(`j.status IN (${statusPlaceholders.join(", ")})`);
+      filters.statuses.forEach((status, index) => {
+        params[`status${index}`] = status;
+      });
+    }
+
+    if (filters.cursor) {
+      const cursor = decodeJobCursor(filters.cursor);
+      where.push("(j.updated_at < @cursorUpdatedAt OR (j.updated_at = @cursorUpdatedAt AND j.id < @cursorId))");
+      params.cursorUpdatedAt = cursor.updatedAt;
+      params.cursorId = cursor.id;
+    }
+
+    const rows = this.db
+      .prepare(`
+        SELECT
+          j.*,
+          c.id AS collection_snapshot_id,
+          c.display_name AS collection_snapshot_display_name,
+          c.status AS collection_snapshot_status
+        FROM index_jobs j
+        LEFT JOIN collections c
+          ON c.id = j.collection_id
+         AND c.tenant_id = j.tenant_id
+        WHERE ${where.join(" AND ")}
+        ORDER BY j.updated_at DESC, j.id DESC
+        LIMIT @limit
+      `)
+      .all(params) as IndexJobSummaryRow[];
+
+    const hasNextPage = rows.length > limit;
+    const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
+
+    return {
+      jobs: pageRows.map(mapIndexJobSummaryRow),
+      nextCursor: hasNextPage ? encodeJobCursor(pageRows[pageRows.length - 1]!) : null,
+    };
   }
 
   async getJob(jobId: string): Promise<IndexJob | null> {
@@ -1151,6 +1214,19 @@ function mapIndexJobRow(row: IndexJobRow): IndexJob {
   };
 }
 
+function mapIndexJobSummaryRow(row: IndexJobSummaryRow): IndexJobListItem {
+  return {
+    job: mapIndexJobRow(row),
+    collection: row.collection_snapshot_id
+      ? {
+          id: row.collection_snapshot_id,
+          displayName: row.collection_snapshot_display_name ?? "",
+          status: row.collection_snapshot_status ?? "creating",
+        }
+      : null,
+  };
+}
+
 function mapPhysicalCollectionRow(row: PhysicalCollectionRow): PhysicalCollectionRecord {
   return {
     name: row.name,
@@ -1176,6 +1252,39 @@ function createVersionString(isoDate: string): string {
     .replace(/[-:]/g, "")
     .replace(/\.\d{3}/, (match) => `_${match.slice(1)}`)
     .toLowerCase();
+}
+
+function clampInteger(value: number, minimum: number, maximum: number): number {
+  if (!Number.isFinite(value)) {
+    return minimum;
+  }
+
+  const rounded = Math.trunc(value);
+  return Math.min(maximum, Math.max(minimum, rounded));
+}
+
+function encodeJobCursor(row: IndexJobSummaryRow): string {
+  return Buffer.from(JSON.stringify({
+    updatedAt: row.updated_at,
+    id: row.id,
+  }), "utf8").toString("base64url");
+}
+
+function decodeJobCursor(cursor: string): { updatedAt: string; id: string } {
+  try {
+    const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+    const parsed = JSON.parse(decoded) as Record<string, unknown>;
+    if (typeof parsed.updatedAt !== "string" || typeof parsed.id !== "string" || !parsed.updatedAt || !parsed.id) {
+      throw new Error("Invalid job cursor.");
+    }
+
+    return {
+      updatedAt: parsed.updatedAt,
+      id: parsed.id,
+    };
+  } catch {
+    throw new Error("Invalid job cursor.");
+  }
 }
 
 function normalizeChromaCollectionConfiguration(

@@ -6,7 +6,9 @@ import { HttpError } from "./errors.js";
 import { config, type ResolvedConfig } from "../config.js";
 import { startReindexJob } from "../indexing/jobs.js";
 import type { RequestContext } from "./requestContext.js";
-import type { CreateCollectionInput } from "../collections/types.js";
+import type { CreateCollectionInput, IndexJobStatus, ListJobsInput } from "../collections/types.js";
+
+const JOB_STATUS_VALUES = ["queued", "running", "succeeded", "failed", "cancelled"] as const satisfies readonly IndexJobStatus[];
 
 export function createAdminRouter(deps: AppDependencies, runtimeConfig: ResolvedConfig = deps.runtimeConfig ?? config) {
   const router = express.Router();
@@ -39,6 +41,46 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     }
 
     throw new HttpError(404, "COLLECTION_NOT_FOUND", "Collection not found");
+  }
+
+  function parseJobStatuses(input: unknown): IndexJobStatus[] {
+    const rawValues = Array.isArray(input) ? input : input ? [input] : [];
+    const statuses = rawValues
+      .flatMap((value) => String(value).split(","))
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const valid = new Set<IndexJobStatus>();
+
+    for (const status of statuses) {
+      if (!JOB_STATUS_VALUES.includes(status as IndexJobStatus)) {
+        throw new HttpError(400, "INVALID_REQUEST_BODY", `Invalid job status filter: ${status}`);
+      }
+      valid.add(status as IndexJobStatus);
+    }
+
+    return [...valid];
+  }
+
+  function parseJobListQuery(query: Record<string, unknown>): ListJobsInput {
+    const collectionId = typeof query.collectionId === "string" ? query.collectionId.trim() : undefined;
+    const cursor = typeof query.cursor === "string" ? query.cursor.trim() : undefined;
+    const limitRaw = query.limit;
+    const limit = typeof limitRaw === "string" && limitRaw.trim() !== ""
+      ? Number(limitRaw)
+      : Array.isArray(limitRaw) && typeof limitRaw[0] === "string"
+        ? Number(limitRaw[0])
+        : undefined;
+
+    if (limit !== undefined && (!Number.isFinite(limit) || !Number.isInteger(limit) || limit <= 0)) {
+      throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid job list limit.");
+    }
+
+    return {
+      collectionId: collectionId || undefined,
+      cursor: cursor || undefined,
+      limit,
+      statuses: parseJobStatuses(query.status),
+    };
   }
 
   const createCollectionSchema = z.object({
@@ -182,6 +224,24 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
         },
       });
     } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/jobs", requireRegistry, async (req, res, next) => {
+    try {
+      const context = res.locals.requestContext as RequestContext;
+      const filters = parseJobListQuery(req.query as Record<string, unknown>);
+      const result = await deps.registry!.listJobs(context, filters);
+      res.json({
+        jobs: result.jobs,
+        nextCursor: result.nextCursor,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "Invalid job cursor.") {
+        next(new HttpError(400, "INVALID_REQUEST_BODY", "Invalid job cursor."));
+        return;
+      }
       next(error);
     }
   });

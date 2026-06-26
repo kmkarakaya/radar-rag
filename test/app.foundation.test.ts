@@ -12,6 +12,7 @@ function createHealthyRegistryStub(): CollectionRegistry {
   return {
     listVisibleCollections: async () => [],
     getVisibleCollection: async () => null,
+    listJobs: async () => ({ jobs: [], nextCursor: null }),
     getJob: async () => null,
     getActiveJobForCollection: async () => null,
     createCollection: async () => {
@@ -351,4 +352,3 @@ describe("app foundation", () => {
     }
   });
 });
-

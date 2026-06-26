@@ -1,184 +1,254 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAG Backend Admin</title>
+    <title>RAG Ops Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-     <link rel="stylesheet" href="/admin/admin.css">
+    <link rel="stylesheet" href="/admin/admin.css">
+    <style>
+        .nav-item.active {
+            background-color: rgba(255, 255, 255, 0.1);
+            border-left: 4px solid white;
+        }
+    </style>
 </head>
-<body class="bg-gray-50 text-gray-900 font-sans">
-    <div class="min-h-screen flex flex-col">
-        <!-- Header -->
-        <header class="bg-indigo-700 text-white shadow-lg p-4">
-            <div class="container mx-auto flex justify-between items-center">
-                <h1 class="text-2xl font-bold tracking-tight">RAG Backend Admin</h1>
-                <button id="btnCreateCollection" class="bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2 rounded-lg transition-colors font-medium flex items-center gap-2 shadow-md">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" /></svg>
+<body class="bg-slate-50 text-slate-900 font-sans flex h-screen overflow-hidden">
+    <!-- Sidebar Navigation -->
+    <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col shrink-0">
+        <div class="p-6 flex items-center gap-3 border-b border-slate-800">
+            <div class="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center text-white font-bold">R</div>
+            <h1 class="text-lg font-bold text-white tracking-tight">RAG Admin</h1>
+        </div>
+
+        <nav class="flex-grow p-4 space-y-2">
+            <a href="#" data-view="collections" class="nav-item active flex items-center gap-3 px-3 py-2 rounded-md transition-colors hover:text-white hover:bg-slate-800">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                Collections
+            </a>
+            <a href="#" data-view="jobs" class="nav-item flex items-center gap-3 px-3 py-2 rounded-md transition-colors hover:text-white hover:bg-slate-800">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                Job Monitor
+            </a>
+            <a href="#" data-view="health" class="nav-item flex items-center gap-3 px-3 py-2 rounded-md transition-colors hover:text-white hover:bg-slate-800">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                System Health
+            </a>
+        </nav>
+
+        <div class="p-4 border-t border-slate-800 text-xs text-slate-500">
+            v1.0.0-stable
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="flex-grow flex flex-col overflow-hidden">
+        <!-- Top Header -->
+        <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
+            <h2 id="viewTitle" class="text-lg font-semibold text-slate-800">Collections</h2>
+            <div class="flex items-center gap-4">
+                <button id="btnRefresh" type="button" class="p-2 text-slate-500 hover:text-indigo-600 transition-colors rounded-full hover:bg-slate-100" title="Refresh Data" aria-label="Refresh data">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11V5a8 8 0 00-16 0v12a8 8 0 008 8 8 8 0 008-8z"></path></svg>
+                </button>
+                <button id="btnCreateCollection" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2" title="Create a new collection">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                     New Collection
                 </button>
             </div>
         </header>
 
-        <main class="container mx-auto p-6 flex-grow grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <!-- Left Column: Collections List -->
-            <div class="lg:col-span-2 space-y-6">
-                <!-- Collections Table -->
-                <section class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                    <div class="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-                        <h2 class="text-lg font-semibold text-gray-700">Collections</h2>
-                        <button id="btnRefresh" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" /></svg>
-                            Refresh
-                        </button>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
-                                    <th class="px-6 py-3 font-medium border-b">Name</th>
-                                    <th class="px-6 py-3 font-medium border-b">Status</th>
-                                    <th class="px-6 py-3 font-medium border-b text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="collectionsTableBody" class="divide-y divide-gray-100">
-                                <!-- Rows injected by JS -->
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <!-- Collection Details Panel -->
-                <section id="collectionDetailsPanel" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hidden">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-lg font-semibold text-gray-700">Collection Details</h2>
-                        <button id="btnCloseDetails" class="text-gray-400 hover:text-gray-600">&times;</button>
-                    </div>
-                    <div id="collectionDetailsContent" class="space-y-3 text-sm"></div>
-                </section>
-
-                <!-- Playground Section -->
-                <section id="playgroundSection" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hidden">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-lg font-semibold text-gray-700">Playground: <span id="playgroundCollectionName" class="text-indigo-600">None</span></h2>
-                        <button id="btnClosePlayground" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
-                    </div>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-600 mb-1">Question</label>
-                            <textarea id="playgroundQuestion" rows="3" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="Enter your question here..."></textarea>
-                        </div>
-                        <div class="flex gap-3">
-                            <button id="btnRetrieve" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors border border-gray-300 flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M8 3a1 1 0 00-1 1v1a1 1 0 102 0V4a1 1 0 00-1-1zm-4 8a4 4 0 118 0 4 4 0 01-8 0zm8-8a1 1 0 00-1 1v.57a2.001 2.001 0 013.896 1.43L14 6.1a1 1 0 10-.52-1.92l-2.58.7A3.993 3.993 0 019 4V3zm4 4a1 1 0 00-1 1v.57a2.001 2.001 0 01-3.896 1.43L6 6.1a1 1 0 10-.52-1.92l-2.58.7A3.993 3.993 0 011 4V3a1 1 0 00-2 0v1a3 3 0 002.9 2.999L3 7.01V8a3 3 0 106 0V7.01l.52-.18a2.001 2.001 0 013.896-1.43L14 6.1a1 1 0 10-.52-1.92l-2.58.7A3.993 3.993 0 019 4V3a1 1 0 00-2 0v1a3 3 0 002.9 2.999L10 7.01V8z" /></svg>
-                                Retrieve Sources
-                            </button>
-                            <button id="btnQuery" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm14 1a1 1 0 11-2 0 1 1 0 012 0zM2 13a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2v-2zm14 1a1 1 0 11-2 0 1 1 0 012 0z" /></svg>
-                                Ask Question (Query)
-                            </button>
-                        </div>
-                        <div class="mt-6">
-                            <label class="block text-sm font-medium text-gray-600 mb-1">Result</label>
-                            <pre id="playgroundResult" class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-auto max-h-96 text-sm font-mono whitespace-pre-wrap"></pre>
-                        </div>
-                    </div>
-                </section>
+        <!-- View Container -->
+        <main class="p-8 overflow-y-auto relative">
+            <!-- Collections View -->
+            <div id="view-collections" class="view-container space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6" id="collectionsGrid">
+                    <!-- Cards injected by JS -->
+                </div>
             </div>
 
-            <!-- Right Column: Jobs & Status -->
-            <div class="space-y-6">
-                <!-- System Health -->
-                <section class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <h2 class="text-lg font-semibold text-gray-700 mb-4">System Health</h2>
-                    <div id="healthStatus" class="space-y-3">
-                        <!-- Health items injected by JS -->
-                    </div>
-                </section>
+            <!-- Jobs View -->
+            <div id="view-jobs" class="view-container hidden space-y-6">
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm table-responsive">
+                    <table class="w-full min-w-[1120px] text-left text-sm">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-xs font-semibold">
+                            <tr>
+                                <th class="px-4 py-4">Job ID</th>
+                                <th class="px-4 py-4">Collection</th>
+                                <th class="px-4 py-4">Status</th>
+                                <th class="px-4 py-4">Target</th>
+                                <th class="px-4 py-4">Counts</th>
+                                <th class="px-4 py-4">Times</th>
+                                <th class="px-4 py-4">Error</th>
+                                <th class="px-4 py-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jobsTableBody" class="divide-y divide-slate-100">
+                            <!-- Rows injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-                <!-- Active Jobs -->
-                <section class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                    <div class="p-4 border-b border-gray-200 bg-gray-50">
-                        <h2 class="text-lg font-semibold text-gray-700">Active Jobs</h2>
-                    </div>
-                    <div id="jobsList" class="p-4 space-y-3 max-h-[400px] overflow-y-auto">
-                        <!-- Jobs injected by JS -->
-                        <p class="text-sm text-gray-500 italic text-center py-4">No active jobs</p>
-                    </div>
-                </section>
+            <!-- Health View -->
+            <div id="view-health" class="view-container hidden space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6" id="healthGrid">
+                    <!-- Health cards injected by JS -->
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6" id="readinessDetail">
+                    <!-- Readiness details injected by JS -->
+                </div>
             </div>
         </main>
+    </div>
 
-        <!-- Collection Modal -->
-        <div id="collectionModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50 p-4">
-            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-                <div class="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                    <h3 id="modalTitle" class="text-xl font-bold text-gray-800">Create Collection</h3>
-                    <button id="btnCloseModal" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+    <!-- Collection Inspector (Slide-out) -->
+    <div id="inspectorOverlay" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 hidden opacity-0 transition-opacity duration-200"></div>
+    <div id="inspectorPanel" class="fixed top-0 right-0 bottom-0 w-full max-w-2xl bg-white shadow-2xl z-50 translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
+        <div class="p-6 border-b border-slate-200 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <h3 id="inspectorTitle" class="text-xl font-bold text-slate-800">Collection Inspector</h3>
+                <span id="inspectorStatusBadge" class="px-2 py-1 text-xs font-bold rounded-full uppercase">Status</span>
+            </div>
+            <button id="btnCloseInspector" class="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors" aria-label="Close inspector" type="button">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+
+        <div class="flex-grow overflow-y-auto p-6">
+            <!-- Tabs Navigation -->
+            <div class="flex border-b border-slate-200 mb-6">
+                <button type="button" data-tab="ready" class="tab-btn active px-4 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">Readiness</button>
+                <button type="button" data-tab="playground" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Playground</button>
+                <button type="button" data-tab="editor" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Settings</button>
+            </div>
+
+            <!-- Tab: Readiness -->
+            <div id="tab-ready" class="tab-content space-y-6">
+                <div id="readinessStatusGrid" class="grid grid-cols-1 gap-4">
+                    <!-- Health indicators injected by JS -->
                 </div>
-                <form id="collectionForm" class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="hidden" id="fieldCollectionId">
+                <div id="readinessBlockers" class="hidden p-4 bg-red-50 border border-red-100 rounded-lg">
+                    <h4 class="text-red-700 font-semibold text-sm mb-2 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 2a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
+                        Critical Blockers
+                    </h4>
+                    <ul id="blockerList" class="text-red-600 text-xs space-y-1 list-disc pl-4"></ul>
+                </div>
+            </div>
+
+            <!-- Tab: Playground -->
+            <div id="tab-playground" class="tab-content hidden space-y-6">
+                <div class="flex gap-2 mb-4">
+                    <button type="button" data-mode="retrieve" class="mode-btn active px-3 py-1 text-xs font-bold rounded bg-indigo-600 text-white">Retrieve</button>
+                    <button type="button" data-mode="query" class="mode-btn px-3 py-1 text-xs font-bold rounded bg-slate-200 text-slate-600 hover:bg-slate-300">Query</button>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <textarea id="pgQuestion" rows="3" class="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm" placeholder="Ask a question..."></textarea>
+                    </div>
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                        <div class="w-full sm:w-36">
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="pgK">Retrieve K</label>
+                            <input type="number" min="1" step="1" id="pgK" class="w-full p-2 border border-slate-200 rounded-lg text-sm" placeholder="Default">
+                        </div>
+                        <button id="btnPgRun" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all shadow-sm">Run Test</button>
+                    </div>
+                    <div id="pgResult" class="bg-slate-50 border border-slate-200 rounded-xl p-4 min-h-[200px] max-h-[480px] overflow-y-auto text-sm text-slate-700">
+                        <span class="text-slate-400 italic">Results will appear here...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Editor -->
+            <div id="tab-editor" class="tab-content hidden">
+                <form id="colEditForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input type="hidden" id="editId">
                     <div class="md:col-span-2">
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Display Name *</label>
-                        <input type="text" id="fieldDisplayName" required class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Display Name *</label>
+                        <input type="text" id="editDisplayName" required class="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
                     </div>
                     <div class="md:col-span-2">
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Description</label>
-                        <textarea id="fieldDescription" rows="2" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
+                        <textarea id="editDescription" rows="2" class="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"></textarea>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Source Path</label>
-                        <input type="text" id="fieldSourcePath" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <div class="space-y-4">
+                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Indexing</h4>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Source Path</label>
+                            <input type="text" id="editSourcePath" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Ozelge Data Path</label>
+                            <input type="text" id="editOzelgeDataPath" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">Chunk Size</label>
+                                <input type="number" id="editChunkSize" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">Overlap</label>
+                                <input type="number" id="editChunkOverlap" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Ozelge Data Path</label>
-                        <input type="text" id="fieldOzelgeDataPath" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <div class="space-y-4">
+                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Retrieval</h4>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Distance Metric</label>
+                            <select id="editDistanceMetric" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                                <option value="l2">L2 (Euclidean)</option>
+                                <option value="cosine">Cosine</option>
+                                <option value="ip">Inner Product</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">K</label>
+                                <input type="number" id="editRetrievalK" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">Threshold</label>
+                                <input type="number" step="0.01" id="editRetrievalDistanceThreshold" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Distance Metric</label>
-                        <select id="fieldDistanceMetric" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                            <option value="l2">L2 (Euclidean)</option>
-                            <option value="cosine">Cosine</option>
-                            <option value="ip">Inner Product</option>
-                        </select>
+                    <div class="md:col-span-2 space-y-4 border-t border-slate-100 pt-4">
+                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Models</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">Embedding Model</label>
+                                <input type="text" id="editEmbeddingModel" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">Chat Model</label>
+                                <input type="text" id="editChatModel" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Chunk Size</label>
-                        <input type="number" id="fieldChunkSize" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Chunk Overlap</label>
-                        <input type="number" id="fieldChunkOverlap" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Retrieval K</label>
-                        <input type="number" id="fieldRetrievalK" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Retrieval Distance Threshold</label>
-                        <input type="number" step="0.01" id="fieldRetrievalDistanceThreshold" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Embedding Model</label>
-                        <input type="text" id="fieldEmbeddingModel" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Chat Model</label>
-                        <input type="text" id="fieldChatModel" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                    </div>
-                    <div class="md:col-span-2 flex justify-end gap-3 mt-4">
-                        <button type="button" id="btnCancelModal" class="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium transition-colors">Cancel</button>
-                        <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold shadow-md transition-all">Save Collection</button>
+                    <div class="md:col-span-2 flex justify-end gap-3 mt-6">
+                        <button type="button" id="btnCancelEdit" class="px-4 py-2 text-slate-500 hover:text-slate-700 text-sm font-medium transition-colors">Cancel</button>
+                        <button type="submit" id="btnSave" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all shadow-sm">Save Changes</button>
                     </div>
                 </form>
             </div>
         </div>
 
-        <!-- Notification Toast -->
-        <div id="toast" class="fixed bottom-5 right-5 transform translate-y-20 opacity-0 transition-all duration-300 bg-gray-800 text-white px-6 py-3 rounded-xl shadow-2xl z-[100] flex items-center gap-3">
-            <span id="toastMessage"></span>
+        <div class="p-6 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
+            <button id="btnReindex" type="button" class="bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm" title="Start re-index for this collection">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11V5a8 8 0 00-16 0v12a8 8 0 008 8 8 8 0 008-8z"></path></svg>
+                Re-index Collection
+            </button>
+            <button id="btnDeleteCol" type="button" class="text-red-500 hover:text-red-700 text-sm font-bold transition-colors flex items-center gap-1" title="Delete this collection">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.998-1.858L5 7m5 0v6m0-6V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                Delete
+            </button>
         </div>
     </div>
-     <script src="/admin/admin.js"></script>
+
+    <!-- Toasts -->
+    <div id="toastContainer" class="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none"></div>
+
+    <script src="/admin/admin.js"></script>
 </body>
 </html>

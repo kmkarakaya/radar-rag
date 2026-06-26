@@ -1159,3 +1159,134 @@ Yukarıdaki endpoint önerileri admin panelin mevcut adımlarında uygulanmayaca
 - admin panel entegrasyonu
 
 Admin-only geliştirme sırasında bu öneriler yalnızca doküman notu olarak kalmalıdır.
+## Kalan Backend Eksikleri - Sade Özet
+
+Bu bölüm, yukarıdaki teknik önerilerin daha kısa ve anlaşılır bir özetidir. Bunlar **admin-only panel düzeltmeleri değildir**; backend kapsamı açıldığında ele alınmalıdır.
+
+### Operasyonel görünürlük eksikleri
+
+1. **Job list endpointi yok**
+   - Panel bugün tüm job'ları çekemiyor.
+   - Sadece bu tarayıcı oturumunun görmüş olduğu job id'leri izlenebiliyor.
+   - Etki: Job Monitor gerçek bir sistem listesi değil, oturum tabanlı bir izleyici olarak kalıyor.
+
+2. **Job ilerleme verisi yok**
+   - Job yalnızca `queued`, `running`, `succeeded`, `failed`, `cancelled` statüsüyle izlenebiliyor.
+   - Gerçek progress, aşama veya event akışı yok.
+   - Etki: Kullanıcı "şu anda ne yapılıyor?" sorusuna detaylı cevap alamıyor.
+
+3. **Operasyon geçmişi kaydı yok**
+   - Re-index, silme, query/retrieve ve hata geçmişi için kalıcı audit/log endpointi yok.
+   - Etki: Eski işlemleri panel üzerinden sonradan incelemek mümkün değil.
+
+4. **Physical collection görünürlüğü eksik**
+   - Zero-downtime rebuild sonrası eski ve yeni fiziksel koleksiyonların yaşam döngüsü panelde açıkça görülemiyor.
+   - Etki: Cleanup/retention davranışı operatör için şeffaf değil.
+
+### Konfigürasyon ve doğrulama eksikleri
+
+5. **Admin collection detail endpointi yok**
+   - Public collection DTO zamanla daraltılırsa edit formu tam veri alamaz.
+   - Etki: Settings formu public response'a fazla bağımlı kalır.
+
+6. **Model discovery endpointi yok**
+   - Model isimleri serbest metin olarak giriliyor.
+   - Etki: Typo riski var, dropdown/autocomplete yapılamıyor.
+
+7. **Save/reindex validation endpointleri yok**
+   - Path, chunk, model ve distance metric uyumu önceden dry-run ile doğrulanamıyor.
+   - Etki: Hatalar çoğunlukla re-index başladıktan sonra fark ediliyor.
+
+8. **Config defaults endpointi yok**
+   - Create form backend default'larını doğrudan okuyamıyor.
+   - Etki: Kullanıcı varsayılanları UI'da göremediği için tahmine dayalı davranıyor.
+
+### Readiness ve durum açıklığı eksikleri
+
+9. **Readiness blocker/warning listesi backend'den gelmiyor**
+   - UI blocker metinlerini mevcut readiness alanlarından türetiyor.
+   - Etki: Gerçek truth source ile UI mesajı tamamen aynı değil.
+
+10. **Health/readiness detayları daha zengin bir operasyon özetine dönüşmedi**
+   - Panel `/health`, `/ready` ve `/ready?details=true` ile çalışıyor ama daha kapsamlı teşhis endpointleri yok.
+   - Etki: Panel durum gösteriyor, ancak teşhis derinliği sınırlı kalıyor.
+
+### Güvenlik eksikleri
+
+11. **Auth/RBAC ve CSRF sertleştirmesi yok**
+   - Admin API şu an lokal/statik kullanım mantığına göre çalışıyor.
+   - Etki: Production-benzeri kullanım için güvenlik katmanı eksik.
+
+### Sonuç
+
+Bu maddeler planın ana admin panel kapsamından ayrı tutuldu. Başka bir deyişle:
+- `admin/` tarafındaki görevler tamamlanmış sayılabilir.
+- Yukarıdaki maddeler ise **yeni backend işi** açıldığında ele alınmalıdır.
+- Eğer bu eksikleri kapatmak istenirse, ilgili backend router, test ve dokümantasyon birlikte güncellenmelidir.
+
+## Kalan Backend Eksikleri - Öncelik Sırası
+
+Aşağıdaki sıra, bu eksikleri hangi hızda ele almak gerektiğini gösterir. En üsttekiler panelin günlük kullanımını en çok etkileyen maddelerdir.
+
+### P1 - Panelin doğru çalışması için kritik
+
+1. **Admin collection detail endpointi yok**
+   - Public collection DTO daralırsa edit formu eksik kalır.
+   - Settings ekranı tam veri olmadan güvenilir olmaz.
+   - Öneri: `GET /v1/admin/collections/:collectionId`
+
+2. **Job list endpointi yok**
+   - Panel tüm job'ları doğrudan listeleyemiyor.
+   - Job Monitor sadece bu oturumun gördüğü job id'lerini izliyor.
+   - Öneri: `GET /v1/admin/jobs?collectionId=&status=&limit=&cursor=`
+
+3. **Readiness blocker/warning listesi backend'den gelmiyor**
+   - UI blocker metinlerini türetiyor.
+   - Doğru ve tutarlı operasyon mesajı için truth source backend olmalı.
+   - Öneri: `GET /v1/rag/collections/:id/ready` response'una `blockers`, `warnings`, `recommendedActions` eklenmesi.
+
+4. **Save/reindex validation endpointleri yok**
+   - Kullanıcı ayarların etkisini re-index sırasında öğreniyor.
+   - Hatalar çok geç yakalanıyor.
+   - Öneri: `POST /v1/admin/collections/validate` ve `POST /v1/admin/collections/:id/validate`
+
+### P2 - Kullanıcı deneyimini güçlendiren eksikler
+
+5. **Model discovery endpointi yok**
+   - Model adı serbest metin olduğu için typo riski var.
+   - Öneri: `GET /v1/admin/models`
+
+6. **Config defaults endpointi yok**
+   - Create form backend varsayılanlarını görünür göstermiyor.
+   - Kullanıcı boş bıraktığında ne olacağını tahmin ediyor.
+   - Öneri: `GET /v1/admin/config/defaults`
+
+7. **Health/readiness daha zengin bir operasyon özetine dönüşmedi**
+   - Panel durum gösteriyor ama teşhis derinliği sınırlı.
+   - Daha iyi bir özet için backend tarafında genişletme gerekebilir.
+
+8. **Job ilerleme verisi yok**
+   - Job yalnızca terminal/ara durumlarla izlenebiliyor.
+   - Gerçek aşama/event bilgisi yok.
+   - Öneri: `GET /v1/admin/jobs/:jobId/events` veya SSE stream.
+
+### P3 - Operasyon şeffaflığı ve bakım
+
+9. **Physical collection görünürlüğü eksik**
+   - Zero-downtime rebuild sonrası fiziksel koleksiyon yaşam döngüsü panelde şeffaf değil.
+   - Öneri: `GET /v1/admin/collections/:id/physical-collections`
+
+10. **Operasyon geçmişi kaydı yok**
+   - Re-index, delete, query/retrieve ve hata geçmişi panelden sonradan okunamıyor.
+   - Öneri: `GET /v1/admin/audit-log?collectionId=&operation=&limit=&cursor=`
+
+11. **Auth/RBAC ve CSRF sertleştirmesi yok**
+   - Panel şu an lokal/statik kullanım mantığıyla çalışıyor.
+   - Production-benzeri kullanım için güvenlik katmanı eksik.
+   - Öneri: auth middleware, role-based izinler, destructive aksiyonlar için CSRF veya signed action token.
+
+### Kısa karar kuralı
+
+- Önce P1.
+- P1 bitmeden P2'ye geçme.
+- P2 tamamlanmadan P3, yalnızca bakım veya güvenlik işi olarak ele alınsın.

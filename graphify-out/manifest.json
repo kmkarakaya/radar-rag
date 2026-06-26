@@ -10,8 +10,8 @@
     "semantic_hash": "990e827940a6196eb3aea4c6e23a605c"
   },
   "admin/admin.js": {
-    "mtime": 1782513979.6078947,
-    "ast_hash": "5eff164aad3ed80347e1e59b479197e3",
+    "mtime": 1782515004.0973766,
+    "ast_hash": "fd43cb558d442309efbe4bf11f66087b",
     "semantic_hash": ""
   },
   "benchmark/benchmark.json": {
@@ -45,7 +45,7 @@
     "semantic_hash": "8229bba76e1581c7e81d2f3cb9831317"
   },
   "src/app.ts": {
-    "mtime": 1782513458.3705082,
+    "mtime": 1782514187.773038,
     "ast_hash": "5933e7f6cf97a526e7116567aa614bc9",
     "semantic_hash": ""
   },
@@ -175,8 +175,8 @@
     "semantic_hash": ""
   },
   "test/admin.static.test.ts": {
-    "mtime": 1782514024.9658706,
-    "ast_hash": "7108e0354e294eec9885da1fc7cb68a9",
+    "mtime": 1782515018.865726,
+    "ast_hash": "3806292a0512b7857932a875a718a0cc",
     "semantic_hash": ""
   },
   "test/app.foundation.test.ts": {
@@ -340,8 +340,8 @@
     "semantic_hash": "9cb5892dbc1e6f6c3a5ac23c4438de8b"
   },
   "notes/adminpanel_plan.md": {
-    "mtime": 1782513997.6429067,
-    "ast_hash": "efdcf4bf29777712abd90d76f93db6b9",
+    "mtime": 1782514095.0628574,
+    "ast_hash": "87ee415abf5d786cdf6a1fded131fbf5",
     "semantic_hash": ""
   },
   "notes/adminpanel_prompts.md": {

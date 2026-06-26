@@ -32,6 +32,25 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("mergeCollectionIntoState(detail)"));
   });
 
+  it("shows clearer indexing language on collection cards while keeping reindex actions in the inspector", async () => {
+    const [html, js] = await Promise.all([
+      readAdminFile("index.html"),
+      readAdminFile("admin.js"),
+    ]);
+
+    assert.ok(js.includes("function getCollectionCardStatusPresentation(status)"));
+    assert.ok(js.includes("function getCollectionCardStatusBadge(status)"));
+    assert.ok(js.includes("function getCollectionCardStatusNote(status)"));
+    assert.ok(js.includes("Indexing required"));
+    assert.ok(js.includes("Indexing in progress"));
+    assert.ok(js.includes("No active index yet. Open details to re-index."));
+    assert.ok(js.includes("Open details to inspect the latest error."));
+    assert.ok(js.includes("getCollectionCardStatusBadge(collection.status)"));
+    assert.ok(js.includes("getCollectionCardStatusNote(collection.status)"));
+    assert.ok(html.includes('id="btnReindex"'));
+    assert.ok(html.includes("Re-index Collection"));
+  });
+
   it("keeps admin DOM id references aligned with index.html", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),

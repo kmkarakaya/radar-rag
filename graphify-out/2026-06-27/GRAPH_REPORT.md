@@ -1,11 +1,11 @@
 # Graph Report - Vanilla Rag Backend  (2026-06-27)
 
 ## Corpus Check
-- 79 files · ~1,128,640 words
+- 79 files · ~1,128,595 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1154 nodes · 1982 edges · 89 communities (80 shown, 9 thin omitted)
+- 1154 nodes · 1983 edges · 93 communities (83 shown, 10 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 16 edges (avg confidence: 0.81)
 - Token cost: 0 input · 0 output
 
@@ -94,6 +94,10 @@
 - [[_COMMUNITY_Community 84|Community 84]]
 - [[_COMMUNITY_Community 85|Community 85]]
 - [[_COMMUNITY_Community 86|Community 86]]
+- [[_COMMUNITY_Community 87|Community 87]]
+- [[_COMMUNITY_Community 88|Community 88]]
+- [[_COMMUNITY_Community 89|Community 89]]
+- [[_COMMUNITY_Community 90|Community 90]]
 - [[_COMMUNITY_Community 91|Community 91]]
 - [[_COMMUNITY_Community 105|Community 105]]
 
@@ -133,11 +137,11 @@
 - **Educational content about Hybrid LLM Workflow** — egitim_egitim_icerigi, egitim_index, egitim_output [EXTRACTED 1.00]
 - **RAG Backend ecosystem** — dataset2_readme_rag_sistemi, test_frontend_index_rag_api_endpoints, test_frontend_index_rag_test_console, egitim_egitim_icerigi_hybrid_llm_workflow [INFERRED 0.75]
 
-## Communities (89 total, 9 thin omitted)
+## Communities (93 total, 10 thin omitted)
 
 ### Community 0 - "RAG Backend Core"
-Cohesion: 0.21
-Nodes (10): resolveReadableCollection(), Express HTTP Framework, ApiErrorCode, ApiErrorResponse, HttpError, RequestContext, emitOperationalLog(), normalizeLogEvent() (+2 more)
+Cohesion: 0.22
+Nodes (12): resolveReadableCollection(), Express HTTP Framework, ApiErrorCode, ApiErrorResponse, errorHandler(), HttpError, notFoundHandler(), sendErrorResponse() (+4 more)
 
 ### Community 1 - "Turkish Historical Data"
 Cohesion: 0.18
@@ -148,7 +152,7 @@ Cohesion: 0.32
 Nodes (7): Cold Start Prompt, done.md logging convention, Hybrid LLM Coding Workflow, Lokal Model (Local LLM), Yüksek Kapasiteli Model (Paid LLM), index.html - Educational content HTML page, output.html - Partial HTML output of lesson
 
 ### Community 3 - "Multi-Collection Architecture"
-Cohesion: 0.11
+Cohesion: 0.12
 Nodes (16): Multi-Collection Support, Chroma Dokümanlarıyla Uyum Notları, Concurrency Stratejisi, Endpoint Path'ine Collection Hash Ekleyelim mi?, Collection ID Strategy, Index/Rebuild Path, İkinci Repo İncelemesiyle Eklenen Netleştirmeler, Kısa Karar (+8 more)
 
 ### Community 4 - "Admin Panel Design"
@@ -168,8 +172,8 @@ Cohesion: 0.08
 Nodes (24): Admin Panel HTML, Tailwind CSS, Admin Panel Prompt Denetim Kaydi, Ek Duzeltme - Playground MODEL_BACKPRESSURE Abort Regresyonu, Prompt 00 - Audit, Kod Degisikligi Yok, Prompt 01 - API Client, State Model, Safe Render Temeli, Prompt 02 - Collections View ve Inspector Akisi, Prompt 03 - Create/Edit Form ve Payload Guvenligi (+16 more)
 
 ### Community 10 - "Onboarding Flow"
-Cohesion: 0.12
-Nodes (22): Chroma Vector Store, RAG Config YAML, Collection Defaults, Observability Config, Model Backpressure, Concurrency Strategy, Registry Model, Ollama LLM Gateway (+14 more)
+Cohesion: 0.19
+Nodes (12): Admin API, Logical Collection, Onboarding CLI, Physical Chroma Collection, RAG API, Readiness System, Retention Cleanup, Stale Job Recovery (+4 more)
 
 ### Community 11 - "Community 11"
 Cohesion: 0.19
@@ -216,12 +220,12 @@ Cohesion: 0.12
 Nodes (16): Coding Agent İçin Uygulama Blueprint'i, Coding Agent Çalışma Sırası, Doğrulama Komutları, HTTP Hata Kodları, Registry Storage Kararı, Registry Åeması, `src/app.ts` ve `src/server.ts`, `src/collections/chromaCollections.ts` (+8 more)
 
 ### Community 22 - "Community 22"
-Cohesion: 0.13
-Nodes (26): createAdminRouter(), buildCollectionReadinessPayload(), CollectionReadinessHealthChecks, CollectionReadinessIssue, CollectionReadinessPayload, makeIssue(), errorHandler(), notFoundHandler() (+18 more)
+Cohesion: 0.14
+Nodes (22): createAdminRouter(), buildCollectionReadinessPayload(), CollectionReadinessHealthChecks, CollectionReadinessIssue, CollectionReadinessPayload, makeIssue(), createRagRouter(), createInMemoryRequestRateLimiter() (+14 more)
 
 ### Community 23 - "Community 23"
-Cohesion: 0.06
-Nodes (31): Faz 0.5: Test ve Bootstrap Hazırlığı, Faz 0: Davranış Sözleşmesini Netleştir, Faz 1: RAG Core'u Collection-Aware Yap, Faz 2: Collection Registry Ekle, Faz 3: API Endpointlerini Yeniden Tasarla, Faz 4: Zero-Downtime Index/Rebuild, Faz 5: Backend Operasyonel Olgunluk, Faz 6: Test Frontend ve Dokümantasyon (+23 more)
+Cohesion: 0.13
+Nodes (13): Faz 0.5: Test ve Bootstrap Hazirligi, Faz 0: Davranis Sozlesmesini Netlestir, Faz 1: RAG Core'u Collection-Aware Yap, Faz 2: Collection Registry Ekle, Faz 3: API Endpointlerini Yeniden Tasarla, Faz 4: Zero-Downtime Index/Rebuild, Faz 5: Backend Operasyonel Olgunluk, Faz 6: Test Frontend ve Dokumantasyon (+5 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.15
@@ -256,12 +260,12 @@ Cohesion: 0.22
 Nodes (9): Değiştirilmeyecek Backend Kontratı, Endpoint İyileştirme Notları İçin Kural, Endpoint Kullanım Rehberi, Global Uygulama İlkeleri, Küçük Model / Cold Start Uygulama Rehberi, Ortak Doğrulama Komutları, Plan Tamlık Kontrol Listesi, RAG Admin Panel Development Plan (+1 more)
 
 ### Community 32 - "Community 32"
-Cohesion: 0.20
-Nodes (8): cleanupRetiredPhysicalCollections(), DeletePhysicalCollectionFn, isPhysicalCollectionMissingError(), IndexJobRunner, runStartupMaintenance(), collectionInput, context, seedPhysicalRecord()
+Cohesion: 0.18
+Nodes (14): cleanupRetiredPhysicalCollections(), DeletePhysicalCollectionFn, isPhysicalCollectionMissingError(), createIndexJobRunner(), IndexJobRunner, createConsoleLogSink(), createApp(), main() (+6 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.24
-Nodes (8): Bucket, createRateLimitKey(), getRateLimitTarget(), RateLimitDecision, RateLimitInput, RateLimitOperation, RequestRateLimiter, getHttpOperationTarget()
+Cohesion: 0.20
+Nodes (10): Chroma Vector Store, RAG Config YAML, Collection Defaults, Observability Config, Model Backpressure, Concurrency Strategy, Registry Model, Ollama LLM Gateway (+2 more)
 
 ### Community 34 - "Community 34"
 Cohesion: 0.25
@@ -344,8 +348,8 @@ Cohesion: 0.33
 Nodes (6): 1. Collection Yaratma (Admin API), 2. Re-Index / Job Başlatma, 3. Job Durumunu Görüntüleme, Backend Yönetimi ve Admin Workflow, Operasyonel Config Yüzeyi, Sistem Onboarding (İlk Kurulum)
 
 ### Community 57 - "Community 57"
-Cohesion: 0.14
-Nodes (19): createSqliteCollectionRegistry(), CollectionRegistry, addMetadataToChunks(), buildPhysicalCollection(), createIndexJobRunner(), runIndexJob(), startReindexJob(), createConsoleLogSink() (+11 more)
+Cohesion: 0.24
+Nodes (10): CollectionRegistry, addMetadataToChunks(), buildPhysicalCollection(), runIndexJob(), startReindexJob(), emitOperationalLog(), normalizeLogEvent(), OperationalLogEvent (+2 more)
 
 ### Community 58 - "Community 58"
 Cohesion: 0.40
@@ -376,8 +380,8 @@ Cohesion: 0.33
 Nodes (4): PhysicalCollectionStatus, collectionInput, context, seedPhysical()
 
 ### Community 66 - "Community 66"
-Cohesion: 0.14
-Nodes (13): answerCalls, AppRagAnswerHandler, AppRagHandlers, AppRagRetrieveHandler, availableOllamaModels, createQueuedJob(), operationalLogs, readablePhysicalCollections (+5 more)
+Cohesion: 0.11
+Nodes (19): answerCalls, AppRagAnswerHandler, AppRagHandlers, AppRagRetrieveHandler, availableOllamaModels, createQueuedJob(), operationalLogs, readablePhysicalCollections (+11 more)
 
 ### Community 67 - "Community 67"
 Cohesion: 0.13
@@ -415,6 +419,18 @@ Nodes (5): Kalan Backend Eksikleri - Öncelik Sırası, Kısa karar kuralı, P1 
 Cohesion: 0.50
 Nodes (4): description, minLength, type, ozelgeId
 
+### Community 87 - "Community 87"
+Cohesion: 0.31
+Nodes (6): createSqliteCollectionRegistry(), IndexingRunResult, IndexingSourceHealthDetails, main(), parseCollectionIdArg(), runIndexing()
+
+### Community 88 - "Community 88"
+Cohesion: 0.22
+Nodes (9): Faz 0.5: Test ve Bootstrap Hazırlığı, Faz 0: Davranış Sözleşmesini Netleştir, Faz 1: RAG Core'u Collection-Aware Yap, Faz 2: Collection Registry Ekle, Faz 3: API Endpointlerini Yeniden Tasarla, Faz 4: Zero-Downtime Index/Rebuild, Faz 5: Backend Operasyonel Olgunluk, Faz 6: Test Frontend ve Dokümantasyon (+1 more)
+
+### Community 89 - "Community 89"
+Cohesion: 0.22
+Nodes (9): `package.json` ve Test Altyapısı, Repo ile Mevcut Durum Karşılaştırması, `src/admin/onboard.ts`, `src/config.ts`, `src/index.ts`, `src/ingestion/pipeline.ts`, `src/rag.ts`, `src/server.ts` (+1 more)
+
 ### Community 91 - "Community 91"
 Cohesion: 0.13
 Nodes (24): CliOptions, DISTANCE_METRICS, main(), parseArgs(), printConfigSummary(), printSourceAnalysis(), promptBoolean(), promptConfig() (+16 more)
@@ -440,7 +456,7 @@ Nodes (31): answerQuestion(), ChatGenerationHealthDetails, checkChatGenerationHe
 ## Knowledge Gaps
 - **597 isolated node(s):** `$schema`, `plugin`, `@opencode-ai/plugin`, `API`, `EDIT_FIELD_IDS` (+592 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **9 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -457,5 +473,5 @@ _Questions this graph is uniquely positioned to answer:_
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **What is the exact relationship between `En Önemli Prensipler (Key Principles)` and `Zihinsel Model (Mental Model Diagram)`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **Why does `Express HTTP Framework` connect `RAG Backend Core` to `Community 33`, `Onboarding Flow`, `Community 15`, `Community 20`, `Community 22`?**
+- **Why does `Express HTTP Framework` connect `RAG Backend Core` to `Community 66`, `Onboarding Flow`, `Community 15`, `Community 20`, `Community 22`, `Community 57`?**
   _High betweenness centrality (0.113) - this node is a cross-community bridge._

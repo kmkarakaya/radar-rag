@@ -261,6 +261,52 @@ function getStatusBadge(status) {
     return createBadge(status || "unknown", getStatusColor(status));
 }
 
+function getCollectionCardStatusPresentation(status) {
+    switch (status) {
+        case "creating":
+            return {
+                label: "Indexing required",
+                note: "No active index yet. Open details to re-index.",
+            };
+        case "indexing":
+            return {
+                label: "Indexing in progress",
+                note: "The collection is being indexed right now.",
+            };
+        case "ready":
+            return {
+                label: "Ready",
+                note: "",
+            };
+        case "failed":
+            return {
+                label: "Indexing failed",
+                note: "Open details to inspect the latest error.",
+            };
+        case "archived":
+            return {
+                label: "Archived",
+                note: "This collection is archived and not active.",
+            };
+        default:
+            return {
+                label: status || "unknown",
+                note: "",
+            };
+    }
+}
+
+function getCollectionCardStatusBadge(status) {
+    const presentation = getCollectionCardStatusPresentation(status);
+    return createBadge(presentation.label, getStatusColor(status));
+}
+
+function getCollectionCardStatusNote(status) {
+    const presentation = getCollectionCardStatusPresentation(status);
+    if (!presentation.note) return null;
+    return createEl("p", "mt-2 text-xs text-slate-500", presentation.note);
+}
+
 function createMetaItem(label, value, className = "") {
     const item = createEl("div", `rounded border border-slate-100 bg-white p-3 ${className}`);
     const labelNode = createEl("div", "text-[10px] font-bold uppercase tracking-wider text-slate-400", label);
@@ -529,6 +575,7 @@ function renderCollections() {
         card.addEventListener("click", () => openInspector(collection.id));
 
         const icon = createEl("div", "mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 font-bold text-indigo-600", (collection.displayName || "?").charAt(0).toUpperCase());
+        const statusNote = getCollectionCardStatusNote(collection.status);
         const title = createEl("h3", "mt-3 break-all-words font-bold text-slate-800 transition-colors group-hover:text-indigo-600", collection.displayName || "Unnamed Collection");
         const desc = createEl("p", "mt-1 line-clamp-2 min-h-[2rem] text-xs text-slate-500", collection.description || "No description provided.");
         const footer = createEl("div", "mt-4 grid grid-cols-1 gap-2 border-t border-slate-100 pt-4 text-[10px] font-medium uppercase tracking-wider text-slate-400 sm:grid-cols-3");
@@ -536,7 +583,7 @@ function renderCollections() {
         footer.appendChild(createEl("span", "", `Version: ${formatCount(collection.activeVersion)}`));
         footer.appendChild(createEl("span", "", formatDateTime(collection.updatedAt)));
 
-        appendChildren(card, [icon, getStatusBadge(collection.status), title, desc, footer]);
+        appendChildren(card, [icon, getCollectionCardStatusBadge(collection.status), statusNote, title, desc, footer]);
         grid.appendChild(card);
     });
 }

@@ -127,5 +127,9 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("function renderQueryResult"));
     assert.ok(js.includes("function renderPlaygroundError"));
     assert.ok(js.includes("function renderSourceFields"));
+    assert.ok(js.includes("function adminJobDeleteUrl(id)"));
+    assert.ok(js.includes("async function deleteJob(jobId)"));
+    assert.ok(js.includes("Delete terminal job from the server"));
+    assert.ok(js.includes("Remove"));
   });
 });

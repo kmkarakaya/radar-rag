@@ -154,6 +154,10 @@ function adminJobUrl(id) {
     return `${API.admin}/jobs/${id}`;
 }
 
+function adminJobDeleteUrl(id) {
+    return `${API.admin}/jobs/${id}`;
+}
+
 function adminJobsListUrl(options = {}) {
     const params = new URLSearchParams();
     params.set("limit", String(options.limit || JOB_LIST_LIMIT));
@@ -1795,6 +1799,31 @@ async function refreshJob(jobId) {
     }
 }
 
+async function deleteJob(jobId) {
+    if (state.jobListSource !== "server") {
+        removeJobFromMonitor(jobId);
+        showToast("Job removed from local monitor.", "success");
+        return;
+    }
+
+    try {
+        await apiRequest(adminJobDeleteUrl(jobId), { method: "DELETE" });
+        removeJobFromMonitor(jobId);
+        showToast("Job removed.", "success");
+        await loadJobs({ cursor: state.jobListCursor });
+    } catch (error) {
+        const normalized = normalizeError(error);
+        if (normalized.status === 404 || normalized.code === "ROUTE_NOT_FOUND") {
+            removeJobFromMonitor(jobId);
+            showToast("Job was already removed.", "info");
+            await loadJobs({ cursor: state.jobListCursor });
+            return;
+        }
+        showErrorToast(error, "Remove failed");
+        await loadJobs({ cursor: state.jobListCursor });
+    }
+}
+
 function getJobViewRows() {
     const source = state.jobListSource;
     const rows = source === "server" ? state.jobList : state.knownJobs;
@@ -2027,8 +2056,8 @@ function renderJobs() {
         if (job.status === "queued" || job.status === "running") {
             actions.appendChild(createButton("Cancel", "text-xs font-medium text-rose-600 hover:text-rose-800", () => cancelJob(job.id), { title: "Cancel this job" }));
         }
-        if ((["succeeded", "failed", "cancelled"].includes(job.status) || job.notFound) && state.jobListSource !== "server") {
-            actions.appendChild(createButton("Remove", "text-xs font-medium text-slate-500 hover:text-slate-700", () => removeJobFromMonitor(job.id), { title: "Remove from local monitor" }));
+        if (job.notFound || ["succeeded", "failed", "cancelled"].includes(job.status)) {
+            actions.appendChild(createButton("Remove", "text-xs font-medium text-slate-500 hover:text-slate-700", () => deleteJob(job.id), { title: "Delete terminal job from the server" }));
         }
         appendCell(row, "text-right", actions);
         tbody.appendChild(row);

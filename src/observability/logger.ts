@@ -121,5 +121,15 @@ export function getHttpOperationTarget(req: Request): { operation: string; colle
     }
   }
 
+  if (req.method === "DELETE") {
+    const jobMatch = /^\/v1\/admin\/jobs\/([^/]+)$/.exec(req.path);
+    if (jobMatch) {
+      return {
+        jobId: decodeURIComponent(jobMatch[1] ?? ""),
+        operation: "job_delete",
+      };
+    }
+  }
+
   return null;
 }

@@ -1214,6 +1214,84 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(body2.code, "COLLECTION_INDEX_ALREADY_RUNNING");
   });
 
+  it("DELETE /v1/admin/jobs/:jobId removes terminal jobs and hides them from the list", async () => {
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "job-delete-terminal" };
+    const collection = await registry.createCollection(ctx, {
+      displayName: "Job Delete Terminal",
+      sourcePath: "data",
+      ozelgeDataPath: "data/ozelge.json",
+      embeddingModel: "embed",
+      chatModel: "chat",
+      distanceMetric: "l2",
+      chunkSize: 500,
+      chunkOverlap: 50,
+      retrievalK: 5,
+      retrievalDistanceThreshold: 1,
+    });
+
+    const job = await registry.beginIndexJob(ctx, collection.id);
+    await registry.markIndexJobRunning(job.id);
+    const running = await registry.getJob(job.id);
+    assert.ok(running);
+    await registry.createPhysicalCollectionRecord({
+      name: running.targetPhysicalCollection,
+      tenantId: ctx.tenantId,
+      collectionId: collection.id,
+      version: running.targetVersion,
+      chromaConfiguration: running.targetChromaConfiguration,
+    });
+    await registry.completeIndexJob(job.id, {
+      activePhysicalCollection: running.targetPhysicalCollection,
+      activeVersion: running.targetVersion,
+      documentCount: 2,
+      chunkCount: 4,
+      retentionMs: 0,
+    });
+
+    const deleteResponse = await request(`/v1/admin/jobs/${job.id}`, {
+      method: "DELETE",
+      headers: { "x-tenant-id": "default" },
+    });
+    assert.equal(deleteResponse.status, 204);
+
+    const getResponse = await request(`/v1/admin/jobs/${job.id}`, {
+      headers: { "x-tenant-id": "default" },
+    });
+    assert.equal(getResponse.status, 404);
+
+    const listResponse = await request(`/v1/admin/jobs?collectionId=${encodeURIComponent(collection.id)}`, {
+      headers: { "x-tenant-id": "default" },
+    });
+    const listBody = await listResponse.json() as any;
+    assert.equal(listResponse.status, 200);
+    assert.equal(listBody.jobs.some((entry: any) => entry.job.id === job.id), false);
+  });
+
+  it("DELETE /v1/admin/jobs/:jobId rejects queued or running jobs", async () => {
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "job-delete-running" };
+    const collection = await registry.createCollection(ctx, {
+      displayName: "Job Delete Running",
+      sourcePath: "data",
+      ozelgeDataPath: "data/ozelge.json",
+      embeddingModel: "embed",
+      chatModel: "chat",
+      distanceMetric: "l2",
+      chunkSize: 500,
+      chunkOverlap: 50,
+      retrievalK: 5,
+      retrievalDistanceThreshold: 1,
+    });
+
+    const job = await registry.beginIndexJob(ctx, collection.id);
+    const deleteResponse = await request(`/v1/admin/jobs/${job.id}`, {
+      method: "DELETE",
+      headers: { "x-tenant-id": "default" },
+    });
+    const body = await deleteResponse.json() as any;
+    assert.equal(deleteResponse.status, 400);
+    assert.equal(body.code, "INVALID_JOB_STATUS");
+  });
+
   it("maps RAG MODEL_BACKPRESSURE errors to HTTP 503", async () => {
     const ctx = { tenantId: "default", userId: "local-dev", requestId: "backpressure" };
     const activePhysicalCollection = "api-test-backpressure";

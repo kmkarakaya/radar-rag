@@ -326,6 +326,35 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     return row ? mapIndexJobRow(row) : null;
   }
 
+  async deleteJob(context: RequestContext, jobId: string): Promise<void> {
+    const transaction = this.db.transaction(() => {
+      const existing = this.getJobRow(jobId);
+      if (!existing || existing.tenant_id !== context.tenantId) {
+        throw new Error(`Job not found: ${jobId}`);
+      }
+
+      if (existing.status === "queued" || existing.status === "running") {
+        throw new Error(`Job ${jobId} is in status '${existing.status}', cannot be deleted.`);
+      }
+
+      const result = this.db.prepare(`
+        DELETE FROM index_jobs
+        WHERE id = @id
+          AND tenant_id = @tenantId
+          AND status NOT IN ('queued', 'running')
+      `).run({
+        id: jobId,
+        tenantId: context.tenantId,
+      });
+
+      if (result.changes !== 1) {
+        throw new Error(`Job not found: ${jobId}`);
+      }
+    });
+
+    transaction();
+  }
+
   async getActiveJobForCollection(context: RequestContext, collectionId: string): Promise<IndexJob | null> {
     const row = this.db.prepare(`
       SELECT * FROM index_jobs

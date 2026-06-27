@@ -276,6 +276,30 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     }
   });
 
+  router.delete("/jobs/:jobId", requireRegistry, async (req, res, next) => {
+    try {
+      const context = res.locals.requestContext as RequestContext;
+      const jobId = req.params.jobId as string;
+      const job = await deps.registry!.getJob(jobId);
+      if (!job || job.tenantId !== context.tenantId) {
+        throw new HttpError(404, "ROUTE_NOT_FOUND", "Job not found.");
+      }
+
+      if (job.status === "queued" || job.status === "running") {
+        throw new HttpError(400, "INVALID_JOB_STATUS", "Only terminal jobs can be deleted.");
+      }
+
+      res.locals.collectionId = job.collectionId;
+      res.locals.jobId = job.id;
+      res.locals.physicalCollection = job.targetPhysicalCollection;
+
+      await deps.registry!.deleteJob(context, jobId);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/jobs/:jobId/cancel", requireRegistry, requireJobRunner, async (req, res, next) => {
     try {
       const context = res.locals.requestContext as RequestContext;

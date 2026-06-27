@@ -85,6 +85,7 @@ const elements = {
     playgroundTabBtn: document.querySelector('.tab-btn[data-tab="playground"]'),
 
     readinessStatusGrid: document.getElementById("readinessStatusGrid"),
+    readinessRefreshNotice: document.getElementById("readinessRefreshNotice"),
     readinessBlockers: document.getElementById("readinessBlockers"),
     blockerList: document.getElementById("blockerList"),
 
@@ -699,8 +700,26 @@ function resetPlaygroundResult(message = "Results will appear here...") {
     elements.pgResult.appendChild(createEl("span", "text-slate-400 italic", message));
 }
 
+function clearReadinessRefreshNotice() {
+    if (!elements.readinessRefreshNotice) return;
+    clearNode(elements.readinessRefreshNotice);
+    elements.readinessRefreshNotice.className = "hidden rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800";
+}
+
+function setReadinessRefreshNotice(message, tone = "warning") {
+    if (!elements.readinessRefreshNotice) return;
+    clearNode(elements.readinessRefreshNotice);
+    const toneClasses = tone === "error"
+        ? "border-rose-200 bg-rose-50 text-rose-800"
+        : "border-amber-200 bg-amber-50 text-amber-800";
+    elements.readinessRefreshNotice.className = `rounded-lg border p-3 text-xs ${toneClasses}`;
+    elements.readinessRefreshNotice.textContent = message || "";
+    elements.readinessRefreshNotice.classList.remove("hidden");
+}
+
 function resetReadinessAndPlayground(message) {
     state.selectedReadiness = null;
+    clearReadinessRefreshNotice();
     clearNode(elements.readinessStatusGrid);
     elements.readinessStatusGrid.appendChild(createEl("div", "rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500", message || "Readiness has not been loaded yet."));
     clearNode(elements.blockerList);
@@ -730,25 +749,37 @@ function renderReadinessIssueList(listElement, items) {
 
 async function updateReadinessTab() {
     if (!state.selectedCollection || state.isLoading.readiness) return;
+    const hasSnapshot = Boolean(state.selectedReadiness);
     state.isLoading.readiness = true;
-    state.selectedReadiness = null;
-    clearNode(elements.readinessStatusGrid);
-    elements.readinessStatusGrid.appendChild(createEl("div", "rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500", "Loading readiness..."));
-    updatePlaygroundCapabilityState("Readiness is loading.");
+    if (hasSnapshot) {
+        setReadinessRefreshNotice("Refreshing readiness snapshot...", "warning");
+    } else {
+        clearReadinessRefreshNotice();
+        clearNode(elements.readinessStatusGrid);
+        elements.readinessStatusGrid.appendChild(createEl("div", "rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500", "Loading readiness..."));
+    }
+    updatePlaygroundCapabilityState(hasSnapshot ? "Refreshing readiness snapshot..." : "Readiness is loading.");
 
     try {
         const readiness = await apiRequest(collectionReadyUrl(state.selectedCollection));
         state.selectedReadiness = readiness;
         renderReadinessData(readiness);
+        clearReadinessRefreshNotice();
         mergeActiveJobFromReadiness(readiness);
     } catch (error) {
-        state.selectedReadiness = null;
-        renderApiErrorContent(elements.readinessStatusGrid, error, "Failed to load readiness");
-        clearNode(elements.blockerList);
-        elements.readinessBlockers.classList.add("hidden");
-        clearNode(elements.warningList);
-        elements.readinessWarnings.classList.add("hidden");
-        updatePlaygroundCapabilityState("Readiness failed to load.");
+        if (!hasSnapshot) {
+            state.selectedReadiness = null;
+            renderApiErrorContent(elements.readinessStatusGrid, error, "Failed to load readiness");
+            clearNode(elements.blockerList);
+            elements.readinessBlockers.classList.add("hidden");
+            clearNode(elements.warningList);
+            elements.readinessWarnings.classList.add("hidden");
+            clearReadinessRefreshNotice();
+            updatePlaygroundCapabilityState("Readiness failed to load.");
+        } else {
+            setReadinessRefreshNotice("Readiness refresh failed. Showing the last known snapshot.", "error");
+            updatePlaygroundCapabilityState("Refresh failed. Showing the last known readiness.");
+        }
     } finally {
         state.isLoading.readiness = false;
     }
@@ -809,7 +840,6 @@ function renderReadinessData(readiness) {
 
 function getCapabilityState(mode) {
     if (!state.selectedCollection) return { enabled: false, reason: "Select and save a collection first." };
-    if (state.isLoading.readiness) return { enabled: false, reason: "Readiness is loading." };
     if (!state.selectedReadiness) return { enabled: false, reason: "Readiness is not available." };
     const enabled = state.selectedReadiness.capabilities?.[mode] === true;
     return {

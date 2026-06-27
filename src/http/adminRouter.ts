@@ -247,6 +247,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       const context = res.locals.requestContext as RequestContext;
       const filters = parseJobListQuery(req.query as Record<string, unknown>);
       const result = await deps.registry!.listJobs(context, filters);
+      res.setHeader("Cache-Control", "no-store");
       res.json({
         jobs: result.jobs,
         nextCursor: result.nextCursor,
@@ -267,6 +268,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       if (!job || job.tenantId !== context.tenantId) {
         throw new HttpError(404, "ROUTE_NOT_FOUND", "Job not found.");
       }
+      res.setHeader("Cache-Control", "no-store");
       res.locals.collectionId = job.collectionId;
       res.locals.jobId = job.id;
       res.locals.physicalCollection = job.targetPhysicalCollection;

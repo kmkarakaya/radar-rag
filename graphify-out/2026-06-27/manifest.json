@@ -10,8 +10,8 @@
     "semantic_hash": "990e827940a6196eb3aea4c6e23a605c"
   },
   "admin/admin.js": {
-    "mtime": 1782575084.962638,
-    "ast_hash": "0eba52da96289ec5d3ffdedef27e9824",
+    "mtime": 1782578586.0975037,
+    "ast_hash": "48cbfc7b89d710bc5f490800362563bc",
     "semantic_hash": ""
   },
   "benchmark/benchmark.json": {
@@ -65,13 +65,13 @@
     "semantic_hash": "5d387d81974b0e879a7f11b9e085f984"
   },
   "src/collections/sqliteRegistry.ts": {
-    "mtime": 1782575296.4650874,
-    "ast_hash": "d17ecbc38740a3f881740dc79d16e357",
+    "mtime": 1782578546.020757,
+    "ast_hash": "bc59c2fc8e5d4784b4fad58b29400024",
     "semantic_hash": ""
   },
   "src/collections/types.ts": {
-    "mtime": 1782574442.7545824,
-    "ast_hash": "897f47e39f136dd3e12033bda781efba",
+    "mtime": 1782578537.5882678,
+    "ast_hash": "77aa773de908f7d96da6105ec6198323",
     "semantic_hash": ""
   },
   "src/config.ts": {
@@ -80,8 +80,8 @@
     "semantic_hash": "337cec9c03bab806564d84cf4776f2d3"
   },
   "src/http/adminRouter.ts": {
-    "mtime": 1782567191.67085,
-    "ast_hash": "022445632943d4bfe3ec75af4b092dbe",
+    "mtime": 1782578555.4446542,
+    "ast_hash": "343a01b6ccd9a6cada555c5e983f91fb",
     "semantic_hash": ""
   },
   "src/http/errors.ts": {
@@ -150,9 +150,9 @@
     "semantic_hash": "76330f15cff9c304c462cf51787cee86"
   },
   "src/observability/logger.ts": {
-    "mtime": 1782505546.770835,
-    "ast_hash": "e5415436cd198e902eb35c1e08c11336",
-    "semantic_hash": "e5415436cd198e902eb35c1e08c11336"
+    "mtime": 1782578561.9958167,
+    "ast_hash": "f932f9db2f797d652ccb7147f45c9a18",
+    "semantic_hash": ""
   },
   "src/observability/timeout.ts": {
     "mtime": 1782505546.7718349,
@@ -170,13 +170,13 @@
     "semantic_hash": "4a890806f32be9a5ad6c8f7358b7e82b"
   },
   "test/acceptance/api.endpoints.test.ts": {
-    "mtime": 1782575460.220354,
-    "ast_hash": "f03358d9588fd16fc38cedfee261a02a",
+    "mtime": 1782578677.0237105,
+    "ast_hash": "ded2993179698716c7ce4853a4679ef3",
     "semantic_hash": ""
   },
   "test/admin.static.test.ts": {
-    "mtime": 1782575314.4891503,
-    "ast_hash": "531f9184f1b5a570c890708810632a73",
+    "mtime": 1782578606.5550976,
+    "ast_hash": "3c321ed884c56b28d29a2548c14c38f1",
     "semantic_hash": ""
   },
   "test/app.foundation.test.ts": {

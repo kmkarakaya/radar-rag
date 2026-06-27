@@ -417,7 +417,11 @@ async function apiRequest(url, options = {}) {
     };
 
     try {
-        const response = await fetch(url, { ...options, headers });
+        const fetchOptions = { ...options, headers };
+        if (!fetchOptions.method || fetchOptions.method === "GET") {
+            fetchOptions.cache = fetchOptions.cache || "no-store";
+        }
+        const response = await fetch(url, fetchOptions);
         if (response.status === 204) return null;
 
         const contentType = response.headers.get("content-type") || "";
@@ -1810,17 +1814,19 @@ async function deleteJob(jobId) {
         await apiRequest(adminJobDeleteUrl(jobId), { method: "DELETE" });
         removeJobFromMonitor(jobId);
         showToast("Job removed.", "success");
-        await loadJobs({ cursor: state.jobListCursor });
+        resetJobPagination();
+        await loadJobs({ cursor: null });
     } catch (error) {
         const normalized = normalizeError(error);
         if (normalized.status === 404 || normalized.code === "ROUTE_NOT_FOUND") {
             removeJobFromMonitor(jobId);
             showToast("Job was already removed.", "info");
-            await loadJobs({ cursor: state.jobListCursor });
+            resetJobPagination();
+            await loadJobs({ cursor: null });
             return;
         }
         showErrorToast(error, "Remove failed");
-        await loadJobs({ cursor: state.jobListCursor });
+        await loadJobs({ cursor: null });
     }
 }
 

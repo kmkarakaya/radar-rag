@@ -1647,7 +1647,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_properties_schemaversion",
-      "community": 97,
+      "community": 29,
       "norm_label": "schemaversion"
     },
     {
@@ -1657,7 +1657,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_schemaversion_type",
-      "community": 97,
+      "community": 29,
       "norm_label": "type"
     },
     {
@@ -1667,7 +1667,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_schemaversion_description",
-      "community": 97,
+      "community": 29,
       "norm_label": "description"
     },
     {
@@ -1677,7 +1677,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_schemaversion_default",
-      "community": 97,
+      "community": 29,
       "norm_label": "default"
     },
     {
@@ -1727,7 +1727,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_properties_sourcefile",
-      "community": 29,
+      "community": 104,
       "norm_label": "sourcefile"
     },
     {
@@ -1737,7 +1737,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_sourcefile_type",
-      "community": 29,
+      "community": 104,
       "norm_label": "type"
     },
     {
@@ -1747,7 +1747,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_sourcefile_description",
-      "community": 29,
+      "community": 104,
       "norm_label": "description"
     },
     {
@@ -1757,7 +1757,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_sourcefile_minlength",
-      "community": 29,
+      "community": 104,
       "norm_label": "minlength"
     },
     {
@@ -2667,7 +2667,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "package_dependencies_langchain",
-      "community": 20,
+      "community": 68,
       "norm_label": "langchain"
     },
     {
@@ -2777,7 +2777,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "package_devdependencies_typescript",
-      "community": 68,
+      "community": 20,
       "norm_label": "typescript"
     },
     {
@@ -2937,7 +2937,7 @@
       "source_location": "L367",
       "_origin": "ast",
       "id": "admin_onboard_rundependencychecks",
-      "community": 83,
+      "community": 91,
       "norm_label": "rundependencychecks()"
     },
     {
@@ -2967,7 +2967,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "src_app_appdependencies",
-      "community": 93,
+      "community": 22,
       "norm_label": "appdependencies"
     },
     {
@@ -2997,7 +2997,7 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "src_app_createapp",
-      "community": 0,
+      "community": 70,
       "norm_label": "createapp()"
     },
     {
@@ -3377,7 +3377,7 @@
       "source_location": "L102",
       "_origin": "ast",
       "id": "collections_sqliteregistry_createsqlitecollectionregistry",
-      "community": 87,
+      "community": 67,
       "norm_label": "createsqlitecollectionregistry()"
     },
     {
@@ -3387,7 +3387,7 @@
       "source_location": "L109",
       "_origin": "ast",
       "id": "collections_sqliteregistry_opendatabase",
-      "community": 87,
+      "community": 67,
       "norm_label": "opendatabase()"
     },
     {
@@ -3447,7 +3447,7 @@
       "source_location": "L254",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_listvisiblecollections",
-      "community": 17,
+      "community": 0,
       "norm_label": ".listvisiblecollections()"
     },
     {
@@ -3457,7 +3457,7 @@
       "source_location": "L262",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_getvisiblecollection",
-      "community": 66,
+      "community": 0,
       "norm_label": ".getvisiblecollection()"
     },
     {
@@ -3487,7 +3487,7 @@
       "source_location": "L329",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_deletejob",
-      "community": 17,
+      "community": 0,
       "norm_label": ".deletejob()"
     },
     {
@@ -3497,7 +3497,7 @@
       "source_location": "L333",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_deletejobs",
-      "community": 17,
+      "community": 0,
       "norm_label": ".deletejobs()"
     },
     {
@@ -3517,7 +3517,7 @@
       "source_location": "L384",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_createcollection",
-      "community": 90,
+      "community": 0,
       "norm_label": ".createcollection()"
     },
     {
@@ -3527,7 +3527,7 @@
       "source_location": "L460",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_updatecollection",
-      "community": 67,
+      "community": 0,
       "norm_label": ".updatecollection()"
     },
     {
@@ -3647,7 +3647,7 @@
       "source_location": "L1114",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_deletecollection",
-      "community": 17,
+      "community": 0,
       "norm_label": ".deletecollection()"
     },
     {
@@ -3677,7 +3677,7 @@
       "source_location": "L1166",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_createuniquecollectionid",
-      "community": 90,
+      "community": 0,
       "norm_label": ".createuniquecollectionid()"
     },
     {
@@ -3687,7 +3687,7 @@
       "source_location": "L1179",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_createuniqueversionstring",
-      "community": 67,
+      "community": 17,
       "norm_label": ".createuniqueversionstring()"
     },
     {
@@ -3727,7 +3727,7 @@
       "source_location": "L1231",
       "_origin": "ast",
       "id": "collections_sqliteregistry_addpatch",
-      "community": 67,
+      "community": 0,
       "norm_label": "addpatch()"
     },
     {
@@ -3737,7 +3737,7 @@
       "source_location": "L1246",
       "_origin": "ast",
       "id": "collections_sqliteregistry_addnullablepatch",
-      "community": 67,
+      "community": 0,
       "norm_label": "addnullablepatch()"
     },
     {
@@ -3747,7 +3747,7 @@
       "source_location": "L1261",
       "_origin": "ast",
       "id": "collections_sqliteregistry_mapcollectionrow",
-      "community": 66,
+      "community": 0,
       "norm_label": "mapcollectionrow()"
     },
     {
@@ -3797,7 +3797,7 @@
       "source_location": "L1358",
       "_origin": "ast",
       "id": "collections_sqliteregistry_createversionstring",
-      "community": 67,
+      "community": 17,
       "norm_label": "createversionstring()"
     },
     {
@@ -3837,7 +3837,7 @@
       "source_location": "L1399",
       "_origin": "ast",
       "id": "collections_sqliteregistry_normalizechromacollectionconfiguration",
-      "community": 67,
+      "community": 0,
       "norm_label": "normalizechromacollectionconfiguration()"
     },
     {
@@ -3847,7 +3847,7 @@
       "source_location": "L1415",
       "_origin": "ast",
       "id": "collections_sqliteregistry_isrecord",
-      "community": 67,
+      "community": 0,
       "norm_label": "isrecord()"
     },
     {
@@ -3867,7 +3867,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "collections_types_requestcontext",
-      "community": 17,
+      "community": 0,
       "norm_label": "requestcontext"
     },
     {
@@ -3887,7 +3887,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "collections_types_indexjobstatus",
-      "community": 22,
+      "community": 66,
       "norm_label": "indexjobstatus"
     },
     {
@@ -3927,7 +3927,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "collections_types_ragcollection",
-      "community": 66,
+      "community": 0,
       "norm_label": "ragcollection"
     },
     {
@@ -3987,7 +3987,7 @@
       "source_location": "L97",
       "_origin": "ast",
       "id": "collections_types_createcollectioninput",
-      "community": 90,
+      "community": 0,
       "norm_label": "createcollectioninput"
     },
     {
@@ -3997,7 +3997,7 @@
       "source_location": "L112",
       "_origin": "ast",
       "id": "collections_types_updatecollectionpatch",
-      "community": 67,
+      "community": 0,
       "norm_label": "updatecollectionpatch"
     },
     {
@@ -4047,7 +4047,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_config",
-      "community": 91,
+      "community": 32,
       "norm_label": "config.ts"
     },
     {
@@ -4067,7 +4067,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "src_config_distancemetricschema",
-      "community": 91,
+      "community": 32,
       "norm_label": "distancemetricschema"
     },
     {
@@ -4077,7 +4077,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "src_config_configschema",
-      "community": 91,
+      "community": 32,
       "norm_label": "configschema"
     },
     {
@@ -4137,7 +4137,7 @@
       "source_location": "L145",
       "_origin": "ast",
       "id": "src_config_resolvedconfig",
-      "community": 70,
+      "community": 32,
       "norm_label": "resolvedconfig"
     },
     {
@@ -4187,7 +4187,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "http_adminrouter_createadminrouter",
-      "community": 22,
+      "community": 70,
       "norm_label": "createadminrouter()"
     },
     {
@@ -4427,7 +4427,7 @@
       "source_location": "L148",
       "_origin": "ast",
       "id": "http_collectionvalidation_buildcreatecollectioninput",
-      "community": 22,
+      "community": 63,
       "norm_label": "buildcreatecollectioninput()"
     },
     {
@@ -4437,7 +4437,7 @@
       "source_location": "L168",
       "_origin": "ast",
       "id": "http_collectionvalidation_buildcreatevalidationdraft",
-      "community": 22,
+      "community": 63,
       "norm_label": "buildcreatevalidationdraft()"
     },
     {
@@ -4537,7 +4537,7 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "http_errors_senderrorresponse",
-      "community": 22,
+      "community": 70,
       "norm_label": "senderrorresponse()"
     },
     {
@@ -4547,7 +4547,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "http_errors_notfoundhandler",
-      "community": 22,
+      "community": 70,
       "norm_label": "notfoundhandler()"
     },
     {
@@ -4557,7 +4557,7 @@
       "source_location": "L84",
       "_origin": "ast",
       "id": "http_errors_errorhandler",
-      "community": 22,
+      "community": 70,
       "norm_label": "errorhandler()"
     },
     {
@@ -4667,7 +4667,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "http_ratelimit_createinmemoryrequestratelimiter",
-      "community": 54,
+      "community": 70,
       "norm_label": "createinmemoryrequestratelimiter()"
     },
     {
@@ -4727,7 +4727,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "http_requestcontext_readheadervalue",
-      "community": 70,
+      "community": 22,
       "norm_label": "readheadervalue()"
     },
     {
@@ -4737,7 +4737,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "http_requestcontext_createrequestcontext",
-      "community": 70,
+      "community": 22,
       "norm_label": "createrequestcontext()"
     },
     {
@@ -4807,7 +4807,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_index",
-      "community": 87,
+      "community": 63,
       "norm_label": "index.ts"
     },
     {
@@ -4817,7 +4817,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "src_index_indexingsourcehealthdetails",
-      "community": 87,
+      "community": 63,
       "norm_label": "indexingsourcehealthdetails"
     },
     {
@@ -4827,7 +4827,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "src_index_indexingrunresult",
-      "community": 87,
+      "community": 63,
       "norm_label": "indexingrunresult"
     },
     {
@@ -4837,7 +4837,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "src_index_loadozelgerecords",
-      "community": 87,
+      "community": 63,
       "norm_label": "loadozelgerecords()"
     },
     {
@@ -4847,7 +4847,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "src_index_todocuments",
-      "community": 87,
+      "community": 63,
       "norm_label": "todocuments()"
     },
     {
@@ -4857,7 +4857,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "src_index_analyzeindexingsource",
-      "community": 87,
+      "community": 63,
       "norm_label": "analyzeindexingsource()"
     },
     {
@@ -4867,7 +4867,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "src_index_checkindexingsourcehealth",
-      "community": 87,
+      "community": 63,
       "norm_label": "checkindexingsourcehealth()"
     },
     {
@@ -4877,7 +4877,7 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "src_index_runindexing",
-      "community": 87,
+      "community": 67,
       "norm_label": "runindexing()"
     },
     {
@@ -4887,7 +4887,7 @@
       "source_location": "L142",
       "_origin": "ast",
       "id": "src_index_main",
-      "community": 87,
+      "community": 63,
       "norm_label": "main()"
     },
     {
@@ -4897,7 +4897,7 @@
       "source_location": "L147",
       "_origin": "ast",
       "id": "src_index_parsecollectionidarg",
-      "community": 87,
+      "community": 63,
       "norm_label": "parsecollectionidarg()"
     },
     {
@@ -4907,7 +4907,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "indexing_buildphysicalcollection",
-      "community": 50,
+      "community": 32,
       "norm_label": "buildphysicalcollection.ts"
     },
     {
@@ -4937,7 +4937,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "indexing_cleanup",
-      "community": 0,
+      "community": 32,
       "norm_label": "cleanup.ts"
     },
     {
@@ -4947,7 +4947,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "indexing_cleanup_deletephysicalcollectionfn",
-      "community": 0,
+      "community": 32,
       "norm_label": "deletephysicalcollectionfn"
     },
     {
@@ -4957,7 +4957,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "indexing_cleanup_cleanupretiredphysicalcollections",
-      "community": 0,
+      "community": 32,
       "norm_label": "cleanupretiredphysicalcollections()"
     },
     {
@@ -4967,7 +4967,7 @@
       "source_location": "L98",
       "_origin": "ast",
       "id": "indexing_cleanup_isphysicalcollectionmissingerror",
-      "community": 0,
+      "community": 32,
       "norm_label": "isphysicalcollectionmissingerror()"
     },
     {
@@ -4987,7 +4987,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "indexing_jobrunner_indexjobrunner",
-      "community": 0,
+      "community": 32,
       "norm_label": "indexjobrunner"
     },
     {
@@ -4997,7 +4997,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "indexing_jobrunner_createindexjobrunner",
-      "community": 0,
+      "community": 32,
       "norm_label": "createindexjobrunner()"
     },
     {
@@ -5077,7 +5077,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "ingestion_pipeline_unsupportedsourcefile",
-      "community": 87,
+      "community": 63,
       "norm_label": "unsupportedsourcefile"
     },
     {
@@ -5337,7 +5337,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "observability_logger_createconsolelogsink",
-      "community": 0,
+      "community": 70,
       "norm_label": "createconsolelogsink()"
     },
     {
@@ -5507,7 +5507,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "src_rag_ollamahealthdetails",
-      "community": 70,
+      "community": 105,
       "norm_label": "ollamahealthdetails"
     },
     {
@@ -5517,7 +5517,7 @@
       "source_location": "L60",
       "_origin": "ast",
       "id": "src_rag_embeddinghealthdetails",
-      "community": 70,
+      "community": 105,
       "norm_label": "embeddinghealthdetails"
     },
     {
@@ -5527,7 +5527,7 @@
       "source_location": "L66",
       "_origin": "ast",
       "id": "src_rag_chatgenerationhealthdetails",
-      "community": 70,
+      "community": 105,
       "norm_label": "chatgenerationhealthdetails"
     },
     {
@@ -5567,7 +5567,7 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "src_rag_ragqueryerror",
-      "community": 95,
+      "community": 105,
       "norm_label": "ragqueryerror"
     },
     {
@@ -5577,7 +5577,7 @@
       "source_location": "L96",
       "_origin": "ast",
       "id": "src_rag_ragqueryerror_constructor",
-      "community": 95,
+      "community": 105,
       "norm_label": ".constructor()"
     },
     {
@@ -5597,7 +5597,7 @@
       "source_location": "L109",
       "_origin": "ast",
       "id": "src_rag_createembeddings",
-      "community": 83,
+      "community": 105,
       "norm_label": "createembeddings()"
     },
     {
@@ -5617,7 +5617,7 @@
       "source_location": "L127",
       "_origin": "ast",
       "id": "src_rag_chromaclientparams",
-      "community": 83,
+      "community": 105,
       "norm_label": "chromaclientparams()"
     },
     {
@@ -5657,7 +5657,7 @@
       "source_location": "L161",
       "_origin": "ast",
       "id": "src_rag_withtimeout",
-      "community": 83,
+      "community": 105,
       "norm_label": "withtimeout()"
     },
     {
@@ -5727,7 +5727,7 @@
       "source_location": "L197",
       "_origin": "ast",
       "id": "src_rag_checkchromahealth",
-      "community": 83,
+      "community": 50,
       "norm_label": "checkchromahealth()"
     },
     {
@@ -5737,7 +5737,7 @@
       "source_location": "L245",
       "_origin": "ast",
       "id": "src_rag_checkollamahealth",
-      "community": 83,
+      "community": 70,
       "norm_label": "checkollamahealth()"
     },
     {
@@ -5747,7 +5747,7 @@
       "source_location": "L305",
       "_origin": "ast",
       "id": "src_rag_checkembeddinghealth",
-      "community": 83,
+      "community": 91,
       "norm_label": "checkembeddinghealth()"
     },
     {
@@ -5767,7 +5767,7 @@
       "source_location": "L375",
       "_origin": "ast",
       "id": "src_rag_createvectorstore",
-      "community": 83,
+      "community": 105,
       "norm_label": "createvectorstore()"
     },
     {
@@ -5887,7 +5887,7 @@
       "source_location": "L512",
       "_origin": "ast",
       "id": "src_rag_retrievesources",
-      "community": 105,
+      "community": 50,
       "norm_label": "retrievesources()"
     },
     {
@@ -5967,7 +5967,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_server",
-      "community": 0,
+      "community": 32,
       "norm_label": "server.ts"
     },
     {
@@ -5977,7 +5977,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "src_server_startuplogger",
-      "community": 0,
+      "community": 32,
       "norm_label": "startuplogger"
     },
     {
@@ -5987,7 +5987,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "src_server_runstartupmaintenance",
-      "community": 0,
+      "community": 32,
       "norm_label": "runstartupmaintenance()"
     },
     {
@@ -5997,7 +5997,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "src_server_startserver",
-      "community": 0,
+      "community": 70,
       "norm_label": "startserver()"
     },
     {
@@ -6007,7 +6007,7 @@
       "source_location": "L88",
       "_origin": "ast",
       "id": "src_server_main",
-      "community": 0,
+      "community": 70,
       "norm_label": "main()"
     },
     {
@@ -6337,7 +6337,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_index_cli_test",
-      "community": 87,
+      "community": 67,
       "norm_label": "index.cli.test.ts"
     },
     {
@@ -6347,7 +6347,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test",
-      "community": 0,
+      "community": 32,
       "norm_label": "indexing.cleanup.test.ts"
     },
     {
@@ -6357,7 +6357,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_context",
-      "community": 0,
+      "community": 32,
       "norm_label": "context"
     },
     {
@@ -6367,7 +6367,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_collectioninput",
-      "community": 0,
+      "community": 32,
       "norm_label": "collectioninput"
     },
     {
@@ -6377,7 +6377,7 @@
       "source_location": "L62",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_createruntimeconfig",
-      "community": 0,
+      "community": 32,
       "norm_label": "createruntimeconfig()"
     },
     {
@@ -6387,7 +6387,7 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_createlogger",
-      "community": 0,
+      "community": 32,
       "norm_label": "createlogger()"
     },
     {
@@ -6397,7 +6397,7 @@
       "source_location": "L88",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_seedphysicalrecord",
-      "community": 0,
+      "community": 56,
       "norm_label": "seedphysicalrecord()"
     },
     {
@@ -6427,7 +6427,7 @@
       "source_location": "L121",
       "_origin": "ast",
       "id": "test_indexing_jobs_test_fixeddate",
-      "community": 32,
+      "community": 106,
       "norm_label": "fixeddate"
     },
     {
@@ -6437,7 +6437,7 @@
       "source_location": "L122",
       "_origin": "ast",
       "id": "test_indexing_jobs_test_fixeddate_constructor",
-      "community": 32,
+      "community": 106,
       "norm_label": ".constructor()"
     },
     {
@@ -6447,7 +6447,7 @@
       "source_location": "L126",
       "_origin": "ast",
       "id": "test_indexing_jobs_test_fixeddate_now",
-      "community": 32,
+      "community": 106,
       "norm_label": ".now()"
     },
     {
@@ -6487,7 +6487,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_observability_test",
-      "community": 32,
+      "community": 50,
       "norm_label": "observability.test.ts"
     },
     {
@@ -6497,7 +6497,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_rag_core_test",
-      "community": 95,
+      "community": 105,
       "norm_label": "rag.core.test.ts"
     },
     {
@@ -6921,6 +6921,76 @@
       "norm_label": "data klasoru"
     },
     {
+      "label": "README.md",
+      "file_type": "document",
+      "source_file": "docs/README.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "docs_readme",
+      "community": 100,
+      "norm_label": "readme.md"
+    },
+    {
+      "label": "Vanilla RAG Backend Documentation",
+      "file_type": "document",
+      "source_file": "docs/README.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "docs_readme_vanilla_rag_backend_documentation",
+      "community": 100,
+      "norm_label": "vanilla rag backend documentation"
+    },
+    {
+      "label": "Reading Order",
+      "file_type": "document",
+      "source_file": "docs/README.md",
+      "source_location": "L5",
+      "_origin": "ast",
+      "id": "docs_readme_reading_order",
+      "community": 100,
+      "norm_label": "reading order"
+    },
+    {
+      "label": "Fast Integration Summary",
+      "file_type": "document",
+      "source_file": "docs/README.md",
+      "source_location": "L12",
+      "_origin": "ast",
+      "id": "docs_readme_fast_integration_summary",
+      "community": 100,
+      "norm_label": "fast integration summary"
+    },
+    {
+      "label": "Which File To Give A Coding Agent",
+      "file_type": "document",
+      "source_file": "docs/README.md",
+      "source_location": "L24",
+      "_origin": "ast",
+      "id": "docs_readme_which_file_to_give_a_coding_agent",
+      "community": 100,
+      "norm_label": "which file to give a coding agent"
+    },
+    {
+      "label": "Suggested Prompt For End Users",
+      "file_type": "document",
+      "source_file": "docs/README.md",
+      "source_location": "L36",
+      "_origin": "ast",
+      "id": "docs_readme_suggested_prompt_for_end_users",
+      "community": 100,
+      "norm_label": "suggested prompt for end users"
+    },
+    {
+      "label": "Source Of Truth",
+      "file_type": "document",
+      "source_file": "docs/README.md",
+      "source_location": "L46",
+      "_origin": "ast",
+      "id": "docs_readme_source_of_truth",
+      "community": 100,
+      "norm_label": "source of truth"
+    },
+    {
       "label": "admin_api_endpoints.md",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
@@ -6931,14 +7001,534 @@
       "norm_label": "admin_api_endpoints.md"
     },
     {
+      "label": "Admin API Reference",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_admin_api_reference",
+      "community": 95,
+      "norm_label": "admin api reference"
+    },
+    {
+      "label": "Request Headers",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L7",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_request_headers",
+      "community": 95,
+      "norm_label": "request headers"
+    },
+    {
+      "label": "Collection Configuration Fields",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L15",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_collection_configuration_fields",
+      "community": 95,
+      "norm_label": "collection configuration fields"
+    },
+    {
+      "label": "Create request",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L17",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_create_request",
+      "community": 95,
+      "norm_label": "create request"
+    },
+    {
+      "label": "Update request",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L43",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_update_request",
+      "community": 95,
+      "norm_label": "update request"
+    },
+    {
+      "label": "Immediate vs Reindex-Bound Fields",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L55",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_immediate_vs_reindex_bound_fields",
+      "community": 95,
+      "norm_label": "immediate vs reindex-bound fields"
+    },
+    {
+      "label": "Collection Endpoints",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L78",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_collection_endpoints",
+      "community": 97,
+      "norm_label": "collection endpoints"
+    },
+    {
+      "label": "`POST /v1/admin/collections`",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L80",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_post_v1_admin_collections",
+      "community": 97,
+      "norm_label": "`post /v1/admin/collections`"
+    },
+    {
+      "label": "`GET /v1/admin/collections/:collectionId`",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L108",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_get_v1_admin_collections_collectionid",
+      "community": 97,
+      "norm_label": "`get /v1/admin/collections/:collectionid`"
+    },
+    {
+      "label": "`POST /v1/admin/collections/validate`",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L164",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_post_v1_admin_collections_validate",
+      "community": 97,
+      "norm_label": "`post /v1/admin/collections/validate`"
+    },
+    {
+      "label": "`POST /v1/admin/collections/:collectionId/validate`",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L221",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_post_v1_admin_collections_collectionid_validate",
+      "community": 97,
+      "norm_label": "`post /v1/admin/collections/:collectionid/validate`"
+    },
+    {
+      "label": "`PATCH /v1/admin/collections/:collectionId`",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L232",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_patch_v1_admin_collections_collectionid",
+      "community": 97,
+      "norm_label": "`patch /v1/admin/collections/:collectionid`"
+    },
+    {
+      "label": "`DELETE /v1/admin/collections/:collectionId`",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L259",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_delete_v1_admin_collections_collectionid",
+      "community": 97,
+      "norm_label": "`delete /v1/admin/collections/:collectionid`"
+    },
+    {
+      "label": "`POST /v1/admin/collections/:collectionId/reindex`",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L268",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_post_v1_admin_collections_collectionid_reindex",
+      "community": 97,
+      "norm_label": "`post /v1/admin/collections/:collectionid/reindex`"
+    },
+    {
+      "label": "Job Endpoints",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L291",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_job_endpoints",
+      "community": 101,
+      "norm_label": "job endpoints"
+    },
+    {
+      "label": "`GET /v1/admin/jobs`",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L301",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_get_v1_admin_jobs",
+      "community": 101,
+      "norm_label": "`get /v1/admin/jobs`"
+    },
+    {
+      "label": "`GET /v1/admin/jobs/:jobId`",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L351",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_get_v1_admin_jobs_jobid",
+      "community": 101,
+      "norm_label": "`get /v1/admin/jobs/:jobid`"
+    },
+    {
+      "label": "`DELETE /v1/admin/jobs/:jobId`",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L361",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_delete_v1_admin_jobs_jobid",
+      "community": 101,
+      "norm_label": "`delete /v1/admin/jobs/:jobid`"
+    },
+    {
+      "label": "`POST /v1/admin/jobs/bulk-delete`",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L370",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_post_v1_admin_jobs_bulk_delete",
+      "community": 101,
+      "norm_label": "`post /v1/admin/jobs/bulk-delete`"
+    },
+    {
+      "label": "`POST /v1/admin/jobs/:jobId/cancel`",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L392",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_post_v1_admin_jobs_jobid_cancel",
+      "community": 101,
+      "norm_label": "`post /v1/admin/jobs/:jobid/cancel`"
+    },
+    {
+      "label": "Admin Error Codes",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L401",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_admin_error_codes",
+      "community": 95,
+      "norm_label": "admin error codes"
+    },
+    {
+      "label": "Practical Frontend Rules",
+      "file_type": "document",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L414",
+      "_origin": "ast",
+      "id": "docs_admin_api_endpoints_practical_frontend_rules",
+      "community": 95,
+      "norm_label": "practical frontend rules"
+    },
+    {
+      "label": "frontend_agent_handoff.md",
+      "file_type": "document",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "docs_frontend_agent_handoff",
+      "community": 100,
+      "norm_label": "frontend_agent_handoff.md"
+    },
+    {
+      "label": "Frontend Agent Handoff",
+      "file_type": "document",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "docs_frontend_agent_handoff_frontend_agent_handoff",
+      "community": 83,
+      "norm_label": "frontend agent handoff"
+    },
+    {
+      "label": "Goal",
+      "file_type": "document",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L5",
+      "_origin": "ast",
+      "id": "docs_frontend_agent_handoff_goal",
+      "community": 83,
+      "norm_label": "goal"
+    },
+    {
+      "label": "Core Mental Model",
+      "file_type": "document",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L9",
+      "_origin": "ast",
+      "id": "docs_frontend_agent_handoff_core_mental_model",
+      "community": 83,
+      "norm_label": "core mental model"
+    },
+    {
+      "label": "Non-Negotiable Integration Rules",
+      "file_type": "document",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L18",
+      "_origin": "ast",
+      "id": "docs_frontend_agent_handoff_non_negotiable_integration_rules",
+      "community": 83,
+      "norm_label": "non-negotiable integration rules"
+    },
+    {
+      "label": "Canonical End-User RAG Workflow",
+      "file_type": "document",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L31",
+      "_origin": "ast",
+      "id": "docs_frontend_agent_handoff_canonical_end_user_rag_workflow",
+      "community": 83,
+      "norm_label": "canonical end-user rag workflow"
+    },
+    {
+      "label": "Canonical Admin Workflow",
+      "file_type": "document",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L42",
+      "_origin": "ast",
+      "id": "docs_frontend_agent_handoff_canonical_admin_workflow",
+      "community": 83,
+      "norm_label": "canonical admin workflow"
+    },
+    {
+      "label": "Query vs Retrieve",
+      "file_type": "document",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L52",
+      "_origin": "ast",
+      "id": "docs_frontend_agent_handoff_query_vs_retrieve",
+      "community": 83,
+      "norm_label": "query vs retrieve"
+    },
+    {
+      "label": "Readiness-Driven UI States",
+      "file_type": "document",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L59",
+      "_origin": "ast",
+      "id": "docs_frontend_agent_handoff_readiness_driven_ui_states",
+      "community": 83,
+      "norm_label": "readiness-driven ui states"
+    },
+    {
+      "label": "Error Handling Rules",
+      "file_type": "document",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L74",
+      "_origin": "ast",
+      "id": "docs_frontend_agent_handoff_error_handling_rules",
+      "community": 83,
+      "norm_label": "error handling rules"
+    },
+    {
+      "label": "Request Header Contract",
+      "file_type": "document",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L94",
+      "_origin": "ast",
+      "id": "docs_frontend_agent_handoff_request_header_contract",
+      "community": 83,
+      "norm_label": "request header contract"
+    },
+    {
+      "label": "Polling Guidance",
+      "file_type": "document",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L102",
+      "_origin": "ast",
+      "id": "docs_frontend_agent_handoff_polling_guidance",
+      "community": 83,
+      "norm_label": "polling guidance"
+    },
+    {
+      "label": "Things The Frontend Must Not Assume",
+      "file_type": "document",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L109",
+      "_origin": "ast",
+      "id": "docs_frontend_agent_handoff_things_the_frontend_must_not_assume",
+      "community": 83,
+      "norm_label": "things the frontend must not assume"
+    },
+    {
+      "label": "Recommended Prompt For A Coding Agent",
+      "file_type": "document",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L118",
+      "_origin": "ast",
+      "id": "docs_frontend_agent_handoff_recommended_prompt_for_a_coding_agent",
+      "community": 83,
+      "norm_label": "recommended prompt for a coding agent"
+    },
+    {
       "label": "user_api_endpoints.md",
       "file_type": "document",
       "source_file": "docs/user_api_endpoints.md",
       "source_location": "L1",
       "_origin": "ast",
       "id": "docs_user_api_endpoints",
-      "community": 101,
+      "community": 100,
       "norm_label": "user_api_endpoints.md"
+    },
+    {
+      "label": "Public RAG API Reference",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_public_rag_api_reference",
+      "community": 87,
+      "norm_label": "public rag api reference"
+    },
+    {
+      "label": "Base Rules",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L5",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_base_rules",
+      "community": 87,
+      "norm_label": "base rules"
+    },
+    {
+      "label": "Request Headers",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L12",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_request_headers",
+      "community": 87,
+      "norm_label": "request headers"
+    },
+    {
+      "label": "System Endpoints",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L20",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_system_endpoints",
+      "community": 87,
+      "norm_label": "system endpoints"
+    },
+    {
+      "label": "`GET /`",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L22",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_get",
+      "community": 87,
+      "norm_label": "`get /`"
+    },
+    {
+      "label": "`GET /health`",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L45",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_get_health",
+      "community": 87,
+      "norm_label": "`get /health`"
+    },
+    {
+      "label": "`GET /ready`",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L61",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_get_ready",
+      "community": 87,
+      "norm_label": "`get /ready`"
+    },
+    {
+      "label": "Public Collection DTO",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L110",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_public_collection_dto",
+      "community": 87,
+      "norm_label": "public collection dto"
+    },
+    {
+      "label": "Public Endpoints",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L150",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_public_endpoints",
+      "community": 102,
+      "norm_label": "public endpoints"
+    },
+    {
+      "label": "`GET /v1/rag/collections`",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L152",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_get_v1_rag_collections",
+      "community": 102,
+      "norm_label": "`get /v1/rag/collections`"
+    },
+    {
+      "label": "`GET /v1/rag/collections/:collectionId`",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L192",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_get_v1_rag_collections_collectionid",
+      "community": 102,
+      "norm_label": "`get /v1/rag/collections/:collectionid`"
+    },
+    {
+      "label": "`GET /v1/rag/collections/:collectionId/ready`",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L198",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_get_v1_rag_collections_collectionid_ready",
+      "community": 102,
+      "norm_label": "`get /v1/rag/collections/:collectionid/ready`"
+    },
+    {
+      "label": "`POST /v1/rag/collections/:collectionId/retrieve`",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L297",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_post_v1_rag_collections_collectionid_retrieve",
+      "community": 102,
+      "norm_label": "`post /v1/rag/collections/:collectionid/retrieve`"
+    },
+    {
+      "label": "`POST /v1/rag/collections/:collectionId/query`",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L344",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_post_v1_rag_collections_collectionid_query",
+      "community": 102,
+      "norm_label": "`post /v1/rag/collections/:collectionid/query`"
+    },
+    {
+      "label": "Public Error Codes",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L388",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_public_error_codes",
+      "community": 87,
+      "norm_label": "public error codes"
+    },
+    {
+      "label": "Rate Limiting And Body Limits",
+      "file_type": "document",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L420",
+      "_origin": "ast",
+      "id": "docs_user_api_endpoints_rate_limiting_and_body_limits",
+      "community": 87,
+      "norm_label": "rate limiting and body limits"
     },
     {
       "label": "egitim_icerigi.md",
@@ -9107,7 +9697,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "notes_multicollection_done",
-      "community": 3,
+      "community": 23,
       "norm_label": "multicollection_done.md"
     },
     {
@@ -10617,7 +11207,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "notes_plan_parity_audit",
-      "community": 3,
+      "community": 23,
       "norm_label": "plan-parity-audit.md"
     },
     {
@@ -11537,7 +12127,7 @@
       "source_location": "L840",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_12_tasar\u0131m_trade_off_lar\u0131",
-      "community": 25,
+      "community": 103,
       "norm_label": "12. tasar\u0131m trade-off'lar\u0131"
     },
     {
@@ -11547,7 +12137,7 @@
       "source_location": "L844",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_trade_off_1_basitlik_vs_kalite",
-      "community": 25,
+      "community": 103,
       "norm_label": "trade-off 1: basitlik vs kalite"
     },
     {
@@ -11557,7 +12147,7 @@
       "source_location": "L860",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_trade_off_2_tek_orkestrat\u00f6r_dosyas\u0131_vs_daha_fazla_ayr\u0131\u015f\u0131m",
-      "community": 25,
+      "community": 103,
       "norm_label": "trade-off 2: tek orkestrator dosyas\u0131 vs daha fazla ayr\u0131s\u0131m"
     },
     {
@@ -11567,7 +12157,7 @@
       "source_location": "L874",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_trade_off_3_full_reset_index_vs_incremental_updates",
-      "community": 25,
+      "community": 103,
       "norm_label": "trade-off 3: full reset index vs incremental updates"
     },
     {
@@ -11577,7 +12167,7 @@
       "source_location": "L888",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_trade_off_4_lokal_model_ba\u011f\u0131ml\u0131l\u0131\u011f\u0131_vs_ta\u015f\u0131nabilirlik",
-      "community": 25,
+      "community": 103,
       "norm_label": "trade-off 4: lokal model bag\u0131ml\u0131l\u0131g\u0131 vs tas\u0131nabilirlik"
     },
     {
@@ -11648,7 +12238,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 3,
+      "community": 20,
       "norm_label": "multi-collection support",
       "id": "multi_collection_support"
     },
@@ -11765,7 +12355,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 20,
+      "community": 68,
       "norm_label": "langchain framework",
       "id": "langchain"
     },
@@ -11791,7 +12381,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 68,
+      "community": 20,
       "norm_label": "typescript language",
       "id": "typescript"
     },
@@ -11895,7 +12485,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 3,
+      "community": 68,
       "norm_label": "zero-downtime index/rebuild plan",
       "id": "notes_multicollection_plan_zero_downtime"
     },
@@ -13484,9 +14074,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L2099",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin",
-      "target": "admin_admin_removejobsfrommonitor",
-      "confidence_score": 1.0
+      "target": "admin_admin_removejobsfrommonitor"
     },
     {
       "relation": "contains",
@@ -16827,9 +17417,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L2108",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_removejobsfrommonitor",
-      "target": "admin_admin_saveknownjobstostorage",
-      "confidence_score": 1.0
+      "target": "admin_admin_saveknownjobstostorage"
     },
     {
       "relation": "calls",
@@ -16948,9 +17538,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1823",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_deletejob",
-      "target": "admin_admin_removeselectedjobs",
-      "confidence_score": 1.0
+      "target": "admin_admin_removeselectedjobs"
     },
     {
       "relation": "calls",
@@ -17036,9 +17626,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L2110",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_removejobsfrommonitor",
-      "target": "admin_admin_updatejobselectioncontrols",
-      "confidence_score": 1.0
+      "target": "admin_admin_updatejobselectioncontrols"
     },
     {
       "relation": "calls",
@@ -17102,9 +17692,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1922",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_removeselectedjobs",
-      "target": "admin_admin_removejobsfrommonitor",
-      "confidence_score": 1.0
+      "target": "admin_admin_removejobsfrommonitor"
     },
     {
       "relation": "calls",
@@ -17245,9 +17835,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L2096",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_removejobfrommonitor",
-      "target": "admin_admin_removejobsfrommonitor",
-      "confidence_score": 1.0
+      "target": "admin_admin_removejobsfrommonitor"
     },
     {
       "relation": "calls",
@@ -17267,9 +17857,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L2109",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_removejobsfrommonitor",
-      "target": "admin_admin_renderjobs",
-      "confidence_score": 1.0
+      "target": "admin_admin_renderjobs"
     },
     {
       "relation": "calls",
@@ -30043,6 +30633,606 @@
     {
       "relation": "references",
       "confidence": "EXTRACTED",
+      "source_file": "docs/README.md",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "docs_readme",
+      "target": "docs_admin_api_endpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/README.md",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "docs_readme",
+      "target": "docs_frontend_agent_handoff",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/README.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "docs_readme",
+      "target": "docs_readme_vanilla_rag_backend_documentation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/README.md",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "docs_readme",
+      "target": "docs_user_api_endpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/README.md",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "docs_readme_vanilla_rag_backend_documentation",
+      "target": "docs_readme_fast_integration_summary",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/README.md",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "docs_readme_vanilla_rag_backend_documentation",
+      "target": "docs_readme_reading_order",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/README.md",
+      "source_location": "L46",
+      "weight": 1.0,
+      "source": "docs_readme_vanilla_rag_backend_documentation",
+      "target": "docs_readme_source_of_truth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/README.md",
+      "source_location": "L36",
+      "weight": 1.0,
+      "source": "docs_readme_vanilla_rag_backend_documentation",
+      "target": "docs_readme_suggested_prompt_for_end_users",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/README.md",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "docs_readme_vanilla_rag_backend_documentation",
+      "target": "docs_readme_which_file_to_give_a_coding_agent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints",
+      "target": "docs_admin_api_endpoints_admin_api_reference",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L401",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_admin_api_reference",
+      "target": "docs_admin_api_endpoints_admin_error_codes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_admin_api_reference",
+      "target": "docs_admin_api_endpoints_collection_configuration_fields",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L78",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_admin_api_reference",
+      "target": "docs_admin_api_endpoints_collection_endpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L55",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_admin_api_reference",
+      "target": "docs_admin_api_endpoints_immediate_vs_reindex_bound_fields",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L291",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_admin_api_reference",
+      "target": "docs_admin_api_endpoints_job_endpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L414",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_admin_api_reference",
+      "target": "docs_admin_api_endpoints_practical_frontend_rules",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_admin_api_reference",
+      "target": "docs_admin_api_endpoints_request_headers",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_collection_configuration_fields",
+      "target": "docs_admin_api_endpoints_create_request",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L43",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_collection_configuration_fields",
+      "target": "docs_admin_api_endpoints_update_request",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L259",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_collection_endpoints",
+      "target": "docs_admin_api_endpoints_delete_v1_admin_collections_collectionid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L108",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_collection_endpoints",
+      "target": "docs_admin_api_endpoints_get_v1_admin_collections_collectionid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L232",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_collection_endpoints",
+      "target": "docs_admin_api_endpoints_patch_v1_admin_collections_collectionid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L80",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_collection_endpoints",
+      "target": "docs_admin_api_endpoints_post_v1_admin_collections",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L268",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_collection_endpoints",
+      "target": "docs_admin_api_endpoints_post_v1_admin_collections_collectionid_reindex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L221",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_collection_endpoints",
+      "target": "docs_admin_api_endpoints_post_v1_admin_collections_collectionid_validate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L164",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_collection_endpoints",
+      "target": "docs_admin_api_endpoints_post_v1_admin_collections_validate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L361",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_job_endpoints",
+      "target": "docs_admin_api_endpoints_delete_v1_admin_jobs_jobid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L301",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_job_endpoints",
+      "target": "docs_admin_api_endpoints_get_v1_admin_jobs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L351",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_job_endpoints",
+      "target": "docs_admin_api_endpoints_get_v1_admin_jobs_jobid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L370",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_job_endpoints",
+      "target": "docs_admin_api_endpoints_post_v1_admin_jobs_bulk_delete",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/admin_api_endpoints.md",
+      "source_location": "L392",
+      "weight": 1.0,
+      "source": "docs_admin_api_endpoints_job_endpoints",
+      "target": "docs_admin_api_endpoints_post_v1_admin_jobs_jobid_cancel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "docs_frontend_agent_handoff",
+      "target": "docs_frontend_agent_handoff_frontend_agent_handoff",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L42",
+      "weight": 1.0,
+      "source": "docs_frontend_agent_handoff_frontend_agent_handoff",
+      "target": "docs_frontend_agent_handoff_canonical_admin_workflow",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L31",
+      "weight": 1.0,
+      "source": "docs_frontend_agent_handoff_frontend_agent_handoff",
+      "target": "docs_frontend_agent_handoff_canonical_end_user_rag_workflow",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "docs_frontend_agent_handoff_frontend_agent_handoff",
+      "target": "docs_frontend_agent_handoff_core_mental_model",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L74",
+      "weight": 1.0,
+      "source": "docs_frontend_agent_handoff_frontend_agent_handoff",
+      "target": "docs_frontend_agent_handoff_error_handling_rules",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "docs_frontend_agent_handoff_frontend_agent_handoff",
+      "target": "docs_frontend_agent_handoff_goal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "docs_frontend_agent_handoff_frontend_agent_handoff",
+      "target": "docs_frontend_agent_handoff_non_negotiable_integration_rules",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L102",
+      "weight": 1.0,
+      "source": "docs_frontend_agent_handoff_frontend_agent_handoff",
+      "target": "docs_frontend_agent_handoff_polling_guidance",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L52",
+      "weight": 1.0,
+      "source": "docs_frontend_agent_handoff_frontend_agent_handoff",
+      "target": "docs_frontend_agent_handoff_query_vs_retrieve",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L59",
+      "weight": 1.0,
+      "source": "docs_frontend_agent_handoff_frontend_agent_handoff",
+      "target": "docs_frontend_agent_handoff_readiness_driven_ui_states",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L118",
+      "weight": 1.0,
+      "source": "docs_frontend_agent_handoff_frontend_agent_handoff",
+      "target": "docs_frontend_agent_handoff_recommended_prompt_for_a_coding_agent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L94",
+      "weight": 1.0,
+      "source": "docs_frontend_agent_handoff_frontend_agent_handoff",
+      "target": "docs_frontend_agent_handoff_request_header_contract",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/frontend_agent_handoff.md",
+      "source_location": "L109",
+      "weight": 1.0,
+      "source": "docs_frontend_agent_handoff_frontend_agent_handoff",
+      "target": "docs_frontend_agent_handoff_things_the_frontend_must_not_assume",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints",
+      "target": "docs_user_api_endpoints_public_rag_api_reference",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_public_rag_api_reference",
+      "target": "docs_user_api_endpoints_base_rules",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L110",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_public_rag_api_reference",
+      "target": "docs_user_api_endpoints_public_collection_dto",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L150",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_public_rag_api_reference",
+      "target": "docs_user_api_endpoints_public_endpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L388",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_public_rag_api_reference",
+      "target": "docs_user_api_endpoints_public_error_codes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L420",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_public_rag_api_reference",
+      "target": "docs_user_api_endpoints_rate_limiting_and_body_limits",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_public_rag_api_reference",
+      "target": "docs_user_api_endpoints_request_headers",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L20",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_public_rag_api_reference",
+      "target": "docs_user_api_endpoints_system_endpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_system_endpoints",
+      "target": "docs_user_api_endpoints_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L45",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_system_endpoints",
+      "target": "docs_user_api_endpoints_get_health",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L61",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_system_endpoints",
+      "target": "docs_user_api_endpoints_get_ready",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L152",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_public_endpoints",
+      "target": "docs_user_api_endpoints_get_v1_rag_collections",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L192",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_public_endpoints",
+      "target": "docs_user_api_endpoints_get_v1_rag_collections_collectionid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L198",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_public_endpoints",
+      "target": "docs_user_api_endpoints_get_v1_rag_collections_collectionid_ready",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L344",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_public_endpoints",
+      "target": "docs_user_api_endpoints_post_v1_rag_collections_collectionid_query",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/user_api_endpoints.md",
+      "source_location": "L297",
+      "weight": 1.0,
+      "source": "docs_user_api_endpoints_public_endpoints",
+      "target": "docs_user_api_endpoints_post_v1_rag_collections_collectionid_retrieve",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "egitim/egitim_icerigi.md",
       "source_location": null,
@@ -35567,5 +36757,5 @@
       "source_file": "data/dataset2/README.md"
     }
   ],
-  "built_at_commit": "7f1e73a660f3b8ed1733ed2fe4c94ee2f41aff64"
+  "built_at_commit": "82c040af6a75d5231803f05eb71c1a4849ffb8ff"
 }

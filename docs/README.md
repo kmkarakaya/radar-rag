@@ -1,0 +1,48 @@
+# Vanilla RAG Backend Documentation
+
+This documentation set is written for both humans and coding agents that need to build against this backend without reverse-engineering the source code.
+
+## Reading Order
+
+1. [frontend_agent_handoff.md](./frontend_agent_handoff.md)
+2. [user_api_endpoints.md](./user_api_endpoints.md)
+3. [admin_api_endpoints.md](./admin_api_endpoints.md)
+4. [openapi.yaml](./openapi.yaml)
+
+## Fast Integration Summary
+
+- Use only versioned routes under `/v1/rag` and `/v1/admin`.
+- Legacy `/rag/query` and `/rag/retrieve` routes intentionally return `404`.
+- Treat `GET /v1/rag/collections/:collectionId/ready` as the capability gate for collection-specific UI state.
+- Send `x-tenant-id`, `x-user-id`, and `x-request-id` on all requests.
+- `POST /query` returns an answer plus sources. `POST /retrieve` returns sources only.
+- `POST /v1/admin/collections/:collectionId/reindex` is asynchronous and returns `202 Accepted`.
+- Some write endpoints return `204 No Content`; do not call `response.json()` on them.
+- Query, retrieve, and reindex operations are rate-limited and return `429 RATE_LIMIT_EXCEEDED` with `Retry-After`.
+- JSON request bodies are limited to `1mb`.
+
+## Which File To Give A Coding Agent
+
+If someone wants an end-user RAG frontend, the minimum useful set is:
+
+1. `docs/frontend_agent_handoff.md`
+2. `docs/user_api_endpoints.md`
+3. `docs/openapi.yaml`
+
+If they also want collection-management or operations UI, include:
+
+4. `docs/admin_api_endpoints.md`
+
+## Suggested Prompt For End Users
+
+Paste this together with the docs above:
+
+```text
+Read docs/frontend_agent_handoff.md first, then docs/user_api_endpoints.md, and then docs/openapi.yaml. If the UI also needs collection management or job monitoring, read docs/admin_api_endpoints.md too.
+
+Build the frontend against only the versioned /v1 endpoints. Do not invent endpoints. Use GET /v1/rag/collections/:collectionId/ready as the source of truth for whether query and retrieve actions should be enabled. Preserve x-tenant-id, x-user-id, and x-request-id headers in the client. Handle 202, 204, 409, 422, 429, and 503 responses correctly.
+```
+
+## Source Of Truth
+
+These docs were derived from the current implementation and acceptance tests in this repository. If a future code change conflicts with these docs, update both the docs and `docs/openapi.yaml`.

@@ -285,8 +285,8 @@
     "semantic_hash": "3fe70e7676c1107478d310986297cc70"
   },
   "admin/index.html": {
-    "mtime": 1782579766.6052907,
-    "ast_hash": "5e258f11fe20aae859745cafb1fe3db6",
+    "mtime": 1782580568.5015285,
+    "ast_hash": "e000c99b9083deeec76c3ee67c4f0d8a",
     "semantic_hash": ""
   },
   "config/rag.config.yaml": {
@@ -500,13 +500,28 @@
     "semantic_hash": ""
   },
   "docs/admin_api_endpoints.md": {
-    "mtime": 1782579667.9650197,
-    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "mtime": 1782581706.6755202,
+    "ast_hash": "36e35478a212ed2e3d487be2d1f96a02",
     "semantic_hash": ""
   },
   "docs/user_api_endpoints.md": {
-    "mtime": 1782579628.9428916,
-    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "mtime": 1782581706.6735232,
+    "ast_hash": "2c05bfeb9c0b19acf0700c9213809a95",
+    "semantic_hash": ""
+  },
+  "docs/README.md": {
+    "mtime": 1782581504.6576552,
+    "ast_hash": "0b48f495e64ec03095837ac0e576655f",
+    "semantic_hash": ""
+  },
+  "docs/frontend_agent_handoff.md": {
+    "mtime": 1782581504.6628726,
+    "ast_hash": "cfa9968bf88408143f3490e5bf605904",
+    "semantic_hash": ""
+  },
+  "docs/openapi.yaml": {
+    "mtime": 1782581727.9511974,
+    "ast_hash": "a87124fdcd0818c456681f206a5bcb1e",
     "semantic_hash": ""
   }
 }

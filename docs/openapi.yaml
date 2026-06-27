@@ -1,0 +1,1576 @@
+openapi: 3.1.0
+info:
+  title: Vanilla RAG Backend API
+  version: 0.1.0
+  description: >
+    Machine-readable contract for the current Vanilla RAG Backend implementation.
+    This spec covers the versioned public RAG API, admin API, job API, and the
+    system health/readiness endpoints.
+servers:
+  - url: http://localhost:3000
+    description: Local development
+tags:
+  - name: System
+  - name: Public RAG
+  - name: Admin Collections
+  - name: Admin Jobs
+paths:
+  /:
+    get:
+      tags: [System]
+      operationId: getRoot
+      summary: Service introspection
+      responses:
+        "200":
+          description: Service metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RootResponse"
+  /health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: Liveness probe
+      responses:
+        "200":
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /ready:
+    get:
+      tags: [System]
+      operationId: getReady
+      summary: System readiness probe
+      parameters:
+        - $ref: "#/components/parameters/ReadyDetails"
+        - $ref: "#/components/parameters/ReadyStrict"
+      responses:
+        "200":
+          description: Readiness summary or details
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ReadySummary"
+                  - $ref: "#/components/schemas/ReadyDetailsResponse"
+        "503":
+          description: Returned only when strict=true and the system is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyDetailsResponse"
+  /v1/rag/collections:
+    get:
+      tags: [Public RAG]
+      operationId: listPublicCollections
+      summary: List public collections visible to the current tenant
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+      responses:
+        "200":
+          description: Public collection list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicCollectionListResponse"
+        "500":
+          $ref: "#/components/responses/ApiError"
+  /v1/rag/collections/{collectionId}:
+    get:
+      tags: [Public RAG]
+      operationId: getPublicCollection
+      summary: Get one public collection
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/CollectionId"
+      responses:
+        "200":
+          description: Public collection detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicCollectionDetailResponse"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+  /v1/rag/collections/{collectionId}/ready:
+    get:
+      tags: [Public RAG]
+      operationId: getCollectionReady
+      summary: Get collection-specific readiness and capability state
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/CollectionId"
+      responses:
+        "200":
+          description: Collection readiness payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionReadinessPayload"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+  /v1/rag/collections/{collectionId}/retrieve:
+    post:
+      tags: [Public RAG]
+      operationId: retrieveSources
+      summary: Retrieve source chunks without answer generation
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/CollectionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetrieveRequest"
+      responses:
+        "200":
+          description: Retrieved source chunks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetrieveResponse"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "413":
+          $ref: "#/components/responses/ApiError"
+        "429":
+          $ref: "#/components/responses/ApiError"
+        "503":
+          $ref: "#/components/responses/ApiError"
+  /v1/rag/collections/{collectionId}/query:
+    post:
+      tags: [Public RAG]
+      operationId: queryCollection
+      summary: Retrieve context and generate a grounded answer
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/CollectionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: Generated answer with sources
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryResponse"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "413":
+          $ref: "#/components/responses/ApiError"
+        "422":
+          $ref: "#/components/responses/ApiError"
+        "429":
+          $ref: "#/components/responses/ApiError"
+        "502":
+          $ref: "#/components/responses/ApiError"
+        "503":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/collections:
+    post:
+      tags: [Admin Collections]
+      operationId: createCollection
+      summary: Create a collection
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCollectionRequest"
+      responses:
+        "201":
+          description: Collection created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCreateCollectionResponse"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "413":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/collections/validate:
+    post:
+      tags: [Admin Collections]
+      operationId: validateCreateCollection
+      summary: Validate a create draft without mutating state
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCollectionRequest"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionValidationResult"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "413":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/collections/{collectionId}:
+    get:
+      tags: [Admin Collections]
+      operationId: getAdminCollection
+      summary: Get the full editable collection DTO
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/CollectionId"
+      responses:
+        "200":
+          description: Full collection detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCollectionResponse"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+    patch:
+      tags: [Admin Collections]
+      operationId: patchCollection
+      summary: Update a collection
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/CollectionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCollectionRequest"
+      responses:
+        "200":
+          description: Updated collection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCollectionResponse"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "413":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+    delete:
+      tags: [Admin Collections]
+      operationId: deleteCollection
+      summary: Soft-delete a collection
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/CollectionId"
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/collections/{collectionId}/validate:
+    post:
+      tags: [Admin Collections]
+      operationId: validateUpdateCollection
+      summary: Validate an update draft against a persisted collection
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/CollectionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCollectionRequest"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionValidationResult"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "413":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/collections/{collectionId}/reindex:
+    post:
+      tags: [Admin Collections]
+      operationId: reindexCollection
+      summary: Start an asynchronous reindex job
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/CollectionId"
+      responses:
+        "202":
+          description: Reindex accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReindexAcceptedResponse"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "409":
+          $ref: "#/components/responses/ApiError"
+        "429":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/jobs:
+    get:
+      tags: [Admin Jobs]
+      operationId: listJobs
+      summary: List tenant-visible jobs
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/JobCollectionId"
+        - $ref: "#/components/parameters/JobStatus"
+        - $ref: "#/components/parameters/JobLimit"
+        - $ref: "#/components/parameters/JobCursor"
+      responses:
+        "200":
+          description: Job list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IndexJobListResponse"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/jobs/bulk-delete:
+    post:
+      tags: [Admin Jobs]
+      operationId: bulkDeleteJobs
+      summary: Delete multiple terminal jobs
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkDeleteJobsRequest"
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "413":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/jobs/{jobId}:
+    get:
+      tags: [Admin Jobs]
+      operationId: getJob
+      summary: Get one job
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: Job detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SingleJobResponse"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+    delete:
+      tags: [Admin Jobs]
+      operationId: deleteJob
+      summary: Delete one terminal job
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/jobs/{jobId}/cancel:
+    post:
+      tags: [Admin Jobs]
+      operationId: cancelJob
+      summary: Cancel a queued or running job
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+components:
+  parameters:
+    XTenantId:
+      name: x-tenant-id
+      in: header
+      required: false
+      description: Tenant scope. Defaults to default when omitted.
+      schema:
+        type: string
+    XUserId:
+      name: x-user-id
+      in: header
+      required: false
+      description: User identity for rate limiting and logs. Defaults to local-dev when omitted.
+      schema:
+        type: string
+    XRequestId:
+      name: x-request-id
+      in: header
+      required: false
+      description: Optional request correlation ID. Generated automatically when omitted.
+      schema:
+        type: string
+    ReadyDetails:
+      name: details
+      in: query
+      required: false
+      schema:
+        type: boolean
+      description: Return the full readiness payload when true.
+    ReadyStrict:
+      name: strict
+      in: query
+      required: false
+      schema:
+        type: boolean
+      description: Return HTTP 503 when the system is not ready.
+    CollectionId:
+      name: collectionId
+      in: path
+      required: true
+      schema:
+        type: string
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema:
+        type: string
+    JobCollectionId:
+      name: collectionId
+      in: query
+      required: false
+      schema:
+        type: string
+    JobStatus:
+      name: status
+      in: query
+      required: false
+      description: >
+        Job status filter. The implementation accepts repeated params and comma-separated values.
+      schema:
+        oneOf:
+          - type: string
+            enum: [queued, running, succeeded, failed, cancelled]
+          - type: array
+            items:
+              type: string
+              enum: [queued, running, succeeded, failed, cancelled]
+      style: form
+      explode: true
+    JobLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+    JobCursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+  responses:
+    ApiError:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    NoContent:
+      description: No content
+  schemas:
+    ApiErrorResponse:
+      type: object
+      required: [error, code, message]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          enum:
+            - INVALID_REQUEST_BODY
+            - COLLECTION_FORBIDDEN
+            - COLLECTION_NOT_FOUND
+            - COLLECTION_NOT_READY
+            - COLLECTION_INDEX_ALREADY_RUNNING
+            - NO_RELEVANT_CONTEXT
+            - ANSWER_NOT_IN_RETRIEVED_CONTEXT
+            - DISALLOWED_FALLBACK_ANSWER
+            - COLLECTION_INDEXING
+            - COLLECTION_STORAGE_INCONSISTENT
+            - MODEL_BACKPRESSURE
+            - INVALID_JOB_STATUS
+            - RATE_LIMIT_EXCEEDED
+            - EMPTY_MODEL_RESPONSE
+            - ROUTE_NOT_FOUND
+            - INTERNAL_ERROR
+        message:
+          type: string
+        requestId:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    RootResponse:
+      type: object
+      required: [name, status, message, endpoints]
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          const: ok
+        message:
+          type: string
+        endpoints:
+          type: object
+          required: [health, ready, adminCollections, collections, query, retrieve, testFrontend]
+          properties:
+            health:
+              type: string
+            ready:
+              type: string
+            adminCollections:
+              type: string
+            collections:
+              type: string
+            query:
+              type: string
+            retrieve:
+              type: string
+            testFrontend:
+              type: string
+    HealthResponse:
+      type: object
+      required: [status, alive, port, uptimeSec, timestamp]
+      properties:
+        status:
+          type: string
+          const: ok
+        alive:
+          type: boolean
+        port:
+          type: integer
+        uptimeSec:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+    ReadinessIssueSummary:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        recommendedAction:
+          type: string
+    ReadySummary:
+      type: object
+      required:
+        - status
+        - ready
+        - systemReadyFor
+        - overallSummary
+        - queryReady
+        - indexReady
+        - querySummary
+        - indexSummary
+        - blockerCodes
+        - warningCodes
+        - recommendedActions
+        - blockers
+        - warnings
+        - dependencies
+        - config
+        - diagnostics
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        ready:
+          type: boolean
+        systemReadyFor:
+          type: string
+          enum: [query-and-index, query, index, neither]
+        overallSummary:
+          type: string
+        queryReady:
+          type: boolean
+        indexReady:
+          type: boolean
+        querySummary:
+          type: string
+        indexSummary:
+          type: string
+        blockerCodes:
+          type: array
+          items:
+            type: string
+        warningCodes:
+          type: array
+          items:
+            type: string
+        recommendedActions:
+          type: array
+          items:
+            type: string
+        blockers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReadinessIssueSummary"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReadinessIssueSummary"
+        dependencies:
+          type: object
+          required: [registry, chroma, ollama]
+          properties:
+            registry:
+              $ref: "#/components/schemas/DependencyAvailability"
+            chroma:
+              $ref: "#/components/schemas/DependencyAvailability"
+            ollama:
+              $ref: "#/components/schemas/DependencyAvailability"
+        config:
+          type: object
+          required: [port, chatModel, embeddingModel, chromaUrl]
+          properties:
+            port:
+              type: integer
+            chatModel:
+              type: string
+            embeddingModel:
+              type: string
+            chromaUrl:
+              type: string
+        diagnostics:
+          type: object
+          required: [full, strictHttpStatus, fullStrict]
+          properties:
+            full:
+              type: string
+            strictHttpStatus:
+              type: string
+            fullStrict:
+              type: string
+    ReadyDetailsResponse:
+      type: object
+      required:
+        - status
+        - ready
+        - systemReadyFor
+        - overallSummary
+        - queryReady
+        - indexReady
+        - querySummary
+        - indexSummary
+        - blockerCodes
+        - warningCodes
+        - recommendedActions
+        - port
+        - chatModel
+        - embeddingModel
+        - chromaUrl
+        - chromaLatencyMs
+        - capabilities
+        - blockers
+        - warnings
+        - checks
+        - dependencies
+        - dataSource
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        ready:
+          type: boolean
+        systemReadyFor:
+          type: string
+          enum: [query-and-index, query, index, neither]
+        overallSummary:
+          type: string
+        queryReady:
+          type: boolean
+        indexReady:
+          type: boolean
+        querySummary:
+          type: string
+        indexSummary:
+          type: string
+        blockerCodes:
+          type: array
+          items:
+            type: string
+        warningCodes:
+          type: array
+          items:
+            type: string
+        recommendedActions:
+          type: array
+          items:
+            type: string
+        port:
+          type: integer
+        chatModel:
+          type: string
+        embeddingModel:
+          type: string
+        chromaUrl:
+          type: string
+        chromaLatencyMs:
+          type: integer
+        capabilities:
+          type: object
+          required: [query, index]
+          properties:
+            query:
+              $ref: "#/components/schemas/SystemCapabilityState"
+            index:
+              $ref: "#/components/schemas/SystemCapabilityState"
+        blockers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReadinessIssue"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReadinessIssue"
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReadinessCheck"
+        dependencies:
+          type: object
+          required: [chroma, registry, ollama, embeddings, chatGeneration]
+          properties:
+            chroma:
+              type: object
+              additionalProperties: true
+            registry:
+              type: object
+              additionalProperties: true
+            ollama:
+              type: object
+              additionalProperties: true
+            embeddings:
+              type: object
+              additionalProperties: true
+            chatGeneration:
+              type: object
+              additionalProperties: true
+        dataSource:
+          type: object
+          additionalProperties: true
+    DependencyAvailability:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+    SystemCapabilityState:
+      type: object
+      required: [ready, message]
+      properties:
+        ready:
+          type: boolean
+        message:
+          type: string
+    ReadinessIssue:
+      type: object
+      required: [code, capabilities, message]
+      properties:
+        code:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+            enum: [query, index]
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        recommendedAction:
+          type: string
+    ReadinessCheck:
+      type: object
+      required: [code, name, status, blocking, capabilities, message]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [pass, fail, warn, skip]
+        blocking:
+          type: boolean
+        capabilities:
+          type: array
+          items:
+            type: string
+            enum: [query, index]
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    DistanceMetric:
+      type: string
+      enum: [l2, cosine, ip]
+    CollectionStatus:
+      type: string
+      enum: [creating, indexing, ready, failed, archived]
+    IndexJobStatus:
+      type: string
+      enum: [queued, running, succeeded, failed, cancelled]
+    CollectionIndexSnapshot:
+      type: object
+      required: [sourcePath, ozelgeDataPath, distanceMetric, chunkSize, chunkOverlap, embeddingModel]
+      properties:
+        sourcePath:
+          type: string
+        ozelgeDataPath:
+          type: string
+        distanceMetric:
+          $ref: "#/components/schemas/DistanceMetric"
+        chunkSize:
+          type: integer
+        chunkOverlap:
+          type: integer
+        embeddingModel:
+          type: string
+    CollectionIndexState:
+      type: object
+      required: [status, reindexRequired, activeSnapshot, desiredSnapshot, changedFields, note]
+      properties:
+        status:
+          type: string
+          enum: [no_active_index, synced, reindex_required]
+        reindexRequired:
+          type: boolean
+        activeSnapshot:
+          oneOf:
+            - $ref: "#/components/schemas/CollectionIndexSnapshot"
+            - type: "null"
+        desiredSnapshot:
+          $ref: "#/components/schemas/CollectionIndexSnapshot"
+        changedFields:
+          type: array
+          items:
+            type: string
+        note:
+          type: string
+    PublicCollection:
+      type: object
+      required:
+        - id
+        - displayName
+        - description
+        - status
+        - chunkCount
+        - activeVersion
+        - updatedAt
+        - indexState
+        - readyUrl
+        - queryUrl
+        - retrieveUrl
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: [string, "null"]
+        status:
+          $ref: "#/components/schemas/CollectionStatus"
+        chunkCount:
+          type: [integer, "null"]
+        activeVersion:
+          type: [string, "null"]
+        updatedAt:
+          type: string
+          format: date-time
+        indexState:
+          oneOf:
+            - $ref: "#/components/schemas/CollectionIndexState"
+            - type: "null"
+        readyUrl:
+          type: string
+        queryUrl:
+          type: string
+        retrieveUrl:
+          type: string
+    PublicCollectionListResponse:
+      type: object
+      required: [collections]
+      properties:
+        collections:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicCollection"
+    PublicCollectionDetailResponse:
+      type: object
+      required: [collection]
+      properties:
+        collection:
+          $ref: "#/components/schemas/PublicCollection"
+    CollectionReadinessIssue:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        recommendedAction:
+          type: string
+    CollectionReadinessModelAvailability:
+      type: object
+      required: [embeddingModel, embeddingModelAvailable, chatModel, chatModelAvailable]
+      properties:
+        embeddingModel:
+          type: string
+        embeddingModelAvailable:
+          type: boolean
+        chatModel:
+          type: string
+        chatModelAvailable:
+          type: boolean
+        desiredEmbeddingModel:
+          type: string
+    CollectionReadinessCapabilities:
+      type: object
+      required: [query, retrieve, reindex]
+      properties:
+        query:
+          type: boolean
+        retrieve:
+          type: boolean
+        reindex:
+          type: boolean
+    CollectionReadinessPayload:
+      type: object
+      required:
+        - id
+        - status
+        - hasActivePhysicalCollection
+        - activeVersion
+        - activeJob
+        - chromaReadable
+        - chromaCount
+        - modelAvailability
+        - capabilities
+        - blockers
+        - warnings
+        - recommendedActions
+      properties:
+        id:
+          type: string
+        status:
+          $ref: "#/components/schemas/CollectionStatus"
+        hasActivePhysicalCollection:
+          type: boolean
+        activeVersion:
+          type: [string, "null"]
+        activeJob:
+          oneOf:
+            - type: object
+              required: [id, status]
+              properties:
+                id:
+                  type: string
+                status:
+                  $ref: "#/components/schemas/IndexJobStatus"
+            - type: "null"
+        chromaReadable:
+          type: boolean
+        chromaCount:
+          type: integer
+        modelAvailability:
+          $ref: "#/components/schemas/CollectionReadinessModelAvailability"
+        capabilities:
+          $ref: "#/components/schemas/CollectionReadinessCapabilities"
+        blockers:
+          type: array
+          items:
+            $ref: "#/components/schemas/CollectionReadinessIssue"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/CollectionReadinessIssue"
+        recommendedActions:
+          type: array
+          items:
+            type: string
+    RagSource:
+      type: object
+      required: [content]
+      properties:
+        documentId:
+          type: string
+        sourcePath:
+          type: string
+        sourceType:
+          type: string
+        chunkIndex:
+          type: integer
+        ozelgeId:
+          type: string
+        sayi:
+          oneOf:
+            - type: integer
+            - type: string
+        tarih:
+          type: string
+        konu:
+          type: string
+        distanceScore:
+          type: number
+        content:
+          type: string
+    RetrievalDebug:
+      type: object
+      required: [latency]
+      properties:
+        latency:
+          type: object
+          required: [retrievalMs, totalMs]
+          properties:
+            retrievalMs:
+              type: integer
+            totalMs:
+              type: integer
+    QueryDebug:
+      type: object
+      required: [latency]
+      properties:
+        latency:
+          type: object
+          required: [retrievalMs, generationMs, totalMs]
+          properties:
+            retrievalMs:
+              type: integer
+            generationMs:
+              type: integer
+            totalMs:
+              type: integer
+    RetrieveRequest:
+      type: object
+      required: [question]
+      additionalProperties: false
+      properties:
+        question:
+          type: string
+          minLength: 1
+        k:
+          type: integer
+          minimum: 1
+    RetrieveResponse:
+      type: object
+      required:
+        - question
+        - k
+        - sourceCount
+        - distanceScoreThreshold
+        - sources
+        - collectionId
+        - collectionDisplayName
+        - activeVersion
+      properties:
+        question:
+          type: string
+        k:
+          type: integer
+        sourceCount:
+          type: integer
+        distanceScoreThreshold:
+          type: number
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/RagSource"
+        collectionId:
+          type: string
+        collectionDisplayName:
+          type: string
+        activeVersion:
+          type: [string, "null"]
+        debug:
+          $ref: "#/components/schemas/RetrievalDebug"
+    QueryRequest:
+      type: object
+      required: [question]
+      additionalProperties: false
+      properties:
+        question:
+          type: string
+          minLength: 1
+    QueryResponse:
+      type: object
+      required:
+        - answer
+        - distanceScoreThreshold
+        - sources
+        - collectionId
+        - collectionDisplayName
+        - activeVersion
+      properties:
+        answer:
+          type: string
+        distanceScoreThreshold:
+          type: number
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/RagSource"
+        collectionId:
+          type: string
+        collectionDisplayName:
+          type: string
+        activeVersion:
+          type: [string, "null"]
+        debug:
+          $ref: "#/components/schemas/QueryDebug"
+    CreateCollectionRequest:
+      type: object
+      required: [displayName]
+      additionalProperties: false
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        sourcePath:
+          type: string
+          minLength: 1
+        ozelgeDataPath:
+          type: string
+          minLength: 1
+        distanceMetric:
+          $ref: "#/components/schemas/DistanceMetric"
+        chunkSize:
+          type: integer
+          minimum: 1
+        chunkOverlap:
+          type: integer
+          minimum: 0
+        retrievalK:
+          type: integer
+          minimum: 1
+        retrievalDistanceThreshold:
+          type: number
+          minimum: 0
+        embeddingModel:
+          type: string
+          minLength: 1
+        chatModel:
+          type: string
+          minLength: 1
+    UpdateCollectionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+        description:
+          type: [string, "null"]
+        sourcePath:
+          type: string
+          minLength: 1
+        ozelgeDataPath:
+          type: string
+          minLength: 1
+        distanceMetric:
+          $ref: "#/components/schemas/DistanceMetric"
+        chunkSize:
+          type: integer
+          minimum: 1
+        chunkOverlap:
+          type: integer
+          minimum: 0
+        retrievalK:
+          type: integer
+          minimum: 1
+        retrievalDistanceThreshold:
+          type: number
+          minimum: 0
+        embeddingModel:
+          type: string
+          minLength: 1
+        chatModel:
+          type: string
+          minLength: 1
+    CollectionSummary:
+      type: object
+      required: [id, displayName, status]
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        status:
+          $ref: "#/components/schemas/CollectionStatus"
+    AdminCreateCollectionResponse:
+      type: object
+      required: [collection]
+      properties:
+        collection:
+          $ref: "#/components/schemas/CollectionSummary"
+    RagCollection:
+      type: object
+      required:
+        - id
+        - tenantId
+        - displayName
+        - status
+        - sourcePath
+        - ozelgeDataPath
+        - embeddingModel
+        - chatModel
+        - distanceMetric
+        - chromaCollectionConfiguration
+        - chunkSize
+        - chunkOverlap
+        - retrievalK
+        - retrievalDistanceThreshold
+        - createdBy
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/CollectionStatus"
+        activePhysicalCollection:
+          type: string
+        activeVersion:
+          type: string
+        sourcePath:
+          type: string
+        ozelgeDataPath:
+          type: string
+        embeddingModel:
+          type: string
+        chatModel:
+          type: string
+        distanceMetric:
+          $ref: "#/components/schemas/DistanceMetric"
+        chromaCollectionConfiguration:
+          type: object
+          additionalProperties: true
+        chunkSize:
+          type: integer
+        chunkOverlap:
+          type: integer
+        retrievalK:
+          type: integer
+        retrievalDistanceThreshold:
+          type: number
+        activeEmbeddingModel:
+          type: string
+        documentCount:
+          type: integer
+        chunkCount:
+          type: integer
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lastIndexedAt:
+          type: string
+          format: date-time
+        indexState:
+          $ref: "#/components/schemas/CollectionIndexState"
+    AdminCollectionResponse:
+      type: object
+      required: [collection]
+      properties:
+        collection:
+          $ref: "#/components/schemas/RagCollection"
+    CollectionValidationIssue:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        recommendedAction:
+          type: string
+    CollectionValidationImpact:
+      type: object
+      required: [reindexRequired, immediateFields, reindexFields, note]
+      properties:
+        reindexRequired:
+          type: boolean
+        immediateFields:
+          type: array
+          items:
+            type: string
+        reindexFields:
+          type: array
+          items:
+            type: string
+        note:
+          type: string
+    CollectionValidationResult:
+      type: object
+      required: [blockers, warnings, recommendedActions, impact]
+      properties:
+        blockers:
+          type: array
+          items:
+            $ref: "#/components/schemas/CollectionValidationIssue"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/CollectionValidationIssue"
+        recommendedActions:
+          type: array
+          items:
+            type: string
+        impact:
+          $ref: "#/components/schemas/CollectionValidationImpact"
+    ReindexAcceptedResponse:
+      type: object
+      required: [job]
+      properties:
+        job:
+          type: object
+          required: [id, collectionId, status, targetPhysicalCollection]
+          properties:
+            id:
+              type: string
+            collectionId:
+              type: string
+            status:
+              $ref: "#/components/schemas/IndexJobStatus"
+            targetPhysicalCollection:
+              type: string
+    IndexJob:
+      type: object
+      required:
+        - id
+        - collectionId
+        - tenantId
+        - status
+        - targetPhysicalCollection
+        - targetVersion
+        - targetEmbeddingModel
+        - targetChromaConfiguration
+        - lockToken
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        collectionId:
+          type: string
+        tenantId:
+          type: string
+        status:
+          $ref: "#/components/schemas/IndexJobStatus"
+        targetPhysicalCollection:
+          type: string
+        targetVersion:
+          type: string
+        targetEmbeddingModel:
+          type: string
+        targetChromaConfiguration:
+          type: object
+          additionalProperties: true
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        error:
+          type: string
+        documentCount:
+          type: integer
+        chunkCount:
+          type: integer
+        lockToken:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    IndexJobCollectionSnapshot:
+      type: object
+      required: [id, displayName, status]
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        status:
+          $ref: "#/components/schemas/CollectionStatus"
+    IndexJobListItem:
+      type: object
+      required: [job, collection]
+      properties:
+        job:
+          $ref: "#/components/schemas/IndexJob"
+        collection:
+          oneOf:
+            - $ref: "#/components/schemas/IndexJobCollectionSnapshot"
+            - type: "null"
+    IndexJobListResponse:
+      type: object
+      required: [jobs, nextCursor]
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/IndexJobListItem"
+        nextCursor:
+          type: [string, "null"]
+    SingleJobResponse:
+      type: object
+      required: [job]
+      properties:
+        job:
+          $ref: "#/components/schemas/IndexJob"
+    BulkDeleteJobsRequest:
+      type: object
+      required: [jobIds]
+      additionalProperties: false
+      properties:
+        jobIds:
+          type: array
+          minItems: 1
+          items:
+            type: string

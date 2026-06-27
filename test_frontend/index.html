@@ -3,24 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vanilla RAG Test Console</title>
+    <title>Vanilla RAG Public API Example</title>
     <style>
       :root {
         color-scheme: light;
-        --bg: #f4f6f8;
-        --surface: #ffffff;
-        --surface-soft: #f8fafc;
-        --line: #d7dde5;
-        --line-strong: #aeb8c5;
-        --ink: #17202a;
-        --muted: #5d6b7a;
-        --accent: #0f766e;
-        --accent-strong: #0b5f59;
+        --bg: #edf3f1;
+        --bg-strong: #dbe9e4;
+        --surface: rgba(255, 255, 255, 0.92);
+        --surface-strong: #ffffff;
+        --surface-soft: #f5faf8;
+        --line: rgba(22, 44, 38, 0.12);
+        --line-strong: rgba(22, 44, 38, 0.24);
+        --ink: #11201d;
+        --muted: #566863;
+        --accent: #116466;
+        --accent-strong: #0c4d4e;
+        --accent-soft: rgba(17, 100, 102, 0.1);
         --danger: #b42318;
+        --danger-soft: rgba(180, 35, 24, 0.1);
         --warn: #9a6700;
+        --warn-soft: rgba(154, 103, 0, 0.1);
         --ok: #146c43;
-        --code: #111827;
-        --code-ink: #eef2f7;
+        --ok-soft: rgba(20, 108, 67, 0.1);
+        --code: #0f1720;
+        --code-ink: #e7eef6;
+        --shadow: 0 18px 48px rgba(17, 32, 29, 0.08);
       }
 
       * {
@@ -30,106 +37,134 @@
       body {
         margin: 0;
         min-height: 100vh;
-        font-family:
-          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: var(--bg);
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(17, 100, 102, 0.12), transparent 24%),
+          linear-gradient(180deg, var(--bg) 0%, #f8fbfa 100%);
         color: var(--ink);
       }
 
       main {
-        width: min(1180px, calc(100% - 32px));
+        width: min(1220px, calc(100% - 28px));
         margin: 0 auto;
-        padding: 28px 0 40px;
+        padding: 24px 0 42px;
       }
 
       header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
         gap: 18px;
+        align-items: start;
         margin-bottom: 18px;
       }
 
       h1,
       h2,
       h3,
-      p {
+      p,
+      ul {
         margin: 0;
       }
 
       h1 {
-        font-size: 1.75rem;
-        line-height: 1.15;
-        letter-spacing: 0;
+        font-size: 1.92rem;
+        line-height: 1.08;
+        letter-spacing: -0.02em;
       }
 
       h2 {
-        font-size: 0.95rem;
+        font-size: 0.98rem;
         line-height: 1.2;
       }
 
       h3 {
-        font-size: 0.82rem;
+        font-size: 0.8rem;
         font-weight: 700;
         color: var(--muted);
         text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      p,
+      li {
+        line-height: 1.5;
+      }
+
+      code,
+      .mono {
+        font-family: "IBM Plex Mono", "Cascadia Code", Consolas, monospace;
       }
 
       code {
         border: 1px solid var(--line);
         border-radius: 6px;
         padding: 2px 6px;
-        background: var(--surface-soft);
-        color: var(--ink);
-        font-family: "Cascadia Code", Consolas, monospace;
-        font-size: 0.85em;
+        background: rgba(255, 255, 255, 0.72);
+        font-size: 0.84em;
       }
 
       .subtitle {
-        margin-top: 6px;
+        margin-top: 8px;
+        max-width: 760px;
         color: var(--muted);
-        max-width: 680px;
-        line-height: 1.5;
+      }
+
+      .banner {
+        margin-top: 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px 14px;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(245, 250, 248, 0.95));
+        box-shadow: var(--shadow);
+      }
+
+      .banner strong {
+        display: block;
+        margin-bottom: 4px;
       }
 
       .statusbar {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
         justify-content: flex-end;
+        gap: 8px;
       }
 
       .pill {
         display: inline-flex;
         align-items: center;
-        min-height: 30px;
+        min-height: 32px;
         border: 1px solid var(--line);
         border-radius: 999px;
-        padding: 5px 10px;
-        background: var(--surface);
+        padding: 6px 11px;
+        background: rgba(255, 255, 255, 0.84);
+        box-shadow: 0 8px 20px rgba(17, 32, 29, 0.05);
         color: var(--muted);
-        font-size: 0.85rem;
+        font-size: 0.86rem;
         white-space: nowrap;
       }
 
       .pill.ok {
-        border-color: rgba(20, 108, 67, 0.28);
+        border-color: rgba(20, 108, 67, 0.26);
+        background: var(--ok-soft);
         color: var(--ok);
       }
 
       .pill.warn {
-        border-color: rgba(154, 103, 0, 0.3);
+        border-color: rgba(154, 103, 0, 0.28);
+        background: var(--warn-soft);
         color: var(--warn);
       }
 
       .pill.fail {
-        border-color: rgba(180, 35, 24, 0.3);
+        border-color: rgba(180, 35, 24, 0.26);
+        background: var(--danger-soft);
         color: var(--danger);
       }
 
       .layout {
         display: grid;
-        grid-template-columns: minmax(300px, 390px) 1fr;
+        grid-template-columns: minmax(320px, 410px) minmax(0, 1fr);
         gap: 16px;
         align-items: start;
       }
@@ -140,9 +175,12 @@
       }
 
       .panel {
+        overflow: hidden;
         border: 1px solid var(--line);
-        border-radius: 8px;
+        border-radius: 16px;
         background: var(--surface);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(6px);
       }
 
       .panel-header {
@@ -150,22 +188,81 @@
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        padding: 13px 14px;
+        padding: 14px 16px;
         border-bottom: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(248, 252, 250, 0.9));
       }
 
       .panel-body {
-        padding: 14px;
+        padding: 15px 16px 16px;
+      }
+
+      .panel-note {
+        margin-top: 10px;
+        font-size: 0.86rem;
+        color: var(--muted);
+      }
+
+      .form-grid,
+      .actions,
+      .notes-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .form-row {
+        display: grid;
+        gap: 6px;
+      }
+
+      .form-row label {
+        font-size: 0.83rem;
+        font-weight: 600;
+        color: var(--muted);
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--line-strong);
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: var(--surface-strong);
+        color: var(--ink);
+        font: inherit;
+      }
+
+      textarea {
+        min-height: 148px;
+        resize: vertical;
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus,
+      button:focus-visible {
+        outline: 3px solid rgba(17, 100, 102, 0.18);
+        outline-offset: 2px;
+      }
+
+      .hint {
+        font-size: 0.82rem;
+        color: var(--muted);
+      }
+
+      .readonly {
+        border-style: dashed;
+        background: var(--surface-soft);
       }
 
       .actions {
-        display: grid;
         gap: 8px;
       }
 
       .action-row {
         display: grid;
-        grid-template-columns: 1fr auto;
+        grid-template-columns: minmax(0, 1fr) auto;
         gap: 8px;
         align-items: center;
       }
@@ -176,33 +273,38 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         color: var(--muted);
-        font-family: "Cascadia Code", Consolas, monospace;
-        font-size: 0.84rem;
+        font-family: "IBM Plex Mono", "Cascadia Code", Consolas, monospace;
+        font-size: 0.82rem;
       }
 
       button {
-        min-height: 36px;
+        min-height: 38px;
         border: 1px solid transparent;
-        border-radius: 6px;
-        padding: 8px 11px;
+        border-radius: 10px;
+        padding: 9px 12px;
         background: var(--accent);
         color: #ffffff;
         font: inherit;
         font-size: 0.92rem;
         cursor: pointer;
+        transition:
+          transform 120ms ease,
+          background-color 120ms ease,
+          border-color 120ms ease;
       }
 
-      button:hover {
+      button:hover:not(:disabled) {
         background: var(--accent-strong);
+        transform: translateY(-1px);
       }
 
       button.secondary {
         border-color: var(--line-strong);
-        background: var(--surface);
+        background: rgba(255, 255, 255, 0.78);
         color: var(--ink);
       }
 
-      button.secondary:hover {
+      button.secondary:hover:not(:disabled) {
         background: var(--surface-soft);
       }
 
@@ -210,42 +312,14 @@
         background: var(--danger);
       }
 
-      .action-button {
-        display: grid;
-        gap: 2px;
-        text-align: left;
-        line-height: 1.15;
-      }
-
-      .action-button small {
-        font-family: "Cascadia Code", Consolas, monospace;
-        font-size: 0.72rem;
-        font-weight: 500;
-        opacity: 0.82;
+      button.danger:hover:not(:disabled) {
+        background: #8d1c13;
       }
 
       button:disabled {
         cursor: wait;
-        opacity: 0.65;
-      }
-
-      textarea {
-        width: 100%;
-        min-height: 148px;
-        resize: vertical;
-        border: 1px solid var(--line-strong);
-        border-radius: 8px;
-        padding: 12px;
-        font: inherit;
-        line-height: 1.45;
-        color: var(--ink);
-        background: #ffffff;
-      }
-
-      textarea:focus,
-      button:focus-visible {
-        outline: 3px solid rgba(15, 118, 110, 0.22);
-        outline-offset: 2px;
+        opacity: 0.64;
+        transform: none;
       }
 
       .button-grid {
@@ -255,19 +329,43 @@
         margin-top: 10px;
       }
 
+      .action-button {
+        display: grid;
+        gap: 3px;
+        text-align: left;
+        line-height: 1.15;
+      }
+
+      .action-button small {
+        font-family: "IBM Plex Mono", "Cascadia Code", Consolas, monospace;
+        font-size: 0.7rem;
+        font-weight: 500;
+        opacity: 0.84;
+      }
+
+      .notes-list {
+        padding-left: 18px;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .notes-list li {
+        margin-bottom: 4px;
+      }
+
       .result-grid {
         display: grid;
-        grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+        grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
         gap: 16px;
       }
 
       .answer {
-        min-height: 180px;
+        min-height: 170px;
         border: 1px solid var(--line);
-        border-radius: 8px;
+        border-radius: 12px;
         padding: 14px;
-        background: var(--surface-soft);
-        line-height: 1.55;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(245, 250, 248, 0.96));
+        line-height: 1.6;
         white-space: pre-wrap;
       }
 
@@ -279,8 +377,9 @@
 
       .meta-row {
         display: grid;
-        grid-template-columns: 110px 1fr;
+        grid-template-columns: 132px 1fr;
         gap: 10px;
+        align-items: start;
         font-size: 0.9rem;
       }
 
@@ -289,16 +388,16 @@
       }
 
       pre {
-        min-height: 360px;
-        max-height: 620px;
+        min-height: 420px;
+        max-height: 720px;
         margin: 0;
         overflow: auto;
-        border-radius: 8px;
+        border-radius: 12px;
         padding: 14px;
         background: var(--code);
         color: var(--code-ink);
-        font-family: "Cascadia Code", Consolas, monospace;
-        font-size: 0.82rem;
+        font-family: "IBM Plex Mono", "Cascadia Code", Consolas, monospace;
+        font-size: 0.81rem;
         line-height: 1.45;
         white-space: pre-wrap;
         word-break: break-word;
@@ -312,36 +411,38 @@
 
       .source {
         border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 10px;
-        background: #ffffff;
+        border-radius: 12px;
+        padding: 11px;
+        background: rgba(255, 255, 255, 0.86);
       }
 
       .source-title {
-        margin-bottom: 6px;
-        font-weight: 700;
+        margin-bottom: 5px;
         font-size: 0.9rem;
+        font-weight: 700;
+      }
+
+      .source-meta {
+        margin-bottom: 6px;
+        color: var(--muted);
+        font-size: 0.79rem;
       }
 
       .source-text {
         color: var(--muted);
         font-size: 0.88rem;
-        line-height: 1.45;
+        line-height: 1.48;
       }
 
       .muted {
         color: var(--muted);
       }
 
-      @media (max-width: 900px) {
+      @media (max-width: 980px) {
         header,
         .layout,
         .result-grid {
           grid-template-columns: 1fr;
-        }
-
-        header {
-          display: grid;
         }
 
         .statusbar {
@@ -349,18 +450,20 @@
         }
       }
 
-      @media (max-width: 520px) {
+      @media (max-width: 560px) {
         main {
-          width: min(100% - 20px, 1180px);
+          width: min(100% - 18px, 1220px);
           padding-top: 18px;
         }
 
-        .button-grid {
+        .button-grid,
+        .action-row {
           grid-template-columns: 1fr;
         }
 
-        .action-row {
+        .meta-row {
           grid-template-columns: 1fr;
+          gap: 4px;
         }
       }
     </style>
@@ -369,10 +472,20 @@
     <main>
       <header>
         <div>
-          <h1>Vanilla RAG Test Console</h1>
+          <h1>Vanilla RAG Public API Example</h1>
           <p class="subtitle">
-            Simple manual test UI to exercise backend endpoints from the browser.
+            Static browser example aligned with the current <code>/v1/rag</code> contract.
+            It sends tenant and user headers, checks collection readiness before enabling
+            query actions, and surfaces rate-limit plus request diagnostics.
           </p>
+          <div class="banner">
+            <strong>Contract note</strong>
+            <p>
+              <code>POST /query</code> returns an answer plus the generation-context sources.
+              <code>POST /retrieve</code> returns evidence-only results and can expose a broader
+              retrieval set.
+            </p>
+          </div>
         </div>
         <div class="statusbar" aria-live="polite">
           <span id="status-pill" class="pill">Idle</span>
@@ -384,14 +497,25 @@
         <aside class="stack">
           <section class="panel">
             <div class="panel-header">
-              <h2>Collection</h2>
+              <h2>Request Context</h2>
             </div>
-            <div class="panel-body actions">
-              <select id="collection-select" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--line);">
-                <option value="">Loading collections...</option>
-              </select>
-              <div id="collection-status" style="margin-top: 8px; font-size: 0.85rem; color: var(--muted);"></div>
-              <button id="refresh-collections-button" class="secondary" style="margin-top: 8px; width: 100%;">Refresh</button>
+            <div class="panel-body form-grid">
+              <div class="form-row">
+                <label for="tenant-id-input">x-tenant-id</label>
+                <input id="tenant-id-input" type="text" value="default" spellcheck="false" />
+              </div>
+              <div class="form-row">
+                <label for="user-id-input">x-user-id</label>
+                <input id="user-id-input" type="text" value="frontend-user" spellcheck="false" />
+              </div>
+              <div class="form-row">
+                <label for="request-id-output">Last x-request-id</label>
+                <input id="request-id-output" class="readonly mono" type="text" value="No requests yet" readonly />
+              </div>
+              <p class="hint">
+                Every request from this example sends <code>x-tenant-id</code>,
+                <code>x-user-id</code>, and a generated <code>x-request-id</code>.
+              </p>
             </div>
           </section>
 
@@ -412,30 +536,50 @@
                 <span class="endpoint">GET /ready</span>
                 <button data-endpoint="/ready">Summary</button>
               </div>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-header">
-              <h2>Collection Readiness</h2>
-            </div>
-            <div class="panel-body actions">
               <div class="action-row">
-                <span class="endpoint">GET /v1/rag/collections/:id/ready</span>
-                <button id="collection-ready-button" class="secondary" disabled>Check Status</button>
+                <span class="endpoint">GET /ready?details=true</span>
+                <button data-endpoint="/ready?details=true" class="secondary">Details</button>
               </div>
             </div>
           </section>
 
           <section class="panel">
             <div class="panel-header">
-              <h2>Query</h2>
+              <h2>Collection</h2>
             </div>
             <div class="panel-body">
-              <textarea id="question" spellcheck="false">Turizm amacıyla kiraya verilen bir konutun kira geliri nasıl vergilendirilir?</textarea>
+              <div class="form-grid">
+                <div class="form-row">
+                  <label for="collection-select">Visible Collections</label>
+                  <select id="collection-select">
+                    <option value="">Loading collections...</option>
+                  </select>
+                </div>
+                <div id="collection-status" class="hint"></div>
+              </div>
+
+              <div class="button-grid">
+                <button id="refresh-collections-button" class="secondary">Refresh List</button>
+                <button id="collection-detail-button" class="secondary" disabled>Load Detail</button>
+                <button id="collection-ready-button" class="secondary" disabled>Check Readiness</button>
+              </div>
+
+              <p class="panel-note">
+                This example auto-checks collection readiness after selection changes and still lets
+                you manually inspect the raw readiness payload.
+              </p>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Query And Retrieve</h2>
+            </div>
+            <div class="panel-body">
+              <textarea id="question" spellcheck="false">How is short-term residential rental income taxed?</textarea>
               <div class="button-grid">
                 <button id="retrieve-button" class="action-button" disabled>
-                  <span>Retrieve Sources</span>
+                  <span>Retrieve Evidence</span>
                   <small>POST /v1/rag/collections/:id/retrieve</small>
                 </button>
                 <button id="ask-button" class="action-button" disabled>
@@ -443,11 +587,25 @@
                   <small>POST /v1/rag/collections/:id/query</small>
                 </button>
                 <button id="invalid-button" class="danger action-button" disabled>
-                  <span>Invalid Request</span>
+                  <span>Send Invalid Body</span>
                   <small>POST /v1/rag/collections/:id/query</small>
                 </button>
-                <button id="clear-button" class="secondary">Clear</button>
+                <button id="clear-button" class="secondary">Clear Output</button>
               </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Integration Notes</h2>
+            </div>
+            <div class="panel-body">
+              <ul class="notes-list">
+                <li>Use collection readiness as the capability gate for query and retrieve actions.</li>
+                <li>Surface blockers, warnings, and recommendedActions instead of guessing backend state.</li>
+                <li>When <code>429 RATE_LIMIT_EXCEEDED</code> appears, honor <code>Retry-After</code>.</li>
+                <li>Preserve <code>requestId</code> for troubleshooting if the backend returns one.</li>
+              </ul>
             </div>
           </section>
         </aside>
@@ -466,7 +624,7 @@
                 <div id="sources" class="sources"></div>
               </div>
               <div>
-                <h3>Raw JSON</h3>
+                <h3>Request And Raw Response</h3>
                 <pre id="output">Ready.</pre>
               </div>
             </div>
@@ -486,26 +644,29 @@
       const invalidButton = document.getElementById("invalid-button");
       const clearButton = document.getElementById("clear-button");
       const collectionReadyButton = document.getElementById("collection-ready-button");
+      const collectionDetailButton = document.getElementById("collection-detail-button");
       const statusPill = document.getElementById("status-pill");
       const requestLabel = document.getElementById("request-label");
       const originLabel = document.getElementById("origin-label");
       const collectionSelect = document.getElementById("collection-select");
       const collectionStatus = document.getElementById("collection-status");
       const refreshCollectionsButton = document.getElementById("refresh-collections-button");
+      const tenantIdInput = document.getElementById("tenant-id-input");
+      const userIdInput = document.getElementById("user-id-input");
+      const requestIdOutput = document.getElementById("request-id-output");
 
-      let collections = [];
-      const collectionReadiness = new Map();
+      const state = {
+        collections: [],
+        readinessById: new Map(),
+        detailById: new Map(),
+      };
 
       originLabel.textContent = window.location.origin;
 
       function setBusy(isBusy) {
-        document.querySelectorAll("button").forEach((button) => {
-          button.disabled = isBusy ? true : false;
+        document.querySelectorAll("button, select").forEach((node) => {
+          node.disabled = isBusy;
         });
-
-        if (!isBusy) {
-          updateCollectionStatus();
-        }
       }
 
       function setStatus(kind, text) {
@@ -546,133 +707,39 @@
         return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
       }
 
-      function renderSources(sourceList = []) {
-        sources.replaceChildren();
+      function formatIssueList(items) {
+        if (!Array.isArray(items) || items.length === 0) {
+          return "-";
+        }
 
-        sourceList.slice(0, 4).forEach((source, index) => {
-          const item = document.createElement("article");
-          item.className = "source";
-
-          const title = document.createElement("div");
-          title.className = "source-title";
-          title.textContent = [
-            `Source ${index + 1}`,
-            typeof source.distanceScore === "number"
-              ? `distance=${source.distanceScore.toFixed(6)}`
-              : undefined,
-            source.tarih,
-            source.konu,
-          ].filter(Boolean).join(" | ");
-
-          const text = document.createElement("div");
-          text.className = "source-text";
-          text.textContent = truncate(source.content || source.pageContent || "");
-
-          item.append(title, text);
-          sources.append(item);
-        });
+        return items
+          .map((item) => {
+            const code = item && item.code ? `${item.code}: ` : "";
+            return `${code}${truncate(item && item.message ? item.message : "-", 120)}`;
+          })
+          .join(" | ");
       }
 
-      function renderReadable(endpoint, status, body) {
-        meta.replaceChildren();
-        sources.replaceChildren();
-        requestLabel.textContent = `${status} ${endpoint}`;
-
-        addMeta("HTTP", String(status));
-
-        if (body?.answer) {
-          answer.textContent = body.answer;
-          addMeta("Collection", body.collectionDisplayName || body.collectionId || "-");
-          addMeta("Sources", `${body.sources?.length || 0} chunk`);
-          renderSources(body.sources);
-          return;
+      function createRequestId() {
+        if (window.crypto && typeof window.crypto.randomUUID === "function") {
+          return window.crypto.randomUUID();
         }
 
-        if (Array.isArray(body?.sources)) {
-          answer.textContent = `${body.sourceCount ?? body.sources.length} sources returned.`;
-          addMeta("Collection", body.collectionDisplayName || body.collectionId || "-");
-          addMeta("Question", body.question || "-");
-          addMeta("Retrieval K", String(body.k ?? "-"));
-          addMeta("Distance", "Lower distanceScore means a closer match.");
-          renderSources(body.sources);
-          return;
-        }
-
-        if (body?.code) {
-          answer.textContent = body.message || body.error;
-          addMeta("Code", body.code);
-          addMeta("Error", body.error);
-          return;
-        }
-
-        if (body?.ready !== undefined) {
-          answer.textContent = body.overallSummary || body.querySummary || "Readiness result received.";
-          addMeta("Ready", String(body.ready));
-          addMeta("Query", String(body.queryReady));
-          addMeta("Index", String(body.indexReady));
-          addMeta("Blocker", (body.blockerCodes || []).join(", ") || "-");
-          addMeta("Warning", (body.warningCodes || []).join(", ") || "-");
-          return;
-        }
-
-        if (body?.error) {
-          answer.textContent = body.message || body.error;
-          addMeta("Error", body.error);
-          return;
-        }
-
-        answer.textContent = body?.message || body?.status || "Request completed.";
+        return `req-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
       }
 
-      async function showJson(endpoint, response) {
-        const text = await response.text();
-        let parsed = null;
-
-        try {
-          parsed = JSON.parse(text);
-          setOutput(JSON.stringify({ status: response.status, body: parsed }, null, 2));
-        } catch {
-          setOutput(`status: ${response.status}\n\n${text}`);
-        }
-
-        renderReadable(endpoint, response.status, parsed);
-        setStatus(response.ok ? "ok" : "fail", response.ok ? "Success" : "Error");
-        return parsed;
-      }
-
-      async function runRequest(endpoint, options = {}) {
-        const method = options.method || "GET";
-        requestLabel.textContent = `${method} ${endpoint}`;
-        answer.textContent = "Request in progress...";
-        meta.replaceChildren();
-        sources.replaceChildren();
-        setOutput(`Running ${method} ${endpoint} ...`);
-        setStatus("warn", "Working");
-        setBusy(true);
-
-        try {
-          const response = await fetch(endpoint, options);
-          return await showJson(endpoint, response);
-        } catch (error) {
-          answer.textContent = "Failed to send request.";
-          setOutput(String(error));
-          setStatus("fail", "Connection error");
-          return null;
-        } finally {
-          setBusy(false);
-        }
-      }
-
-      async function runGet(endpoint) {
-        await runRequest(endpoint);
-      }
-
-      function readQuestion() {
-        return questionInput.value.trim();
+      function readContextValue(input, fallbackValue) {
+        const value = input.value.trim();
+        return value || fallbackValue;
       }
 
       function getSelectedCollectionId() {
         return collectionSelect.value;
+      }
+
+      function getSelectedCollection() {
+        const id = getSelectedCollectionId();
+        return state.collections.find((collection) => collection.id === id) || null;
       }
 
       function createCollectionOption(value, label) {
@@ -682,179 +749,569 @@
         return option;
       }
 
-      async function loadCollections() {
-        collectionStatus.textContent = "Loading collections...";
-        collectionSelect.disabled = true;
-        collectionReadiness.clear();
-        
+      function readQuestion() {
+        return questionInput.value.trim();
+      }
+
+      function safeJsonParse(value) {
+        if (typeof value !== "string" || value.length === 0) {
+          return null;
+        }
+
         try {
-          const response = await fetch("/v1/rag/collections");
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-          }
-          
-          const body = await response.json();
-          collections = body.collections || [];
-          
-          if (collections.length === 0) {
-            collectionSelect.replaceChildren(createCollectionOption("", "No collections available"));
-            collectionStatus.textContent = "Please create a collection via CLI or Admin API first.";
-            updateQueryButtons(false);
-          } else {
-            const options = collections.map((c) => {
-              const versionLabel = c.activeVersion ? `(v: ${c.activeVersion})` : "(no active index)";
-              return createCollectionOption(c.id, `${c.displayName} ${versionLabel}`);
-            });
-            collectionSelect.replaceChildren(...options);
-            
-            updateCollectionStatus();
-          }
-        } catch (error) {
-          collectionSelect.replaceChildren(createCollectionOption("", "Error loading collections"));
-          collectionStatus.textContent = `Failed to load collections: ${error.message}`;
-          updateQueryButtons(false);
-        } finally {
-          collectionSelect.disabled = false;
+          return JSON.parse(value);
+        } catch {
+          return null;
         }
       }
 
-      function updateCollectionStatus() {
-        const id = getSelectedCollectionId();
-        const collection = collections.find(c => c.id === id);
-        
-        if (!collection) {
-          collectionStatus.textContent = "";
-          updateQueryButtons(false);
+      function collectResponseHeaders(headers) {
+        return {
+          contentType: headers.get("content-type"),
+          cacheControl: headers.get("cache-control"),
+          rateLimitLimit: headers.get("x-ratelimit-limit"),
+          rateLimitRemaining: headers.get("x-ratelimit-remaining"),
+          rateLimitReset: headers.get("x-ratelimit-reset"),
+          retryAfter: headers.get("retry-after"),
+        };
+      }
+
+      function renderSources(sourceList = []) {
+        sources.replaceChildren();
+
+        sourceList.slice(0, 5).forEach((source, index) => {
+          const item = document.createElement("article");
+          item.className = "source";
+
+          const title = document.createElement("div");
+          title.className = "source-title";
+          title.textContent = source.sourcePath || `Source ${index + 1}`;
+
+          const detail = document.createElement("div");
+          detail.className = "source-meta";
+          detail.textContent = [
+            typeof source.chunkIndex === "number" ? `chunk=${source.chunkIndex}` : undefined,
+            typeof source.distanceScore === "number" ? `distance=${source.distanceScore.toFixed(6)}` : undefined,
+            source.konu,
+            source.tarih,
+            source.sayi,
+          ].filter(Boolean).join(" | ");
+
+          const text = document.createElement("div");
+          text.className = "source-text";
+          text.textContent = truncate(source.content || source.pageContent || "", 380);
+
+          item.append(title);
+          if (detail.textContent) {
+            item.append(detail);
+          }
+          item.append(text);
+          sources.append(item);
+        });
+      }
+
+      function renderReadable(result) {
+        const response = result.response || {};
+        const body = response.body;
+        const headers = response.headers || {};
+        const endpoint = result.request ? result.request.endpoint : "-";
+
+        meta.replaceChildren();
+        sources.replaceChildren();
+        requestLabel.textContent = `${result.request.method} ${endpoint}`;
+
+        addMeta("HTTP", String(response.status));
+        addMeta("Request ID", body && body.requestId ? body.requestId : result.request.requestId);
+
+        if (headers.rateLimitLimit || headers.rateLimitRemaining) {
+          addMeta(
+            "Rate Limit",
+            `remaining=${headers.rateLimitRemaining || "-"} / limit=${headers.rateLimitLimit || "-"}`,
+          );
+        }
+
+        if (headers.rateLimitReset) {
+          addMeta("Rate Reset", headers.rateLimitReset);
+        }
+
+        if (headers.retryAfter) {
+          addMeta("Retry-After", `${headers.retryAfter}s`);
+        }
+
+        if (headers.cacheControl) {
+          addMeta("Cache-Control", headers.cacheControl);
+        }
+
+        if (body && Array.isArray(body.collections)) {
+          answer.textContent = `${body.collections.length} collection(s) are visible for the current tenant.`;
+          addMeta("Endpoint", "Public collection list");
+          addMeta("Selected", getSelectedCollectionId() || "-");
           return;
         }
 
-        let statusText = `Status: ${collection.status}`;
-        if (collection.status === "ready") {
-          statusText += ` | Chunks: ${collection.chunkCount ?? 0}`;
+        if (body && body.collection && body.collection.readyUrl) {
+          const collection = body.collection;
+          answer.textContent = `${collection.displayName} is currently ${collection.status}.`;
+          addMeta("Collection ID", collection.id);
+          addMeta("Active Version", collection.activeVersion || "-");
+          addMeta("Chunk Count", String(collection.chunkCount ?? "-"));
+          addMeta("Index State", collection.indexState ? collection.indexState.status : "-");
+          addMeta("Reindex Required", String(Boolean(collection.indexState && collection.indexState.reindexRequired)));
+          if (collection.indexState && Array.isArray(collection.indexState.changedFields) && collection.indexState.changedFields.length > 0) {
+            addMeta("Changed Fields", collection.indexState.changedFields.join(", "));
+          }
+          if (collection.indexState && collection.indexState.note) {
+            addMeta("Index Note", collection.indexState.note);
+          }
+          return;
         }
-        const readiness = collectionReadiness.get(id);
-        if (readiness) {
-          statusText += ` | Ready: query=${Boolean(readiness.capabilities?.query)} retrieve=${Boolean(readiness.capabilities?.retrieve)}`;
-        } else {
-          statusText += " | Run Check Status before querying";
+
+        if (body && body.capabilities && body.modelAvailability) {
+          const queryEnabled = Boolean(body.capabilities.query);
+          const retrieveEnabled = Boolean(body.capabilities.retrieve);
+          answer.textContent = queryEnabled
+            ? "Collection is ready for grounded question answering."
+            : retrieveEnabled
+              ? "Collection can retrieve evidence, but answer generation is currently blocked."
+              : "Collection is not ready for public query actions yet.";
+
+          addMeta("Collection ID", body.id || "-");
+          addMeta("Query Enabled", String(queryEnabled));
+          addMeta("Retrieve Enabled", String(retrieveEnabled));
+          addMeta("Chroma Readable", String(Boolean(body.chromaReadable)));
+          addMeta("Chroma Count", String(body.chromaCount ?? "-"));
+          addMeta("Live Embedding", body.modelAvailability.embeddingModel || "-");
+          addMeta("Chat Model", body.modelAvailability.chatModel || "-");
+          if (body.modelAvailability.desiredEmbeddingModel) {
+            addMeta("Desired Embedding", body.modelAvailability.desiredEmbeddingModel);
+          }
+          if (body.activeJob) {
+            addMeta("Active Job", `${body.activeJob.id} (${body.activeJob.status})`);
+          }
+          addMeta("Blockers", formatIssueList(body.blockers));
+          addMeta("Warnings", formatIssueList(body.warnings));
+          addMeta(
+            "Recommended Actions",
+            Array.isArray(body.recommendedActions) && body.recommendedActions.length > 0
+              ? body.recommendedActions.join(" | ")
+              : "-",
+          );
+          return;
         }
-        collectionStatus.textContent = statusText;
-        
-        updateQueryButtons();
-        
-        // update endpoint labels
-        document.querySelector("#retrieve-button small").textContent = `POST ${collection.retrieveUrl || `/v1/rag/collections/${id}/retrieve`}`;
-        document.querySelector("#ask-button small").textContent = `POST ${collection.queryUrl || `/v1/rag/collections/${id}/query`}`;
-        document.querySelector("#invalid-button small").textContent = `POST ${collection.queryUrl || `/v1/rag/collections/${id}/query`}`;
+
+        if (body && body.answer) {
+          answer.textContent = body.answer;
+          addMeta("Collection", body.collectionDisplayName || body.collectionId || "-");
+          addMeta("Response Type", "query");
+          addMeta("Generation Sources", String(Array.isArray(body.sources) ? body.sources.length : 0));
+          addMeta("Source Note", "Query sources may be a trimmed generation subset.");
+          renderSources(body.sources);
+          return;
+        }
+
+        if (body && Array.isArray(body.sources)) {
+          answer.textContent = `${body.sourceCount ?? body.sources.length} evidence chunk(s) returned.`;
+          addMeta("Collection", body.collectionDisplayName || body.collectionId || "-");
+          addMeta("Question", body.question || "-");
+          addMeta("Response Type", "retrieve");
+          addMeta("Retrieval K", String(body.k ?? "-"));
+          addMeta("Threshold", String(body.distanceScoreThreshold ?? "-"));
+          renderSources(body.sources);
+          return;
+        }
+
+        if (body && body.code) {
+          answer.textContent = body.message || body.error || "Backend returned an error.";
+          addMeta("Code", body.code);
+          addMeta("Error", body.error || "-");
+          if (body.details && body.details.issues) {
+            addMeta("Validation Issues", "See raw JSON for details.issues");
+          }
+          return;
+        }
+
+        if (body && body.ready !== undefined) {
+          answer.textContent = body.overallSummary || body.querySummary || "Readiness response received.";
+          addMeta("Ready", String(body.ready));
+          addMeta("System Ready For", body.systemReadyFor || "-");
+          addMeta("Query Ready", String(body.queryReady));
+          addMeta("Index Ready", String(body.indexReady));
+          addMeta("Blockers", Array.isArray(body.blockerCodes) && body.blockerCodes.length > 0 ? body.blockerCodes.join(", ") : "-");
+          addMeta("Warnings", Array.isArray(body.warningCodes) && body.warningCodes.length > 0 ? body.warningCodes.join(", ") : "-");
+          if (Array.isArray(body.recommendedActions) && body.recommendedActions.length > 0) {
+            addMeta("Recommended Actions", body.recommendedActions.join(" | "));
+          }
+          if (Array.isArray(body.checks)) {
+            addMeta("Checks", String(body.checks.length));
+          }
+          return;
+        }
+
+        if (body && body.status) {
+          answer.textContent = body.message || body.status;
+          addMeta("Status", body.status);
+          return;
+        }
+
+        if (response.status === 204) {
+          answer.textContent = "No content returned.";
+          return;
+        }
+
+        answer.textContent = "Request completed.";
+      }
+
+      async function parseResponseBody(response) {
+        const text = await response.text();
+        if (!text) {
+          return null;
+        }
+
+        const parsed = safeJsonParse(text);
+        return parsed === null ? text : parsed;
+      }
+
+      async function sendRequest(endpoint, options = {}, ui = {}) {
+        const { present = true, lockUi = true } = ui;
+        const method = options.method || "GET";
+        const requestId = createRequestId();
+        const requestHeaders = {
+          "x-tenant-id": readContextValue(tenantIdInput, "default"),
+          "x-user-id": readContextValue(userIdInput, "local-dev"),
+          "x-request-id": requestId,
+        };
+
+        requestIdOutput.value = requestId;
+
+        const headers = new Headers(options.headers || {});
+        Object.entries(requestHeaders).forEach(([name, value]) => {
+          if (!headers.has(name)) {
+            headers.set(name, value);
+          }
+        });
+
+        const requestBody = typeof options.body === "string" ? safeJsonParse(options.body) || options.body : options.body || null;
+
+        if (present) {
+          requestLabel.textContent = `${method} ${endpoint}`;
+          answer.textContent = "Request in progress...";
+          meta.replaceChildren();
+          sources.replaceChildren();
+          setOutput(`Running ${method} ${endpoint} ...`);
+          setStatus("warn", "Working");
+        }
+
+        if (present && lockUi) {
+          setBusy(true);
+        }
+
+        try {
+          const response = await fetch(endpoint, {
+            ...options,
+            headers,
+          });
+
+          const body = await parseResponseBody(response);
+          const result = {
+            request: {
+              method,
+              endpoint,
+              requestId,
+              headers: requestHeaders,
+              body: requestBody,
+            },
+            response: {
+              status: response.status,
+              ok: response.ok,
+              headers: collectResponseHeaders(response.headers),
+              body,
+            },
+          };
+
+          if (present) {
+            setOutput(JSON.stringify(result, null, 2));
+            renderReadable(result);
+            setStatus(response.ok ? "ok" : "fail", response.ok ? "Success" : "Error");
+          }
+
+          return result;
+        } catch (error) {
+          if (present) {
+            answer.textContent = "Failed to send request.";
+            setOutput(String(error));
+            setStatus("fail", "Connection error");
+          }
+          return null;
+        } finally {
+          if (present && lockUi) {
+            setBusy(false);
+          }
+          updateCollectionStatus();
+        }
       }
 
       function updateQueryButtons() {
         const id = getSelectedCollectionId();
-        const readiness = id ? collectionReadiness.get(id) : null;
-        retrieveButton.disabled = !(id && readiness?.capabilities?.retrieve === true);
-        askButton.disabled = !(id && readiness?.capabilities?.query === true);
-        invalidButton.disabled = !(id && readiness?.capabilities?.query === true);
+        const readiness = id ? state.readinessById.get(id) : null;
+
+        retrieveButton.disabled = !(id && readiness && readiness.capabilities && readiness.capabilities.retrieve === true);
+        askButton.disabled = !(id && readiness && readiness.capabilities && readiness.capabilities.query === true);
+        invalidButton.disabled = !(id && readiness && readiness.capabilities && readiness.capabilities.query === true);
         collectionReadyButton.disabled = !id;
+        collectionDetailButton.disabled = !id;
       }
 
-      collectionSelect.addEventListener("change", updateCollectionStatus);
-      refreshCollectionsButton.addEventListener("click", loadCollections);
+      function updateCollectionStatus() {
+        const collection = getSelectedCollection();
+        if (!collection) {
+          collectionStatus.textContent = "";
+          updateQueryButtons();
+          return;
+        }
 
-      async function runCollectionReady() {
-        const collectionId = getSelectedCollectionId();
-        if (!collectionId) {
+        const readiness = state.readinessById.get(collection.id);
+        const detail = state.detailById.get(collection.id) || collection;
+        const fragments = [
+          `Status: ${detail.status || collection.status}`,
+          `Version: ${detail.activeVersion || collection.activeVersion || "none"}`,
+          `Chunks: ${detail.chunkCount ?? collection.chunkCount ?? "-"}`,
+        ];
+
+        if (detail.indexState && detail.indexState.status) {
+          fragments.push(`Index: ${detail.indexState.status}`);
+        }
+
+        if (readiness && readiness.capabilities) {
+          fragments.push(`query=${Boolean(readiness.capabilities.query)}`);
+          fragments.push(`retrieve=${Boolean(readiness.capabilities.retrieve)}`);
+          if (Array.isArray(readiness.blockers) && readiness.blockers.length > 0) {
+            fragments.push(`blockers=${readiness.blockers.length}`);
+          }
+          if (Array.isArray(readiness.warnings) && readiness.warnings.length > 0) {
+            fragments.push(`warnings=${readiness.warnings.length}`);
+          }
+        } else {
+          fragments.push("Readiness pending");
+        }
+
+        collectionStatus.textContent = fragments.join(" | ");
+
+        document.querySelector("#retrieve-button small").textContent = `POST ${collection.retrieveUrl || `/v1/rag/collections/${collection.id}/retrieve`}`;
+        document.querySelector("#ask-button small").textContent = `POST ${collection.queryUrl || `/v1/rag/collections/${collection.id}/query`}`;
+        document.querySelector("#invalid-button small").textContent = `POST ${collection.queryUrl || `/v1/rag/collections/${collection.id}/query`}`;
+
+        updateQueryButtons();
+      }
+
+      async function loadCollections(options = {}) {
+        const { present = false } = options;
+        const previousId = getSelectedCollectionId();
+
+        collectionStatus.textContent = "Loading collections...";
+        collectionSelect.disabled = true;
+        state.readinessById.clear();
+        state.detailById.clear();
+
+        try {
+          const result = await sendRequest("/v1/rag/collections", {}, { present, lockUi: present });
+          const body = result && result.response ? result.response.body : null;
+
+          if (!result || !result.response.ok || !body || !Array.isArray(body.collections)) {
+            throw new Error(`HTTP ${result && result.response ? result.response.status : "request-failed"}`);
+          }
+
+          state.collections = body.collections;
+
+          if (state.collections.length === 0) {
+            collectionSelect.replaceChildren(createCollectionOption("", "No collections available"));
+            collectionStatus.textContent = "Please create a collection via CLI or Admin API first.";
+            updateQueryButtons();
+            return;
+          }
+
+          const optionsList = state.collections.map((collection) => {
+            const activeLabel = collection.activeVersion ? `v=${collection.activeVersion}` : "no active index";
+            return createCollectionOption(collection.id, `${collection.displayName} (${activeLabel})`);
+          });
+
+          collectionSelect.replaceChildren(...optionsList);
+
+          const nextId = state.collections.some((collection) => collection.id === previousId)
+            ? previousId
+            : state.collections[0].id;
+          collectionSelect.value = nextId;
+
+          updateCollectionStatus();
+          await refreshCollectionReadiness({ present: false });
+        } catch (error) {
+          collectionSelect.replaceChildren(createCollectionOption("", "Error loading collections"));
+          collectionStatus.textContent = `Failed to load collections: ${error.message}`;
+          state.collections = [];
+          updateQueryButtons();
+        } finally {
+          collectionSelect.disabled = false;
+          updateCollectionStatus();
+        }
+      }
+
+      async function refreshCollectionReadiness(options = {}) {
+        const { present = true } = options;
+        const collection = getSelectedCollection();
+
+        if (!collection) {
+          if (present) {
+            answer.textContent = "No collection selected.";
+            setStatus("fail", "Missing collection");
+          }
+          return null;
+        }
+
+        if (!present) {
+          collectionStatus.textContent = `Status: ${collection.status} | Checking readiness...`;
+        }
+
+        const result = await sendRequest(
+          collection.readyUrl || `/v1/rag/collections/${collection.id}/ready`,
+          {},
+          { present, lockUi: present },
+        );
+        const body = result && result.response ? result.response.body : null;
+
+        if (body && body.capabilities) {
+          state.readinessById.set(collection.id, body);
+        }
+
+        updateCollectionStatus();
+        return body;
+      }
+
+      async function loadCollectionDetail() {
+        const collection = getSelectedCollection();
+        if (!collection) {
           answer.textContent = "No collection selected.";
           setStatus("fail", "Missing collection");
           return;
         }
 
-        const collection = collections.find(c => c.id === collectionId);
-        const body = await runRequest(collection?.readyUrl || `/v1/rag/collections/${collectionId}/ready`);
-        if (body?.capabilities) {
-          collectionReadiness.set(collectionId, body);
+        const result = await sendRequest(
+          `/v1/rag/collections/${collection.id}`,
+          {},
+          { present: true, lockUi: true },
+        );
+        const body = result && result.response ? result.response.body : null;
+
+        if (body && body.collection) {
+          state.detailById.set(collection.id, body.collection);
           updateCollectionStatus();
         }
       }
 
       async function runQuery() {
         const question = readQuestion();
-        const collectionId = getSelectedCollectionId();
-        
+        const collection = getSelectedCollection();
+
         if (!question) {
           answer.textContent = "Question field is empty.";
           setStatus("fail", "Missing question");
           return;
         }
-        
-        if (!collectionId) {
+
+        if (!collection) {
           answer.textContent = "No collection selected.";
           setStatus("fail", "Missing collection");
           return;
         }
 
-        const collection = collections.find(c => c.id === collectionId);
-        await runRequest(collection?.queryUrl || `/v1/rag/collections/${collectionId}/query`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
+        await sendRequest(
+          collection.queryUrl || `/v1/rag/collections/${collection.id}/query`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ question }),
           },
-          body: JSON.stringify({ question }),
-        });
+          { present: true, lockUi: true },
+        );
       }
 
       async function runRetrieve() {
         const question = readQuestion();
-        const collectionId = getSelectedCollectionId();
-        
+        const collection = getSelectedCollection();
+
         if (!question) {
           answer.textContent = "Question field is empty.";
           setStatus("fail", "Missing question");
           return;
         }
-        
-        if (!collectionId) {
+
+        if (!collection) {
           answer.textContent = "No collection selected.";
           setStatus("fail", "Missing collection");
           return;
         }
 
-        const collection = collections.find(c => c.id === collectionId);
-        await runRequest(collection?.retrieveUrl || `/v1/rag/collections/${collectionId}/retrieve`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
+        await sendRequest(
+          collection.retrieveUrl || `/v1/rag/collections/${collection.id}/retrieve`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ question }),
           },
-          body: JSON.stringify({ question }),
-        });
+          { present: true, lockUi: true },
+        );
       }
 
       async function runInvalidQuery() {
-        const collectionId = getSelectedCollectionId() || "unknown";
-        await runRequest(`/v1/rag/collections/${collectionId}/query`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
+        const collection = getSelectedCollection();
+        const collectionId = collection ? collection.id : "unknown";
+
+        await sendRequest(
+          `/v1/rag/collections/${collectionId}/query`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ question: "   " }),
           },
-          body: JSON.stringify({ question: "   " }),
-        });
+          { present: true, lockUi: true },
+        );
       }
 
       document.querySelectorAll("[data-endpoint]").forEach((button) => {
-        button.addEventListener("click", () => runGet(button.dataset.endpoint));
+        button.addEventListener("click", () => {
+          sendRequest(button.dataset.endpoint, {}, { present: true, lockUi: true });
+        });
       });
 
-      collectionReadyButton.addEventListener("click", runCollectionReady);
+      collectionSelect.addEventListener("change", async () => {
+        updateCollectionStatus();
+        await refreshCollectionReadiness({ present: false });
+      });
+
+      refreshCollectionsButton.addEventListener("click", () => {
+        loadCollections({ present: true });
+      });
+
+      collectionReadyButton.addEventListener("click", () => {
+        refreshCollectionReadiness({ present: true });
+      });
+
+      collectionDetailButton.addEventListener("click", loadCollectionDetail);
       retrieveButton.addEventListener("click", runRetrieve);
       askButton.addEventListener("click", runQuery);
       invalidButton.addEventListener("click", runInvalidQuery);
       clearButton.addEventListener("click", () => {
         requestLabel.textContent = "No requests yet";
+        requestIdOutput.value = "No requests yet";
         resetReadable();
         setOutput("Ready.");
         setStatus("", "Idle");
       });
 
-      // Load collections on startup
       loadCollections();
     </script>
   </body>

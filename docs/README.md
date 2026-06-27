@@ -44,6 +44,14 @@ If they want to review whether the generated frontend actually respects the back
 
 7. `docs/frontend_acceptance_checklist.md`
 
+## Example Frontend In This Repo
+
+- A working public-RAG browser example lives at [`../test_frontend/index.html`](../test_frontend/index.html).
+- Its usage and customization guide lives at [`../test_frontend/README.md`](../test_frontend/README.md).
+- It demonstrates the current list, detail, readiness, retrieve, and query flows against `/v1/rag`.
+- It also shows `x-tenant-id`, `x-user-id`, `x-request-id`, `requestId`, `Retry-After`, and readiness-driven UI enablement.
+- It is intentionally a public API example, not an admin collection-management UI.
+
 ## Suggested Prompt For End Users
 
 Paste this together with the docs above:

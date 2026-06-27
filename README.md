@@ -36,6 +36,56 @@ Detaylı mimari ve endpoint sözleşmeleri için [vanilla_rag_backend_mimarisi.m
 4. **Job durumunu takip et**: `GET /v1/admin/jobs/{id}` → `succeeded` olana kadar bekle
 5. **Frontend'i aç**: `http://localhost:3010/test-frontend/` → collection artık görünür
 
+## Frontend Integration Paketi
+
+Bu repo artik sadece backend kodu degil, ayni zamanda backend'i baskalarina kullandirmayi kolaylastiran bir frontend integration paketi de icerir.
+
+Hazirlanan paket su parcalardan olusur:
+
+- `docs/README.md`: coding agent dostu dokumantasyon setinin giris noktasi
+- `docs/frontend_agent_handoff.md`: frontend yazacak kisiye veya coding agent'a verilmesi gereken ana ozet
+- `docs/user_api_endpoints.md`: public `/v1/rag` endpoint referansi
+- `docs/admin_api_endpoints.md`: `/v1/admin` endpoint referansi
+- `docs/http_workflows.md`: ornek HTTP akislari
+- `docs/openapi.yaml`: makine tarafindan okunabilir guncel API kontrati
+- `docs/coding_agent_prompt_template.md`: son kullanicinin coding agent'a verebilecegi prompt sablonlari
+- `docs/frontend_acceptance_checklist.md`: uretilen frontend'in backend kontratina uyup uymadigini kontrol etmek icin checklist
+- `test_frontend/index.html`: current `/v1/rag` kontratina uyan calisan ornek frontend
+- `test_frontend/README.md`: bu ornek frontend'in nasil kullanilacagini ve nasil turetilecegini anlatan kisa rehber
+
+Bu hazirligin amaci:
+
+- son kullanicinin kendi ihtiyacina gore frontend yazabilmesi
+- bunu ister elle, ister bir coding agent ile yapabilmesi
+- coding agent'in backend davranisini tahmin etmek zorunda kalmamasi
+- endpoint, readiness, hata ve header kontratlarini dogrudan belgelerden ve ornek frontend'den okuyabilmesi
+
+Public frontend tarafinda korunmasi gereken ana kurallar:
+
+- sadece versioned `/v1` endpoint'lerini kullanin
+- `GET /v1/rag/collections/:collectionId/ready` sonucunu query ve retrieve butonlari icin capability gate olarak kullanin
+- her request'te `x-tenant-id`, `x-user-id` ve `x-request-id` gonderin
+- `POST /query` ile `POST /retrieve` akislarini ayri dusunun
+- `429 RATE_LIMIT_EXCEEDED` durumunda `Retry-After` degerini dikkate alin
+- `query.sources` alanini her zaman tam retrieval sonucu sanmayin; generation-context subset olabilir
+
+## Son Kullanici Icin Kisa Kullanim
+
+Bu backend ile kendi frontend'inizi yazmak istiyorsaniz en kisa kullanim akisi su:
+
+1. Backend'i ayaga kaldirin.
+2. En az bir collection create edin ve reindex ile aktif hale getirin.
+3. `docs/README.md` dosyasindan baslayarak ilgili API belgelerini okuyun.
+4. `test_frontend/index.html` ve `test_frontend/README.md` dosyalarina bakarak calisan referans akisi inceleyin.
+5. Kendi frontend'inizi yazacaksaniz veya bir coding agent kullanacaksaniz, en az su dosyalari birlikte verin:
+   `docs/frontend_agent_handoff.md`, `docs/user_api_endpoints.md`, `docs/http_workflows.md`, `docs/openapi.yaml`, `test_frontend/index.html`, `test_frontend/README.md`
+
+Eger coding agent kullanacaksaniz:
+
+- `docs/coding_agent_prompt_template.md` icindeki sablonlardan biriyle baslayin
+- agent'a yeni endpoint uydurmamasini ve mevcut readiness/error kontratini takip etmesini soyleyin
+- ciktinin backend ile uyumunu `docs/frontend_acceptance_checklist.md` ile kontrol edin
+
 ## Kurulum
 
 Windows PowerShell:

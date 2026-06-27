@@ -327,28 +327,43 @@ class SqliteCollectionRegistry implements CollectionRegistry {
   }
 
   async deleteJob(context: RequestContext, jobId: string): Promise<void> {
+    await this.deleteJobs(context, [jobId]);
+  }
+
+  async deleteJobs(context: RequestContext, jobIds: string[]): Promise<void> {
+    const uniqueJobIds = [...new Set(jobIds)];
+    if (uniqueJobIds.length === 0) {
+      return;
+    }
+
     const transaction = this.db.transaction(() => {
-      const existing = this.getJobRow(jobId);
-      if (!existing || existing.tenant_id !== context.tenantId) {
-        throw new Error(`Job not found: ${jobId}`);
+      for (const jobId of uniqueJobIds) {
+        const existing = this.getJobRow(jobId);
+        if (!existing || existing.tenant_id !== context.tenantId) {
+          throw new Error(`Job not found: ${jobId}`);
+        }
+
+        if (existing.status === "queued" || existing.status === "running") {
+          throw new Error(`Job ${jobId} is in status '${existing.status}', cannot be deleted.`);
+        }
       }
 
-      if (existing.status === "queued" || existing.status === "running") {
-        throw new Error(`Job ${jobId} is in status '${existing.status}', cannot be deleted.`);
-      }
-
-      const result = this.db.prepare(`
+      const deleteStatement = this.db.prepare(`
         DELETE FROM index_jobs
         WHERE id = @id
           AND tenant_id = @tenantId
           AND status NOT IN ('queued', 'running')
-      `).run({
-        id: jobId,
-        tenantId: context.tenantId,
-      });
+      `);
 
-      if (result.changes !== 1) {
-        throw new Error(`Job not found: ${jobId}`);
+      for (const jobId of uniqueJobIds) {
+        const result = deleteStatement.run({
+          id: jobId,
+          tenantId: context.tenantId,
+        });
+
+        if (result.changes !== 1) {
+          throw new Error(`Job not found: ${jobId}`);
+        }
       }
     });
 

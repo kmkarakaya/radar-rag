@@ -41,6 +41,7 @@ let state = {
     jobListCursorStack: [],
     jobListStatusFilter: "all",
     jobListError: null,
+    selectedJobIds: new Set(),
     editorInitialSnapshot: null,
     isLoading: {
         collections: false,
@@ -66,6 +67,10 @@ const elements = {
     jobsPrevPage: document.getElementById("jobsPrevPage"),
     jobsNextPage: document.getElementById("jobsNextPage"),
     jobsPageInfo: document.getElementById("jobsPageInfo"),
+    jobsBulkActionBar: document.getElementById("jobsBulkActionBar"),
+    jobsBulkSelectionCount: document.getElementById("jobsBulkSelectionCount"),
+    jobsBulkRemove: document.getElementById("jobsBulkRemove"),
+    jobsSelectAll: document.getElementById("jobsSelectAll"),
     healthGrid: document.getElementById("healthGrid"),
     readinessDetail: document.getElementById("readinessDetail"),
     readinessWarnings: document.getElementById("readinessWarnings"),
@@ -156,6 +161,10 @@ function adminJobUrl(id) {
 
 function adminJobDeleteUrl(id) {
     return `${API.admin}/jobs/${id}`;
+}
+
+function adminJobsBulkDeleteUrl() {
+    return `${API.admin}/jobs/bulk-delete`;
 }
 
 function adminJobsListUrl(options = {}) {
@@ -1810,6 +1819,11 @@ async function deleteJob(jobId) {
         return;
     }
 
+    if (state.selectedJobIds.size > 0 && state.selectedJobIds.has(jobId)) {
+        await removeSelectedJobs();
+        return;
+    }
+
     try {
         await apiRequest(adminJobDeleteUrl(jobId), { method: "DELETE" });
         removeJobFromMonitor(jobId);
@@ -1826,6 +1840,101 @@ async function deleteJob(jobId) {
             return;
         }
         showErrorToast(error, "Remove failed");
+        await loadJobs({ cursor: null });
+    }
+}
+
+function isTerminalJobStatus(status) {
+    return ["succeeded", "failed", "cancelled"].includes(status);
+}
+
+function getVisibleSelectableJobIds(jobs = getJobViewRows()) {
+    if (state.jobListSource !== "server") return [];
+    return jobs
+        .filter((job) => job?.id && !job.notFound && isTerminalJobStatus(job.status))
+        .map((job) => job.id);
+}
+
+function pruneSelectedJobIds(jobIds = getVisibleSelectableJobIds()) {
+    const visibleIds = new Set(jobIds);
+    let changed = false;
+    for (const jobId of [...state.selectedJobIds]) {
+        if (!visibleIds.has(jobId)) {
+            state.selectedJobIds.delete(jobId);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+function updateJobSelectionControls(jobs = getJobViewRows()) {
+    const selectableJobIds = getVisibleSelectableJobIds(jobs);
+    pruneSelectedJobIds(selectableJobIds);
+    const selectableSet = new Set(selectableJobIds);
+    const selectedCount = [...state.selectedJobIds].filter((jobId) => selectableSet.has(jobId)).length;
+    const hasSelectableJobs = selectableJobIds.length > 0;
+    const allSelected = hasSelectableJobs && selectedCount === selectableJobIds.length;
+
+    if (elements.jobsBulkActionBar) {
+        elements.jobsBulkActionBar.classList.toggle("hidden", state.jobListSource !== "server" || !hasSelectableJobs);
+    }
+    if (elements.jobsBulkSelectionCount) {
+        elements.jobsBulkSelectionCount.textContent = selectedCount === 0
+            ? `${selectableJobIds.length} terminal job${selectableJobIds.length === 1 ? "" : "s"} on this page`
+            : selectedCount === 1
+                ? "1 job selected"
+                : `${selectedCount} jobs selected`;
+    }
+    if (elements.jobsBulkRemove) {
+        elements.jobsBulkRemove.disabled = selectedCount === 0 || state.isLoading.jobs || state.jobListSource !== "server";
+        elements.jobsBulkRemove.textContent = selectedCount === 0 ? "Select jobs to remove" : "Remove selected";
+    }
+    if (elements.jobsSelectAll) {
+        elements.jobsSelectAll.disabled = !hasSelectableJobs || state.isLoading.jobs || state.jobListSource !== "server";
+        elements.jobsSelectAll.checked = allSelected;
+        elements.jobsSelectAll.indeterminate = selectedCount > 0 && !allSelected;
+    }
+}
+
+function clearJobSelection({ render = true } = {}) {
+    state.selectedJobIds.clear();
+    if (render) renderJobs();
+    else updateJobSelectionControls();
+}
+
+async function removeSelectedJobs() {
+    if (state.jobListSource !== "server") {
+        showToast("Bulk remove is only available for the server job list.", "error");
+        return;
+    }
+
+    const jobIds = getVisibleSelectableJobIds().filter((jobId) => state.selectedJobIds.has(jobId));
+    if (jobIds.length === 0) {
+        showToast("Select one or more terminal jobs to remove.", "info");
+        return;
+    }
+
+    try {
+        await apiRequest(adminJobsBulkDeleteUrl(), {
+            method: "POST",
+            body: JSON.stringify({ jobIds }),
+        });
+        removeJobsFromMonitor(jobIds, { render: false });
+        clearJobSelection({ render: false });
+        resetJobPagination();
+        showToast(`${jobIds.length} job${jobIds.length === 1 ? "" : "s"} removed.`, "success");
+        await loadJobs({ cursor: null });
+    } catch (error) {
+        const normalized = normalizeError(error);
+        removeJobsFromMonitor(jobIds, { render: false });
+        clearJobSelection({ render: false });
+        resetJobPagination();
+        if (normalized.status === 404 || normalized.code === "ROUTE_NOT_FOUND") {
+            showToast("One or more selected jobs were already removed.", "info");
+            await loadJobs({ cursor: null });
+            return;
+        }
+        showErrorToast(error, "Bulk remove failed");
         await loadJobs({ cursor: null });
     }
 }
@@ -1984,10 +2093,21 @@ async function cancelJob(jobId) {
 }
 
 function removeJobFromMonitor(jobId) {
-    state.knownJobs = state.knownJobs.filter((job) => job.id !== jobId);
-    state.jobList = state.jobList.filter((job) => job.id !== jobId);
+    removeJobsFromMonitor([jobId]);
+}
+
+function removeJobsFromMonitor(jobIds, { render = true } = {}) {
+    const ids = new Set((jobIds || []).filter(Boolean));
+    if (ids.size === 0) return;
+
+    state.knownJobs = state.knownJobs.filter((job) => !ids.has(job.id));
+    state.jobList = state.jobList.filter((job) => !ids.has(job.id));
+    for (const jobId of ids) {
+        state.selectedJobIds.delete(jobId);
+    }
     saveKnownJobsToStorage();
-    renderJobs();
+    if (render) renderJobs();
+    else updateJobSelectionControls();
 }
 
 function appendCell(row, className, content) {
@@ -2002,11 +2122,12 @@ function renderJobs() {
     const tbody = elements.jobsTableBody;
     clearNode(tbody);
     const jobs = getJobViewRows();
+    pruneSelectedJobIds(getVisibleSelectableJobIds(jobs));
 
     if (jobs.length === 0) {
         const row = createEl("tr");
         const cell = createEl("td", "px-6 py-12 text-center text-slate-400 italic");
-        cell.colSpan = 8;
+        cell.colSpan = 9;
         cell.appendChild(createEl("div", "", getJobViewEmptyMessage()));
         if (state.jobListSource !== "server") {
             cell.appendChild(createEl("div", "mt-1 text-xs", "This monitor tracks jobs observed by this browser/admin session."));
@@ -2017,7 +2138,28 @@ function renderJobs() {
     }
 
     jobs.forEach((job) => {
-        const row = createEl("tr", "hover:bg-slate-50");
+        const isSelectable = state.jobListSource === "server" && !job.notFound && isTerminalJobStatus(job.status);
+        const isSelected = state.selectedJobIds.has(job.id) && isSelectable;
+        const row = createEl("tr", isSelected ? "bg-indigo-50/50 hover:bg-slate-50" : "hover:bg-slate-50");
+
+        const selectionCell = createEl("td", "px-4 py-4 align-top");
+        const checkbox = createEl("input", "h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:cursor-not-allowed");
+        checkbox.type = "checkbox";
+        checkbox.disabled = !isSelectable || state.isLoading.jobs;
+        checkbox.checked = isSelected;
+        checkbox.title = isSelectable ? "Select this job" : "Only terminal jobs can be selected";
+        checkbox.setAttribute("aria-label", `Select job ${shortId(job.id)}`);
+        checkbox.addEventListener("change", () => {
+            if (checkbox.checked) {
+                state.selectedJobIds.add(job.id);
+            } else {
+                state.selectedJobIds.delete(job.id);
+            }
+            renderJobs();
+        });
+        selectionCell.appendChild(checkbox);
+        row.appendChild(selectionCell);
+
         const idNode = createEl("span", "font-mono text-slate-700");
         idNode.title = job.id;
         appendText(idNode, shortId(job.id));
@@ -2068,6 +2210,8 @@ function renderJobs() {
         appendCell(row, "text-right", actions);
         tbody.appendChild(row);
     });
+
+    updateJobSelectionControls(jobs);
 }
 
 async function loadHealth() {
@@ -2284,6 +2428,22 @@ function bindEvents() {
     if (elements.jobsStatusFilter) {
         elements.jobsStatusFilter.addEventListener("change", (event) => {
             changeJobsStatusFilter(event.target.value);
+        });
+    }
+    if (elements.jobsSelectAll) {
+        elements.jobsSelectAll.addEventListener("change", () => {
+            const selectableJobIds = getVisibleSelectableJobIds();
+            if (elements.jobsSelectAll.checked) {
+                selectableJobIds.forEach((jobId) => state.selectedJobIds.add(jobId));
+            } else {
+                selectableJobIds.forEach((jobId) => state.selectedJobIds.delete(jobId));
+            }
+            renderJobs();
+        });
+    }
+    if (elements.jobsBulkRemove) {
+        elements.jobsBulkRemove.addEventListener("click", () => {
+            removeSelectedJobs();
         });
     }
     elements.btnCreateCollection.addEventListener("click", () => openInspector(null));

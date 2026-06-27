@@ -123,12 +123,19 @@ describe("admin panel static contract", () => {
 
     assert.ok(html.includes('id="pgK"'), "Retrieve K input should exist");
     assert.ok(html.includes("This monitor tracks jobs observed by this browser/admin session.") || js.includes("This monitor tracks jobs observed by this browser/admin session."));
+    assert.ok(html.includes('id="jobsBulkActionBar"'));
+    assert.ok(html.includes('id="jobsBulkSelectionCount"'));
+    assert.ok(html.includes('id="jobsBulkRemove"'));
+    assert.ok(html.includes('id="jobsSelectAll"'));
     assert.ok(js.includes("function renderRetrieveResult"));
     assert.ok(js.includes("function renderQueryResult"));
     assert.ok(js.includes("function renderPlaygroundError"));
     assert.ok(js.includes("function renderSourceFields"));
     assert.ok(js.includes("function adminJobDeleteUrl(id)"));
+    assert.ok(js.includes("function adminJobsBulkDeleteUrl()"));
     assert.ok(js.includes("async function deleteJob(jobId)"));
+    assert.ok(js.includes("async function removeSelectedJobs()"));
+    assert.ok(html.includes("Remove selected"));
     assert.ok(js.includes("Delete terminal job from the server"));
     assert.ok(js.includes("Remove"));
   });

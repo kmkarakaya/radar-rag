@@ -89,6 +89,36 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     };
   }
 
+  function parseJobDeleteBody(body: unknown): string[] {
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid job delete payload.");
+    }
+
+    const rawJobIds = (body as { jobIds?: unknown }).jobIds;
+    if (!Array.isArray(rawJobIds)) {
+      throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid job delete payload.");
+    }
+
+    const jobIds = rawJobIds.map((value) => {
+      if (typeof value !== "string") {
+        throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid job delete payload.");
+      }
+
+      const trimmed = value.trim();
+      if (!trimmed) {
+        throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid job delete payload.");
+      }
+      return trimmed;
+    });
+
+    const uniqueJobIds = [...new Set(jobIds)];
+    if (uniqueJobIds.length === 0) {
+      throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid job delete payload.");
+    }
+
+    return uniqueJobIds;
+  }
+
   router.post("/collections", requireRegistry, async (req, res, next) => {
     try {
       const parsed = collectionCreateSchema.safeParse(req.body);
@@ -296,6 +326,31 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       res.locals.physicalCollection = job.targetPhysicalCollection;
 
       await deps.registry!.deleteJob(context, jobId);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/jobs/bulk-delete", requireRegistry, async (req, res, next) => {
+    try {
+      const context = res.locals.requestContext as RequestContext;
+      const jobIds = parseJobDeleteBody(req.body);
+      const jobs = await Promise.all(jobIds.map((jobId) => deps.registry!.getJob(jobId)));
+
+      for (let index = 0; index < jobs.length; index += 1) {
+        const job = jobs[index];
+        const jobId = jobIds[index]!;
+        if (!job || job.tenantId !== context.tenantId) {
+          throw new HttpError(404, "ROUTE_NOT_FOUND", "Job not found.");
+        }
+
+        if (job.status === "queued" || job.status === "running") {
+          throw new HttpError(400, "INVALID_JOB_STATUS", "Only terminal jobs can be deleted.");
+        }
+      }
+
+      await deps.registry!.deleteJobs(context, jobIds);
       res.status(204).send();
     } catch (error) {
       next(error);

@@ -1292,6 +1292,146 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(body.code, "INVALID_JOB_STATUS");
   });
 
+  it("POST /v1/admin/jobs/bulk-delete removes terminal jobs and hides them from the list", async () => {
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "job-bulk-delete-terminal" };
+
+    const createTerminalJob = async (displayName: string) => {
+      const collection = await registry.createCollection(ctx, {
+        displayName,
+        sourcePath: "data",
+        ozelgeDataPath: "data/ozelge.json",
+        embeddingModel: "embed",
+        chatModel: "chat",
+        distanceMetric: "l2",
+        chunkSize: 500,
+        chunkOverlap: 50,
+        retrievalK: 5,
+        retrievalDistanceThreshold: 1,
+      });
+
+      const job = await registry.beginIndexJob(ctx, collection.id);
+      await registry.markIndexJobRunning(job.id);
+      const running = await registry.getJob(job.id);
+      assert.ok(running);
+      await registry.createPhysicalCollectionRecord({
+        name: running.targetPhysicalCollection,
+        tenantId: ctx.tenantId,
+        collectionId: collection.id,
+        version: running.targetVersion,
+        chromaConfiguration: running.targetChromaConfiguration,
+      });
+      await registry.completeIndexJob(job.id, {
+        activePhysicalCollection: running.targetPhysicalCollection,
+        activeVersion: running.targetVersion,
+        documentCount: 2,
+        chunkCount: 4,
+        retentionMs: 0,
+      });
+
+      return job.id;
+    };
+
+    const jobIds = [
+      await createTerminalJob("Job Bulk Delete Terminal 1"),
+      await createTerminalJob("Job Bulk Delete Terminal 2"),
+    ];
+
+    const deleteResponse = await request("/v1/admin/jobs/bulk-delete", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-tenant-id": "default",
+      },
+      body: JSON.stringify({ jobIds }),
+    });
+    assert.equal(deleteResponse.status, 204);
+
+    for (const jobId of jobIds) {
+      const getResponse = await request(`/v1/admin/jobs/${jobId}`, {
+        headers: { "x-tenant-id": "default" },
+      });
+      assert.equal(getResponse.status, 404);
+    }
+
+    const listResponse = await request("/v1/admin/jobs?limit=25", {
+      headers: { "x-tenant-id": "default" },
+    });
+    const listBody = await listResponse.json() as any;
+    assert.equal(listResponse.status, 200);
+    assert.equal(listBody.jobs.some((entry: any) => jobIds.includes(entry.job.id)), false);
+  });
+
+  it("POST /v1/admin/jobs/bulk-delete rejects queued or running jobs", async () => {
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "job-bulk-delete-running" };
+
+    const terminalCollection = await registry.createCollection(ctx, {
+      displayName: "Job Bulk Delete Terminal",
+      sourcePath: "data",
+      ozelgeDataPath: "data/ozelge.json",
+      embeddingModel: "embed",
+      chatModel: "chat",
+      distanceMetric: "l2",
+      chunkSize: 500,
+      chunkOverlap: 50,
+      retrievalK: 5,
+      retrievalDistanceThreshold: 1,
+    });
+    const terminalJob = await registry.beginIndexJob(ctx, terminalCollection.id);
+    await registry.markIndexJobRunning(terminalJob.id);
+    const runningTerminal = await registry.getJob(terminalJob.id);
+    assert.ok(runningTerminal);
+    await registry.createPhysicalCollectionRecord({
+      name: runningTerminal.targetPhysicalCollection,
+      tenantId: ctx.tenantId,
+      collectionId: terminalCollection.id,
+      version: runningTerminal.targetVersion,
+      chromaConfiguration: runningTerminal.targetChromaConfiguration,
+    });
+    await registry.completeIndexJob(terminalJob.id, {
+      activePhysicalCollection: runningTerminal.targetPhysicalCollection,
+      activeVersion: runningTerminal.targetVersion,
+      documentCount: 2,
+      chunkCount: 4,
+      retentionMs: 0,
+    });
+
+    const queuedCollection = await registry.createCollection(ctx, {
+      displayName: "Job Bulk Delete Queued",
+      sourcePath: "data",
+      ozelgeDataPath: "data/ozelge.json",
+      embeddingModel: "embed",
+      chatModel: "chat",
+      distanceMetric: "l2",
+      chunkSize: 500,
+      chunkOverlap: 50,
+      retrievalK: 5,
+      retrievalDistanceThreshold: 1,
+    });
+    const queuedJob = await registry.beginIndexJob(ctx, queuedCollection.id);
+
+    const deleteResponse = await request("/v1/admin/jobs/bulk-delete", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-tenant-id": "default",
+      },
+      body: JSON.stringify({ jobIds: [terminalJob.id, queuedJob.id] }),
+    });
+    const body = await deleteResponse.json() as any;
+
+    assert.equal(deleteResponse.status, 400);
+    assert.equal(body.code, "INVALID_JOB_STATUS");
+
+    const terminalCheck = await request(`/v1/admin/jobs/${terminalJob.id}`, {
+      headers: { "x-tenant-id": "default" },
+    });
+    const queuedCheck = await request(`/v1/admin/jobs/${queuedJob.id}`, {
+      headers: { "x-tenant-id": "default" },
+    });
+    assert.equal(terminalCheck.status, 200);
+    assert.equal(queuedCheck.status, 200);
+  });
+
   it("maps RAG MODEL_BACKPRESSURE errors to HTTP 503", async () => {
     const ctx = { tenantId: "default", userId: "local-dev", requestId: "backpressure" };
     const activePhysicalCollection = "api-test-backpressure";

@@ -169,6 +169,7 @@ export interface CollectionRegistry {
   listJobs(context: RequestContext, filters?: ListJobsInput): Promise<ListJobsResult>;
   getJob(jobId: string): Promise<IndexJob | null>;
   deleteJob(context: RequestContext, jobId: string): Promise<void>;
+  deleteJobs(context: RequestContext, jobIds: string[]): Promise<void>;
   getActiveJobForCollection(context: RequestContext, collectionId: string): Promise<IndexJob | null>;
   createCollection(context: RequestContext, input: CreateCollectionInput): Promise<RagCollection>;
   updateCollection(

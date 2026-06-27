@@ -109,6 +109,13 @@ export function getHttpOperationTarget(req: Request): { operation: string; colle
         operation: "reindex",
       };
     }
+
+    const jobDeleteMatch = /^\/v1\/admin\/jobs\/bulk-delete$/.exec(req.path);
+    if (jobDeleteMatch) {
+      return {
+        operation: "job_delete_batch",
+      };
+    }
   }
 
   if (req.method === "GET") {

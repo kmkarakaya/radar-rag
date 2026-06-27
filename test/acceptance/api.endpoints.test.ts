@@ -265,6 +265,8 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(found.chunkCount, null);
     assert.equal(typeof found.updatedAt, "string");
     assert.equal("capabilities" in found, false);
+    assert.equal(found.indexState.status, "no_active_index");
+    assert.equal(found.indexState.reindexRequired, true);
     assert.equal(found.readyUrl, `/v1/rag/collections/${createdCollection.id}/ready`);
     assert.equal(found.queryUrl, `/v1/rag/collections/${createdCollection.id}/query`);
     assert.equal(found.retrieveUrl, `/v1/rag/collections/${createdCollection.id}/retrieve`);
@@ -811,6 +813,8 @@ describe("v1 admin and rag api endpoints", () => {
         space: "ip",
       },
     });
+    assert.equal(body.collection.indexState.status, "reindex_required");
+    assert.equal(body.collection.indexState.reindexRequired, true);
   });
 
   it("admin collection update returns 404 for an unknown collection", async () => {
@@ -852,6 +856,180 @@ describe("v1 admin and rag api endpoints", () => {
     const body = await response.json() as any;
     assert.equal(response.status, 403);
     assert.equal(body.code, "COLLECTION_FORBIDDEN");
+  });
+
+  it("admin collection validation returns issues without mutating state", async () => {
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "validate-create" };
+    const beforeCollections = await registry.listVisibleCollections(ctx);
+    const beforeJobs = await registry.listJobs(ctx);
+
+    const response = await request("/v1/admin/collections/validate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        displayName: "Validation Draft",
+        sourcePath: "missing/source/path",
+        ozelgeDataPath: "missing/source/path/ozelge.json",
+        chunkSize: 64,
+        chunkOverlap: 64,
+        embeddingModel: "bge-m3",
+        chatModel: "gemma3:4b-cloud",
+      }),
+    });
+    const body = await response.json() as any;
+
+    assert.equal(response.status, 200);
+    assert.equal(Array.isArray(body.blockers), true);
+    assert.equal(body.blockers.some((issue: any) => issue.code === "INDEXING_SOURCE_UNREADABLE"), true);
+    assert.equal(body.blockers.some((issue: any) => issue.code === "COLLECTION_CHUNK_OVERLAP_INVALID"), true);
+    assert.equal(Array.isArray(body.warnings), true);
+    assert.equal(Array.isArray(body.recommendedActions), true);
+    assert.equal(body.impact.reindexRequired, true);
+    assert.equal(body.impact.immediateFields.includes("displayName"), true);
+    assert.equal(body.impact.reindexFields.includes("sourcePath"), true);
+    assert.equal((await registry.listVisibleCollections(ctx)).length, beforeCollections.length);
+    assert.equal((await registry.listJobs(ctx)).jobs.length, beforeJobs.jobs.length);
+  });
+
+  it("admin collection validation rejects invalid request bodies with INVALID_REQUEST_BODY", async () => {
+    const response = await request("/v1/admin/collections/validate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ unknownPatchKey: true }),
+    });
+
+    const body = await response.json() as any;
+    assert.equal(response.status, 400);
+    assert.equal(body.code, "INVALID_REQUEST_BODY");
+    assert.ok(Array.isArray(body.details?.issues));
+  });
+
+  it("admin collection validate overlays the persisted collection and respects tenant scope", async () => {
+    const createResponse = await request("/v1/admin/collections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        displayName: "Validation Base Collection",
+        sourcePath: "data",
+        ozelgeDataPath: "data/ozelge_veri.json",
+        chunkSize: 128,
+        chunkOverlap: 32,
+        retrievalK: 5,
+        retrievalDistanceThreshold: 0.3,
+        embeddingModel: "bge-m3",
+        chatModel: "gemma3:4b-cloud",
+      }),
+    });
+    const createBody = await createResponse.json() as any;
+    assert.equal(createResponse.status, 201);
+
+    const response = await request(`/v1/admin/collections/${createBody.collection.id}/validate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const body = await response.json() as any;
+
+    assert.equal(response.status, 200);
+    assert.equal(Array.isArray(body.blockers), true);
+    assert.equal(body.blockers.length, 0);
+    assert.equal(Array.isArray(body.warnings), true);
+    assert.equal(Array.isArray(body.recommendedActions), true);
+    assert.equal(body.impact.reindexRequired, false);
+    assert.deepEqual(body.impact.immediateFields, []);
+    assert.deepEqual(body.impact.reindexFields, []);
+
+    const forbiddenResponse = await request(`/v1/admin/collections/${createBody.collection.id}/validate`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-tenant-id": "other-tenant",
+      },
+      body: JSON.stringify({}),
+    });
+    const forbiddenBody = await forbiddenResponse.json() as any;
+    assert.equal(forbiddenResponse.status, 403);
+    assert.equal(forbiddenBody.code, "COLLECTION_FORBIDDEN");
+  });
+
+  it("admin collection validate classifies immediate and reindex-bound changes", async () => {
+    const createResponse = await request("/v1/admin/collections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        displayName: "Impact Test Collection",
+        sourcePath: "data",
+        ozelgeDataPath: "data/ozelge_veri.json",
+        chunkSize: 128,
+        chunkOverlap: 32,
+        retrievalK: 5,
+        retrievalDistanceThreshold: 0.3,
+        embeddingModel: "bge-m3",
+        chatModel: "gemma3:4b-cloud",
+      }),
+    });
+    const createBody = await createResponse.json() as any;
+    assert.equal(createResponse.status, 201);
+
+    const immediateResponse = await request(`/v1/admin/collections/${createBody.collection.id}/validate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ retrievalK: 11 }),
+    });
+    const immediateBody = await immediateResponse.json() as any;
+    assert.equal(immediateResponse.status, 200);
+    assert.equal(immediateBody.impact.reindexRequired, false);
+    assert.equal(immediateBody.impact.immediateFields.includes("retrievalK"), true);
+    assert.equal(immediateBody.impact.reindexFields.length, 0);
+
+    const reindexResponse = await request(`/v1/admin/collections/${createBody.collection.id}/validate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chunkSize: 256 }),
+    });
+    const reindexBody = await reindexResponse.json() as any;
+    assert.equal(reindexResponse.status, 200);
+    assert.equal(reindexBody.impact.reindexRequired, true);
+    assert.equal(reindexBody.impact.reindexFields.includes("chunkSize"), true);
+  });
+
+  it("admin collection validate skips Chroma checks for immediate-only changes", async () => {
+    const createResponse = await request("/v1/admin/collections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        displayName: "Immediate Impact Collection",
+        sourcePath: "data",
+        ozelgeDataPath: "data/ozelge_veri.json",
+        chunkSize: 128,
+        chunkOverlap: 32,
+        retrievalK: 5,
+        retrievalDistanceThreshold: 0.3,
+        embeddingModel: "bge-m3",
+        chatModel: "gemma3:4b-cloud",
+      }),
+    });
+    const createBody = await createResponse.json() as any;
+    assert.equal(createResponse.status, 201);
+
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "immediate-only-validate" };
+    await registry.updateCollection(ctx, createBody.collection.id, {
+      status: "ready",
+      activePhysicalCollection: "unreachable-physical-collection",
+      activeVersion: "v-immediate-only",
+    });
+
+    const response = await request(`/v1/admin/collections/${createBody.collection.id}/validate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ retrievalK: 11 }),
+    });
+    const body = await response.json() as any;
+
+    assert.equal(response.status, 200);
+    assert.equal(body.impact.reindexRequired, false);
+    assert.equal(body.blockers.some((issue: any) => issue.code === "CHROMA_UNREACHABLE"), false);
+    assert.equal(body.blockers.some((issue: any) => issue.code === "COLLECTION_ACTIVE_PHYSICAL_UNREADABLE"), false);
   });
 
   it("admin collection update is tenant-scoped and returns 403 for another tenant", async () => {
@@ -950,6 +1128,31 @@ describe("v1 admin and rag api endpoints", () => {
       chunkCount: 9,
       retentionMs: 0,
     });
+
+    const syncedCollection = await registry.getVisibleCollection(
+      { tenantId: "default", userId: "local-dev", requestId: "jobs-list-sync" },
+      succeededDefault.collectionId,
+    );
+    assert.ok(syncedCollection);
+    assert.equal(syncedCollection?.indexState?.status, "synced");
+    assert.equal(syncedCollection?.indexState?.reindexRequired, false);
+
+    await registry.updateCollection(
+      { tenantId: "default", userId: "local-dev", requestId: "jobs-list-dirty" },
+      succeededDefault.collectionId,
+      {
+        chunkOverlap: 8,
+      },
+    );
+
+    const dirtyCollection = await registry.getVisibleCollection(
+      { tenantId: "default", userId: "local-dev", requestId: "jobs-list-dirty-read" },
+      succeededDefault.collectionId,
+    );
+    assert.ok(dirtyCollection);
+    assert.equal(dirtyCollection?.indexState?.status, "reindex_required");
+    assert.equal(dirtyCollection?.indexState?.reindexRequired, true);
+    assert.ok(dirtyCollection?.indexState?.changedFields.includes("chunkOverlap"));
 
     const firstPageResponse = await request("/v1/admin/jobs?limit=2");
     const firstPage = await firstPageResponse.json() as any;
@@ -1356,6 +1559,8 @@ describe("v1 admin and rag api endpoints", () => {
     assert.ok('chunkCount' in collection);
     assert.ok('activeVersion' in collection);
     assert.ok('updatedAt' in collection);
+    assert.equal(collection.indexState.status, 'no_active_index');
+    assert.equal(collection.indexState.reindexRequired, true);
     assert.equal(collection.readyUrl, `/v1/rag/collections/${collectionId}/ready`);
     assert.equal(collection.queryUrl, `/v1/rag/collections/${collectionId}/query`);
     assert.equal(collection.retrieveUrl, `/v1/rag/collections/${collectionId}/retrieve`);

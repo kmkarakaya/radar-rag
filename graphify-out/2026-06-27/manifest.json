@@ -10,8 +10,8 @@
     "semantic_hash": "990e827940a6196eb3aea4c6e23a605c"
   },
   "admin/admin.js": {
-    "mtime": 1782515004.0973766,
-    "ast_hash": "fd43cb558d442309efbe4bf11f66087b",
+    "mtime": 1782573707.9091377,
+    "ast_hash": "ceefc84d7c60b8af38c0f5e9db154cd1",
     "semantic_hash": ""
   },
   "benchmark/benchmark.json": {
@@ -80,8 +80,8 @@
     "semantic_hash": "337cec9c03bab806564d84cf4776f2d3"
   },
   "src/http/adminRouter.ts": {
-    "mtime": 1782508504.6858423,
-    "ast_hash": "060f98d7eb6b28b7b81d41850f4b40b1",
+    "mtime": 1782567191.67085,
+    "ast_hash": "022445632943d4bfe3ec75af4b092dbe",
     "semantic_hash": ""
   },
   "src/http/errors.ts": {
@@ -170,13 +170,13 @@
     "semantic_hash": "4a890806f32be9a5ad6c8f7358b7e82b"
   },
   "test/acceptance/api.endpoints.test.ts": {
-    "mtime": 1782513359.8968859,
-    "ast_hash": "e01a26724e9a936b3f3aa473f2174cf9",
+    "mtime": 1782573299.8405848,
+    "ast_hash": "4466a5c21680c2a5753ce2f7ba4dd3aa",
     "semantic_hash": ""
   },
   "test/admin.static.test.ts": {
-    "mtime": 1782515018.865726,
-    "ast_hash": "3806292a0512b7857932a875a718a0cc",
+    "mtime": 1782573722.2653873,
+    "ast_hash": "94110d701d06a1bd1b44399214591fe1",
     "semantic_hash": ""
   },
   "test/app.foundation.test.ts": {
@@ -280,13 +280,13 @@
     "semantic_hash": "eebcaf961d7d15138b5435ed223f43b4"
   },
   "README.md": {
-    "mtime": 1782505546.6431797,
+    "mtime": 1782573657.6743205,
     "ast_hash": "3fe70e7676c1107478d310986297cc70",
     "semantic_hash": "3fe70e7676c1107478d310986297cc70"
   },
   "admin/index.html": {
-    "mtime": 1782513395.3235743,
-    "ast_hash": "f4dfcf96f68048596ec1f9ec90e41b51",
+    "mtime": 1782566328.7011864,
+    "ast_hash": "3e03118105a3d4476d4dc1ce2f7382f1",
     "semantic_hash": ""
   },
   "config/rag.config.yaml": {
@@ -480,8 +480,18 @@
     "semantic_hash": ""
   },
   "src/readiness.ts": {
-    "mtime": 1782513183.1916957,
-    "ast_hash": "3789dfe139e7dc2107583b212a131c69",
+    "mtime": 1782566291.423236,
+    "ast_hash": "43ebcfa8b88b87fbbc5b25bfc3803b23",
+    "semantic_hash": ""
+  },
+  "src/http/collectionSchemas.ts": {
+    "mtime": 1782566229.3964496,
+    "ast_hash": "97724092dea308978f42c2e79622370d",
+    "semantic_hash": ""
+  },
+  "src/http/collectionValidation.ts": {
+    "mtime": 1782573272.7443466,
+    "ast_hash": "a0a743db29793c1fb9dac078e772cfcd",
     "semantic_hash": ""
   }
 }

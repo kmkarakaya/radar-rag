@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import type { DistanceMetric } from "../config.js";
 import { createPhysicalCollectionName, generateCollectionId } from "./ids.js";
+import { buildCollectionIndexSnapshot, buildCollectionIndexState, parseCollectionIndexSnapshot } from "./indexState.js";
 import type {
   BeginIndexJobInput,
   CollectionRegistry,
@@ -51,6 +52,7 @@ type CollectionRow = {
   created_at: string;
   updated_at: string;
   last_indexed_at: string | null;
+  indexed_snapshot_json: string | null;
 };
 
 type IndexJobRow = {
@@ -140,7 +142,8 @@ function initializeSchema(db: SqliteDatabase): void {
       created_by TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      last_indexed_at TEXT
+      last_indexed_at TEXT,
+      indexed_snapshot_json TEXT
     );
 
     CREATE TABLE IF NOT EXISTS index_jobs (
@@ -196,6 +199,44 @@ function initializeSchema(db: SqliteDatabase): void {
 
 function migrateSchema(db: SqliteDatabase): void {
   ensureColumn(db, "collections", "active_embedding_model", "TEXT");
+  ensureColumn(db, "collections", "indexed_snapshot_json", "TEXT");
+
+  const backfillNow = new Date().toISOString();
+  const snapshotRows = db.prepare(`
+    SELECT id, source_path, ozelge_data_path, distance_metric, chunk_size, chunk_overlap, embedding_model
+    FROM collections
+    WHERE active_physical_collection IS NOT NULL
+      AND (indexed_snapshot_json IS NULL OR indexed_snapshot_json = '')
+  `).all() as Array<{
+    id: string;
+    source_path: string;
+    ozelge_data_path: string;
+    distance_metric: "l2" | "cosine" | "ip";
+    chunk_size: number;
+    chunk_overlap: number;
+    embedding_model: string;
+  }>;
+
+  const updateSnapshot = db.prepare(`
+    UPDATE collections
+    SET indexed_snapshot_json = @indexedSnapshotJson, updated_at = @updatedAt
+    WHERE id = @id
+  `);
+
+  for (const row of snapshotRows) {
+    updateSnapshot.run({
+      id: row.id,
+      indexedSnapshotJson: JSON.stringify({
+        sourcePath: row.source_path,
+        ozelgeDataPath: row.ozelge_data_path,
+        distanceMetric: row.distance_metric,
+        chunkSize: row.chunk_size,
+        chunkOverlap: row.chunk_overlap,
+        embeddingModel: row.embedding_model,
+      }),
+      updatedAt: backfillNow,
+    });
+  }
 }
 
 function ensureColumn(db: SqliteDatabase, tableName: string, columnName: string, definition: string): void {
@@ -778,6 +819,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           document_count = @documentCount,
           chunk_count = @chunkCount,
           last_indexed_at = @lastIndexedAt,
+          indexed_snapshot_json = @indexedSnapshotJson,
           updated_at = @updatedAt
         WHERE tenant_id = @tenantId AND id = @collectionId AND status != 'archived'
       `).run({
@@ -789,6 +831,14 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         documentCount: result.documentCount ?? existing.document_count,
         chunkCount: result.chunkCount ?? existing.chunk_count,
         lastIndexedAt: now,
+        indexedSnapshotJson: JSON.stringify(buildCollectionIndexSnapshot({
+          sourcePath: collection.source_path,
+          ozelgeDataPath: collection.ozelge_data_path,
+          distanceMetric: collection.distance_metric,
+          chunkSize: collection.chunk_size,
+          chunkOverlap: collection.chunk_overlap,
+          embeddingModel: collection.embedding_model,
+        })),
         updatedAt: now,
       });
 
@@ -1165,7 +1215,8 @@ function addNullablePatch(
 }
 
 function mapCollectionRow(row: CollectionRow): RagCollection {
-  return {
+  const activeSnapshot = parseCollectionIndexSnapshotJson(row.indexed_snapshot_json);
+  const collection: RagCollection = {
     id: row.id,
     tenantId: row.tenant_id,
     displayName: row.display_name,
@@ -1191,6 +1242,20 @@ function mapCollectionRow(row: CollectionRow): RagCollection {
     updatedAt: row.updated_at,
     lastIndexedAt: row.last_indexed_at ?? undefined,
   };
+
+  return {
+    ...collection,
+    indexState: buildCollectionIndexState(collection, activeSnapshot),
+  };
+}
+
+function parseCollectionIndexSnapshotJson(value: string | null): ReturnType<typeof parseCollectionIndexSnapshot> {
+  if (!value) return null;
+  try {
+    return parseCollectionIndexSnapshot(JSON.parse(value));
+  } catch {
+    return null;
+  }
 }
 
 function mapIndexJobRow(row: IndexJobRow): IndexJob {

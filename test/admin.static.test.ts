@@ -38,17 +38,46 @@ describe("admin panel static contract", () => {
       readAdminFile("admin.js"),
     ]);
 
-    assert.ok(js.includes("function getCollectionCardStatusPresentation(status)"));
-    assert.ok(js.includes("function getCollectionCardStatusBadge(status)"));
-    assert.ok(js.includes("function getCollectionCardStatusNote(status)"));
+    assert.ok(js.includes("function getCollectionCardStatusPresentation(status, indexState = null)"));
+    assert.ok(js.includes("function getCollectionCardStatusBadge(status, indexState = null)"));
+    assert.ok(js.includes("function getCollectionCardStatusNote(status, indexState = null)"));
     assert.ok(js.includes("Indexing required"));
     assert.ok(js.includes("Indexing in progress"));
     assert.ok(js.includes("No active index yet. Open details to re-index."));
     assert.ok(js.includes("Open details to inspect the latest error."));
-    assert.ok(js.includes("getCollectionCardStatusBadge(collection.status)"));
-    assert.ok(js.includes("getCollectionCardStatusNote(collection.status)"));
+    assert.ok(js.includes("getCollectionCardStatusBadge(collection.status, collection.indexState)"));
+    assert.ok(js.includes("getCollectionCardStatusNote(collection.status, collection.indexState)"));
+    assert.ok(html.includes('id="collectionIndexState"'));
+    assert.ok(html.includes('id="collectionIndexStateSummary"'));
+    assert.ok(html.includes('id="collectionIndexStateContent"'));
     assert.ok(html.includes('id="btnReindex"'));
     assert.ok(html.includes("Re-index Collection"));
+  });
+
+  it("uses backend validation endpoints before save and re-index actions", async () => {
+    const [html, js] = await Promise.all([
+      readAdminFile("index.html"),
+      readAdminFile("admin.js"),
+    ]);
+
+    assert.ok(html.includes('id="collectionValidation"'));
+    assert.ok(html.includes('id="collectionValidationSummary"'));
+    assert.ok(html.includes('id="collectionValidationContent"'));
+    assert.ok(js.includes('function adminCollectionValidateUrl(id)'));
+    assert.ok(js.includes('function validateCollectionOnServer(mode, collectionId, payload = buildCollectionPayload(mode))'));
+    assert.ok(js.includes('adminCollectionValidateUrl()'));
+    assert.ok(js.includes('adminCollectionValidateUrl(collectionId)'));
+    assert.ok(js.includes('renderCollectionValidation(validation, getValidationTitle(mode))'));
+    assert.ok(js.includes('renderCollectionValidation(validation, "Re-index validation")'));
+    assert.ok(js.includes("function renderValidationImpact(parent, impact)"));
+    assert.ok(js.includes("Change Impact"));
+    assert.ok(js.includes("Re-index required"));
+    assert.ok(js.includes("Takes effect immediately"));
+    assert.ok(js.includes("function isDependencyBlocker(issue)"));
+    assert.ok(js.includes("DEPENDENCY DOWN"));
+    assert.ok(js.includes("Backend dependency down"));
+    assert.ok(js.includes("function renderCollectionIndexStateBanner()"));
+    assert.ok(js.includes("collectionIndexState"));
   });
 
   it("keeps admin DOM id references aligned with index.html", async () => {

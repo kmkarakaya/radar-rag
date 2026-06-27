@@ -37,6 +37,8 @@ export function recommendedActionFor(code: string, runtimeConfig: ResolvedConfig
       return "Verify the configured indexing source contains supported files with non-empty document content before running indexing.";
     case "INDEX_SAMPLE_LIMIT_ACTIVE":
       return "Increase config/rag.config.yaml collectionDefaults.indexSampleSize, or set it to 0, if you want indexing to cover more of the source dataset.";
+    case "COLLECTION_CHUNK_OVERLAP_INVALID":
+      return "Reduce chunkOverlap so it stays smaller than chunkSize before saving or re-indexing.";
     case "COLLECTION_NO_ACTIVE_PHYSICAL_COLLECTION":
       return "Run re-index for this collection.";
     case "COLLECTION_ACTIVE_PHYSICAL_UNREADABLE":

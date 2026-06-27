@@ -19,6 +19,7 @@ function mapToPublicCollectionDTO(c: RagCollection) {
     chunkCount: c.chunkCount ?? null,
     activeVersion: c.activeVersion ?? null,
     updatedAt: c.updatedAt,
+    indexState: c.indexState ?? null,
     readyUrl: `/v1/rag/collections/${c.id}/ready`,
     queryUrl: `/v1/rag/collections/${c.id}/query`,
     retrieveUrl: `/v1/rag/collections/${c.id}/retrieve`,

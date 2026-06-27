@@ -10,8 +10,8 @@
     "semantic_hash": "990e827940a6196eb3aea4c6e23a605c"
   },
   "admin/admin.js": {
-    "mtime": 1782515728.8557491,
-    "ast_hash": "7ea06e265ce0ce6648bb652b51861b00",
+    "mtime": 1782575084.962638,
+    "ast_hash": "0eba52da96289ec5d3ffdedef27e9824",
     "semantic_hash": ""
   },
   "benchmark/benchmark.json": {
@@ -65,13 +65,13 @@
     "semantic_hash": "5d387d81974b0e879a7f11b9e085f984"
   },
   "src/collections/sqliteRegistry.ts": {
-    "mtime": 1782508409.0950594,
-    "ast_hash": "ef67d2063621817dc407880863c987cf",
+    "mtime": 1782575296.4650874,
+    "ast_hash": "d17ecbc38740a3f881740dc79d16e357",
     "semantic_hash": ""
   },
   "src/collections/types.ts": {
-    "mtime": 1782508053.3853548,
-    "ast_hash": "0655a730d9ee3d237fc25d6af9dd4378",
+    "mtime": 1782574442.7545824,
+    "ast_hash": "897f47e39f136dd3e12033bda781efba",
     "semantic_hash": ""
   },
   "src/config.ts": {
@@ -80,8 +80,8 @@
     "semantic_hash": "337cec9c03bab806564d84cf4776f2d3"
   },
   "src/http/adminRouter.ts": {
-    "mtime": 1782508504.6858423,
-    "ast_hash": "060f98d7eb6b28b7b81d41850f4b40b1",
+    "mtime": 1782567191.67085,
+    "ast_hash": "022445632943d4bfe3ec75af4b092dbe",
     "semantic_hash": ""
   },
   "src/http/errors.ts": {
@@ -90,8 +90,8 @@
     "semantic_hash": "eac852577db363091ac43f7e659fc7fd"
   },
   "src/http/ragRouter.ts": {
-    "mtime": 1782513258.6778798,
-    "ast_hash": "8921ae48fd9b6b35af13876d23679d86",
+    "mtime": 1782574757.0744662,
+    "ast_hash": "72d09618b8e028e040fbcd7ba7534d7a",
     "semantic_hash": ""
   },
   "src/http/rateLimit.ts": {
@@ -170,13 +170,13 @@
     "semantic_hash": "4a890806f32be9a5ad6c8f7358b7e82b"
   },
   "test/acceptance/api.endpoints.test.ts": {
-    "mtime": 1782513359.8968859,
-    "ast_hash": "e01a26724e9a936b3f3aa473f2174cf9",
+    "mtime": 1782575460.220354,
+    "ast_hash": "f03358d9588fd16fc38cedfee261a02a",
     "semantic_hash": ""
   },
   "test/admin.static.test.ts": {
-    "mtime": 1782515753.337473,
-    "ast_hash": "d78321dde5fae3363f4424f0b12e64fd",
+    "mtime": 1782575314.4891503,
+    "ast_hash": "531f9184f1b5a570c890708810632a73",
     "semantic_hash": ""
   },
   "test/app.foundation.test.ts": {
@@ -280,13 +280,13 @@
     "semantic_hash": "eebcaf961d7d15138b5435ed223f43b4"
   },
   "README.md": {
-    "mtime": 1782505546.6431797,
+    "mtime": 1782573657.6743205,
     "ast_hash": "3fe70e7676c1107478d310986297cc70",
     "semantic_hash": "3fe70e7676c1107478d310986297cc70"
   },
   "admin/index.html": {
-    "mtime": 1782515710.1886888,
-    "ast_hash": "40a72fe81bbeaacc07732fda76119d5b",
+    "mtime": 1782574790.4676242,
+    "ast_hash": "df9dfd0185c72b11d8a463261c08ea86",
     "semantic_hash": ""
   },
   "config/rag.config.yaml": {
@@ -480,8 +480,23 @@
     "semantic_hash": ""
   },
   "src/readiness.ts": {
-    "mtime": 1782513183.1916957,
-    "ast_hash": "3789dfe139e7dc2107583b212a131c69",
+    "mtime": 1782566291.423236,
+    "ast_hash": "43ebcfa8b88b87fbbc5b25bfc3803b23",
+    "semantic_hash": ""
+  },
+  "src/http/collectionSchemas.ts": {
+    "mtime": 1782566229.3964496,
+    "ast_hash": "97724092dea308978f42c2e79622370d",
+    "semantic_hash": ""
+  },
+  "src/http/collectionValidation.ts": {
+    "mtime": 1782573272.7443466,
+    "ast_hash": "a0a743db29793c1fb9dac078e772cfcd",
+    "semantic_hash": ""
+  },
+  "src/collections/indexState.ts": {
+    "mtime": 1782574704.0994189,
+    "ast_hash": "aab0e3a1db6f28b54b48342802eacc7a",
     "semantic_hash": ""
   }
 }

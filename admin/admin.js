@@ -70,6 +70,16 @@ const elements = {
     readinessDetail: document.getElementById("readinessDetail"),
     readinessWarnings: document.getElementById("readinessWarnings"),
     warningList: document.getElementById("warningList"),
+    collectionIndexState: document.getElementById("collectionIndexState"),
+    collectionIndexStateTitle: document.getElementById("collectionIndexStateTitle"),
+    collectionIndexStateSummary: document.getElementById("collectionIndexStateSummary"),
+    collectionIndexStateBadge: document.getElementById("collectionIndexStateBadge"),
+    collectionIndexStateContent: document.getElementById("collectionIndexStateContent"),
+    collectionValidation: document.getElementById("collectionValidation"),
+    collectionValidationTitle: document.getElementById("collectionValidationTitle"),
+    collectionValidationSummary: document.getElementById("collectionValidationSummary"),
+    collectionValidationBadge: document.getElementById("collectionValidationBadge"),
+    collectionValidationContent: document.getElementById("collectionValidationContent"),
     btnRefresh: document.getElementById("btnRefresh"),
     btnCreateCollection: document.getElementById("btnCreateCollection"),
 
@@ -134,6 +144,10 @@ function collectionRetrieveUrl(collection) {
 
 function adminCollectionUrl(id) {
     return `${API.admin}/collections/${id}`;
+}
+
+function adminCollectionValidateUrl(id) {
+    return id ? `${API.admin}/collections/${id}/validate` : `${API.admin}/collections/validate`;
 }
 
 function adminJobUrl(id) {
@@ -251,9 +265,11 @@ function getStatusColor(status) {
         pass: "bg-emerald-100 text-emerald-700",
         warn: "bg-amber-100 text-amber-700",
         fail: "bg-rose-100 text-rose-700",
+        info: "bg-sky-100 text-sky-700",
         ok: "bg-emerald-100 text-emerald-700",
         degraded: "bg-amber-100 text-amber-700",
         inaccessible: "bg-slate-100 text-slate-600",
+        muted: "bg-slate-100 text-slate-600",
     };
     return colors[status] || "bg-slate-100 text-slate-600";
 }
@@ -262,48 +278,78 @@ function getStatusBadge(status) {
     return createBadge(status || "unknown", getStatusColor(status));
 }
 
-function getCollectionCardStatusPresentation(status) {
-    switch (status) {
-        case "creating":
-            return {
-                label: "Indexing required",
-                note: "No active index yet. Open details to re-index.",
-            };
-        case "indexing":
-            return {
-                label: "Indexing in progress",
-                note: "The collection is being indexed right now.",
-            };
-        case "ready":
-            return {
-                label: "Ready",
-                note: "",
-            };
-        case "failed":
-            return {
-                label: "Indexing failed",
-                note: "Open details to inspect the latest error.",
-            };
-        case "archived":
-            return {
-                label: "Archived",
-                note: "This collection is archived and not active.",
-            };
-        default:
-            return {
-                label: status || "unknown",
-                note: "",
-            };
+function getCollectionCardStatusPresentation(status, indexState = null) {
+    if (status === "indexing") {
+        return {
+            label: "Indexing in progress",
+            note: "The collection is building a fresh index right now.",
+            tone: "info",
+        };
     }
+
+    if (status === "creating") {
+        return {
+            label: "Indexing required",
+            note: "No active index yet. Open details to re-index.",
+            tone: "warn",
+        };
+    }
+
+    if (status === "failed") {
+        return {
+            label: "Indexing failed",
+            note: "Open details to inspect the latest error.",
+            tone: "fail",
+        };
+    }
+
+    if (status === "archived") {
+        return {
+            label: "Archived",
+            note: "This collection is archived and not active.",
+            tone: "muted",
+        };
+    }
+
+    const normalizedIndexState = isRecord(indexState) ? indexState : null;
+    if (!normalizedIndexState) {
+        return {
+            label: "Index state unavailable",
+            note: "Backend did not provide a persisted index snapshot yet. Restart the backend after deploying the schema change.",
+            tone: "warn",
+        };
+    }
+
+    if (normalizedIndexState?.status === "no_active_index") {
+        return {
+            label: "Indexing required",
+            note: normalizedIndexState.note || "No active index yet. Open details to re-index.",
+            tone: "warn",
+        };
+    }
+
+    if (normalizedIndexState?.reindexRequired) {
+        return {
+            label: "Re-index required",
+            note: normalizedIndexState.note || "Saved settings differ from the active indexed snapshot.",
+            tone: "warn",
+        };
+    }
+
+    return {
+        label: "Ready",
+        note: normalizedIndexState?.note || "Saved settings are synced with the active index.",
+        tone: "ok",
+    };
 }
 
-function getCollectionCardStatusBadge(status) {
-    const presentation = getCollectionCardStatusPresentation(status);
-    return createBadge(presentation.label, getStatusColor(status));
+function getCollectionCardStatusBadge(status, indexState = null) {
+    const presentation = getCollectionCardStatusPresentation(status, indexState);
+    return createBadge(presentation.label, getStatusColor(presentation.tone || status));
 }
 
-function getCollectionCardStatusNote(status) {
-    const presentation = getCollectionCardStatusPresentation(status);
+function getCollectionCardStatusNote(status, indexState = null) {
+    const presentation = getCollectionCardStatusPresentation(status, indexState);
     if (!presentation.note) return null;
     return createEl("p", "mt-2 text-xs text-slate-500", presentation.note);
 }
@@ -443,6 +489,298 @@ function renderApiErrorContent(parent, error, title = "Request failed") {
     parent.appendChild(box);
 }
 
+const VALIDATION_FIELD_LABELS = {
+    displayName: "Display name",
+    description: "Description",
+    sourcePath: "Source path",
+    ozelgeDataPath: "Ozelge data path",
+    distanceMetric: "Distance metric",
+    chunkSize: "Chunk size",
+    chunkOverlap: "Chunk overlap",
+    retrievalK: "Retrieval k",
+    retrievalDistanceThreshold: "Retrieval distance threshold",
+    embeddingModel: "Embedding model",
+    chatModel: "Chat model",
+};
+
+function formatValidationFieldLabel(field) {
+    return VALIDATION_FIELD_LABELS[field] || field;
+}
+
+const VALIDATION_DEPENDENCY_BLOCKERS = new Set([
+    "CHROMA_UNREACHABLE",
+    "OLLAMA_UNREACHABLE",
+    "COLLECTION_ACTIVE_PHYSICAL_UNREADABLE",
+]);
+
+function isDependencyBlocker(issue) {
+    return isRecord(issue) && VALIDATION_DEPENDENCY_BLOCKERS.has(issue.code);
+}
+
+function hasDependencyBlocker(issues) {
+    return Array.isArray(issues) && issues.some((issue) => isDependencyBlocker(issue));
+}
+
+function renderValidationImpact(parent, impact) {
+    if (!isRecord(impact)) return false;
+    const immediateFields = Array.isArray(impact.immediateFields) ? impact.immediateFields : [];
+    const reindexFields = Array.isArray(impact.reindexFields) ? impact.reindexFields : [];
+    const reindexRequired = impact.reindexRequired === true;
+    const hasVisibleImpact = reindexRequired || immediateFields.length > 0 || reindexFields.length > 0 || Boolean(impact.note);
+
+    if (!hasVisibleImpact) return false;
+
+    const section = createEl("section", "mb-6");
+    section.appendChild(createEl("h4", "mb-3 text-sm font-bold uppercase text-slate-500", "Change Impact"));
+
+    const banner = createEl(
+        "div",
+        `rounded-lg border p-3 text-xs ${reindexRequired ? "border-amber-200 bg-amber-50 text-amber-800" : "border-sky-200 bg-sky-50 text-sky-800"}`,
+    );
+    banner.appendChild(createEl("div", "font-semibold", reindexRequired ? "Re-index required" : "Immediate effect"));
+    if (impact.note) {
+        banner.appendChild(createEl("div", "mt-1 break-all-words", impact.note));
+    }
+    section.appendChild(banner);
+
+    if (immediateFields.length > 0) {
+        const row = createEl("div", "mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs text-slate-700");
+        row.appendChild(createEl("div", "font-semibold text-slate-600", "Takes effect immediately"));
+        const container = createEl("div", "mt-2 flex flex-wrap gap-2");
+        row.appendChild(container);
+        immediateFields.forEach((field) => {
+            container.appendChild(createBadge(formatValidationFieldLabel(field), getStatusColor("info")));
+        });
+        section.appendChild(row);
+    }
+
+    if (reindexFields.length > 0) {
+        const row = createEl("div", "mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs text-slate-700");
+        row.appendChild(createEl("div", "font-semibold text-slate-600", "Requires re-index"));
+        const container = createEl("div", "mt-2 flex flex-wrap gap-2");
+        row.appendChild(container);
+        reindexFields.forEach((field) => {
+            container.appendChild(createBadge(formatValidationFieldLabel(field), getStatusColor(reindexRequired ? "warn" : "ok")));
+        });
+        section.appendChild(row);
+    }
+
+    parent.appendChild(section);
+    return true;
+}
+
+function clearCollectionValidation() {
+    if (elements.collectionValidation) {
+        elements.collectionValidation.classList.add("hidden");
+    }
+    clearNode(elements.collectionValidationTitle);
+    clearNode(elements.collectionValidationSummary);
+    clearNode(elements.collectionValidationBadge);
+    clearNode(elements.collectionValidationContent);
+}
+
+function clearCollectionIndexStateBanner() {
+    if (elements.collectionIndexState) {
+        elements.collectionIndexState.classList.add("hidden");
+    }
+    clearNode(elements.collectionIndexStateTitle);
+    clearNode(elements.collectionIndexStateSummary);
+    clearNode(elements.collectionIndexStateBadge);
+    clearNode(elements.collectionIndexStateContent);
+}
+
+function renderCollectionIndexStateBanner() {
+    if (!elements.collectionIndexState || !state.selectedCollection) {
+        clearCollectionIndexStateBanner();
+        return;
+    }
+
+    const collection = state.selectedCollection;
+    const readiness = state.selectedReadiness;
+    const indexState = isRecord(collection.indexState) ? collection.indexState : null;
+    const blockers = Array.isArray(readiness?.blockers) ? readiness.blockers : [];
+    const dependencyDown = hasDependencyBlocker(blockers);
+    const activeJob = readiness?.activeJob;
+    const hasActiveJob = Boolean(activeJob && (activeJob.status === "queued" || activeJob.status === "running"));
+    const isIndexing = hasActiveJob || collection.status === "indexing";
+    const changedFields = Array.isArray(indexState?.changedFields) ? indexState.changedFields : [];
+
+    let title = "Immediate effect / synced";
+    let badgeLabel = "SYNCED";
+    let badgeTone = "ok";
+    let summary = indexState?.note || "Saved settings are aligned with the active indexed snapshot.";
+
+    if (dependencyDown) {
+        title = "Backend dependency down";
+        badgeLabel = "DEPENDENCY DOWN";
+        badgeTone = "fail";
+        summary = "Chroma or Ollama is unavailable. Re-index and playground actions should wait until the dependency is healthy.";
+    } else if (isIndexing) {
+        title = "Indexing in progress";
+        badgeLabel = "INDEXING";
+        badgeTone = "info";
+        summary = activeJob
+            ? `Active job ${shortId(activeJob.id)} is ${activeJob.status}.`
+            : "The collection is currently indexing.";
+    } else if (!indexState) {
+        title = "Index state unavailable";
+        badgeLabel = "UNKNOWN";
+        badgeTone = "warn";
+        summary = "Backend did not return a persisted index snapshot. Restart the backend after deploying the schema change.";
+    } else if (indexState.status === "no_active_index") {
+        title = "Indexing required";
+        badgeLabel = "INDEXING REQUIRED";
+        badgeTone = "warn";
+        summary = indexState.note || "No active index exists yet. Open details to re-index.";
+    } else if (indexState?.reindexRequired) {
+        title = "Re-index required";
+        badgeLabel = "RE-INDEX REQUIRED";
+        badgeTone = "warn";
+        summary = indexState.note || "Saved settings differ from the active indexed snapshot.";
+    } else if (indexState?.status === "synced") {
+        title = "Immediate effect / synced";
+        badgeLabel = "SYNCED";
+        badgeTone = "ok";
+        summary = indexState.note || "Saved settings are aligned with the active indexed snapshot.";
+    }
+
+    elements.collectionIndexState.classList.remove("hidden");
+    clearNode(elements.collectionIndexStateTitle);
+    elements.collectionIndexStateTitle.appendChild(createEl("span", "", title));
+    clearNode(elements.collectionIndexStateSummary);
+    elements.collectionIndexStateSummary.appendChild(createEl("span", "", summary));
+    clearNode(elements.collectionIndexStateBadge);
+    elements.collectionIndexStateBadge.appendChild(createBadge(badgeLabel, getStatusColor(badgeTone)));
+
+    clearNode(elements.collectionIndexStateContent);
+    const detail = createEl("div", "rounded-lg border border-slate-100 bg-white p-3 text-xs text-slate-700");
+    detail.appendChild(createEl("div", "font-semibold text-slate-800", "Index snapshot"));
+    detail.appendChild(createEl("div", "mt-1 break-all-words text-slate-500", indexState?.note || "Ground truth is provided by the backend index state."));
+
+    const snapshotGrid = createEl("div", "mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2");
+    snapshotGrid.appendChild(createMetaItem("Saved source path", indexState?.desiredSnapshot?.sourcePath ?? collection.sourcePath));
+    snapshotGrid.appendChild(createMetaItem("Saved Ozelge path", indexState?.desiredSnapshot?.ozelgeDataPath ?? collection.ozelgeDataPath));
+    snapshotGrid.appendChild(createMetaItem("Saved chunk size", indexState?.desiredSnapshot?.chunkSize ?? collection.chunkSize));
+    snapshotGrid.appendChild(createMetaItem("Saved chunk overlap", indexState?.desiredSnapshot?.chunkOverlap ?? collection.chunkOverlap));
+    snapshotGrid.appendChild(createMetaItem("Saved embedding model", indexState?.desiredSnapshot?.embeddingModel ?? collection.embeddingModel));
+    snapshotGrid.appendChild(createMetaItem("Saved distance metric", indexState?.desiredSnapshot?.distanceMetric ?? collection.distanceMetric));
+
+    detail.appendChild(snapshotGrid);
+
+    if (indexState?.activeSnapshot) {
+        const activeSection = createEl("div", "mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs text-slate-700");
+        activeSection.appendChild(createEl("div", "font-semibold text-slate-800", "Active indexed snapshot"));
+        const activeGrid = createEl("div", "mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2");
+        activeGrid.appendChild(createMetaItem("Active source path", indexState.activeSnapshot.sourcePath));
+        activeGrid.appendChild(createMetaItem("Active Ozelge path", indexState.activeSnapshot.ozelgeDataPath));
+        activeGrid.appendChild(createMetaItem("Active chunk size", indexState.activeSnapshot.chunkSize));
+        activeGrid.appendChild(createMetaItem("Active chunk overlap", indexState.activeSnapshot.chunkOverlap));
+        activeGrid.appendChild(createMetaItem("Active embedding model", indexState.activeSnapshot.embeddingModel));
+        activeGrid.appendChild(createMetaItem("Active distance metric", indexState.activeSnapshot.distanceMetric));
+        activeSection.appendChild(activeGrid);
+        detail.appendChild(activeSection);
+    }
+
+    if (changedFields.length > 0) {
+        const fieldSection = createEl("div", "mt-3 rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800");
+        fieldSection.appendChild(createEl("div", "font-semibold", indexState?.status === "no_active_index" ? "Pending index fields" : "Fields requiring re-index"));
+        const fieldWrap = createEl("div", "mt-2 flex flex-wrap gap-2");
+        changedFields.forEach((field) => {
+            fieldWrap.appendChild(createBadge(formatValidationFieldLabel(field), getStatusColor("warn")));
+        });
+        fieldSection.appendChild(fieldWrap);
+        detail.appendChild(fieldSection);
+    }
+
+    if (dependencyDown && blockers.length > 0) {
+        const blockerSection = createEl("div", "mt-3 rounded-lg border border-rose-100 bg-rose-50 p-3 text-xs text-rose-800");
+        blockerSection.appendChild(createEl("div", "font-semibold", "Dependency blockers"));
+        const list = createEl("ul", "mt-2 list-disc space-y-1 pl-4");
+        blockers.forEach((issue) => {
+            const row = createEl("li", "", isRecord(issue) ? `${issue.code || "BLOCKER"}: ${issue.message || stringifyForDisplay(issue)}` : stringifyForDisplay(issue));
+            list.appendChild(row);
+        });
+        blockerSection.appendChild(list);
+        detail.appendChild(blockerSection);
+    }
+
+    elements.collectionIndexStateContent.appendChild(detail);
+}
+
+function renderCollectionValidation(validation, title) {
+    if (!elements.collectionValidation || !elements.collectionValidationContent) return;
+
+    const blockers = Array.isArray(validation?.blockers) ? validation.blockers : [];
+    const warnings = Array.isArray(validation?.warnings) ? validation.warnings : [];
+    const recommendedActions = Array.isArray(validation?.recommendedActions) ? validation.recommendedActions : [];
+    const impact = validation?.impact;
+    const dependencyDown = hasDependencyBlocker(blockers);
+    const hasImpact = isRecord(impact) && (
+        impact.reindexRequired === true ||
+        (Array.isArray(impact.immediateFields) && impact.immediateFields.length > 0) ||
+        (Array.isArray(impact.reindexFields) && impact.reindexFields.length > 0)
+    );
+
+    if (blockers.length === 0 && warnings.length === 0 && recommendedActions.length === 0 && !hasImpact) {
+        clearCollectionValidation();
+        return;
+    }
+
+    clearNode(elements.collectionValidationTitle);
+    clearNode(elements.collectionValidationSummary);
+    clearNode(elements.collectionValidationBadge);
+    clearNode(elements.collectionValidationContent);
+
+    elements.collectionValidation.classList.remove("hidden");
+    elements.collectionValidationTitle.appendChild(createEl("span", "", title || "Validation"));
+
+    const hasBlockers = blockers.length > 0;
+    const hasWarnings = warnings.length > 0;
+    const badgeState = dependencyDown ? "fail" : hasBlockers ? "fail" : hasWarnings ? "warn" : hasImpact && impact?.reindexRequired ? "warn" : hasImpact ? "info" : "ok";
+    const badgeLabel = dependencyDown
+        ? "DEPENDENCY DOWN"
+        : hasBlockers
+            ? "BLOCKED"
+            : hasWarnings
+                ? "WARNINGS"
+                : hasImpact && impact?.reindexRequired
+                    ? "RE-INDEX REQUIRED"
+                    : hasImpact
+                        ? "IMMEDIATE EFFECT"
+                        : "PASS";
+    elements.collectionValidationBadge.appendChild(createBadge(badgeLabel, getStatusColor(badgeState)));
+
+    const summaryText = dependencyDown
+        ? "A backend dependency is unavailable. Fix it before saving or re-indexing."
+        : hasBlockers
+            ? "Blocking issues were found. Fix them before saving or re-indexing."
+        : hasWarnings
+            ? "Warnings were found. Review them before continuing."
+            : hasImpact
+                ? (impact?.reindexRequired ? "These changes were saved. Some settings require re-index to take effect." : "These changes were saved and take effect immediately.")
+            : "Validation passed.";
+    elements.collectionValidationSummary.appendChild(createEl("span", "", summaryText));
+
+    if (dependencyDown) {
+        const banner = createEl("div", "mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800");
+        banner.appendChild(createEl("div", "font-semibold", "Backend dependency down"));
+        banner.appendChild(createEl("div", "mt-1 break-all-words", "Chroma or Ollama is not reachable. Validation can still report local issues, but backend-dependent actions should wait until the dependency is healthy."));
+        elements.collectionValidationContent.appendChild(banner);
+    }
+    if (recommendedActions.length > 0) {
+        appendIssueSection(elements.collectionValidationContent, "Recommended Actions", recommendedActions, "No recommended actions.", "text-slate-500");
+    }
+    if (blockers.length > 0) {
+        appendIssueSection(elements.collectionValidationContent, "Blockers", blockers, "No blockers.", "text-rose-600");
+    }
+    if (warnings.length > 0) {
+        appendIssueSection(elements.collectionValidationContent, "Warnings", warnings, "No warnings.", "text-amber-600");
+    }
+    if (hasImpact) {
+        renderValidationImpact(elements.collectionValidationContent, impact);
+    }
+}
+
 function showToast(message, type = "info", options = {}) {
     if (!elements.toastContainer) return;
     const toast = createEl(
@@ -491,6 +829,7 @@ function mergeCollectionIntoState(collection) {
     if (index >= 0) state.collections[index] = merged;
     else state.collections.push(merged);
     if (state.selectedCollection?.id === collection.id) state.selectedCollection = merged;
+    if (state.selectedCollection?.id === collection.id) renderCollectionIndexStateBanner();
     return merged;
 }
 
@@ -576,7 +915,8 @@ function renderCollections() {
         card.addEventListener("click", () => openInspector(collection.id));
 
         const icon = createEl("div", "mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 font-bold text-indigo-600", (collection.displayName || "?").charAt(0).toUpperCase());
-        const statusNote = getCollectionCardStatusNote(collection.status);
+        const statusBadge = getCollectionCardStatusBadge(collection.status, collection.indexState);
+        const statusNote = getCollectionCardStatusNote(collection.status, collection.indexState);
         const title = createEl("h3", "mt-3 break-all-words font-bold text-slate-800 transition-colors group-hover:text-indigo-600", collection.displayName || "Unnamed Collection");
         const desc = createEl("p", "mt-1 line-clamp-2 min-h-[2rem] text-xs text-slate-500", collection.description || "No description provided.");
         const footer = createEl("div", "mt-4 grid grid-cols-1 gap-2 border-t border-slate-100 pt-4 text-[10px] font-medium uppercase tracking-wider text-slate-400 sm:grid-cols-3");
@@ -584,7 +924,7 @@ function renderCollections() {
         footer.appendChild(createEl("span", "", `Version: ${formatCount(collection.activeVersion)}`));
         footer.appendChild(createEl("span", "", formatDateTime(collection.updatedAt)));
 
-        appendChildren(card, [icon, getCollectionCardStatusBadge(collection.status), statusNote, title, desc, footer]);
+        appendChildren(card, [icon, statusBadge, statusNote, title, desc, footer]);
         grid.appendChild(card);
     });
 }
@@ -600,6 +940,8 @@ async function openInspector(id) {
         state.selectedCollection = null;
         state.editorInitialSnapshot = null;
         resetReadinessAndPlayground("Save the collection before checking readiness.");
+        clearCollectionIndexStateBanner();
+        clearCollectionValidation();
         clearEditorForm();
         elements.inspectorTitle.textContent = "Create Collection";
         clearNode(elements.inspectorStatusBadge);
@@ -620,6 +962,8 @@ async function openInspector(id) {
     state.selectedCollection = collection;
     state.editorInitialSnapshot = null;
     resetReadinessAndPlayground("Readiness has not been loaded yet.");
+    renderCollectionIndexStateBanner();
+    clearCollectionValidation();
     elements.inspectorTitle.textContent = collection.displayName || collection.id;
     clearNode(elements.inspectorStatusBadge);
     elements.inspectorStatusBadge.classList.remove("hidden");
@@ -639,6 +983,7 @@ async function openInspector(id) {
         elements.inspectorTitle.textContent = merged.displayName || merged.id;
         clearNode(elements.inspectorStatusBadge);
         elements.inspectorStatusBadge.appendChild(getStatusBadge(merged.status));
+        renderCollectionIndexStateBanner();
     } catch (error) {
         showErrorToast(error, "Failed to load editable collection settings");
     } finally {
@@ -651,6 +996,8 @@ async function openInspector(id) {
 function closeInspector() {
     elements.inspectorPanel.classList.add("translate-x-full");
     elements.inspectorOverlay.classList.remove("opacity-100");
+    clearCollectionIndexStateBanner();
+    clearCollectionValidation();
     setTimeout(() => elements.inspectorOverlay.classList.add("hidden"), 200);
 }
 
@@ -782,6 +1129,7 @@ async function updateReadinessTab() {
         }
     } finally {
         state.isLoading.readiness = false;
+        renderCollectionIndexStateBanner();
     }
 }
 
@@ -836,6 +1184,7 @@ function renderReadinessData(readiness) {
     }
 
     updatePlaygroundCapabilityState();
+    renderCollectionIndexStateBanner();
 }
 
 function getCapabilityState(mode) {
@@ -878,6 +1227,12 @@ function clearEditorForm() {
 function fieldValueFromCollection(collection, field) {
     if (!Object.prototype.hasOwnProperty.call(collection, field)) return "";
     return collection[field] ?? "";
+}
+
+function hasUnsavedCollectionChanges() {
+    if (!state.editorInitialSnapshot) return false;
+    const current = readEditorValues();
+    return Object.keys({ ...state.editorInitialSnapshot, ...current }).some((key) => current[key] !== state.editorInitialSnapshot[key]);
 }
 
 function setupEditorTab(collection) {
@@ -1002,6 +1357,26 @@ function buildCollectionPayload(mode) {
     return payload;
 }
 
+function getValidationTitle(mode) {
+    return mode === "create" ? "Create validation" : "Update validation";
+}
+
+function hasValidationBlockers(validation) {
+    return Array.isArray(validation?.blockers) && validation.blockers.length > 0;
+}
+
+function hasValidationWarnings(validation) {
+    return Array.isArray(validation?.warnings) && validation.warnings.length > 0;
+}
+
+function validateCollectionOnServer(mode, collectionId, payload = buildCollectionPayload(mode)) {
+    const url = mode === "create" ? adminCollectionValidateUrl() : adminCollectionValidateUrl(collectionId);
+    return apiRequest(url, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
 async function saveCollection() {
     const id = elements.editId.value;
     const mode = id ? "update" : "create";
@@ -1019,14 +1394,66 @@ async function saveCollection() {
 
     try {
         setButtonLoading(elements.btnSave, true, "Saving...");
+        const validation = await validateCollectionOnServer(mode, id, payload);
+        if (hasValidationBlockers(validation)) {
+            renderCollectionValidation(validation, getValidationTitle(mode));
+            showToast("Validation blocked the save.", "error", {
+                issues: validation.blockers,
+            });
+            return;
+        }
+        const hasWarnings = hasValidationWarnings(validation);
+        const hasImpact = Boolean(validation?.impact?.reindexRequired) ||
+            (Array.isArray(validation?.impact?.immediateFields) && validation.impact.immediateFields.length > 0) ||
+            (Array.isArray(validation?.impact?.reindexFields) && validation.impact.reindexFields.length > 0);
+        const shouldKeepOpen = hasWarnings || hasImpact;
         if (mode === "create") {
             const data = await apiRequest(`${API.admin}/collections`, { method: "POST", body: JSON.stringify(payload) });
             showToast(`Collection created: ${data?.collection?.id || payload.displayName}`, "success");
+            await loadCollections();
+            if (shouldKeepOpen) {
+                const createdId = data?.collection?.id;
+                if (createdId) {
+                    const refreshed = await loadAdminCollectionDetail(createdId);
+                    state.selectedCollection = mergeCollectionIntoState(refreshed);
+                    elements.inspectorTitle.textContent = refreshed.displayName || refreshed.id;
+                    clearNode(elements.inspectorStatusBadge);
+                    elements.inspectorStatusBadge.classList.remove("hidden");
+                    elements.inspectorStatusBadge.appendChild(getStatusBadge(refreshed.status));
+                    setInspectorActionsEnabled(true);
+                    setCollectionTabsEnabled(true);
+                    setupEditorTab(refreshed);
+                }
+                renderCollectionValidation(validation, getValidationTitle(mode));
+                showToast(
+                    validation.impact.reindexRequired
+                        ? "Collection saved. Initial re-index is required before it can be used."
+                        : "Collection saved. Review the validation warnings.",
+                    "info",
+                );
+                return;
+            }
         } else {
             await apiRequest(adminCollectionUrl(id), { method: "PATCH", body: JSON.stringify(payload) });
             showToast("Collection updated.", "success");
+            await loadCollections();
+            if (shouldKeepOpen) {
+                const refreshed = await loadAdminCollectionDetail(id);
+                state.selectedCollection = mergeCollectionIntoState(refreshed);
+                elements.inspectorTitle.textContent = refreshed.displayName || refreshed.id;
+                clearNode(elements.inspectorStatusBadge);
+                elements.inspectorStatusBadge.classList.remove("hidden");
+                elements.inspectorStatusBadge.appendChild(getStatusBadge(refreshed.status));
+                setInspectorActionsEnabled(true);
+                setCollectionTabsEnabled(true);
+                setupEditorTab(refreshed);
+                renderCollectionValidation(validation, getValidationTitle(mode));
+                showToast(validation.impact.reindexRequired
+                    ? "Collection saved. Re-index is required to apply indexed settings."
+                    : "Collection saved. Immediate settings are now active. Review warnings if present.", "info");
+                return;
+            }
         }
-        await loadCollections();
         closeInspector();
     } catch (error) {
         showErrorToast(error, "Save failed");
@@ -1215,8 +1642,26 @@ async function runPlayground() {
 
 async function reindexCollection() {
     if (!state.selectedCollection) return;
+    if (hasUnsavedCollectionChanges()) {
+        showToast("Save the collection changes before re-indexing.", "error");
+        return;
+    }
     try {
         setButtonLoading(elements.btnReindex, true, "Starting...");
+        const validation = await validateCollectionOnServer("update", state.selectedCollection.id, {});
+        if (hasValidationBlockers(validation)) {
+            renderCollectionValidation(validation, "Re-index validation");
+            showToast("Validation blocked the re-index.", "error", {
+                issues: validation.blockers,
+            });
+            return;
+        }
+        if (hasValidationWarnings(validation)) {
+            renderCollectionValidation(validation, "Re-index validation");
+        } else {
+            clearCollectionValidation();
+        }
+
         const data = await apiRequest(`${API.admin}/collections/${state.selectedCollection.id}/reindex`, { method: "POST" });
         if (data?.job) rememberJob(data.job, state.selectedCollection);
         showToast(`Re-indexing started: ${shortId(data?.job?.id || "")}`, "success");

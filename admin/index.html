@@ -145,6 +145,28 @@
         </div>
 
         <div class="flex-grow overflow-y-auto p-6">
+            <div id="collectionIndexState" class="hidden mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <div id="collectionIndexStateTitle" class="text-xs font-bold uppercase tracking-wider text-slate-500">Index State</div>
+                        <div id="collectionIndexStateSummary" class="mt-1 text-sm text-slate-700"></div>
+                    </div>
+                    <span id="collectionIndexStateBadge" class="shrink-0"></span>
+                </div>
+                <div id="collectionIndexStateContent" class="mt-4 space-y-4"></div>
+            </div>
+
+            <div id="collectionValidation" class="hidden mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <div id="collectionValidationTitle" class="text-xs font-bold uppercase tracking-wider text-slate-500">Validation</div>
+                        <div id="collectionValidationSummary" class="mt-1 text-sm text-slate-700"></div>
+                    </div>
+                    <span id="collectionValidationBadge" class="shrink-0"></span>
+                </div>
+                <div id="collectionValidationContent" class="mt-4 space-y-4"></div>
+            </div>
+
             <!-- Tabs Navigation -->
             <div class="flex border-b border-slate-200 mb-6">
                 <button type="button" data-tab="ready" class="tab-btn active px-4 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">Readiness</button>

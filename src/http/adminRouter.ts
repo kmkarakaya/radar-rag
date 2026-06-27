@@ -1,12 +1,18 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
-import { z } from "zod";
 import type { AppDependencies } from "../app.js";
 import { HttpError } from "./errors.js";
 import { config, type ResolvedConfig } from "../config.js";
 import { startReindexJob } from "../indexing/jobs.js";
 import type { RequestContext } from "./requestContext.js";
 import type { CreateCollectionInput, IndexJobStatus, ListJobsInput } from "../collections/types.js";
+import { collectionCreateSchema, collectionUpdateSchema } from "./collectionSchemas.js";
+import {
+  buildCreateCollectionInput,
+  buildCreateValidationDraft,
+  buildUpdateValidationDraft,
+  validateCollectionDraft,
+} from "./collectionValidation.js";
 
 const JOB_STATUS_VALUES = ["queued", "running", "succeeded", "failed", "cancelled"] as const satisfies readonly IndexJobStatus[];
 
@@ -83,23 +89,9 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     };
   }
 
-  const createCollectionSchema = z.object({
-    displayName: z.string().trim().min(1),
-    description: z.string().optional(),
-    sourcePath: z.string().trim().min(1).optional(),
-    ozelgeDataPath: z.string().trim().min(1).optional(),
-    distanceMetric: z.enum(["l2", "cosine", "ip"]).optional(),
-    chunkSize: z.number().int().positive().optional(),
-    chunkOverlap: z.number().int().nonnegative().optional(),
-    retrievalK: z.number().int().positive().optional(),
-    retrievalDistanceThreshold: z.number().nonnegative().optional(),
-    embeddingModel: z.string().trim().min(1).optional(),
-    chatModel: z.string().trim().min(1).optional(),
-  }).strict();
-
   router.post("/collections", requireRegistry, async (req, res, next) => {
     try {
-      const parsed = createCollectionSchema.safeParse(req.body);
+      const parsed = collectionCreateSchema.safeParse(req.body);
       if (!parsed.success) {
         throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid collection configuration", {
           issues: parsed.error.issues,
@@ -108,20 +100,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
 
       const context = res.locals.requestContext as RequestContext;
 
-      const input: CreateCollectionInput = {
-        displayName: parsed.data.displayName,
-        description: parsed.data.description,
-        sourcePath: parsed.data.sourcePath ?? runtimeConfig.collectionDefaults.sourcePath,
-        ozelgeDataPath: parsed.data.ozelgeDataPath ?? runtimeConfig.collectionDefaults.ozelgeDataPath,
-        distanceMetric: parsed.data.distanceMetric ?? runtimeConfig.collectionDefaults.distanceMetric,
-        chunkSize: parsed.data.chunkSize ?? runtimeConfig.collectionDefaults.chunkSize,
-        chunkOverlap: parsed.data.chunkOverlap ?? runtimeConfig.collectionDefaults.chunkOverlap,
-        retrievalK: parsed.data.retrievalK ?? runtimeConfig.collectionDefaults.retrievalK,
-        retrievalDistanceThreshold:
-          parsed.data.retrievalDistanceThreshold ?? runtimeConfig.collectionDefaults.retrievalDistanceThreshold,
-        embeddingModel: parsed.data.embeddingModel ?? runtimeConfig.ollamaEmbeddingModel,
-        chatModel: parsed.data.chatModel ?? runtimeConfig.ollamaChatModel,
-      };
+      const input: CreateCollectionInput = buildCreateCollectionInput(parsed.data, runtimeConfig);
 
       const collection = await deps.registry!.createCollection(context, input);
       res.status(201).json({
@@ -136,20 +115,6 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     }
   });
 
-  const updateCollectionSchema = z.object({
-    displayName: z.string().trim().min(1).optional(),
-    description: z.string().nullable().optional(),
-    sourcePath: z.string().trim().min(1).optional(),
-    ozelgeDataPath: z.string().trim().min(1).optional(),
-    distanceMetric: z.enum(["l2", "cosine", "ip"]).optional(),
-    chunkSize: z.number().int().positive().optional(),
-    chunkOverlap: z.number().int().nonnegative().optional(),
-    retrievalK: z.number().int().positive().optional(),
-    retrievalDistanceThreshold: z.number().nonnegative().optional(),
-    embeddingModel: z.string().trim().min(1).optional(),
-    chatModel: z.string().trim().min(1).optional(),
-  }).strict();
-
   router.get("/collections/:collectionId", requireRegistry, async (req, res, next) => {
     try {
       const collectionId = req.params.collectionId as string;
@@ -161,10 +126,59 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     }
   });
 
+  router.post("/collections/validate", requireRegistry, async (req, res, next) => {
+    try {
+      const parsed = collectionCreateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid collection configuration", {
+          issues: parsed.error.issues,
+        });
+      }
+
+      const context = res.locals.requestContext as RequestContext;
+      const input = buildCreateCollectionInput(parsed.data, runtimeConfig);
+      const validation = await validateCollectionDraft(
+        buildCreateValidationDraft(input),
+        runtimeConfig,
+        deps.registry!,
+        context,
+        deps.healthChecks,
+      );
+      res.json(validation);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/collections/:collectionId/validate", requireRegistry, async (req, res, next) => {
+    try {
+      const collectionId = req.params.collectionId as string;
+      const context = res.locals.requestContext as RequestContext;
+      const collection = await requireVisibleCollection(context, collectionId);
+      const parsed = collectionUpdateSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid collection update payload", {
+          issues: parsed.error.issues,
+        });
+      }
+
+      const validation = await validateCollectionDraft(
+        buildUpdateValidationDraft(collection, parsed.data),
+        runtimeConfig,
+        deps.registry!,
+        context,
+        deps.healthChecks,
+      );
+      res.json(validation);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.patch("/collections/:collectionId", requireRegistry, async (req, res, next) => {
     try {
       const collectionId = req.params.collectionId as string;
-      const parsed = updateCollectionSchema.safeParse(req.body);
+      const parsed = collectionUpdateSchema.safeParse(req.body);
       if (!parsed.success) {
         throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid collection update payload", {
           issues: parsed.error.issues,

@@ -10,6 +10,24 @@ export type CollectionStatus = "creating" | "indexing" | "ready" | "failed" | "a
 export type IndexJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 export type PhysicalCollectionStatus = "building" | "failed_build" | "active" | "retired" | "delete_pending" | "deleted" | "cleanup_failed";
 
+export type CollectionIndexSnapshot = {
+  sourcePath: string;
+  ozelgeDataPath: string;
+  distanceMetric: DistanceMetric;
+  chunkSize: number;
+  chunkOverlap: number;
+  embeddingModel: string;
+};
+
+export type CollectionIndexState = {
+  status: "no_active_index" | "synced" | "reindex_required";
+  reindexRequired: boolean;
+  activeSnapshot: CollectionIndexSnapshot | null;
+  desiredSnapshot: CollectionIndexSnapshot;
+  changedFields: Array<keyof CollectionIndexSnapshot>;
+  note: string;
+};
+
 export type RagCollection = {
   id: string;
   tenantId: string;
@@ -35,6 +53,7 @@ export type RagCollection = {
   createdAt: string;
   updatedAt: string;
   lastIndexedAt?: string;
+  indexState?: CollectionIndexState;
 };
 
 export type IndexJob = {

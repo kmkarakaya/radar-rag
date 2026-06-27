@@ -123,7 +123,14 @@ Public collection list and detail responses use a sanitized DTO:
   "indexState": {
     "status": "synced",
     "reindexRequired": false,
-    "activeSnapshot": null,
+    "activeSnapshot": {
+      "sourcePath": "data",
+      "ozelgeDataPath": "data/ozelge_veri.json",
+      "distanceMetric": "cosine",
+      "chunkSize": 1000,
+      "chunkOverlap": 200,
+      "embeddingModel": "bge-m3"
+    },
     "desiredSnapshot": {
       "sourcePath": "data",
       "ozelgeDataPath": "data/ozelge_veri.json",
@@ -133,7 +140,7 @@ Public collection list and detail responses use a sanitized DTO:
       "embeddingModel": "bge-m3"
     },
     "changedFields": [],
-    "note": "No indexed settings changed."
+    "note": "Saved settings are aligned with the active indexed snapshot."
   },
   "readyUrl": "/v1/rag/collections/col_123/ready",
   "queryUrl": "/v1/rag/collections/col_123/query",
@@ -146,6 +153,7 @@ Notes:
 - Public DTOs do not expose top-level `tenantId`, `sourcePath`, `embeddingModel`, `chatModel`, `activePhysicalCollection`, or `activeEmbeddingModel`.
 - `description`, `chunkCount`, `activeVersion`, and `indexState` may be `null`.
 - `status` can be `creating`, `indexing`, `ready`, `failed`, or `archived`.
+- If a collection has a real active indexed snapshot, `indexState.activeSnapshot` is typically present and should not be assumed to be `null`.
 
 ## Public Endpoints
 
@@ -169,7 +177,14 @@ Example response:
       "indexState": {
         "status": "synced",
         "reindexRequired": false,
-        "activeSnapshot": null,
+        "activeSnapshot": {
+          "sourcePath": "data",
+          "ozelgeDataPath": "data/ozelge_veri.json",
+          "distanceMetric": "cosine",
+          "chunkSize": 1000,
+          "chunkOverlap": 200,
+          "embeddingModel": "bge-m3"
+        },
         "desiredSnapshot": {
           "sourcePath": "data",
           "ozelgeDataPath": "data/ozelge_veri.json",
@@ -179,7 +194,7 @@ Example response:
           "embeddingModel": "bge-m3"
         },
         "changedFields": [],
-        "note": "No indexed settings changed."
+        "note": "Saved settings are aligned with the active indexed snapshot."
       },
       "readyUrl": "/v1/rag/collections/col_123/ready",
       "queryUrl": "/v1/rag/collections/col_123/query",
@@ -202,6 +217,12 @@ This is the most important endpoint for frontend behavior. It tells the client w
 - answer questions,
 - retrieve source chunks,
 - accept a reindex request.
+
+Important:
+
+- This endpoint can return `200 OK` even when `query` and `retrieve` are blocked.
+- Use `capabilities`, `blockers`, and `warnings`, not the HTTP status, to decide which UI actions to enable.
+- The public payload intentionally does not expose `activePhysicalCollection`.
 
 Example: collection has no active physical collection yet, but a job is queued:
 
@@ -288,6 +309,12 @@ Example: collection is rebuilding, but the previous active snapshot is still rea
 }
 ```
 
+Embedding model nuance:
+
+- `modelAvailability.embeddingModel` is the model used by live reads right now.
+- If `modelAvailability.desiredEmbeddingModel` appears, the admin configuration was changed and a reindex is still needed before live reads switch to that future embedding model.
+- This matters after an admin updates `embeddingModel` but before reindex completes.
+
 Frontend rule:
 
 - use `capabilities.query` and `capabilities.retrieve`,
@@ -339,6 +366,7 @@ Notes:
 
 - `k` is optional and defaults to the collection's configured `retrievalK`.
 - `sourceCount` equals `sources.length`.
+- `retrieve.sources` is the threshold-filtered retrieval result set returned by the backend for evidence browsing.
 - `debug.latency` appears only when server-side debug timings are enabled.
 
 ### `POST /v1/rag/collections/:collectionId/query`
@@ -382,6 +410,7 @@ Response body:
 Notes:
 
 - `query` internally performs retrieval first.
+- `query.sources` may be a subset of the broader retrieval result set because the backend trims context to fit generation limits.
 - The backend may return `422` even when the request is syntactically valid, because the model could not produce a grounded answer.
 - `debug.latency` appears only when server-side debug timings are enabled.
 
@@ -389,7 +418,7 @@ Notes:
 
 | Code | HTTP status | Meaning |
 | --- | --- | --- |
-| `INVALID_REQUEST_BODY` | `400` | Bad JSON, payload too large, or schema mismatch |
+| `INVALID_REQUEST_BODY` | `400` or `413` | Bad JSON, payload too large, or schema mismatch |
 | `COLLECTION_FORBIDDEN` | `403` | Collection exists but is not visible to the current tenant |
 | `COLLECTION_NOT_FOUND` | `404` | Collection does not exist |
 | `COLLECTION_NOT_READY` | `404` | Collection exists but has no active indexed version and is not indexing |
@@ -402,6 +431,7 @@ Notes:
 | `COLLECTION_STORAGE_INCONSISTENT` | `503` | Metadata and physical storage disagree |
 | `RATE_LIMIT_EXCEEDED` | `429` | Operation-specific rate limit hit |
 | `ROUTE_NOT_FOUND` | `404` | Wrong URL or legacy endpoint |
+| `INTERNAL_ERROR` | `500` | Required backend dependency is missing or another internal failure occurred |
 
 Example error envelope:
 
@@ -419,6 +449,11 @@ Example error envelope:
 
 ## Rate Limiting And Body Limits
 
-- Query, retrieve, and reindex endpoints emit `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`.
+- Successful and rejected query, retrieve, and reindex responses emit `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`.
 - When rate-limited, the backend returns `429 RATE_LIMIT_EXCEEDED` and a `Retry-After` header.
 - JSON bodies larger than `1mb` are rejected with `413` and `code: INVALID_REQUEST_BODY`.
+
+## Structured Validation Errors
+
+- Error responses may include `requestId`. Preserve and log it.
+- Schema-validation failures commonly include `details.issues`, especially on `INVALID_REQUEST_BODY`.

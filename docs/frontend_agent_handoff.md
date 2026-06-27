@@ -22,11 +22,15 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 3. Always send `x-tenant-id`, `x-user-id`, and `x-request-id`.
 4. Before enabling a collection's `query` or `retrieve` action, call `GET /v1/rag/collections/:collectionId/ready`.
 5. Use `ready.capabilities.query` and `ready.capabilities.retrieve` as the source of truth. Do not infer capability from `status` alone.
-6. Expect `202 Accepted` from reindex and poll jobs or readiness until indexing settles.
-7. Expect `204 No Content` from delete and cancel endpoints.
-8. Treat `debug` fields as optional. They appear only when the server is configured with debug timings enabled.
-9. Distinguish `403`, `404`, `409`, `422`, `429`, `502`, and `503`; they have different meanings.
-10. Public collection DTOs are sanitized compared to admin collection DTOs. Do not expect admin-only fields from public endpoints.
+6. Treat `GET /v1/rag/collections/:collectionId/ready` as a semantic `200`: it can succeed while still reporting blockers and disabled capabilities.
+7. Do not expect `activePhysicalCollection` from public RAG endpoints. The backend intentionally hides that internal storage identifier.
+8. Expect `202 Accepted` from reindex and poll jobs or readiness until indexing settles.
+9. Expect `204 No Content` from delete and cancel endpoints.
+10. Treat `debug` fields as optional. They appear only when the server is configured with debug timings enabled.
+11. Distinguish `400`, `403`, `404`, `409`, `413`, `422`, `429`, `502`, and `503`; they have different meanings.
+12. Public collection DTOs are sanitized compared to admin collection DTOs. Do not expect admin-only fields from public endpoints.
+13. `POST /query` may return only the subset of sources actually passed into generation. Use `POST /retrieve` when the UI needs the fuller evidence set.
+14. Query, retrieve, and reindex responses include rate-limit headers; a `429` also includes `Retry-After`.
 
 ## Canonical End-User RAG Workflow
 
@@ -54,7 +58,7 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 | Operation | Endpoint | Use when | Returns |
 | --- | --- | --- | --- |
 | `retrieve` | `POST /v1/rag/collections/:collectionId/retrieve` | The UI should show relevant source chunks without generating an answer | `sources`, threshold, collection metadata, optional debug timings |
-| `query` | `POST /v1/rag/collections/:collectionId/query` | The UI should return a grounded answer generated from retrieved context | `answer`, `sources`, threshold, collection metadata, optional debug timings |
+| `query` | `POST /v1/rag/collections/:collectionId/query` | The UI should return a grounded answer generated from retrieved context | `answer`, generation-context `sources`, threshold, collection metadata, optional debug timings |
 
 ## Readiness-Driven UI States
 
@@ -71,16 +75,25 @@ Use the readiness payload to drive the UI:
 - `recommendedActions`
   Render these directly in the UI; the backend already provides actionable text.
 
+## Snapshot Semantics
+
+- A collection can have a desired embedding model in admin configuration and a different active embedding model used by live RAG reads.
+- Until a new reindex completes, `query` and `retrieve` continue using `activeEmbeddingModel`.
+- When those differ, `GET /v1/rag/collections/:collectionId/ready` exposes:
+  - `modelAvailability.embeddingModel`: the model used for live reads now
+  - `modelAvailability.desiredEmbeddingModel`: the configured future model that becomes active after reindex
+- Treat `desiredEmbeddingModel` as a pending-change indicator, not as the currently effective read model.
+
 ## Error Handling Rules
 
 | Code | Typical HTTP status | Meaning | Frontend reaction |
 | --- | --- | --- | --- |
-| `INVALID_REQUEST_BODY` | `400` | Body shape or field values are invalid | Fix the client payload or form validation |
-| `COLLECTION_FORBIDDEN` | `403` | The collection exists but the current tenant cannot access it | Show authorization/tenant scope error |
+| `INVALID_REQUEST_BODY` | `400` or `413` | Body shape is invalid, JSON is malformed, or the JSON body exceeded the size limit | Fix the client payload or form validation |
+| `COLLECTION_FORBIDDEN` | `403` | The collection exists but the current tenant cannot access it | Show authorization or tenant scope error |
 | `COLLECTION_NOT_FOUND` | `404` | The collection does not exist or was soft-deleted | Remove stale UI state |
 | `COLLECTION_NOT_READY` | `404` | The collection exists but has no active indexed version and is not indexing | Show setup or reindex prompt |
 | `COLLECTION_INDEXING` | `503` | The collection has no active indexed version yet and is still indexing | Show pending state and retry |
-| `NO_RELEVANT_CONTEXT` | `422` | Retrieval found no acceptable context under the distance threshold | Show a "no grounded result" state |
+| `NO_RELEVANT_CONTEXT` | `422` | Retrieval found no acceptable context under the distance threshold | Show a grounded no-result state |
 | `ANSWER_NOT_IN_RETRIEVED_CONTEXT` | `422` | Chunks were retrieved but they do not support an answer | Show sources, but do not fabricate an answer |
 | `EMPTY_MODEL_RESPONSE` | `502` | The chat model returned an empty response | Show transient backend failure |
 | `DISALLOWED_FALLBACK_ANSWER` | `502` | The model returned a blocked fallback string | Show transient backend failure |
@@ -90,6 +103,7 @@ Use the readiness payload to drive the UI:
 | `COLLECTION_INDEX_ALREADY_RUNNING` | `409` | A reindex job is already active | Reuse the existing job state |
 | `INVALID_JOB_STATUS` | `400` | A job action was attempted in the wrong state | Disable the action in the UI |
 | `ROUTE_NOT_FOUND` | `404` | The route itself does not exist | Do not retry with the same URL |
+| `INTERNAL_ERROR` | `500` | Required backend dependency is missing or another internal failure occurred | Show a backend failure state and log the `requestId` |
 
 ## Request Header Contract
 
@@ -103,14 +117,46 @@ Use the readiness payload to drive the UI:
 
 - Poll collection readiness every `2-5s` while a collection has an active queued or running job.
 - Poll job detail or job list every `2-5s` while the user is on an operations screen.
-- Stop polling once the job becomes terminal or the readiness payload no longer reports an active queued/running job.
+- Stop polling once the job becomes terminal or the readiness payload no longer reports an active queued or running job.
 - Honor `Retry-After` when the backend returns `429`.
+
+## Minimal Client Pattern
+
+```ts
+type ApiError = {
+  error: string;
+  code: string;
+  message: string;
+  requestId?: string;
+  details?: Record<string, unknown>;
+};
+
+async function api<T>(path: string, init: RequestInit = {}): Promise<T | void> {
+  const res = await fetch(path, {
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      "x-tenant-id": tenantId,
+      "x-user-id": userId,
+      "x-request-id": crypto.randomUUID(),
+      ...init.headers,
+    },
+  });
+
+  if (res.status === 204) return;
+
+  const body = await res.json();
+  if (!res.ok) throw body as ApiError;
+  return body as T;
+}
+```
 
 ## Things The Frontend Must Not Assume
 
 - Do not assume every collection in the list is queryable.
 - Do not assume `status: indexing` means query is blocked; the collection may still have a readable active version.
 - Do not assume `query` and `retrieve` fail for the same reasons.
+- Do not assume `query.sources` is the same full source set that `retrieve` would return.
 - Do not assume a public collection DTO contains admin-only configuration.
 - Do not assume every successful response contains `debug`.
 - Do not assume delete endpoints return JSON.
@@ -130,7 +176,8 @@ Rules:
 - Use only the versioned /v1 endpoints.
 - Use GET /v1/rag/collections/:collectionId/ready as the source of truth for enabling query and retrieve actions.
 - Preserve x-tenant-id, x-user-id, and x-request-id headers.
-- Handle 202, 204, 409, 422, 429, 502, and 503 correctly.
+- Handle 202, 204, 409, 413, 422, 429, 502, and 503 correctly.
 - Do not invent endpoints or response fields.
 - If a response contains blockers, warnings, or recommendedActions, surface them in the UI instead of replacing them with guessed text.
+- If ready.modelAvailability.desiredEmbeddingModel exists, treat it as a pending post-reindex model change, not as the current live embedding model.
 ```

@@ -145,6 +145,13 @@ paths:
       responses:
         "200":
           description: Retrieved source chunks
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/XRateLimitReset"
           content:
             application/json:
               schema:
@@ -158,7 +165,20 @@ paths:
         "413":
           $ref: "#/components/responses/ApiError"
         "429":
-          $ref: "#/components/responses/ApiError"
+          description: Rate-limited
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/XRateLimitReset"
+            Retry-After:
+              $ref: "#/components/headers/RetryAfter"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
         "503":
           $ref: "#/components/responses/ApiError"
   /v1/rag/collections/{collectionId}/query:
@@ -180,6 +200,13 @@ paths:
       responses:
         "200":
           description: Generated answer with sources
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/XRateLimitReset"
           content:
             application/json:
               schema:
@@ -195,7 +222,20 @@ paths:
         "422":
           $ref: "#/components/responses/ApiError"
         "429":
-          $ref: "#/components/responses/ApiError"
+          description: Rate-limited
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/XRateLimitReset"
+            Retry-After:
+              $ref: "#/components/headers/RetryAfter"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
         "502":
           $ref: "#/components/responses/ApiError"
         "503":
@@ -375,6 +415,13 @@ paths:
       responses:
         "202":
           description: Reindex accepted
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/XRateLimitReset"
           content:
             application/json:
               schema:
@@ -386,7 +433,20 @@ paths:
         "409":
           $ref: "#/components/responses/ApiError"
         "429":
-          $ref: "#/components/responses/ApiError"
+          description: Rate-limited
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/XRateLimitReset"
+            Retry-After:
+              $ref: "#/components/headers/RetryAfter"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
         "500":
           $ref: "#/components/responses/ApiError"
   /v1/admin/jobs:
@@ -405,6 +465,9 @@ paths:
       responses:
         "200":
           description: Job list
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControlNoStore"
           content:
             application/json:
               schema:
@@ -452,6 +515,9 @@ paths:
       responses:
         "200":
           description: Job detail
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControlNoStore"
           content:
             application/json:
               schema:
@@ -498,6 +564,28 @@ paths:
         "500":
           $ref: "#/components/responses/ApiError"
 components:
+  headers:
+    XRateLimitLimit:
+      description: Maximum requests allowed in the current window.
+      schema:
+        type: string
+    XRateLimitRemaining:
+      description: Remaining allowed requests in the current window.
+      schema:
+        type: string
+    XRateLimitReset:
+      description: ISO timestamp when the current rate-limit window resets.
+      schema:
+        type: string
+        format: date-time
+    RetryAfter:
+      description: Seconds until the client should retry the rate-limited request.
+      schema:
+        type: string
+    CacheControlNoStore:
+      description: Returned as no-store for job endpoints.
+      schema:
+        type: string
   parameters:
     XTenantId:
       name: x-tenant-id
@@ -1047,6 +1135,7 @@ components:
       properties:
         embeddingModel:
           type: string
+          description: Model currently used by live retrieval and query reads.
         embeddingModelAvailable:
           type: boolean
         chatModel:
@@ -1055,6 +1144,9 @@ components:
           type: boolean
         desiredEmbeddingModel:
           type: string
+          description: >
+            Future embedding model from saved admin configuration. Present when a
+            reindex is still needed before live reads switch models.
     CollectionReadinessCapabilities:
       type: object
       required: [query, retrieve, reindex]
@@ -1067,6 +1159,9 @@ components:
           type: boolean
     CollectionReadinessPayload:
       type: object
+      description: >
+        Collection-specific readiness. This endpoint can return 200 even when
+        query and retrieve are blocked; consult capabilities, blockers, and warnings.
       required:
         - id
         - status
@@ -1204,6 +1299,7 @@ components:
           type: number
         sources:
           type: array
+          description: Threshold-filtered retrieval results for evidence browsing.
           items:
             $ref: "#/components/schemas/RagSource"
         collectionId:
@@ -1238,6 +1334,9 @@ components:
           type: number
         sources:
           type: array
+          description: >
+            Sources actually passed into generation. This may be a subset of the
+            broader retrieval result set due to context-budget trimming.
           items:
             $ref: "#/components/schemas/RagSource"
         collectionId:

@@ -75,6 +75,13 @@ Reindex-bound fields:
 
 If any reindex-bound field changes, the backend persists the configuration but expects a reindex before the indexed snapshot fully matches the desired settings.
 
+## Live Read Model vs Desired Model
+
+- Updating `embeddingModel` does not immediately change the model used by public RAG reads.
+- Until the next successful reindex completes, `query` and `retrieve` keep using the collection's snapshotted `activeEmbeddingModel`.
+- This means an admin save can succeed while the public query path still runs on the previous embedding model.
+- The public readiness payload reflects this with `modelAvailability.embeddingModel` for the live read model and `modelAvailability.desiredEmbeddingModel` for the future post-reindex model when they differ.
+
 ## Collection Endpoints
 
 ### `POST /v1/admin/collections`
@@ -118,6 +125,8 @@ Example response:
     "tenantId": "default",
     "displayName": "API Patched Collection",
     "status": "ready",
+    "activePhysicalCollection": "api-test-active-physical",
+    "activeVersion": "v-active-1",
     "sourcePath": "data/api-test-updated",
     "ozelgeDataPath": "data/api-test-updated-ozelge.json",
     "embeddingModel": "embed-patched-http",
@@ -138,7 +147,14 @@ Example response:
     "indexState": {
       "status": "reindex_required",
       "reindexRequired": true,
-      "activeSnapshot": null,
+      "activeSnapshot": {
+        "sourcePath": "data/api-test",
+        "ozelgeDataPath": "data/ozelge_veri.json",
+        "distanceMetric": "cosine",
+        "chunkSize": 1000,
+        "chunkOverlap": 200,
+        "embeddingModel": "bge-m3"
+      },
       "desiredSnapshot": {
         "sourcePath": "data/api-test-updated",
         "ozelgeDataPath": "data/api-test-updated-ozelge.json",
@@ -148,9 +164,14 @@ Example response:
         "embeddingModel": "embed-patched-http"
       },
       "changedFields": [
-        "chunkOverlap"
+        "sourcePath",
+        "ozelgeDataPath",
+        "distanceMetric",
+        "chunkSize",
+        "chunkOverlap",
+        "embeddingModel"
       ],
-      "note": "These settings are saved, but they only take effect after re-index completes."
+      "note": "Saved indexing settings differ from the active indexed snapshot. Re-index required to apply them."
     }
   }
 }
@@ -255,6 +276,7 @@ Notes:
 
 - Unknown body keys are rejected with `400 INVALID_REQUEST_BODY`.
 - Patching reindex-bound fields usually changes `collection.indexState` to `reindex_required`.
+- After patching `embeddingModel`, public RAG reads keep using the snapshotted active embedding model until reindex succeeds.
 
 ### `DELETE /v1/admin/collections/:collectionId`
 
@@ -314,6 +336,8 @@ Notes:
 - `status` may be repeated or comma-separated.
 - Valid status filter values are `queued`, `running`, `succeeded`, `failed`, `cancelled`.
 - Response includes `Cache-Control: no-store`.
+- `nextCursor` is opaque and may be `null`.
+- `collection` can be `null` for a job row if the collection snapshot is no longer available.
 
 Example response:
 
@@ -397,19 +421,25 @@ Rules:
 
 - Allowed only for `queued` or `running`.
 - If the job is already terminal, the backend returns `400 INVALID_JOB_STATUS`.
+- After cancellation, refetch collection detail and public readiness because collection status can change immediately.
 
 ## Admin Error Codes
 
 | Code | HTTP status | Meaning |
 | --- | --- | --- |
-| `INVALID_REQUEST_BODY` | `400` | Invalid create, update, validate, cursor, or bulk-delete payload |
+| `INVALID_REQUEST_BODY` | `400` or `413` | Invalid create, update, validate, cursor, or bulk-delete payload, or JSON body too large |
 | `COLLECTION_FORBIDDEN` | `403` | Another tenant owns the collection |
 | `COLLECTION_NOT_FOUND` | `404` | Collection does not exist |
 | `COLLECTION_INDEX_ALREADY_RUNNING` | `409` | A reindex job is already active |
-| `INVALID_JOB_STATUS` | `400` | Job action was attempted on the wrong job state |
+| `INVALID_JOB_STATUS` | `400` | Job action was attempted in the wrong job state |
 | `ROUTE_NOT_FOUND` | `404` | Job lookup failed tenant scoping or the route is wrong |
 | `RATE_LIMIT_EXCEEDED` | `429` | Reindex limit was hit |
 | `INTERNAL_ERROR` | `500` | Required backend dependency is missing or another internal failure occurred |
+
+## Structured Validation Errors
+
+- Zod-backed payload validation failures usually include `details.issues`.
+- Error responses may include `requestId`; log it and surface it in troubleshooting screens.
 
 ## Practical Frontend Rules
 

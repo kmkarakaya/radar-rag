@@ -356,6 +356,7 @@ Response body:
       "content": "Retrieved chunk text..."
     }
   ],
+  "embeddingModel": "bge-m3",
   "collectionId": "col_123",
   "collectionDisplayName": "Tax Rulings 2026",
   "activeVersion": "v-2026-06-27"
@@ -367,6 +368,7 @@ Notes:
 - `k` is optional and defaults to the collection's configured `retrievalK`.
 - `sourceCount` equals `sources.length`.
 - `retrieve.sources` is the threshold-filtered retrieval result set returned by the backend for evidence browsing.
+- `retrieve.embeddingModel` is the effective embedding model used for the retrieval request.
 - `debug.latency` appears only when server-side debug timings are enabled.
 
 ### `POST /v1/rag/collections/:collectionId/query`
@@ -401,6 +403,8 @@ Response body:
       "content": "Retrieved chunk text..."
     }
   ],
+  "embeddingModel": "bge-m3",
+  "chatModel": "gemma3:4b-cloud",
   "collectionId": "col_123",
   "collectionDisplayName": "Tax Rulings 2026",
   "activeVersion": "v-2026-06-27"
@@ -411,6 +415,8 @@ Notes:
 
 - `query` internally performs retrieval first.
 - `query.sources` may be a subset of the broader retrieval result set because the backend trims context to fit generation limits.
+- `query.embeddingModel` is the effective embedding model used to retrieve the grounding context.
+- `query.chatModel` is the effective chat model that generated the answer.
 - The backend may return `422` even when the request is syntactically valid, because the model could not produce a grounded answer.
 - `debug.latency` appears only when server-side debug timings are enabled.
 
@@ -457,3 +463,4 @@ Example error envelope:
 
 - Error responses may include `requestId`. Preserve and log it.
 - Schema-validation failures commonly include `details.issues`, especially on `INVALID_REQUEST_BODY`.
+- Query/retrieve failures may also include the effective `embeddingModel` and `chatModel` in `details` for troubleshooting.

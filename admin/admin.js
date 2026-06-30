@@ -32,6 +32,21 @@ let state = {
     collections: [],
     selectedCollection: null,
     selectedReadiness: null,
+    modelDiscovery: {
+        reachable: false,
+        models: [],
+        embeddingModels: [],
+        chatModels: [],
+        defaults: {
+            embeddingModel: "",
+            chatModel: "",
+        },
+    },
+    configDefaults: {
+        loaded: false,
+        collectionDefaults: null,
+        modelDefaults: null,
+    },
     playgroundMode: "retrieve",
     knownJobs: loadKnownJobsFromStorage(),
     jobList: [],
@@ -54,6 +69,11 @@ let state = {
     healthStatus: null,
     readiness: null,
     readinessDetails: null,
+};
+
+const loadTokens = {
+    configDefaults: 0,
+    modelDiscovery: 0,
 };
 
 const elements = {
@@ -112,6 +132,9 @@ const elements = {
 
     colEditForm: document.getElementById("colEditForm"),
     editId: document.getElementById("editId"),
+    configDefaultsPanel: document.getElementById("configDefaultsPanel"),
+    configDefaultsSummary: document.getElementById("configDefaultsSummary"),
+    configDefaultsStatus: document.getElementById("configDefaultsStatus"),
     editDisplayName: document.getElementById("editDisplayName"),
     editDescription: document.getElementById("editDescription"),
     editSourcePath: document.getElementById("editSourcePath"),
@@ -123,6 +146,11 @@ const elements = {
     editRetrievalDistanceThreshold: document.getElementById("editRetrievalDistanceThreshold"),
     editEmbeddingModel: document.getElementById("editEmbeddingModel"),
     editChatModel: document.getElementById("editChatModel"),
+    modelDiscoveryPanel: document.getElementById("modelDiscoveryPanel"),
+    modelDiscoverySummary: document.getElementById("modelDiscoverySummary"),
+    modelDiscoveryStatus: document.getElementById("modelDiscoveryStatus"),
+    embeddingModelSelect: document.getElementById("embeddingModelSelect"),
+    chatModelSelect: document.getElementById("chatModelSelect"),
     btnCancelEdit: document.getElementById("btnCancelEdit"),
     btnSave: document.getElementById("btnSave"),
 
@@ -175,6 +203,266 @@ function adminJobsListUrl(options = {}) {
     if (options.collectionId) params.set("collectionId", options.collectionId);
     const query = params.toString();
     return query ? `${API.admin}/jobs?${query}` : `${API.admin}/jobs`;
+}
+
+function normalizeModelList(models) {
+    return [...new Set(
+        (Array.isArray(models) ? models : [])
+            .filter((value) => typeof value === "string" && value.trim() !== "")
+            .map((value) => value.trim()),
+    )];
+}
+
+function getModelDiscoveryFieldConfig(kind) {
+    if (kind === "embedding") {
+        return {
+            input: elements.editEmbeddingModel,
+            select: elements.embeddingModelSelect,
+            models: state.modelDiscovery.embeddingModels,
+        };
+    }
+
+    return {
+        input: elements.editChatModel,
+        select: elements.chatModelSelect,
+        models: state.modelDiscovery.chatModels,
+    };
+}
+
+function syncModelSelect(kind) {
+    const config = getModelDiscoveryFieldConfig(kind);
+    if (!config.select || !config.input) return;
+
+    const currentValue = config.input.value.trim();
+    const models = normalizeModelList(config.models);
+
+    clearNode(config.select);
+
+    const placeholder = createEl("option");
+    placeholder.value = "";
+    placeholder.textContent = currentValue ? `Current: ${currentValue}` : "Select a model or type manually";
+    config.select.appendChild(placeholder);
+
+    models.forEach((model) => {
+        const option = createEl("option");
+        option.value = model;
+        option.textContent = model;
+        config.select.appendChild(option);
+    });
+
+    config.select.value = models.includes(currentValue) ? currentValue : "";
+}
+
+function setModelFromSelect(kind) {
+    const config = getModelDiscoveryFieldConfig(kind);
+    if (!config.input || !config.select) return;
+    config.input.value = config.select.value;
+    syncModelDiscoveryPanel();
+}
+
+function syncModelDiscoveryPanel() {
+    if (!elements.modelDiscoveryPanel) return;
+
+    if (elements.modelDiscoveryStatus) {
+        elements.modelDiscoveryStatus.textContent = state.modelDiscovery.reachable ? "Online" : "Offline";
+        elements.modelDiscoveryStatus.className = state.modelDiscovery.reachable
+            ? "rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-700"
+            : "rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-700";
+    }
+
+    if (elements.modelDiscoverySummary) {
+        const allCount = normalizeModelList(state.modelDiscovery.models).length;
+        const embeddingCount = normalizeModelList(state.modelDiscovery.embeddingModels).length;
+        const chatCount = normalizeModelList(state.modelDiscovery.chatModels).length;
+        elements.modelDiscoverySummary.textContent = state.modelDiscovery.reachable
+            ? `GET /v1/admin/models returned ${allCount} models: ${chatCount} chatModels, ${embeddingCount} embeddingModels. Defaults: ${state.modelDiscovery.defaults.embeddingModel || "-"} / ${state.modelDiscovery.defaults.chatModel || "-"}.`
+            : `GET /v1/admin/models unavailable. Using defaults: ${state.modelDiscovery.defaults.embeddingModel || "-"} / ${state.modelDiscovery.defaults.chatModel || "-"}.`;
+    }
+
+    syncModelSelect("embedding");
+    syncModelSelect("chat");
+}
+
+function formatConfigDefault(value) {
+    if (value === undefined || value === null || value === "") return "-";
+    return String(value);
+}
+
+function setCreateFieldDefault(field, value) {
+    const helper = document.querySelector(`[data-default-for="${field}"]`);
+    if (helper) helper.textContent = value;
+}
+
+function syncConfigDefaultsPanel() {
+    if (!elements.configDefaultsPanel) return;
+
+    const isCreateMode = !elements.editId.value;
+    elements.configDefaultsPanel.classList.toggle("hidden", !isCreateMode);
+
+    const clearHelpers = () => {
+        ["sourcePath", "ozelgeDataPath", "distanceMetric", "chunkSize", "chunkOverlap", "retrievalK", "retrievalDistanceThreshold", "embeddingModel", "chatModel"].forEach((field) => {
+            setCreateFieldDefault(field, "Backend default unavailable");
+        });
+        if (elements.editSourcePath) elements.editSourcePath.placeholder = "";
+        if (elements.editOzelgeDataPath) elements.editOzelgeDataPath.placeholder = "";
+        if (elements.editChunkSize) elements.editChunkSize.placeholder = "";
+        if (elements.editChunkOverlap) elements.editChunkOverlap.placeholder = "";
+        if (elements.editRetrievalK) elements.editRetrievalK.placeholder = "";
+        if (elements.editRetrievalDistanceThreshold) elements.editRetrievalDistanceThreshold.placeholder = "";
+        if (elements.editEmbeddingModel) elements.editEmbeddingModel.placeholder = "";
+        if (elements.editChatModel) elements.editChatModel.placeholder = "";
+        const placeholder = elements.editDistanceMetric?.querySelector('option[value=""]');
+        if (placeholder) placeholder.textContent = "Use backend default";
+    };
+
+    if (!isCreateMode) {
+        if (elements.configDefaultsStatus) {
+            elements.configDefaultsStatus.textContent = "Hidden";
+            elements.configDefaultsStatus.className = "rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600";
+        }
+        if (elements.configDefaultsSummary) {
+            elements.configDefaultsSummary.textContent = "";
+        }
+        clearHelpers();
+        return;
+    }
+
+    const collectionDefaults = state.configDefaults.collectionDefaults;
+    const modelDefaults = state.configDefaults.modelDefaults;
+
+    if (!state.configDefaults.loaded) {
+        if (elements.configDefaultsStatus) {
+            elements.configDefaultsStatus.textContent = "Loading";
+            elements.configDefaultsStatus.className = "rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600";
+        }
+        if (elements.configDefaultsSummary) {
+            elements.configDefaultsSummary.textContent = "Loading GET /v1/admin/config/defaults...";
+        }
+        clearHelpers();
+        return;
+    }
+
+    if (!collectionDefaults || !modelDefaults) {
+        if (elements.configDefaultsStatus) {
+            elements.configDefaultsStatus.textContent = "Unavailable";
+            elements.configDefaultsStatus.className = "rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-700";
+        }
+        if (elements.configDefaultsSummary) {
+            elements.configDefaultsSummary.textContent = "GET /v1/admin/config/defaults is unavailable right now.";
+        }
+        clearHelpers();
+        return;
+    }
+
+    const summaryParts = [
+        `Source path: ${formatConfigDefault(collectionDefaults.sourcePath)}`,
+        `Ozelge data: ${formatConfigDefault(collectionDefaults.ozelgeDataPath)}`,
+        `Distance metric: ${formatConfigDefault(collectionDefaults.distanceMetric)}`,
+        `Chunk size/overlap: ${formatConfigDefault(collectionDefaults.chunkSize)}/${formatConfigDefault(collectionDefaults.chunkOverlap)}`,
+        `Retrieval K: ${formatConfigDefault(collectionDefaults.retrievalK)}`,
+        `Threshold: ${formatConfigDefault(collectionDefaults.retrievalDistanceThreshold)}`,
+        `Index sample size: ${formatConfigDefault(collectionDefaults.indexSampleSize)}`,
+        `Models: ${formatConfigDefault(modelDefaults.embeddingModel)} / ${formatConfigDefault(modelDefaults.chatModel)}`,
+    ];
+
+    if (elements.configDefaultsStatus) {
+        elements.configDefaultsStatus.textContent = "Loaded";
+        elements.configDefaultsStatus.className = "rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-700";
+    }
+    if (elements.configDefaultsSummary) {
+        elements.configDefaultsSummary.textContent = summaryParts.join(" | ");
+    }
+
+    setCreateFieldDefault("sourcePath", `Backend default: ${formatConfigDefault(collectionDefaults.sourcePath)}`);
+    setCreateFieldDefault("ozelgeDataPath", `Backend default: ${formatConfigDefault(collectionDefaults.ozelgeDataPath)}`);
+    setCreateFieldDefault("distanceMetric", `Backend default: ${formatConfigDefault(collectionDefaults.distanceMetric)}`);
+    setCreateFieldDefault("chunkSize", `Backend default: ${formatConfigDefault(collectionDefaults.chunkSize)}`);
+    setCreateFieldDefault("chunkOverlap", `Backend default: ${formatConfigDefault(collectionDefaults.chunkOverlap)}`);
+    setCreateFieldDefault("retrievalK", `Backend default: ${formatConfigDefault(collectionDefaults.retrievalK)}`);
+    setCreateFieldDefault("retrievalDistanceThreshold", `Backend default: ${formatConfigDefault(collectionDefaults.retrievalDistanceThreshold)}`);
+    setCreateFieldDefault("embeddingModel", `Backend default: ${formatConfigDefault(modelDefaults.embeddingModel)}`);
+    setCreateFieldDefault("chatModel", `Backend default: ${formatConfigDefault(modelDefaults.chatModel)}`);
+
+    if (elements.editSourcePath) elements.editSourcePath.placeholder = formatConfigDefault(collectionDefaults.sourcePath);
+    if (elements.editOzelgeDataPath) elements.editOzelgeDataPath.placeholder = formatConfigDefault(collectionDefaults.ozelgeDataPath);
+    if (elements.editChunkSize) elements.editChunkSize.placeholder = String(formatConfigDefault(collectionDefaults.chunkSize));
+    if (elements.editChunkOverlap) elements.editChunkOverlap.placeholder = String(formatConfigDefault(collectionDefaults.chunkOverlap));
+    if (elements.editRetrievalK) elements.editRetrievalK.placeholder = String(formatConfigDefault(collectionDefaults.retrievalK));
+    if (elements.editRetrievalDistanceThreshold) elements.editRetrievalDistanceThreshold.placeholder = String(formatConfigDefault(collectionDefaults.retrievalDistanceThreshold));
+    if (elements.editEmbeddingModel) elements.editEmbeddingModel.placeholder = formatConfigDefault(modelDefaults.embeddingModel);
+    if (elements.editChatModel) elements.editChatModel.placeholder = formatConfigDefault(modelDefaults.chatModel);
+
+    const placeholder = elements.editDistanceMetric?.querySelector('option[value=""]');
+    if (placeholder) placeholder.textContent = `Use backend default (${formatConfigDefault(collectionDefaults.distanceMetric)})`;
+}
+
+async function loadConfigDefaults() {
+    const token = ++loadTokens.configDefaults;
+    try {
+        const data = await apiRequest(`${API.admin}/config/defaults`);
+        if (token !== loadTokens.configDefaults) return;
+        state.configDefaults = {
+            loaded: true,
+            collectionDefaults: {
+                sourcePath: typeof data?.collectionDefaults?.sourcePath === "string" ? data.collectionDefaults.sourcePath : "",
+                ozelgeDataPath: typeof data?.collectionDefaults?.ozelgeDataPath === "string" ? data.collectionDefaults.ozelgeDataPath : "",
+                distanceMetric: typeof data?.collectionDefaults?.distanceMetric === "string" ? data.collectionDefaults.distanceMetric : "",
+                indexSampleSize: Number.isFinite(data?.collectionDefaults?.indexSampleSize) ? data.collectionDefaults.indexSampleSize : 0,
+                chunkSize: Number.isFinite(data?.collectionDefaults?.chunkSize) ? data.collectionDefaults.chunkSize : "",
+                chunkOverlap: Number.isFinite(data?.collectionDefaults?.chunkOverlap) ? data.collectionDefaults.chunkOverlap : "",
+                retrievalK: Number.isFinite(data?.collectionDefaults?.retrievalK) ? data.collectionDefaults.retrievalK : "",
+                retrievalDistanceThreshold: Number.isFinite(data?.collectionDefaults?.retrievalDistanceThreshold) ? data.collectionDefaults.retrievalDistanceThreshold : "",
+            },
+            modelDefaults: {
+                embeddingModel: typeof data?.modelDefaults?.embeddingModel === "string" ? data.modelDefaults.embeddingModel : "",
+                chatModel: typeof data?.modelDefaults?.chatModel === "string" ? data.modelDefaults.chatModel : "",
+            },
+        };
+    } catch (_error) {
+        if (token !== loadTokens.configDefaults) return;
+        state.configDefaults = {
+            loaded: true,
+            collectionDefaults: null,
+            modelDefaults: null,
+        };
+    }
+
+    if (token === loadTokens.configDefaults) syncConfigDefaultsPanel();
+}
+
+async function loadModelDiscovery() {
+    const token = ++loadTokens.modelDiscovery;
+    try {
+        const data = await apiRequest(`${API.admin}/models`);
+        if (token !== loadTokens.modelDiscovery) return;
+        const models = normalizeModelList(data?.models);
+        const embeddingModels = normalizeModelList(Array.isArray(data?.embeddingModels) ? data.embeddingModels : models);
+        const chatModels = normalizeModelList(Array.isArray(data?.chatModels) ? data.chatModels : models);
+        state.modelDiscovery = {
+            reachable: data?.reachable === true,
+            models,
+            embeddingModels,
+            chatModels,
+            defaults: {
+                embeddingModel: typeof data?.defaults?.embeddingModel === "string" ? data.defaults.embeddingModel : "",
+                chatModel: typeof data?.defaults?.chatModel === "string" ? data.defaults.chatModel : "",
+            },
+        };
+    } catch (_error) {
+        if (token !== loadTokens.modelDiscovery) return;
+        state.modelDiscovery = {
+            reachable: false,
+            models: [],
+            embeddingModels: [],
+            chatModels: [],
+            defaults: {
+                embeddingModel: "",
+                chatModel: "",
+            },
+        };
+    }
+
+    if (token === loadTokens.modelDiscovery) syncModelDiscoveryPanel();
 }
 
 function clearNode(node) {
@@ -966,6 +1254,7 @@ async function openInspector(id) {
         setInspectorActionsEnabled(false, "Save the collection before using this action.");
         setCollectionTabsEnabled(false);
         switchTab("editor");
+        await Promise.all([loadConfigDefaults(), loadModelDiscovery()]);
         openPanel();
         return;
     }
@@ -1238,7 +1527,8 @@ function clearEditorForm() {
         if (element) element.value = "";
     });
     elements.editId.value = "";
-    elements.editDistanceMetric.value = "l2";
+    syncModelDiscoveryPanel();
+    syncConfigDefaultsPanel();
 }
 
 function fieldValueFromCollection(collection, field) {
@@ -1258,7 +1548,7 @@ function setupEditorTab(collection) {
     elements.editDescription.value = fieldValueFromCollection(collection, "description");
     elements.editSourcePath.value = fieldValueFromCollection(collection, "sourcePath");
     elements.editOzelgeDataPath.value = fieldValueFromCollection(collection, "ozelgeDataPath");
-    elements.editDistanceMetric.value = collection.distanceMetric || "l2";
+    elements.editDistanceMetric.value = collection.distanceMetric || "";
     elements.editChunkSize.value = collection.chunkSize ?? "";
     elements.editChunkOverlap.value = collection.chunkOverlap ?? "";
     elements.editRetrievalK.value = collection.retrievalK ?? "";
@@ -1266,6 +1556,8 @@ function setupEditorTab(collection) {
     elements.editEmbeddingModel.value = fieldValueFromCollection(collection, "embeddingModel");
     elements.editChatModel.value = fieldValueFromCollection(collection, "chatModel");
     state.editorInitialSnapshot = readEditorValues();
+    syncModelDiscoveryPanel();
+    syncConfigDefaultsPanel();
 }
 
 function readTrimmed(id) {
@@ -1547,6 +1839,7 @@ function renderRetrieveResult(data) {
     meta.appendChild(createMetaItem("K", data?.k));
     meta.appendChild(createMetaItem("Source count", data?.sourceCount ?? data?.sources?.length ?? 0));
     meta.appendChild(createMetaItem("Threshold", formatMetric(data?.distanceScoreThreshold)));
+    meta.appendChild(createMetaItem("Embedding model", data?.embeddingModel || "-"));
     meta.appendChild(createMetaItem("Collection", data?.collectionDisplayName || data?.collectionId || state.selectedCollection?.displayName));
     meta.appendChild(createMetaItem("Active version", data?.activeVersion));
     container.appendChild(meta);
@@ -1563,6 +1856,8 @@ function renderQueryResult(data) {
     container.appendChild(answer);
     const meta = createEl("div", "grid grid-cols-1 gap-3 sm:grid-cols-2");
     meta.appendChild(createMetaItem("Threshold", formatMetric(data?.distanceScoreThreshold)));
+    meta.appendChild(createMetaItem("Embedding model", data?.embeddingModel || "-"));
+    meta.appendChild(createMetaItem("Chat model", data?.chatModel || "-"));
     meta.appendChild(createMetaItem("Collection", data?.collectionDisplayName || data?.collectionId || state.selectedCollection?.displayName));
     meta.appendChild(createMetaItem("Active version", data?.activeVersion));
     meta.appendChild(createMetaItem("Sources", data?.sources?.length ?? 0));
@@ -2405,6 +2700,7 @@ function bindEvents() {
     });
 
     elements.btnRefresh.addEventListener("click", () => {
+        loadModelDiscovery();
         loadCollections();
         loadJobs();
         loadHealth();
@@ -2446,6 +2742,18 @@ function bindEvents() {
             removeSelectedJobs();
         });
     }
+    if (elements.embeddingModelSelect) {
+        elements.embeddingModelSelect.addEventListener("change", () => setModelFromSelect("embedding"));
+    }
+    if (elements.chatModelSelect) {
+        elements.chatModelSelect.addEventListener("change", () => setModelFromSelect("chat"));
+    }
+    if (elements.editEmbeddingModel) {
+        elements.editEmbeddingModel.addEventListener("input", () => syncModelDiscoveryPanel());
+    }
+    if (elements.editChatModel) {
+        elements.editChatModel.addEventListener("input", () => syncModelDiscoveryPanel());
+    }
     elements.btnCreateCollection.addEventListener("click", () => openInspector(null));
     elements.btnCloseInspector.addEventListener("click", closeInspector);
     elements.inspectorOverlay.addEventListener("click", handleOverlayClick);
@@ -2485,6 +2793,8 @@ document.addEventListener("DOMContentLoaded", () => {
     setPlaygroundMode("retrieve");
     resetReadinessAndPlayground("Select a collection to inspect readiness.");
     renderJobs();
+    loadConfigDefaults();
+    loadModelDiscovery();
     loadCollections();
     loadJobs();
     loadHealth();

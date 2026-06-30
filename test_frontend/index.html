@@ -476,14 +476,15 @@
           <p class="subtitle">
             Static browser example aligned with the current <code>/v1/rag</code> contract.
             It sends tenant and user headers, checks collection readiness before enabling
-            query actions, and surfaces rate-limit plus request diagnostics.
+            query actions, and surfaces rate-limit, model metadata, plus request diagnostics.
           </p>
           <div class="banner">
             <strong>Contract note</strong>
             <p>
-              <code>POST /query</code> returns an answer plus the generation-context sources.
-              <code>POST /retrieve</code> returns evidence-only results and can expose a broader
-              retrieval set.
+              <code>POST /query</code> returns an answer, <code>embeddingModel</code>,
+              <code>chatModel</code>, and the generation-context sources.
+              <code>POST /retrieve</code> returns <code>embeddingModel</code> plus evidence-only
+              results and can expose a broader retrieval set.
             </p>
           </div>
         </div>
@@ -903,8 +904,10 @@
           answer.textContent = body.answer;
           addMeta("Collection", body.collectionDisplayName || body.collectionId || "-");
           addMeta("Response Type", "query");
+          addMeta("Embedding Model", body.embeddingModel || "-");
+          addMeta("Chat Model", body.chatModel || "-");
           addMeta("Generation Sources", String(Array.isArray(body.sources) ? body.sources.length : 0));
-          addMeta("Source Note", "Query sources may be a trimmed generation subset.");
+          addMeta("Source Note", "query.sources may be a trimmed generation-context subset.");
           renderSources(body.sources);
           return;
         }
@@ -914,6 +917,7 @@
           addMeta("Collection", body.collectionDisplayName || body.collectionId || "-");
           addMeta("Question", body.question || "-");
           addMeta("Response Type", "retrieve");
+          addMeta("Embedding Model", body.embeddingModel || "-");
           addMeta("Retrieval K", String(body.k ?? "-"));
           addMeta("Threshold", String(body.distanceScoreThreshold ?? "-"));
           renderSources(body.sources);

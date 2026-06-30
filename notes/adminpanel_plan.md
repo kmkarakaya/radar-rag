@@ -67,11 +67,11 @@ Coding agent her adımda bu mevcut yapıyı baz almalı. Gereksiz büyük HTML r
 
 ### Inspector Readiness
 
-| Alan               | Mevcut selector / id     | Kullanım notu                                                                                            |
-| :----------------- | :----------------------- | :-------------------------------------------------------------------------------------------------------- |
-| Status grid        | `#readinessStatusGrid` | Collection readiness indicator'ları.                                                                     |
+| Alan               | Mevcut selector / id     | Kullanım notu                                                           |
+| :----------------- | :----------------------- | :----------------------------------------------------------------------- |
+| Status grid        | `#readinessStatusGrid` | Collection readiness indicator'ları.                                    |
 | Blockers container | `#readinessBlockers`   | Backend collection readiness issue listesini doğrudan burada gösterir. |
-| Blocker list       | `#blockerList`         | Güvenli DOM node ile doldurulmalı.                                                                      |
+| Blocker list       | `#blockerList`         | Güvenli DOM node ile doldurulmalı.                                     |
 
 ### Playground
 
@@ -130,22 +130,22 @@ Küçük model için tercih edilen strateji: bu fonksiyonları bir anda tamamen 
 
 Admin panel sadece mevcut endpointleri kullanacak:
 
-| Amaç                    | Method | Endpoint                                        | Not                                                                                                                       |
-| :----------------------- | :----- | :---------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------ |
-| Collection listesi       | GET    | `/v1/rag/collections`                         | Ucuz registry discovery. Chroma/Ollama probe çalıştırmaz.                                                             |
-| Collection detayı       | GET    | `/v1/rag/collections/:collectionId`           | Public DTO. Mevcut kod bazı settings alanlarını döndürüyor; agent response alanı yoksa graceful fallback yapmalı. |
+| Amaç                    | Method | Endpoint                                        | Not                                                                                                                                    |
+| :----------------------- | :----- | :---------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
+| Collection listesi       | GET    | `/v1/rag/collections`                         | Ucuz registry discovery. Chroma/Ollama probe çalıştırmaz.                                                                          |
+| Collection detayı       | GET    | `/v1/rag/collections/:collectionId`           | Public DTO. Mevcut kod bazı settings alanlarını döndürüyor; agent response alanı yoksa graceful fallback yapmalı.              |
 | Collection readiness     | GET    | `/v1/rag/collections/:collectionId/ready`     | `capabilities`, `modelAvailability`, `activeJob`, `chromaReadable`, `blockers`, `warnings`, `recommendedActions` döner. |
-| Retrieve testi           | POST   | `/v1/rag/collections/:collectionId/retrieve`  | Body:`{ "question": string, "k"?: number }`.                                                                            |
-| Query testi              | POST   | `/v1/rag/collections/:collectionId/query`     | Body:`{ "question": string }`.                                                                                          |
-| Collection oluşturma    | POST   | `/v1/admin/collections`                       | Body:`createCollectionSchema`. `displayName` zorunlu.                                                                 |
-| Collection güncelleme   | PATCH  | `/v1/admin/collections/:collectionId`         | Body:`updateCollectionSchema`. Sadece değişen/valid alanlar gönderilmeli.                                            |
-| Collection silme         | DELETE | `/v1/admin/collections/:collectionId`         | `204 No Content`. Soft delete.                                                                                          |
-| Re-index başlatma       | POST   | `/v1/admin/collections/:collectionId/reindex` | `202`, `{ job }` döner. Aynı collection için ikinci aktif job `409 COLLECTION_INDEX_ALREADY_RUNNING`.            |
-| Job detayı              | GET    | `/v1/admin/jobs/:jobId`                       | Sadece bilinen`jobId` ile çalışır. Job list endpointi yok.                                                          |
-| Job iptal                | POST   | `/v1/admin/jobs/:jobId/cancel`                | Sadece`queued` veya `running` job için. Başarılıysa `204`.                                                      |
-| Liveness                 | GET    | `/health`                                     | Process ayakta mı.                                                                                                       |
-| Sistem readiness summary | GET    | `/ready`                                      | Non-strict çağırılmalı; hazır değilse de 200 dönebilir.                                                           |
-| Sistem readiness detay   | GET    | `/ready?details=true`                         | `checks`, `blockers`, `warnings`, `recommendedActions`, `dependencies`, `dataSource`.                         |
+| Retrieve testi           | POST   | `/v1/rag/collections/:collectionId/retrieve`  | Body:`{ "question": string, "k"?: number }`.                                                                                         |
+| Query testi              | POST   | `/v1/rag/collections/:collectionId/query`     | Body:`{ "question": string }`.                                                                                                       |
+| Collection oluşturma    | POST   | `/v1/admin/collections`                       | Body:`createCollectionSchema`. `displayName` zorunlu.                                                                              |
+| Collection güncelleme   | PATCH  | `/v1/admin/collections/:collectionId`         | Body:`updateCollectionSchema`. Sadece değişen/valid alanlar gönderilmeli.                                                         |
+| Collection silme         | DELETE | `/v1/admin/collections/:collectionId`         | `204 No Content`. Soft delete.                                                                                                       |
+| Re-index başlatma       | POST   | `/v1/admin/collections/:collectionId/reindex` | `202`, `{ job }` döner. Aynı collection için ikinci aktif job `409 COLLECTION_INDEX_ALREADY_RUNNING`.                         |
+| Job detayı              | GET    | `/v1/admin/jobs/:jobId`                       | Sadece bilinen`jobId` ile çalışır. Job list endpointi yok.                                                                       |
+| Job iptal                | POST   | `/v1/admin/jobs/:jobId/cancel`                | Sadece`queued` veya `running` job için. Başarılıysa `204`.                                                                   |
+| Liveness                 | GET    | `/health`                                     | Process ayakta mı.                                                                                                                    |
+| Sistem readiness summary | GET    | `/ready`                                      | Non-strict çağırılmalı; hazır değilse de 200 dönebilir.                                                                        |
+| Sistem readiness detay   | GET    | `/ready?details=true`                         | `checks`, `blockers`, `warnings`, `recommendedActions`, `dependencies`, `dataSource`.                                      |
 
 Opsiyonel request context header'ları backend tarafından destekleniyor:
 
@@ -1230,20 +1230,9 @@ Bu maddeler planın ana admin panel kapsamından ayrı tutuldu. Başka bir deyi�
 
 Aşağıdaki sıra, bu eksikleri hangi hızda ele almak gerektiğini gösterir. En üsttekiler panelin günlük kullanımını en çok etkileyen maddelerdir.
 
-### P1 - Panelin doğru çalışması için kritik
-
-1. **Save/reindex validation endpointleri yok**
-
-   - Kullanıcı ayarların etkisini re-index sırasında öğreniyor.
-   - Hatalar çok geç yakalanıyor.
-   - Öneri: `POST /v1/admin/collections/validate` ve `POST /v1/admin/collections/:id/validate`
-
 ### P2 - Kullanıcı deneyimini güçlendiren eksikler
 
-2. **Model discovery endpointi yok**
-
-   - Model adı serbest metin olduğu için typo riski var.
-   - Öneri: `GET /v1/admin/models`
+2. 
 3. **Config defaults endpointi yok**
 
    - Create form backend varsayılanlarını görünür göstermiyor.
@@ -1281,3 +1270,4 @@ Aşağıdaki sıra, bu eksikleri hangi hızda ele almak gerektiğini gösterir. 
 - Önce P1.
 - P1 bitmeden P2'ye geçme.
 - P2 tamamlanmadan P3, yalnızca bakım veya güvenlik işi olarak ele alınsın.
+

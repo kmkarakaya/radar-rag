@@ -85,6 +85,8 @@ curl.exe -s `
   "$BASE_URL/v1/rag/collections/$COLLECTION_ID/retrieve"
 ```
 
+The response JSON includes the effective `embeddingModel` used for retrieval.
+
 ### Ask a grounded question
 
 ```powershell
@@ -98,7 +100,21 @@ curl.exe -s `
   "$BASE_URL/v1/rag/collections/$COLLECTION_ID/query"
 ```
 
+The response JSON includes the effective `embeddingModel` used for retrieval and the `chatModel` that generated the answer.
+
 ## 2. Admin Collection Creation Flow
+
+### Inspect backend defaults for the create form
+
+```powershell
+curl.exe -s `
+  -H "x-tenant-id: $TENANT_ID" `
+  -H "x-user-id: $USER_ID" `
+  -H "x-request-id: $REQUEST_ID" `
+  "$BASE_URL/v1/admin/config/defaults"
+```
+
+Use this response to show the backend defaults in the create form before the user saves anything.
 
 ### Create a collection
 

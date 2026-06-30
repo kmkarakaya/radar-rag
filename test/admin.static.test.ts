@@ -60,9 +60,24 @@ describe("admin panel static contract", () => {
       readAdminFile("admin.js"),
     ]);
 
+    assert.ok(html.includes('id="configDefaultsPanel"'));
+    assert.ok(html.includes('id="configDefaultsSummary"'));
+    assert.ok(html.includes('id="configDefaultsStatus"'));
+    assert.ok(html.includes('data-default-for="sourcePath"'));
+    assert.ok(html.includes('data-default-for="distanceMetric"'));
+    assert.ok(html.includes('data-default-for="embeddingModel"'));
+    assert.ok(js.includes('function loadConfigDefaults()'));
+    assert.ok(js.includes('function syncConfigDefaultsPanel()'));
+    assert.ok(js.includes('`${API.admin}/config/defaults`'));
+    assert.ok(!js.includes('elements.editDistanceMetric.value = "l2"'));
     assert.ok(html.includes('id="collectionValidation"'));
     assert.ok(html.includes('id="collectionValidationSummary"'));
     assert.ok(html.includes('id="collectionValidationContent"'));
+    assert.ok(html.includes('id="modelDiscoveryPanel"'));
+    assert.ok(html.includes('id="modelDiscoverySummary"'));
+    assert.ok(html.includes('id="modelDiscoveryStatus"'));
+    assert.ok(html.includes('id="embeddingModelSelect"'));
+    assert.ok(html.includes('id="chatModelSelect"'));
     assert.ok(js.includes('function adminCollectionValidateUrl(id)'));
     assert.ok(js.includes('function validateCollectionOnServer(mode, collectionId, payload = buildCollectionPayload(mode))'));
     assert.ok(js.includes('adminCollectionValidateUrl()'));
@@ -70,6 +85,10 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes('renderCollectionValidation(validation, getValidationTitle(mode))'));
     assert.ok(js.includes('renderCollectionValidation(validation, "Re-index validation")'));
     assert.ok(js.includes("function renderValidationImpact(parent, impact)"));
+    assert.ok(js.includes('async function loadModelDiscovery()'));
+    assert.ok(js.includes('function syncModelDiscoveryPanel()'));
+    assert.ok(js.includes('function setModelFromSelect(kind)'));
+    assert.ok(js.includes('`${API.admin}/models`'));
     assert.ok(js.includes("Change Impact"));
     assert.ok(js.includes("Re-index required"));
     assert.ok(js.includes("Takes effect immediately"));

@@ -12,6 +12,7 @@ Use this checklist to evaluate whether a frontend built against this backend is 
 - Uses `ready.capabilities.query` and `ready.capabilities.retrieve` instead of inferring capability from `status` alone.
 - Treats `query.sources` as the generation context subset, not automatically as the full retrieval set.
 - Treats `ready.modelAvailability.desiredEmbeddingModel` as a pending post-reindex model change.
+- Preserves `retrieve.embeddingModel` and `query.embeddingModel` / `query.chatModel` in any raw JSON or diagnostics view.
 
 ## Public UX Checks
 

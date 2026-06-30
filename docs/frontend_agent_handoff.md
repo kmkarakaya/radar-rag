@@ -57,8 +57,8 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 
 | Operation | Endpoint | Use when | Returns |
 | --- | --- | --- | --- |
-| `retrieve` | `POST /v1/rag/collections/:collectionId/retrieve` | The UI should show relevant source chunks without generating an answer | `sources`, threshold, collection metadata, optional debug timings |
-| `query` | `POST /v1/rag/collections/:collectionId/query` | The UI should return a grounded answer generated from retrieved context | `answer`, generation-context `sources`, threshold, collection metadata, optional debug timings |
+| `retrieve` | `POST /v1/rag/collections/:collectionId/retrieve` | The UI should show relevant source chunks without generating an answer | `sources`, `embeddingModel`, threshold, collection metadata, optional debug timings |
+| `query` | `POST /v1/rag/collections/:collectionId/query` | The UI should return a grounded answer generated from retrieved context | `answer`, `embeddingModel`, `chatModel`, generation-context `sources`, threshold, collection metadata, optional debug timings |
 
 ## Readiness-Driven UI States
 
@@ -74,6 +74,7 @@ Use the readiness payload to drive the UI:
   Show progress or a pending state. A collection may still be queryable during rebuild if the active physical collection remains readable.
 - `recommendedActions`
   Render these directly in the UI; the backend already provides actionable text.
+- If the UI exposes a raw JSON or developer diagnostics panel, render `retrieve.embeddingModel` and `query.embeddingModel` / `query.chatModel` there instead of hiding them.
 
 ## Snapshot Semantics
 
@@ -157,6 +158,7 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T | void> {
 - Do not assume `status: indexing` means query is blocked; the collection may still have a readable active version.
 - Do not assume `query` and `retrieve` fail for the same reasons.
 - Do not assume `query.sources` is the same full source set that `retrieve` would return.
+- Do not assume raw query/retrieve JSON omits the effective model metadata.
 - Do not assume a public collection DTO contains admin-only configuration.
 - Do not assume every successful response contains `debug`.
 - Do not assume delete endpoints return JSON.

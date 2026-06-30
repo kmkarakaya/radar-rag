@@ -130,7 +130,7 @@ paths:
     post:
       tags: [Public RAG]
       operationId: retrieveSources
-      summary: Retrieve source chunks without answer generation
+      summary: Retrieve source chunks and effective embedding model
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
@@ -144,7 +144,7 @@ paths:
               $ref: "#/components/schemas/RetrieveRequest"
       responses:
         "200":
-          description: Retrieved source chunks
+          description: Retrieved source chunks and the effective embedding model
           headers:
             X-RateLimit-Limit:
               $ref: "#/components/headers/XRateLimitLimit"
@@ -185,7 +185,7 @@ paths:
     post:
       tags: [Public RAG]
       operationId: queryCollection
-      summary: Retrieve context and generate a grounded answer
+      summary: Retrieve context, generate a grounded answer, and return model metadata
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
@@ -199,7 +199,7 @@ paths:
               $ref: "#/components/schemas/QueryRequest"
       responses:
         "200":
-          description: Generated answer with sources
+          description: Generated answer with sources and effective model metadata
           headers:
             X-RateLimit-Limit:
               $ref: "#/components/headers/XRateLimitLimit"
@@ -296,6 +296,38 @@ paths:
           $ref: "#/components/responses/ApiError"
         "500":
           $ref: "#/components/responses/ApiError"
+  /v1/admin/config/defaults:
+    get:
+      tags: [Admin Collections]
+      operationId: getAdminConfigDefaults
+      summary: Get create-form runtime defaults
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+      responses:
+        "200":
+          description: Runtime defaults for the admin create form
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminConfigDefaultsResponse"
+  /v1/admin/models:
+    get:
+      tags: [Admin Collections]
+      operationId: listAdminModels
+      summary: Discover Ollama models for admin autocomplete with soft-fail behavior
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+      responses:
+        "200":
+          description: Ollama model inventory; empty lists and reachable=false indicate discovery soft-fail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelDiscoveryResponse"
   /v1/admin/collections/{collectionId}:
     get:
       tags: [Admin Collections]
@@ -1288,6 +1320,7 @@ components:
         - collectionId
         - collectionDisplayName
         - activeVersion
+        - embeddingModel
       properties:
         question:
           type: string
@@ -1308,6 +1341,9 @@ components:
           type: string
         activeVersion:
           type: [string, "null"]
+        embeddingModel:
+          type: string
+          description: Embedding model used for retrieval.
         debug:
           $ref: "#/components/schemas/RetrievalDebug"
     QueryRequest:
@@ -1322,6 +1358,8 @@ components:
       type: object
       required:
         - answer
+        - embeddingModel
+        - chatModel
         - distanceScoreThreshold
         - sources
         - collectionId
@@ -1330,6 +1368,12 @@ components:
       properties:
         answer:
           type: string
+        embeddingModel:
+          type: string
+          description: Embedding model used to retrieve the sources that grounded the answer.
+        chatModel:
+          type: string
+          description: Chat model that generated the answer.
         distanceScoreThreshold:
           type: number
         sources:
@@ -1515,6 +1559,38 @@ components:
       properties:
         collection:
           $ref: "#/components/schemas/RagCollection"
+    AdminConfigDefaultsResponse:
+      type: object
+      required: [collectionDefaults, modelDefaults]
+      properties:
+        collectionDefaults:
+          type: object
+          required: [sourcePath, ozelgeDataPath, distanceMetric, indexSampleSize, chunkSize, chunkOverlap, retrievalK, retrievalDistanceThreshold]
+          properties:
+            sourcePath:
+              type: string
+            ozelgeDataPath:
+              type: string
+            distanceMetric:
+              $ref: "#/components/schemas/DistanceMetric"
+            indexSampleSize:
+              type: integer
+            chunkSize:
+              type: integer
+            chunkOverlap:
+              type: integer
+            retrievalK:
+              type: integer
+            retrievalDistanceThreshold:
+              type: number
+        modelDefaults:
+          type: object
+          required: [embeddingModel, chatModel]
+          properties:
+            embeddingModel:
+              type: string
+            chatModel:
+              type: string
     CollectionValidationIssue:
       type: object
       required: [code, message]
@@ -1559,6 +1635,37 @@ components:
             type: string
         impact:
           $ref: "#/components/schemas/CollectionValidationImpact"
+    AdminModelDiscoveryResponse:
+      type: object
+      required: [reachable, models, embeddingModels, chatModels, defaults]
+      properties:
+        reachable:
+          type: boolean
+          description: Whether the Ollama discovery source could be reached.
+        models:
+          type: array
+          description: Full runtime-discovered Ollama model inventory.
+          items:
+            type: string
+        embeddingModels:
+          type: array
+          description: Runtime subset suitable for the embedding field.
+          items:
+            type: string
+        chatModels:
+          type: array
+          description: Runtime subset suitable for the chat field.
+          items:
+            type: string
+        defaults:
+          type: object
+          required: [embeddingModel, chatModel]
+          description: Runtime default values used by the admin form.
+          properties:
+            embeddingModel:
+              type: string
+            chatModel:
+              type: string
     ReindexAcceptedResponse:
       type: object
       required: [job]

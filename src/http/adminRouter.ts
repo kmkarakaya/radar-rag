@@ -13,6 +13,7 @@ import {
   buildUpdateValidationDraft,
   validateCollectionDraft,
 } from "./collectionValidation.js";
+import { getOllamaModelDiscovery } from "../rag.js";
 
 const JOB_STATUS_VALUES = ["queued", "running", "succeeded", "failed", "cancelled"] as const satisfies readonly IndexJobStatus[];
 
@@ -119,6 +120,25 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     return uniqueJobIds;
   }
 
+  function getConfigDefaults() {
+    return {
+      collectionDefaults: {
+        sourcePath: runtimeConfig.collectionDefaults.sourcePath,
+        ozelgeDataPath: runtimeConfig.collectionDefaults.ozelgeDataPath,
+        distanceMetric: runtimeConfig.chromaDistanceMetric,
+        indexSampleSize: runtimeConfig.indexSampleSize,
+        chunkSize: runtimeConfig.collectionDefaults.chunkSize,
+        chunkOverlap: runtimeConfig.collectionDefaults.chunkOverlap,
+        retrievalK: runtimeConfig.collectionDefaults.retrievalK,
+        retrievalDistanceThreshold: runtimeConfig.collectionDefaults.retrievalDistanceThreshold,
+      },
+      modelDefaults: {
+        embeddingModel: runtimeConfig.ollamaEmbeddingModel,
+        chatModel: runtimeConfig.ollamaChatModel,
+      },
+    };
+  }
+
   router.post("/collections", requireRegistry, async (req, res, next) => {
     try {
       const parsed = collectionCreateSchema.safeParse(req.body);
@@ -139,6 +159,29 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
           displayName: collection.displayName,
           status: collection.status,
         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/config/defaults", async (_req, res, next) => {
+    try {
+      res.json(getConfigDefaults());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/models", async (_req, res, next) => {
+    try {
+      const discovery = await (deps.healthChecks?.checkOllamaModelDiscovery ?? getOllamaModelDiscovery)(runtimeConfig);
+      res.json({
+        reachable: discovery.reachable,
+        models: discovery.models,
+        embeddingModels: discovery.embeddingModels,
+        chatModels: discovery.chatModels,
+        defaults: discovery.defaults,
       });
     } catch (error) {
       next(error);

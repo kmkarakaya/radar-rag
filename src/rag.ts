@@ -57,6 +57,24 @@ export type OllamaHealthDetails = {
   embeddingModelAvailable: boolean;
 };
 
+export type OllamaModelDiscovery = {
+  reachable: boolean;
+  models: string[];
+  embeddingModels: string[];
+  chatModels: string[];
+  defaults: {
+    embeddingModel: string;
+    chatModel: string;
+  };
+  error?: string;
+};
+
+type OllamaTagModel = {
+  name?: string;
+  model?: string;
+  capabilities?: string[];
+};
+
 export type EmbeddingHealthDetails = {
   probeText: string;
   vectorLength?: number;
@@ -122,6 +140,69 @@ function createChatModel(runtimeConfig: ResolvedConfig, modelName = runtimeConfi
     numPredict: runtimeConfig.ollamaNumPredict,
     think: false,
   });
+}
+
+function isCompletionModel(model: OllamaTagModel): boolean {
+  return Array.isArray(model.capabilities) && model.capabilities.includes("completion");
+}
+
+function isEmbeddingModel(model: OllamaTagModel): boolean {
+  return Array.isArray(model.capabilities) && model.capabilities.includes("embedding");
+}
+
+export async function getOllamaModelDiscovery(runtimeConfig = config): Promise<OllamaModelDiscovery> {
+  const discovery: OllamaModelDiscovery = {
+    reachable: false,
+    models: [],
+    embeddingModels: [],
+    chatModels: [],
+    defaults: {
+      embeddingModel: runtimeConfig.ollamaEmbeddingModel,
+      chatModel: runtimeConfig.ollamaChatModel,
+    },
+  };
+
+  try {
+    const response = await fetch(new URL("/api/tags", runtimeConfig.ollamaBaseUrl), {
+      headers: {
+        accept: "application/json",
+      },
+      signal: AbortSignal.timeout(runtimeConfig.readyTimeoutMs),
+    });
+
+    if (!response.ok) {
+      discovery.error = `Ollama returned HTTP ${response.status}`;
+      return discovery;
+    }
+
+    const data = (await response.json()) as {
+      models?: OllamaTagModel[];
+    };
+
+    discovery.reachable = true;
+    const allModels = [...new Set(
+      (data.models ?? [])
+        .map((modelInfo) => modelInfo.name ?? modelInfo.model)
+        .filter((modelName): modelName is string => Boolean(modelName)),
+    )];
+    discovery.models = allModels;
+    discovery.embeddingModels = [...new Set(
+      (data.models ?? [])
+        .filter(isEmbeddingModel)
+        .map((modelInfo) => modelInfo.name ?? modelInfo.model)
+        .filter((modelName): modelName is string => Boolean(modelName)),
+    )];
+    discovery.chatModels = [...new Set(
+      (data.models ?? [])
+        .filter(isCompletionModel)
+        .map((modelInfo) => modelInfo.name ?? modelInfo.model)
+        .filter((modelName): modelName is string => Boolean(modelName)),
+    )];
+    return discovery;
+  } catch (error) {
+    discovery.error = errorMessage(error);
+    return discovery;
+  }
 }
 
 export function chromaClientParams(runtimeConfig: ResolvedConfig): Omit<ChromaClientArgs, "path"> {
@@ -253,31 +334,17 @@ export async function checkOllamaHealth(runtimeConfig = config): Promise<Depende
   };
 
   try {
-    const response = await fetch(new URL("/api/tags", runtimeConfig.ollamaBaseUrl), {
-      headers: {
-        accept: "application/json",
-      },
-      signal: AbortSignal.timeout(runtimeConfig.readyTimeoutMs),
-    });
-
-    if (!response.ok) {
+    const discovery = await getOllamaModelDiscovery(runtimeConfig);
+    if (!discovery.reachable) {
       return {
         ok: false,
         latencyMs: Date.now() - startedAt,
-        error: `Ollama returned HTTP ${response.status}`,
+        error: discovery.error ?? `Ollama is not reachable at ${runtimeConfig.ollamaBaseUrl}.`,
         details,
       };
     }
-
-    details.reachable = true;
-
-    const data = (await response.json()) as {
-      models?: Array<{ name?: string; model?: string }>;
-    };
-
-    details.availableModels = (data.models ?? [])
-      .map((modelInfo) => modelInfo.name ?? modelInfo.model)
-      .filter((modelName): modelName is string => Boolean(modelName));
+    details.reachable = discovery.reachable;
+    details.availableModels = discovery.models;
     details.chatModelAvailable = hasConfiguredModel(details.availableModels, runtimeConfig.ollamaChatModel);
     details.embeddingModelAvailable = hasConfiguredModel(
       details.availableModels,
@@ -565,6 +632,7 @@ export async function retrieveSources(
           503,
           {
             collectionName: options.collectionName,
+            embeddingModel: settings.embeddingModel,
           },
         );
       }
@@ -653,6 +721,8 @@ export async function answerQuestion(question: string, options: {
   logEvent?: OperationalLogSink;
 }): Promise<{
   answer: string;
+  embeddingModel: string;
+  chatModel: string;
   distanceScoreThreshold: number;
   sources: RagSource[];
   debug?: {
@@ -720,6 +790,8 @@ export async function answerQuestion(question: string, options: {
         question,
         retrievalK: k,
         distanceScoreThreshold: retrieval.distanceScoreThreshold,
+        embeddingModel: settings.embeddingModel,
+        chatModel: settings.chatModel,
       },
     );
     emitQueryFailure(error);
@@ -746,7 +818,10 @@ export async function answerQuestion(question: string, options: {
   const onParentAbort = () => controller.abort();
   if (options.abortSignal) {
     if (options.abortSignal.aborted) {
-      const error = new RagQueryError("MODEL_BACKPRESSURE", "Request aborted before generation.", 503);
+      const error = new RagQueryError("MODEL_BACKPRESSURE", "Request aborted before generation.", 503, {
+        embeddingModel: settings.embeddingModel,
+        chatModel: settings.chatModel,
+      });
       emitQueryFailure(error);
       throw error;
     }
@@ -785,6 +860,10 @@ export async function answerQuestion(question: string, options: {
           "MODEL_BACKPRESSURE",
           "Could not acquire generation lock in time or request aborted.",
           503,
+          {
+            embeddingModel: settings.embeddingModel,
+            chatModel: settings.chatModel,
+          },
         );
       }
       wrapNetworkError(error, "chat generation");
@@ -804,6 +883,8 @@ export async function answerQuestion(question: string, options: {
         {
           question,
           model: settings.chatModel,
+          embeddingModel: settings.embeddingModel,
+          chatModel: settings.chatModel,
         },
       );
     }
@@ -819,6 +900,8 @@ export async function answerQuestion(question: string, options: {
           generationSourceCount: sources.length,
           distanceScoreThreshold: retrieval.distanceScoreThreshold,
           retrievedSources: summarizeSourcesForError(retrievedSources),
+          embeddingModel: settings.embeddingModel,
+          chatModel: settings.chatModel,
         },
       );
     }
@@ -832,6 +915,8 @@ export async function answerQuestion(question: string, options: {
           question,
           model: settings.chatModel,
           answer,
+          embeddingModel: settings.embeddingModel,
+          chatModel: settings.chatModel,
         },
       );
     }
@@ -855,6 +940,8 @@ export async function answerQuestion(question: string, options: {
 
     return {
       answer,
+      embeddingModel: settings.embeddingModel,
+      chatModel: settings.chatModel,
       distanceScoreThreshold: retrieval.distanceScoreThreshold,
       sources,
       ...(options.includeDebugTimings

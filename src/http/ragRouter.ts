@@ -131,6 +131,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         timeoutMs: runtimeConfig.ragTimeoutMs,
         logEvent: deps.logEvent,
       });
+      const embeddingModel = collection.activeEmbeddingModel ?? collection.embeddingModel;
       res.locals.collectionId = collection.id;
       res.locals.physicalCollection = collection.activePhysicalCollection;
 
@@ -139,7 +140,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         collectionName: collection.activePhysicalCollection!,
         k: parsed.data.k ?? collection.retrievalK,
         runtimeConfig,
-        embeddingModel: collection.activeEmbeddingModel ?? collection.embeddingModel,
+        embeddingModel,
         retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,
         abortSignal,
@@ -156,6 +157,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         collectionId: collection.id,
         collectionDisplayName: collection.displayName,
         activeVersion: collection.activeVersion,
+        embeddingModel,
         ...(runtimeConfig.includeDebugTimings && debug ? { debug } : {}),
       });
     } catch (error) {
@@ -199,13 +201,15 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         includeDebugTimings: runtimeConfig.includeDebugTimings,
         logEvent: deps.logEvent,
       });
-      const { debug, ...publicResult } = result;
+      const { debug, chatModel, embeddingModel, ...publicResult } = result;
 
       res.json({
         ...publicResult,
         collectionId: collection.id,
         collectionDisplayName: collection.displayName,
         activeVersion: collection.activeVersion,
+        chatModel,
+        embeddingModel,
         ...(runtimeConfig.includeDebugTimings && debug ? { debug } : {}),
       });
     } catch (error) {

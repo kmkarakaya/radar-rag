@@ -348,6 +348,7 @@ Veri tabanı indeksleme örneklemini kısıtlamak için `config/rag.config.yaml`
 
 - `question`
 - `k`
+- `embeddingModel` (retrieval için kullanılan Ollama embedding modeli)
 - `distanceScoreThreshold`
 - `sourceCount`
 - `sources[]` (`documentId`, `sourcePath`, `sourceType`, `chunkIndex`, `distanceScore` dahil)
@@ -358,6 +359,8 @@ Veri tabanı indeksleme örneklemini kısıtlamak için `config/rag.config.yaml`
 `POST /v1/rag/collections/:id/query` basarili oldugunda su alanlari dondurur:
 
 - `answer`
+- `embeddingModel` (cevaba kaynak olan retrieval embedding modeli)
+- `chatModel` (cevabi üreten Ollama chat modeli)
 - `distanceScoreThreshold`
 - `sources[]` (`documentId`, `sourcePath`, `sourceType`, `chunkIndex`, `distanceScore` dahil)
 - `collectionId`

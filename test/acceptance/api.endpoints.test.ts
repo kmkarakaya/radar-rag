@@ -23,7 +23,19 @@ const operationalLogs: OperationalLogEvent[] = [];
 let resolveReadableCollectionOverride: typeof actualResolveReadableCollection | undefined;
 let retrieveOverride: AppRagRetrieveHandler | undefined;
 let answerOverride: AppRagAnswerHandler | undefined;
-let availableOllamaModels = ["gemma3:4b-cloud", "bge-m3", "chat-collection-specific", "embed-collection-specific"];
+let availableOllamaModels = ["gemma3:4b", "gemma3:4b-cloud", "gpt-oss:120b-cloud", "bge-m3:latest", "glm-5:cloud", "qwen3.5:cloud"];
+const ollamaModelCapabilities: Record<string, string[]> = {
+  "gemma3:4b": ["completion"],
+  "gemma3:4b-cloud": ["completion", "vision"],
+  "gpt-oss:120b-cloud": ["completion", "tools", "thinking"],
+  "bge-m3": ["embedding"],
+  "bge-m3:latest": ["embedding"],
+  "glm-5:cloud": ["completion", "tools", "thinking"],
+  "qwen3.5:cloud": ["completion", "tools", "thinking", "vision"],
+  "chat-collection-specific": ["completion"],
+  "embed-collection-specific": ["embedding"],
+};
+let ollamaModelDiscoveryReachable = true;
 let chromaHealthCalls = 0;
 let ollamaHealthCalls = 0;
 
@@ -62,6 +74,8 @@ before(async () => {
         answerCalls.push({ ...options });
         return {
           answer: "stub-answer",
+          embeddingModel: options.embeddingModel ?? config.ollamaEmbeddingModel,
+          chatModel: options.chatModel ?? config.ollamaChatModel,
           distanceScoreThreshold: options.retrievalDistanceThreshold ?? -1,
           sources: [],
         };
@@ -89,6 +103,20 @@ before(async () => {
           },
         };
       },
+      checkOllamaModelDiscovery: async () => ({
+        reachable: ollamaModelDiscoveryReachable,
+        models: ollamaModelDiscoveryReachable ? availableOllamaModels : [],
+        embeddingModels: ollamaModelDiscoveryReachable
+          ? availableOllamaModels.filter((model) => (ollamaModelCapabilities[model] ?? []).includes("embedding"))
+          : [],
+        chatModels: ollamaModelDiscoveryReachable
+          ? availableOllamaModels.filter((model) => (ollamaModelCapabilities[model] ?? []).includes("completion"))
+          : [],
+        defaults: {
+          embeddingModel: config.ollamaEmbeddingModel,
+          chatModel: config.ollamaChatModel,
+        },
+      }),
       checkChromaHealth: async (_runtimeConfig, options) => {
         chromaHealthCalls += 1;
         if (!options?.collectionName) {
@@ -449,7 +477,7 @@ describe("v1 admin and rag api endpoints", () => {
       chatModel: "missing-chat-model",
     });
 
-    availableOllamaModels = ["gemma3:4b-cloud", "bge-m3"];
+    availableOllamaModels = ["gemma3:4b-cloud", "bge-m3:latest"];
     try {
       const response = await request(`/v1/rag/collections/${createdCollection.id}/ready`);
       const body = await response.json() as any;
@@ -481,7 +509,7 @@ describe("v1 admin and rag api endpoints", () => {
         reindex: true,
       });
     } finally {
-      availableOllamaModels = ["gemma3:4b-cloud", "bge-m3", "chat-collection-specific", "embed-collection-specific"];
+      availableOllamaModels = ["gemma3:4b", "gemma3:4b-cloud", "gpt-oss:120b-cloud", "bge-m3:latest", "glm-5:cloud", "qwen3.5:cloud"];
     }
   });
 
@@ -526,6 +554,7 @@ describe("v1 admin and rag api endpoints", () => {
       assert.equal(retrieveBody.k, 3);
       assert.equal(retrieveBody.sourceCount, 0);
       assert.equal(retrieveBody.distanceScoreThreshold, 0.42);
+      assert.equal(retrieveBody.embeddingModel, "embed-collection-specific");
       assert.equal(retrieveBody.collectionId, createdCollection.id);
       assert.equal(retrieveBody.activeVersion, "v-route-settings");
       assert.equal("debug" in retrieveBody, false);
@@ -547,6 +576,8 @@ describe("v1 admin and rag api endpoints", () => {
       const queryBody = await queryResponse.json() as any;
 
       assert.equal(queryResponse.status, 200);
+      assert.equal(queryBody.embeddingModel, "embed-collection-specific");
+      assert.equal(queryBody.chatModel, "chat-collection-specific");
       assert.equal(queryBody.distanceScoreThreshold, 0.42);
       assert.equal(queryBody.collectionId, createdCollection.id);
       assert.equal(queryBody.activeVersion, "v-route-settings");
@@ -700,6 +731,8 @@ describe("v1 admin and rag api endpoints", () => {
           assert.equal(options.includeDebugTimings, true);
           return {
             answer: "debug-answer",
+            embeddingModel: options.embeddingModel ?? config.ollamaEmbeddingModel,
+            chatModel: options.chatModel ?? config.ollamaChatModel,
             distanceScoreThreshold: 0.4,
             sources: [],
             debug: {
@@ -1030,6 +1063,79 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(body.impact.reindexRequired, false);
     assert.equal(body.blockers.some((issue: any) => issue.code === "CHROMA_UNREACHABLE"), false);
     assert.equal(body.blockers.some((issue: any) => issue.code === "COLLECTION_ACTIVE_PHYSICAL_UNREADABLE"), false);
+  });
+
+  it("GET /v1/admin/models returns discovered Ollama models and runtime defaults", async () => {
+    const response = await request("/v1/admin/models", {
+      method: "GET",
+    });
+    const body = await response.json() as any;
+
+    assert.equal(response.status, 200);
+    assert.equal(body.reachable, true);
+    assert.deepEqual(body.defaults, {
+      embeddingModel: config.ollamaEmbeddingModel,
+      chatModel: config.ollamaChatModel,
+    });
+    assert.ok(Array.isArray(body.models));
+    assert.ok(Array.isArray(body.embeddingModels));
+    assert.ok(Array.isArray(body.chatModels));
+    assert.ok(body.embeddingModels.some((model: string) => model.startsWith("bge-m3")));
+    assert.ok(body.chatModels.includes("gemma3:4b"));
+    assert.ok(body.chatModels.includes("gemma3:4b-cloud"));
+    assert.ok(body.models.includes("gpt-oss:120b-cloud"));
+  });
+
+  it("GET /v1/admin/config/defaults returns runtime create defaults", async () => {
+    const response = await request("/v1/admin/config/defaults", {
+      method: "GET",
+      headers: {
+        "x-tenant-id": "default",
+        "x-user-id": "local-dev",
+        "x-request-id": "config-defaults-test",
+      },
+    });
+    const body = await response.json() as any;
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.collectionDefaults, {
+      sourcePath: config.collectionDefaults.sourcePath,
+      ozelgeDataPath: config.collectionDefaults.ozelgeDataPath,
+      distanceMetric: config.chromaDistanceMetric,
+      indexSampleSize: config.indexSampleSize,
+      chunkSize: config.collectionDefaults.chunkSize,
+      chunkOverlap: config.collectionDefaults.chunkOverlap,
+      retrievalK: config.collectionDefaults.retrievalK,
+      retrievalDistanceThreshold: config.collectionDefaults.retrievalDistanceThreshold,
+    });
+    assert.deepEqual(body.modelDefaults, {
+      embeddingModel: config.ollamaEmbeddingModel,
+      chatModel: config.ollamaChatModel,
+    });
+  });
+
+  it("GET /v1/admin/models soft-fails when Ollama discovery is unavailable", async () => {
+    const previousReachable = ollamaModelDiscoveryReachable;
+    ollamaModelDiscoveryReachable = false;
+
+    try {
+      const response = await request("/v1/admin/models", {
+        method: "GET",
+      });
+      const body = await response.json() as any;
+
+      assert.equal(response.status, 200);
+      assert.equal(body.reachable, false);
+      assert.deepEqual(body.models, []);
+      assert.deepEqual(body.embeddingModels, []);
+      assert.deepEqual(body.chatModels, []);
+      assert.deepEqual(body.defaults, {
+        embeddingModel: config.ollamaEmbeddingModel,
+        chatModel: config.ollamaChatModel,
+      });
+    } finally {
+      ollamaModelDiscoveryReachable = previousReachable;
+    }
   });
 
   it("admin collection update is tenant-scoped and returns 403 for another tenant", async () => {

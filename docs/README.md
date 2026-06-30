@@ -19,8 +19,10 @@ This documentation set is written for both humans and coding agents that need to
 - Treat `GET /v1/rag/collections/:collectionId/ready` as the capability gate for collection-specific UI state.
 - `GET /v1/rag/collections/:collectionId/ready` may still return `200` while query is blocked; read `capabilities`, `blockers`, and `warnings`.
 - Send `x-tenant-id`, `x-user-id`, and `x-request-id` on all requests.
-- `POST /query` returns an answer plus sources. `POST /retrieve` returns sources only.
+- Use `GET /v1/admin/config/defaults` to show create-form backend defaults, and `GET /v1/admin/models` to show model discovery.
+- `POST /query` returns an answer, effective model metadata, and sources. `POST /retrieve` returns effective model metadata and sources.
 - `POST /query` may return only the source subset actually used for answer generation. Use `POST /retrieve` for the broader evidence set.
+- Raw query/retrieve JSON also includes the effective model names used for that request.
 - `POST /v1/admin/collections/:collectionId/reindex` is asynchronous and returns `202 Accepted`.
 - Some write endpoints return `204 No Content`; do not call `response.json()` on them.
 - Query, retrieve, and reindex operations are rate-limited and return `429 RATE_LIMIT_EXCEEDED` with `Retry-After`.

@@ -17,6 +17,7 @@ import {
   checkChromaHealth,
   checkEmbeddingHealth,
   checkOllamaHealth,
+  getOllamaModelDiscovery,
   retrieveSources,
   type ChatGenerationHealthDetails,
   type EmbeddingHealthDetails,
@@ -38,6 +39,7 @@ export type AppDependencies = {
   healthChecks?: {
     checkChromaHealth?: typeof checkChromaHealth;
     checkOllamaHealth?: typeof checkOllamaHealth;
+    checkOllamaModelDiscovery?: typeof getOllamaModelDiscovery;
     checkEmbeddingHealth?: typeof checkEmbeddingHealth;
     checkChatGenerationHealth?: typeof checkChatGenerationHealth;
     checkIndexingSourceHealth?: typeof checkIndexingSourceHealth;

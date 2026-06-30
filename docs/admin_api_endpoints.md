@@ -14,6 +14,87 @@ If the frontend only needs end-user question answering, this file is optional. F
 
 ## Collection Configuration Fields
 
+### `GET /v1/admin/config/defaults`
+
+Returns the runtime defaults that the admin create form should show when fields are left empty.
+
+Example response:
+
+```json
+{
+  "collectionDefaults": {
+    "sourcePath": "C:\\Codes\\Vanilla Rag Backend\\data",
+    "ozelgeDataPath": "C:\\Codes\\Vanilla Rag Backend\\data\\ozelge_veri.json",
+    "distanceMetric": "cosine",
+    "indexSampleSize": 0,
+    "chunkSize": 1000,
+    "chunkOverlap": 200,
+    "retrievalK": 5,
+    "retrievalDistanceThreshold": 0.35
+  },
+  "modelDefaults": {
+    "embeddingModel": "bge-m3",
+    "chatModel": "gemma3:4b-cloud"
+  }
+}
+```
+
+Notes:
+
+- `collectionDefaults.sourcePath` and `collectionDefaults.ozelgeDataPath` are resolved runtime paths, so they may appear absolute.
+- This endpoint is intended for create-form visibility only; it does not expose the full config file.
+
+### `GET /v1/admin/models`
+
+Returns the current Ollama model inventory for admin autocomplete and validation hints.
+
+Example response:
+
+```json
+{
+  "reachable": true,
+  "models": [
+    "gemma3:4b",
+    "gemma3:4b-cloud",
+    "gpt-oss:120b-cloud",
+    "bge-m3:latest"
+  ],
+  "embeddingModels": [
+    "bge-m3:latest"
+  ],
+  "chatModels": [
+    "gemma3:4b",
+    "gemma3:4b-cloud",
+    "gpt-oss:120b-cloud"
+  ],
+  "defaults": {
+    "embeddingModel": "bge-m3",
+    "chatModel": "gemma3:4b-cloud"
+  }
+}
+```
+
+If Ollama discovery is unavailable, the endpoint still returns `200` with:
+
+```json
+{
+  "reachable": false,
+  "models": [],
+  "embeddingModels": [],
+  "chatModels": [],
+  "defaults": {
+    "embeddingModel": "bge-m3",
+    "chatModel": "gemma3:4b-cloud"
+  }
+}
+```
+
+Notes:
+
+- `models` is the full runtime-discovered Ollama inventory.
+- `embeddingModels` and `chatModels` are role-specific subsets of that inventory for the two admin form fields.
+- The inventory depends on the local Ollama runtime, so the visible list can change without a code deploy.
+
 ### Create request
 
 `POST /v1/admin/collections`
@@ -39,6 +120,7 @@ Behavior:
 
 - Omitted create fields are filled from runtime configuration defaults.
 - A newly created collection starts as a logical record; it is not queryable until indexing produces an active version.
+- Use `GET /v1/admin/config/defaults` to show those defaults in the create form before save.
 
 ### Update request
 

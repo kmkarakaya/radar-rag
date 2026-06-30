@@ -28,6 +28,7 @@ It also demonstrates:
 - sending `x-tenant-id`, `x-user-id`, and `x-request-id` on every request
 - readiness-driven UI enablement for `query` and `retrieve`
 - rendering `blockers`, `warnings`, and `recommendedActions`
+- rendering effective `embeddingModel` and `chatModel` metadata from query/retrieve responses
 - surfacing `requestId`, `Retry-After`, and `X-RateLimit-*` response headers
 - keeping `query` and `retrieve` as separate user actions
 
@@ -55,6 +56,7 @@ The file [`index.html`](./index.html) is small enough to read quickly, but it st
 - it does not use legacy `/rag/query` or `/rag/retrieve` routes
 - it does not enable query buttons before collection readiness confirms capability
 - it does not assume `query.sources` is the same full set that `retrieve` would return
+- it does not hide the effective model metadata returned by query/retrieve
 - it preserves backend diagnostics that are easy to lose in a rushed frontend implementation
 
 ## How To Reuse It In A Real Frontend
@@ -92,6 +94,7 @@ These changes are usually safe:
 - Handle `400`, `403`, `404`, `413`, `422`, `429`, `502`, and `503` distinctly.
 - Treat `Retry-After` as actionable on `429`.
 - Treat `query.sources` as generation-context output, not automatically as the full evidence set.
+- Treat `retrieve.embeddingModel` and `query.embeddingModel` / `query.chatModel` as part of the response contract.
 - If `desiredEmbeddingModel` appears in readiness, treat it as a pending post-reindex change.
 
 ## Related Docs

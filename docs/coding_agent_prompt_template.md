@@ -50,6 +50,7 @@ Non-negotiable backend rules:
 - Preserve x-tenant-id, x-user-id, and x-request-id headers.
 - Handle 202, 204, 409, 413, 422, 429, 502, and 503 correctly.
 - Do not assume query.sources is the same full source set that retrieve would return.
+- If the UI exposes raw JSON or diagnostics, surface `retrieve.embeddingModel` and `query.embeddingModel` / `query.chatModel`.
 - If ready.modelAvailability.desiredEmbeddingModel exists, treat it as a pending post-reindex model change, not as the current live embedding model.
 
 Deliverables:
@@ -127,6 +128,7 @@ Important:
 - POST /query is secondary and should be optional.
 - Show collection readiness before enabling actions.
 - Show retrieval metadata such as sourcePath, chunkIndex, konu, tarih, sayi, and distanceScore when available.
+- Show `embeddingModel` for retrieve responses and both `embeddingModel` / `chatModel` for query responses when rendering raw JSON or diagnostics.
 - Handle NO_RELEVANT_CONTEXT and ANSWER_NOT_IN_RETRIEVED_CONTEXT cleanly.
 ```
 

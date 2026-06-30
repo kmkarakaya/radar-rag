@@ -25,12 +25,12 @@ Example response:
   "collectionDefaults": {
     "sourcePath": "C:\\Codes\\Vanilla Rag Backend\\data",
     "ozelgeDataPath": "C:\\Codes\\Vanilla Rag Backend\\data\\ozelge_veri.json",
-    "distanceMetric": "cosine",
+    "distanceMetric": "l2",
     "indexSampleSize": 0,
-    "chunkSize": 1000,
+    "chunkSize": 500,
     "chunkOverlap": 200,
     "retrievalK": 5,
-    "retrievalDistanceThreshold": 0.35
+    "retrievalDistanceThreshold": 1.2
   },
   "modelDefaults": {
     "embeddingModel": "bge-m3",
@@ -43,6 +43,7 @@ Notes:
 
 - `collectionDefaults.sourcePath` and `collectionDefaults.ozelgeDataPath` are resolved runtime paths, so they may appear absolute.
 - This endpoint is intended for create-form visibility only; it does not expose the full config file.
+- Use this together with `GET /v1/admin/models` so the create form can show both backend defaults and runtime model suggestions.
 
 ### `GET /v1/admin/models`
 
@@ -94,6 +95,7 @@ Notes:
 - `models` is the full runtime-discovered Ollama inventory.
 - `embeddingModels` and `chatModels` are role-specific subsets of that inventory for the two admin form fields.
 - The inventory depends on the local Ollama runtime, so the visible list can change without a code deploy.
+- Use this together with `GET /v1/admin/config/defaults` so the create form can show both autocomplete suggestions and backend defaults.
 
 ### Create request
 
@@ -118,9 +120,10 @@ Optional:
 
 Behavior:
 
-- Omitted create fields are filled from runtime configuration defaults.
+- Omitted create fields are filled from runtime configuration defaults and model defaults.
 - A newly created collection starts as a logical record; it is not queryable until indexing produces an active version.
-- Use `GET /v1/admin/config/defaults` to show those defaults in the create form before save.
+- Use `GET /v1/admin/config/defaults` to show backend defaults in the create form before save.
+- Use `GET /v1/admin/models` to populate model autocomplete or datalist suggestions while still allowing free text.
 
 ### Update request
 

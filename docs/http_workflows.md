@@ -116,6 +116,18 @@ curl.exe -s `
 
 Use this response to show the backend defaults in the create form before the user saves anything.
 
+### Inspect model discovery for the create form
+
+```powershell
+curl.exe -s `
+  -H "x-tenant-id: $TENANT_ID" `
+  -H "x-user-id: $USER_ID" `
+  -H "x-request-id: $REQUEST_ID" `
+  "$BASE_URL/v1/admin/models"
+```
+
+Use this response to populate embedding/chat autocomplete or datalist suggestions while still allowing free text input.
+
 ### Create a collection
 
 ```powershell

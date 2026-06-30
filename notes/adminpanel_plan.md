@@ -1232,17 +1232,10 @@ Aşağıdaki sıra, bu eksikleri hangi hızda ele almak gerektiğini gösterir. 
 
 ### P2 - Kullanıcı deneyimini güçlendiren eksikler
 
-2. 
-3. **Config defaults endpointi yok**
-
-   - Create form backend varsayılanlarını görünür göstermiyor.
-   - Kullanıcı boş bıraktığında ne olacağını tahmin ediyor.
-   - Öneri: `GET /v1/admin/config/defaults`
-4. **Health/readiness daha zengin bir operasyon özetine dönüşmedi**
-
-   - Panel durum gösteriyor ama teşhis derinliği sınırlı.
+2. **Health/readiness daha zengin bir operasyon özetine dönüşmedi**
+3. - Panel durum gösteriyor ama teşhis derinliği sınırlı.
    - Daha iyi bir özet için backend tarafında genişletme gerekebilir.
-5. **Job ilerleme verisi yok**
+4. **Job ilerleme verisi yok**
 
    - Job yalnızca terminal/ara durumlarla izlenebiliyor.
    - Gerçek aşama/event bilgisi yok.

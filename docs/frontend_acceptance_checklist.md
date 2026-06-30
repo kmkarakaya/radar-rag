@@ -43,9 +43,12 @@ Use this checklist to evaluate whether a frontend built against this backend is 
 ## Admin UX Checks
 
 - Can create collections with `POST /v1/admin/collections`.
+- Shows backend defaults for create forms with `GET /v1/admin/config/defaults`.
+- Shows runtime model suggestions for create forms with `GET /v1/admin/models`.
 - Uses validate endpoints before expensive saves or reindex actions.
 - Can patch collections with `PATCH /v1/admin/collections/:collectionId`.
 - Understands `impact.immediateFields` and `impact.reindexFields`.
+- Does not hardcode the create-form distance metric default when the backend provides one.
 - Can trigger reindex with `POST /v1/admin/collections/:collectionId/reindex`.
 - Can poll job state with `GET /v1/admin/jobs` or `GET /v1/admin/jobs/:jobId`.
 - Treats `nextCursor` as opaque.

@@ -29,7 +29,7 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 10. Treat `debug` fields as optional. They appear only when the server is configured with debug timings enabled.
 11. Distinguish `400`, `403`, `404`, `409`, `413`, `422`, `429`, `502`, and `503`; they have different meanings.
 12. Public collection DTOs are sanitized compared to admin collection DTOs. Do not expect admin-only fields from public endpoints.
-13. `POST /query` may return only the subset of sources actually passed into generation. Use `POST /retrieve` when the UI needs the fuller evidence set.
+13. `POST /v1/rag/collections/:collectionId/query` may return only the subset of sources actually passed into generation. Use `POST /v1/rag/collections/:collectionId/retrieve` when the UI needs the fuller evidence set.
 14. Query, retrieve, and reindex responses include rate-limit headers; a `429` also includes `Retry-After`.
 
 ## Canonical End-User RAG Workflow
@@ -45,13 +45,14 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 
 ## Canonical Admin Workflow
 
-1. Create or load a collection with `/v1/admin/collections`.
-2. Call `/v1/admin/collections/validate` or `/v1/admin/collections/:collectionId/validate` before saving major configuration changes.
-3. Save changes with `PATCH /v1/admin/collections/:collectionId`.
-4. If validation says `impact.reindexRequired === true`, offer a reindex action.
-5. Trigger reindex with `POST /v1/admin/collections/:collectionId/reindex`.
-6. Poll `GET /v1/admin/jobs/:jobId` or `GET /v1/admin/jobs` while the job is queued or running.
-7. Re-check `GET /v1/rag/collections/:collectionId/ready` once indexing finishes.
+1. For create forms, fetch `GET /v1/admin/config/defaults` and `GET /v1/admin/models` first so the UI can show backend defaults and model suggestions.
+2. Create or load a collection with `/v1/admin/collections`.
+3. Call `/v1/admin/collections/validate` or `/v1/admin/collections/:collectionId/validate` before saving major configuration changes.
+4. Save changes with `PATCH /v1/admin/collections/:collectionId`.
+5. If validation says `impact.reindexRequired === true`, offer a reindex action.
+6. Trigger reindex with `POST /v1/admin/collections/:collectionId/reindex`.
+7. Poll `GET /v1/admin/jobs/:jobId` or `GET /v1/admin/jobs` while the job is queued or running.
+8. Re-check `GET /v1/rag/collections/:collectionId/ready` once indexing finishes.
 
 ## Query vs Retrieve
 

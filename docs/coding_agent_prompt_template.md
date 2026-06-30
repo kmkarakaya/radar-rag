@@ -49,6 +49,7 @@ Non-negotiable backend rules:
 - Use GET /v1/rag/collections/:collectionId/ready as the source of truth for enabling query and retrieve actions.
 - Preserve x-tenant-id, x-user-id, and x-request-id headers.
 - Handle 202, 204, 409, 413, 422, 429, 502, and 503 correctly.
+- If the UI includes a create form, load `GET /v1/admin/config/defaults` and `GET /v1/admin/models` so backend defaults and model suggestions stay visible.
 - Do not assume query.sources is the same full source set that retrieve would return.
 - If the UI exposes raw JSON or diagnostics, surface `retrieve.embeddingModel` and `query.embeddingModel` / `query.chatModel`.
 - If ready.modelAvailability.desiredEmbeddingModel exists, treat it as a pending post-reindex model change, not as the current live embedding model.
@@ -96,6 +97,7 @@ Non-negotiable backend rules:
 - Use only versioned /v1 endpoints.
 - Use public RAG endpoints for end-user interactions and admin endpoints for editable settings.
 - Use GET /v1/rag/collections/:collectionId/ready as the capability gate for query and retrieve.
+- If the UI includes a create form, load `GET /v1/admin/config/defaults` and `GET /v1/admin/models` before rendering backend defaults or autocomplete suggestions.
 - Reindex is asynchronous and returns 202.
 - Delete and cancel endpoints return 204 with no JSON body.
 - Job list cursor is opaque.
@@ -124,8 +126,8 @@ Goal:
 - Build a search-first UI that emphasizes retrieved evidence more than generated answers.
 
 Important:
-- Use POST /retrieve as the primary interaction.
-- POST /query is secondary and should be optional.
+- Use `POST /v1/rag/collections/:collectionId/retrieve` as the primary interaction.
+- `POST /v1/rag/collections/:collectionId/query` is secondary and should be optional.
 - Show collection readiness before enabling actions.
 - Show retrieval metadata such as sourcePath, chunkIndex, konu, tarih, sayi, and distanceScore when available.
 - Show `embeddingModel` for retrieve responses and both `embeddingModel` / `chatModel` for query responses when rendering raw JSON or diagnostics.

@@ -69,6 +69,7 @@ let state = {
     healthStatus: null,
     readiness: null,
     readinessDetails: null,
+    healthLastUpdatedAt: null,
 };
 
 const loadTokens = {
@@ -526,6 +527,20 @@ function formatMetric(value) {
     if (value === null || value === undefined || value === "") return "-";
     const number = Number(value);
     return Number.isFinite(number) ? number.toFixed(4).replace(/0+$/, "").replace(/\.$/, "") : String(value);
+}
+
+function formatDurationSeconds(value) {
+    if (value === null || value === undefined || value === "") return "-";
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds)) return String(value);
+    if (seconds < 60) return `${Math.round(seconds)} sec`;
+    const wholeSeconds = Math.max(0, Math.round(seconds));
+    const minutes = Math.floor(wholeSeconds / 60);
+    const remainderSeconds = wholeSeconds % 60;
+    if (minutes < 60) return `${minutes} min ${remainderSeconds} sec`;
+    const hours = Math.floor(minutes / 60);
+    const remainderMinutes = minutes % 60;
+    return `${hours} hr ${remainderMinutes} min`;
 }
 
 function stringifyForDisplay(value) {
@@ -2511,7 +2526,16 @@ function renderJobs() {
 
 async function loadHealth() {
     if (state.isLoading.health) return;
+    const hasSnapshot = Boolean(state.healthStatus || state.readiness || state.readinessDetails);
     state.isLoading.health = true;
+
+    if (hasSnapshot) {
+        renderHealthSummary(state.healthStatus, state.readiness, state.readinessDetails, { refreshing: true });
+        renderReadinessDetail(state.readiness, state.readinessDetails, null, { refreshing: true });
+    } else {
+        renderHealthLoadingState();
+        renderReadinessLoadingState();
+    }
 
     try {
         const [healthResult, readyResult, detailsResult] = await Promise.allSettled([
@@ -2520,12 +2544,23 @@ async function loadHealth() {
             apiRequest(`${API.ready}?details=true`),
         ]);
 
-        state.healthStatus = healthResult.status === "fulfilled" ? healthResult.value : null;
-        state.readiness = readyResult.status === "fulfilled" ? readyResult.value : null;
-        state.readinessDetails = detailsResult.status === "fulfilled" ? detailsResult.value : null;
+        state.healthStatus = healthResult.status === "fulfilled" ? healthResult.value : state.healthStatus;
+        state.readiness = readyResult.status === "fulfilled" ? readyResult.value : state.readiness;
+        state.readinessDetails = detailsResult.status === "fulfilled" ? detailsResult.value : state.readinessDetails;
+        if (
+            healthResult.status === "fulfilled"
+            || readyResult.status === "fulfilled"
+            || detailsResult.status === "fulfilled"
+        ) {
+            state.healthLastUpdatedAt = new Date().toISOString();
+        }
 
-        renderHealthSummary(state.healthStatus, state.readiness, state.readinessDetails);
-        renderReadinessDetail(state.readiness, state.readinessDetails, detailsResult.status === "rejected" ? detailsResult.reason : null);
+        renderHealthSummary(state.healthStatus, state.readiness, state.readinessDetails, {
+            lastUpdatedAt: state.healthLastUpdatedAt,
+        });
+        renderReadinessDetail(state.readiness, state.readinessDetails, detailsResult.status === "rejected" ? detailsResult.reason : null, {
+            lastUpdatedAt: state.healthLastUpdatedAt,
+        });
 
         [healthResult, readyResult].forEach((result) => {
             if (result.status === "rejected") showErrorToast(result.reason, "Health summary failed");
@@ -2543,13 +2578,193 @@ function dependencyStatus(dependency) {
     return dependency.status || "unknown";
 }
 
-function renderHealthSummary(health, ready, details) {
+function createInlineLoadingBar() {
+    const track = createEl("div", "mt-3 h-2 overflow-hidden rounded-full bg-slate-200");
+    const fill = createEl("div", "h-full w-2/3 rounded-full bg-sky-500/80 animate-pulse");
+    track.appendChild(fill);
+    return track;
+}
+
+function createHealthStatusBanner(message, options = {}) {
+    const tone = options.tone || "info";
+    const toneClasses = tone === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-800"
+        : "border-sky-200 bg-sky-50 text-sky-800";
+    const banner = createEl("div", `col-span-full rounded-lg border p-4 text-sm ${toneClasses}`);
+    banner.appendChild(createEl("div", "font-semibold", message));
+    if (options.detail) {
+        banner.appendChild(createEl("div", "mt-1 text-xs opacity-90", options.detail));
+    }
+    if (options.showBar) {
+        banner.appendChild(createInlineLoadingBar());
+    }
+    return banner;
+}
+
+function createLoadingSkeletonCard(title) {
+    const card = createEl("div", "rounded-lg border border-slate-200 bg-white p-6 shadow-sm");
+    card.appendChild(createEl("h3", "mb-3 text-sm font-bold uppercase text-slate-500", title));
+    const stack = createEl("div", "space-y-3");
+    for (let index = 0; index < 4; index += 1) {
+        const line = createEl("div", "animate-pulse rounded-md bg-slate-100");
+        line.style.height = index === 0 ? "2.75rem" : "2.25rem";
+        stack.appendChild(line);
+    }
+    card.appendChild(stack);
+    return card;
+}
+
+function renderHealthLoadingState() {
+    const grid = elements.healthGrid;
+    clearNode(grid);
+    grid.appendChild(createHealthStatusBanner("Loading system health...", {
+        detail: "Fetching liveness, readiness summary, and diagnostics.",
+        showBar: true,
+    }));
+    grid.appendChild(createLoadingSkeletonCard("Process"));
+    grid.appendChild(createLoadingSkeletonCard("Readiness"));
+    grid.appendChild(createLoadingSkeletonCard("Dependencies"));
+}
+
+function renderReadinessLoadingState() {
+    const container = elements.readinessDetail;
+    clearNode(container);
+    const notice = createEl("div", "rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800");
+    notice.appendChild(createEl("div", "font-semibold", "Loading system health details..."));
+    notice.appendChild(createEl("div", "mt-1 text-xs text-sky-700", "Detailed checks and operational diagnostics will appear here shortly."));
+    notice.appendChild(createInlineLoadingBar());
+    container.appendChild(notice);
+}
+
+function getOperationsSnapshot(ready, details) {
+    return details?.operations || ready?.operations || null;
+}
+
+function createSummaryListCard(title, entries) {
+    const card = createEl("div", "rounded-lg border border-slate-200 bg-white p-6 shadow-sm");
+    card.appendChild(createEl("h3", "mb-3 text-sm font-bold uppercase text-slate-500", title));
+    const list = createEl("div", "space-y-2");
+    entries.forEach(([label, value]) => {
+        const row = createEl("div", "flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 px-3 py-2 text-xs");
+        row.appendChild(createEl("span", "font-semibold text-slate-600", label));
+        row.appendChild(createEl("span", "text-right font-semibold text-slate-700", stringifyForDisplay(value)));
+        list.appendChild(row);
+    });
+    card.appendChild(list);
+    return card;
+}
+
+function renderOperationsSummaryCards(grid, operations) {
+    if (!operations) return;
+
+    grid.appendChild(createSummaryListCard("Collections", [
+        ["Total", formatCount(operations.collections?.total)],
+        ["Creating", formatCount(operations.collections?.creating)],
+        ["Indexing", formatCount(operations.collections?.indexing)],
+        ["Ready", formatCount(operations.collections?.ready)],
+        ["Failed", formatCount(operations.collections?.failed)],
+        ["Archived", formatCount(operations.collections?.archived)],
+    ]));
+
+    grid.appendChild(createSummaryListCard("Jobs", [
+        ["Total", formatCount(operations.jobs?.total)],
+        ["Active", formatCount(operations.jobs?.active)],
+        ["Queued", formatCount(operations.jobs?.queued)],
+        ["Running", formatCount(operations.jobs?.running)],
+        ["Failed", formatCount(operations.jobs?.failed)],
+        ["Cancelled", formatCount(operations.jobs?.cancelled)],
+    ]));
+
+    grid.appendChild(createSummaryListCard("Cleanup", [
+        ["Backlog", formatCount(operations.physicalCollections?.cleanupBacklog)],
+        ["Delete pending", formatCount(operations.physicalCollections?.deletePending)],
+        ["Cleanup failed", formatCount(operations.physicalCollections?.cleanupFailed)],
+        ["Failed build", formatCount(operations.physicalCollections?.failedBuild)],
+        ["Active physical", formatCount(operations.physicalCollections?.active)],
+        ["Oldest due", formatDateTime(operations.physicalCollections?.oldestDueDeleteAt)],
+    ]));
+}
+
+function appendMetricSection(container, title, entries) {
+    const section = createEl("section", "mb-6");
+    section.appendChild(createEl("h4", "mb-3 text-sm font-bold uppercase text-slate-500", title));
+    const grid = createEl("div", "grid grid-cols-1 gap-3 sm:grid-cols-2");
+    entries.forEach(([label, value]) => {
+        grid.appendChild(createMetaItem(label, value));
+    });
+    section.appendChild(grid);
+    container.appendChild(section);
+}
+
+function renderOperationsDetail(container, operations) {
+    if (!operations) return;
+
+    appendMetricSection(container, "Collection Operations", [
+        ["Observed at", formatDateTime(operations.observedAt)],
+        ["Total collections", formatCount(operations.collections?.total)],
+        ["Creating", formatCount(operations.collections?.creating)],
+        ["Indexing", formatCount(operations.collections?.indexing)],
+        ["Ready", formatCount(operations.collections?.ready)],
+        ["Failed", formatCount(operations.collections?.failed)],
+        ["Archived", formatCount(operations.collections?.archived)],
+    ]);
+
+    appendMetricSection(container, "Job Operations", [
+        ["Total jobs", formatCount(operations.jobs?.total)],
+        ["Active jobs", formatCount(operations.jobs?.active)],
+        ["Queued", formatCount(operations.jobs?.queued)],
+        ["Running", formatCount(operations.jobs?.running)],
+        ["Terminal", formatCount(operations.jobs?.terminal)],
+        ["Succeeded", formatCount(operations.jobs?.succeeded)],
+        ["Failed", formatCount(operations.jobs?.failed)],
+        ["Cancelled", formatCount(operations.jobs?.cancelled)],
+        ["Oldest active update", formatDateTime(operations.jobs?.oldestActiveUpdatedAt)],
+        ["Oldest active age", formatDurationSeconds(operations.jobs?.oldestActiveAgeSec)],
+        ["Latest failure", formatDateTime(operations.jobs?.newestFailureAt)],
+    ]);
+
+    appendMetricSection(container, "Physical Collection Operations", [
+        ["Total physical", formatCount(operations.physicalCollections?.total)],
+        ["Building", formatCount(operations.physicalCollections?.building)],
+        ["Active", formatCount(operations.physicalCollections?.active)],
+        ["Failed build", formatCount(operations.physicalCollections?.failedBuild)],
+        ["Delete pending", formatCount(operations.physicalCollections?.deletePending)],
+        ["Cleanup failed", formatCount(operations.physicalCollections?.cleanupFailed)],
+        ["Deleted", formatCount(operations.physicalCollections?.deleted)],
+        ["Cleanup backlog", formatCount(operations.physicalCollections?.cleanupBacklog)],
+        ["Oldest due delete", formatDateTime(operations.physicalCollections?.oldestDueDeleteAt)],
+    ]);
+
+    appendMetricSection(container, "Runtime Limits", [
+        ["Rate limit enabled", formatBoolean(operations.runtime?.rateLimit?.enabled)],
+        ["Rate limit window", operations.runtime?.rateLimit?.windowMs !== undefined ? `${operations.runtime.rateLimit.windowMs} ms` : "-"],
+        ["Max requests / window", formatCount(operations.runtime?.rateLimit?.maxRequestsPerWindow)],
+        ["Max concurrent embeddings", formatCount(operations.runtime?.concurrency?.maxConcurrentEmbeddings)],
+        ["Max concurrent generations", formatCount(operations.runtime?.concurrency?.maxConcurrentGenerations)],
+        ["Readiness timeout", operations.runtime?.timeouts?.readinessMs !== undefined ? `${operations.runtime.timeouts.readinessMs} ms` : "-"],
+        ["RAG timeout", operations.runtime?.timeouts?.ragMs !== undefined ? `${operations.runtime.timeouts.ragMs} ms` : "-"],
+    ]);
+}
+
+function renderHealthSummary(health, ready, details, options = {}) {
     const grid = elements.healthGrid;
     clearNode(grid);
 
     if (!health && !ready && !details) {
         grid.appendChild(createEl("div", "col-span-full py-8 text-center text-slate-400 italic", "Health data unavailable."));
         return;
+    }
+
+    if (options.refreshing) {
+        grid.appendChild(createHealthStatusBanner("Refreshing system health...", {
+            detail: state.healthLastUpdatedAt ? `Showing last successful snapshot from ${formatDateTime(state.healthLastUpdatedAt)}.` : "Keeping the last successful snapshot visible while new diagnostics load.",
+            tone: "warning",
+            showBar: true,
+        }));
+    } else if (options.lastUpdatedAt) {
+        grid.appendChild(createHealthStatusBanner("System health loaded.", {
+            detail: `Last updated ${formatDateTime(options.lastUpdatedAt)}.`,
+        }));
     }
 
     const processCard = createEl("div", "rounded-lg border border-slate-200 bg-white p-6 shadow-sm");
@@ -2587,6 +2802,8 @@ function renderHealthSummary(health, ready, details) {
     });
     depsCard.appendChild(depList);
     grid.appendChild(depsCard);
+
+    renderOperationsSummaryCards(grid, getOperationsSnapshot(ready, details));
 }
 
 function appendIssueSection(container, title, items, emptyText, colorClass) {
@@ -2601,7 +2818,12 @@ function appendIssueSection(container, title, items, emptyText, colorClass) {
     items.forEach((item) => {
         const row = createEl("div", "rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs text-slate-700");
         if (isRecord(item)) {
-            row.appendChild(createEl("div", "font-semibold", item.code || item.name || "Issue"));
+            const header = createEl("div", "flex flex-wrap items-center justify-between gap-2");
+            header.appendChild(createEl("div", "font-semibold", item.code || item.name || "Issue"));
+            if (item.severity) {
+                header.appendChild(createBadge(item.severity, getStatusColor(item.severity)));
+            }
+            row.appendChild(header);
             row.appendChild(createEl("div", "mt-1 break-all-words", item.message || stringifyForDisplay(item)));
             if (item.recommendedAction) row.appendChild(createEl("div", "mt-1 break-all-words text-slate-500", item.recommendedAction));
         } else {
@@ -2640,9 +2862,23 @@ function renderChecks(container, checks) {
     container.appendChild(section);
 }
 
-function renderReadinessDetail(ready, details, detailsError) {
+function renderReadinessDetail(ready, details, detailsError, options = {}) {
     const container = elements.readinessDetail;
     clearNode(container);
+    const operations = getOperationsSnapshot(ready, details);
+
+    if (options.refreshing) {
+        const refreshNotice = createEl("div", "mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800");
+        refreshNotice.appendChild(createEl("div", "font-semibold", "Refreshing health diagnostics..."));
+        refreshNotice.appendChild(createEl("div", "mt-1 text-xs text-amber-700", state.healthLastUpdatedAt ? `Showing last successful snapshot from ${formatDateTime(state.healthLastUpdatedAt)}.` : "Current diagnostics stay visible until the refresh completes."));
+        refreshNotice.appendChild(createInlineLoadingBar());
+        container.appendChild(refreshNotice);
+    } else if (options.lastUpdatedAt) {
+        const snapshotNotice = createEl("div", "mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700");
+        snapshotNotice.appendChild(createEl("div", "font-semibold", "Diagnostics snapshot"));
+        snapshotNotice.appendChild(createEl("div", "mt-1 text-xs text-slate-500", `Last updated ${formatDateTime(options.lastUpdatedAt)}.`));
+        container.appendChild(snapshotNotice);
+    }
 
     if (detailsError) {
         const warning = createEl("div", "mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800");
@@ -2659,6 +2895,7 @@ function renderReadinessDetail(ready, details, detailsError) {
     appendIssueSection(container, "Recommended Actions", details?.recommendedActions ?? ready?.recommendedActions, "No recommended actions.", "text-slate-500");
     appendIssueSection(container, "Blockers", details?.blockers ?? ready?.blockers, "No blockers.", "text-rose-600");
     appendIssueSection(container, "Warnings", details?.warnings ?? ready?.warnings, "No warnings.", "text-amber-600");
+    appendIssueSection(container, "Operational Alerts", details?.operationalAlerts ?? ready?.operationalAlerts, "No operational alerts.", "text-sky-600");
     renderChecks(container, details?.checks);
 
     const config = createEl("section", "mb-6");
@@ -2686,6 +2923,8 @@ function renderReadinessDetail(ready, details, detailsError) {
         dataSourceSection.appendChild(createEl("p", "text-xs italic text-slate-400", "No data source details available."));
     }
     container.appendChild(dataSourceSection);
+
+    renderOperationsDetail(container, operations);
 
     const deps = details?.dependencies;
     if (deps) appendJsonDetails(container, "Dependency diagnostics", deps);

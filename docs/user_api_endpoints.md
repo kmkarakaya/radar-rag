@@ -65,7 +65,7 @@ Readiness probe and high-level dependency summary.
 Query params:
 
 - `details=true`
-  Return the full readiness payload with checks, blockers, warnings, and dependency detail.
+  Return the full readiness payload with checks, blockers, warnings, dependency detail, and aggregate operations diagnostics.
 - `strict=true`
   Return `503` instead of `200` when the system is not fully ready.
 
@@ -101,11 +101,68 @@ Default summary response shape:
     "full": "GET /ready?details=true",
     "strictHttpStatus": "GET /ready?strict=true",
     "fullStrict": "GET /ready?details=true&strict=true"
+  },
+  "operations": {
+    "observedAt": "2026-06-30T12:00:00.000Z",
+    "collections": {
+      "total": 7,
+      "creating": 1,
+      "indexing": 2,
+      "ready": 2,
+      "failed": 1,
+      "archived": 1
+    },
+    "jobs": {
+      "total": 5,
+      "active": 2,
+      "queued": 1,
+      "running": 1,
+      "terminal": 3,
+      "succeeded": 1,
+      "failed": 1,
+      "cancelled": 1,
+      "oldestActiveUpdatedAt": "2026-06-30T11:55:00.000Z",
+      "oldestActiveAgeSec": 300,
+      "newestFailureAt": "2026-06-30T11:59:30.000Z"
+    },
+    "physicalCollections": {
+      "total": 6,
+      "building": 1,
+      "active": 1,
+      "failedBuild": 1,
+      "deletePending": 1,
+      "cleanupFailed": 1,
+      "deleted": 1,
+      "cleanupBacklog": 2,
+      "oldestDueDeleteAt": "2026-06-30T11:00:00.000Z"
+    },
+    "runtime": {
+      "rateLimit": {
+        "enabled": true,
+        "windowMs": 60000,
+        "maxRequestsPerWindow": 60
+      },
+      "concurrency": {
+        "maxConcurrentEmbeddings": 5,
+        "maxConcurrentGenerations": 2
+      },
+      "timeouts": {
+        "readinessMs": 5000,
+        "ragMs": 30000
+      }
+    }
+  },
+  "operationalAlerts": [
+    {
+      "code": "FAILED_JOBS_PRESENT",
+      "severity": "warn",
+      "message": "1 jobs have failed. Latest failure was observed at 2026-06-30T11:59:30.000Z."
+    }
   }
 }
 ```
 
-Use `/ready` for deployment, operations, and environment diagnostics. For collection-specific frontend state, use `GET /v1/rag/collections/:collectionId/ready`.
+Use `/ready` for deployment, operations, and environment diagnostics. `blockers` and `warnings` describe capability readiness, while `operationalAlerts` and `operations` provide aggregate queue, cleanup, and runtime context. For collection-specific frontend state, use `GET /v1/rag/collections/:collectionId/ready`.
 
 ## Public Collection DTO
 

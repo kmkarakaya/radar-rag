@@ -130,22 +130,22 @@ Küçük model için tercih edilen strateji: bu fonksiyonları bir anda tamamen 
 
 Admin panel sadece mevcut endpointleri kullanacak:
 
-| Amaç                    | Method | Endpoint                                        | Not                                                                                                                                    |
-| :----------------------- | :----- | :---------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
-| Collection listesi       | GET    | `/v1/rag/collections`                         | Ucuz registry discovery. Chroma/Ollama probe çalıştırmaz.                                                                          |
-| Collection detayı       | GET    | `/v1/rag/collections/:collectionId`           | Public DTO. Mevcut kod bazı settings alanlarını döndürüyor; agent response alanı yoksa graceful fallback yapmalı.              |
-| Collection readiness     | GET    | `/v1/rag/collections/:collectionId/ready`     | `capabilities`, `modelAvailability`, `activeJob`, `chromaReadable`, `blockers`, `warnings`, `recommendedActions` döner. |
-| Retrieve testi           | POST   | `/v1/rag/collections/:collectionId/retrieve`  | Body:`{ "question": string, "k"?: number }`.                                                                                         |
-| Query testi              | POST   | `/v1/rag/collections/:collectionId/query`     | Body:`{ "question": string }`.                                                                                                       |
-| Collection oluşturma    | POST   | `/v1/admin/collections`                       | Body:`createCollectionSchema`. `displayName` zorunlu.                                                                              |
-| Collection güncelleme   | PATCH  | `/v1/admin/collections/:collectionId`         | Body:`updateCollectionSchema`. Sadece değişen/valid alanlar gönderilmeli.                                                         |
-| Collection silme         | DELETE | `/v1/admin/collections/:collectionId`         | `204 No Content`. Soft delete.                                                                                                       |
-| Re-index başlatma       | POST   | `/v1/admin/collections/:collectionId/reindex` | `202`, `{ job }` döner. Aynı collection için ikinci aktif job `409 COLLECTION_INDEX_ALREADY_RUNNING`.                         |
-| Job detayı              | GET    | `/v1/admin/jobs/:jobId`                       | Sadece bilinen`jobId` ile çalışır. Job list endpointi yok.                                                                       |
-| Job iptal                | POST   | `/v1/admin/jobs/:jobId/cancel`                | Sadece`queued` veya `running` job için. Başarılıysa `204`.                                                                   |
-| Liveness                 | GET    | `/health`                                     | Process ayakta mı.                                                                                                                    |
-| Sistem readiness summary | GET    | `/ready`                                      | Non-strict çağırılmalı; hazır değilse de 200 dönebilir.                                                                        |
-| Sistem readiness detay   | GET    | `/ready?details=true`                         | `checks`, `blockers`, `warnings`, `recommendedActions`, `dependencies`, `dataSource`.                                      |
+| Amaç                    | Method | Endpoint                                        | Not                                                                                                                                      |
+| :----------------------- | :----- | :---------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
+| Collection listesi       | GET    | `/v1/rag/collections`                         | Ucuz registry discovery. Chroma/Ollama probe çalıştırmaz.                                                                            |
+| Collection detayı       | GET    | `/v1/rag/collections/:collectionId`           | Public DTO. Mevcut kod bazı settings alanlarını döndürüyor; agent response alanı yoksa graceful fallback yapmalı.                |
+| Collection readiness     | GET    | `/v1/rag/collections/:collectionId/ready`     | `capabilities`, `modelAvailability`, `activeJob`, `chromaReadable`, `blockers`, `warnings`, `recommendedActions` döner.   |
+| Retrieve testi           | POST   | `/v1/rag/collections/:collectionId/retrieve`  | Body:`{ "question": string, "k"?: number }`.                                                                                           |
+| Query testi              | POST   | `/v1/rag/collections/:collectionId/query`     | Body:`{ "question": string }`.                                                                                                         |
+| Collection oluşturma    | POST   | `/v1/admin/collections`                       | Body:`createCollectionSchema`. `displayName` zorunlu.                                                                                |
+| Collection güncelleme   | PATCH  | `/v1/admin/collections/:collectionId`         | Body:`updateCollectionSchema`. Sadece değişen/valid alanlar gönderilmeli.                                                           |
+| Collection silme         | DELETE | `/v1/admin/collections/:collectionId`         | `204 No Content`. Soft delete.                                                                                                         |
+| Re-index başlatma       | POST   | `/v1/admin/collections/:collectionId/reindex` | `202`, `{ job }` döner. Aynı collection için ikinci aktif job `409 COLLECTION_INDEX_ALREADY_RUNNING`.                           |
+| Job detayı              | GET    | `/v1/admin/jobs/:jobId`                       | Sadece bilinen`jobId` ile çalışır. Job list endpointi yok.                                                                         |
+| Job iptal                | POST   | `/v1/admin/jobs/:jobId/cancel`                | Sadece`queued` veya `running` job için. Başarılıysa `204`.                                                                     |
+| Liveness                 | GET    | `/health`                                     | Process ayakta mı.                                                                                                                      |
+| Sistem readiness summary | GET    | `/ready`                                      | Non-strict çağırılmalı; hazır değilse de 200 dönebilir.                                                                          |
+| Sistem readiness detay   | GET    | `/ready?details=true`                         | `checks`, `blockers`, `warnings`, `recommendedActions`, `dependencies`, `dataSource`, `operations`, `operationalAlerts`. |
 
 Opsiyonel request context header'ları backend tarafından destekleniyor:
 
@@ -668,7 +668,7 @@ npm.cmd run build
 ### Cold Start Prompt
 
 ```text
-You are working in C:\Codes\Vanilla Rag Backend. Implement Step 4 of notes/adminpanel_plan.md. Only edit admin files. Do not add or change backend endpoints. Use GET /v1/rag/collections/:id/ready exactly as implemented; it does not return blockers, so derive blocker messages from hasActivePhysicalCollection, chromaReadable, modelAvailability, activeJob, and capabilities. Drive playground button disabled states from capabilities.retrieve and capabilities.query. Keep errors visible inside the inspector. Run node --check admin/admin.js and npm.cmd run build. Include manual test instructions around an unindexed collection and a reindex flow.
+You are working in C:\Codes\Vanilla Rag Backend. Implement Step 4 of notes/adminpanel_plan.md. Only edit admin files. Do not add or change backend endpoints. Use GET /v1/rag/collections/:id/ready exactly as implemented; it returns blockers, warnings, recommendedActions, hasActivePhysicalCollection, chromaReadable, modelAvailability, activeJob, and capabilities. Drive playground button disabled states from capabilities.retrieve and capabilities.query. Keep errors visible inside the inspector. Run node --check admin/admin.js and npm.cmd run build. Include manual test instructions around an unindexed collection and a reindex flow.
 ```
 
 ## Adım 5 - Playground: Retrieve ve Query Sonuçlarının Kullanılabilir Render'ı
@@ -1202,14 +1202,14 @@ Bu bölüm, yukarıdaki teknik önerilerin daha kısa ve anlaşılır bir özeti
 
 ### Readiness ve durum açıklığı eksikleri
 
-8. **Readiness blocker/warning listesi backend'den gelmiyor**
+8. **Readiness blocker/warning listesi backend-backed hale geldi**
 
-   - UI blocker metinlerini mevcut readiness alanlarından türetiyor.
-   - Etki: Gerçek truth source ile UI mesajı tamamen aynı değil.
-9. **Health/readiness detayları daha zengin bir operasyon özetine dönüşmedi**
+   - Collection readiness endpointi artık `blockers`, `warnings` ve `recommendedActions` döndürüyor.
+   - Panel bu listeyi doğrudan backend truth source üzerinden render ediyor.
+9. **Health/readiness detayları backend-backed operasyon özetine genişletildi**
 
-- Panel `/health`, `/ready` ve `/ready?details=true` ile çalışıyor ama daha kapsamlı teşhis endpointleri yok.
-- Etki: Panel durum gösteriyor, ancak teşhis derinliği sınırlı kalıyor.
+- `/ready` ve `/ready?details=true` artık aggregate `operations` ve `operationalAlerts` alanlarıyla collection/job/cleanup/runtime durumunu özetleyebiliyor.
+- Etki: Panel sadece dependency/readiness kartı göstermekle kalmıyor; job backlog, failed state, cleanup backlog ve runtime limitlerini de aynı truth source üzerinden gösterebiliyor.
 
 ### Güvenlik eksikleri
 
@@ -1232,10 +1232,7 @@ Aşağıdaki sıra, bu eksikleri hangi hızda ele almak gerektiğini gösterir. 
 
 ### P2 - Kullanıcı deneyimini güçlendiren eksikler
 
-2. **Health/readiness daha zengin bir operasyon özetine dönüşmedi**
-3. - Panel durum gösteriyor ama teşhis derinliği sınırlı.
-   - Daha iyi bir özet için backend tarafında genişletme gerekebilir.
-4. **Job ilerleme verisi yok**
+3. **Job ilerleme verisi yok**
 
    - Job yalnızca terminal/ara durumlarla izlenebiliyor.
    - Gerçek aşama/event bilgisi yok.

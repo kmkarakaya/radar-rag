@@ -13,7 +13,44 @@ function createHealthyRegistryStub(): CollectionRegistry {
     listVisibleCollections: async () => [],
     getVisibleCollection: async () => null,
     listJobs: async () => ({ jobs: [], nextCursor: null }),
+    getSystemOperationsSummary: async (nowIso) => ({
+      observedAt: nowIso,
+      collections: {
+        total: 0,
+        creating: 0,
+        indexing: 0,
+        ready: 0,
+        failed: 0,
+        archived: 0,
+      },
+      jobs: {
+        total: 0,
+        active: 0,
+        queued: 0,
+        running: 0,
+        terminal: 0,
+        succeeded: 0,
+        failed: 0,
+        cancelled: 0,
+        oldestActiveUpdatedAt: null,
+        oldestActiveAgeSec: null,
+        newestFailureAt: null,
+      },
+      physicalCollections: {
+        total: 0,
+        building: 0,
+        active: 0,
+        failedBuild: 0,
+        deletePending: 0,
+        cleanupFailed: 0,
+        deleted: 0,
+        cleanupBacklog: 0,
+        oldestDueDeleteAt: null,
+      },
+    }),
     getJob: async () => null,
+    deleteJob: async () => {},
+    deleteJobs: async () => {},
     getActiveJobForCollection: async () => null,
     createCollection: async () => {
       throw new Error("Not implemented in foundation test");
@@ -271,6 +308,11 @@ describe("app foundation", () => {
       strictHttpStatus: "GET /ready?strict=true",
       fullStrict: "GET /ready?details=true&strict=true",
     });
+    assert.equal(typeof (body.operations as any)?.observedAt, "string");
+    assert.equal(typeof (body.operations as any)?.collections?.total, "number");
+    assert.equal(typeof (body.operations as any)?.jobs?.active, "number");
+    assert.equal(typeof (body.operations as any)?.physicalCollections?.cleanupBacklog, "number");
+    assert.ok(Array.isArray(body.operationalAlerts));
     assert.equal("checks" in body, false);
   });
 
@@ -283,6 +325,10 @@ describe("app foundation", () => {
     assert.ok(Array.isArray(body.blockers));
     assert.ok(Array.isArray(body.warnings));
     assert.equal((body.dependencies as any)?.registry?.ok, true);
+    assert.equal(typeof (body.operations as any)?.runtime?.rateLimit?.enabled, "boolean");
+    assert.equal(typeof (body.operations as any)?.runtime?.concurrency?.maxConcurrentEmbeddings, "number");
+    assert.equal(typeof (body.operations as any)?.runtime?.timeouts?.readinessMs, "number");
+    assert.ok(Array.isArray(body.operationalAlerts));
   });
 
   it("GET /ready?strict=true returns 503 and REGISTRY_UNREACHABLE when registry health fails", async () => {

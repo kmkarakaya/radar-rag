@@ -817,6 +817,8 @@ components:
         - dependencies
         - config
         - diagnostics
+        - operations
+        - operationalAlerts
       properties:
         status:
           type: string
@@ -888,6 +890,12 @@ components:
               type: string
             fullStrict:
               type: string
+        operations:
+          $ref: "#/components/schemas/OperationalSummary"
+        operationalAlerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/OperationalAlert"
     ReadyDetailsResponse:
       type: object
       required:
@@ -913,6 +921,8 @@ components:
         - checks
         - dependencies
         - dataSource
+        - operations
+        - operationalAlerts
       properties:
         status:
           type: string
@@ -996,6 +1006,162 @@ components:
         dataSource:
           type: object
           additionalProperties: true
+        operations:
+          $ref: "#/components/schemas/OperationalSummary"
+        operationalAlerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/OperationalAlert"
+    OperationalSummary:
+      type: object
+      required: [observedAt, collections, jobs, physicalCollections, runtime]
+      properties:
+        observedAt:
+          type: string
+          format: date-time
+        collections:
+          $ref: "#/components/schemas/OperationalCollectionSummary"
+        jobs:
+          $ref: "#/components/schemas/OperationalJobSummary"
+        physicalCollections:
+          $ref: "#/components/schemas/OperationalPhysicalCollectionSummary"
+        runtime:
+          $ref: "#/components/schemas/OperationalRuntimeSummary"
+    OperationalCollectionSummary:
+      type: object
+      required: [total, creating, indexing, ready, failed, archived]
+      properties:
+        total:
+          type: integer
+        creating:
+          type: integer
+        indexing:
+          type: integer
+        ready:
+          type: integer
+        failed:
+          type: integer
+        archived:
+          type: integer
+    OperationalJobSummary:
+      type: object
+      required:
+        - total
+        - active
+        - queued
+        - running
+        - terminal
+        - succeeded
+        - failed
+        - cancelled
+        - oldestActiveUpdatedAt
+        - oldestActiveAgeSec
+        - newestFailureAt
+      properties:
+        total:
+          type: integer
+        active:
+          type: integer
+        queued:
+          type: integer
+        running:
+          type: integer
+        terminal:
+          type: integer
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+        cancelled:
+          type: integer
+        oldestActiveUpdatedAt:
+          type: [string, "null"]
+          format: date-time
+        oldestActiveAgeSec:
+          type: [integer, "null"]
+        newestFailureAt:
+          type: [string, "null"]
+          format: date-time
+    OperationalPhysicalCollectionSummary:
+      type: object
+      required:
+        - total
+        - building
+        - active
+        - failedBuild
+        - deletePending
+        - cleanupFailed
+        - deleted
+        - cleanupBacklog
+        - oldestDueDeleteAt
+      properties:
+        total:
+          type: integer
+        building:
+          type: integer
+        active:
+          type: integer
+        failedBuild:
+          type: integer
+        deletePending:
+          type: integer
+        cleanupFailed:
+          type: integer
+        deleted:
+          type: integer
+        cleanupBacklog:
+          type: integer
+        oldestDueDeleteAt:
+          type: [string, "null"]
+          format: date-time
+    OperationalRuntimeSummary:
+      type: object
+      required: [rateLimit, concurrency, timeouts]
+      properties:
+        rateLimit:
+          type: object
+          required: [enabled, windowMs, maxRequestsPerWindow]
+          properties:
+            enabled:
+              type: boolean
+            windowMs:
+              type: integer
+            maxRequestsPerWindow:
+              type: integer
+        concurrency:
+          type: object
+          required: [maxConcurrentEmbeddings, maxConcurrentGenerations]
+          properties:
+            maxConcurrentEmbeddings:
+              type: integer
+            maxConcurrentGenerations:
+              type: integer
+        timeouts:
+          type: object
+          required: [readinessMs, ragMs]
+          properties:
+            readinessMs:
+              type: integer
+            ragMs:
+              type: integer
+    OperationalAlert:
+      type: object
+      required: [code, severity, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - FAILED_COLLECTIONS_PRESENT
+            - FAILED_JOBS_PRESENT
+            - CLEANUP_BACKLOG_PRESENT
+            - CLEANUP_RETRY_REQUIRED
+        severity:
+          type: string
+          enum: [warn, info]
+        message:
+          type: string
+        recommendedAction:
+          type: string
     DependencyAvailability:
       type: object
       required: [ok]

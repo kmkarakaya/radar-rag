@@ -790,6 +790,185 @@ describe("sqlite collection registry", () => {
     );
   });
 
+  it("builds a tenant-safe aggregate operations summary", async () => {
+    const observedAt = "2026-06-30T12:00:00.000Z";
+    const creatingCollection = await registry.createCollection(context, {
+      ...collectionInput,
+      displayName: "Creating Collection",
+    });
+    const archivedCollection = await registry.createCollection(context, {
+      ...collectionInput,
+      displayName: "Archived Collection",
+    });
+    rawDb.prepare(`
+      UPDATE collections
+      SET status = 'archived'
+      WHERE id = ?
+    `).run(archivedCollection.id);
+
+    const queuedCollection = await registry.createCollection(context, {
+      ...collectionInput,
+      displayName: "Queued Collection",
+    });
+    const queuedJob = await registry.beginIndexJob(context, queuedCollection.id);
+
+    const runningState = await createRunningJob({
+      targetVersion: "20260630t115500_000z",
+    });
+    const succeededState = await createRunningJob({
+      targetVersion: "20260630t114500_000z",
+    });
+    const failedState = await createRunningJob({
+      targetVersion: "20260630t113000_000z",
+    });
+    const cancelledCollection = await registry.createCollection(context, {
+      ...collectionInput,
+      displayName: "Cancelled Collection",
+    });
+    const cancelledJob = await registry.beginIndexJob(context, cancelledCollection.id);
+
+    await registry.completeIndexJob(succeededState.job.id, {
+      documentCount: 12,
+      chunkCount: 48,
+      activePhysicalCollection: succeededState.job.targetPhysicalCollection,
+      activeVersion: succeededState.job.targetVersion,
+      retentionMs: 60_000,
+    });
+    await registry.failIndexJob(failedState.job.id, "simulated failure");
+    await registry.cancelIndexJob(cancelledJob.id);
+
+    rawDb.prepare(`
+      UPDATE index_jobs
+      SET updated_at = @updatedAt
+      WHERE id = @id
+    `).run({
+      id: queuedJob.id,
+      updatedAt: "2026-06-30T11:58:00.000Z",
+    });
+    rawDb.prepare(`
+      UPDATE index_jobs
+      SET updated_at = @updatedAt
+      WHERE id = @id
+    `).run({
+      id: runningState.job.id,
+      updatedAt: "2026-06-30T11:55:00.000Z",
+    });
+    rawDb.prepare(`
+      UPDATE index_jobs
+      SET finished_at = @finishedAt, updated_at = @updatedAt
+      WHERE id = @id
+    `).run({
+      id: failedState.job.id,
+      finishedAt: "2026-06-30T11:59:30.000Z",
+      updatedAt: "2026-06-30T11:59:30.000Z",
+    });
+
+    const deletePendingName = createPhysicalCollectionName({
+      tenantId: context.tenantId,
+      collectionId: creatingCollection.id,
+      version: "20260630t110000_000z",
+    });
+    await registry.createPhysicalCollectionRecord({
+      name: deletePendingName,
+      tenantId: context.tenantId,
+      collectionId: creatingCollection.id,
+      version: "20260630t110000_000z",
+      chromaConfiguration: { hnsw: { space: "l2" } },
+    });
+    rawDb.prepare(`
+      UPDATE physical_collections
+      SET status = 'delete_pending', delete_after = @deleteAfter
+      WHERE name = @name
+    `).run({
+      name: deletePendingName,
+      deleteAfter: "2026-06-30T11:00:00.000Z",
+    });
+
+    const cleanupFailedName = createPhysicalCollectionName({
+      tenantId: context.tenantId,
+      collectionId: creatingCollection.id,
+      version: "20260630t111500_000z",
+    });
+    await registry.createPhysicalCollectionRecord({
+      name: cleanupFailedName,
+      tenantId: context.tenantId,
+      collectionId: creatingCollection.id,
+      version: "20260630t111500_000z",
+      chromaConfiguration: { hnsw: { space: "l2" } },
+    });
+    rawDb.prepare(`
+      UPDATE physical_collections
+      SET status = 'cleanup_failed', delete_after = @deleteAfter, cleanup_error = @cleanupError
+      WHERE name = @name
+    `).run({
+      name: cleanupFailedName,
+      deleteAfter: "2026-06-30T11:30:00.000Z",
+      cleanupError: "cleanup retry needed",
+    });
+
+    const deletedName = createPhysicalCollectionName({
+      tenantId: context.tenantId,
+      collectionId: creatingCollection.id,
+      version: "20260630t100000_000z",
+    });
+    await registry.createPhysicalCollectionRecord({
+      name: deletedName,
+      tenantId: context.tenantId,
+      collectionId: creatingCollection.id,
+      version: "20260630t100000_000z",
+      chromaConfiguration: { hnsw: { space: "l2" } },
+    });
+    rawDb.prepare(`
+      UPDATE physical_collections
+      SET status = 'delete_pending', delete_after = @deleteAfter
+      WHERE name = @name
+    `).run({
+      name: deletedName,
+      deleteAfter: "2026-06-30T10:00:00.000Z",
+    });
+    await registry.markPhysicalCollectionDeleted(deletedName);
+
+    const summary = await registry.getSystemOperationsSummary(observedAt);
+
+    assert.deepEqual(summary.collections, {
+      total: 7,
+      creating: 1,
+      indexing: 2,
+      ready: 1,
+      failed: 2,
+      archived: 1,
+    });
+    assert.deepEqual(summary.jobs, {
+      total: 5,
+      active: 2,
+      queued: 1,
+      running: 1,
+      terminal: 3,
+      succeeded: 1,
+      failed: 1,
+      cancelled: 1,
+      oldestActiveUpdatedAt: "2026-06-30T11:55:00.000Z",
+      oldestActiveAgeSec: 300,
+      newestFailureAt: "2026-06-30T11:59:30.000Z",
+    });
+    assert.deepEqual(summary.physicalCollections, {
+      total: 6,
+      building: 1,
+      active: 1,
+      failedBuild: 1,
+      deletePending: 1,
+      cleanupFailed: 1,
+      deleted: 1,
+      cleanupBacklog: 2,
+      oldestDueDeleteAt: "2026-06-30T11:00:00.000Z",
+    });
+
+    const serialized = JSON.stringify(summary);
+    assert.equal(serialized.includes(creatingCollection.id), false);
+    assert.equal(serialized.includes(runningState.job.id), false);
+    assert.equal(serialized.includes(deletePendingName), false);
+  });
+
   it("does not silently mark non-cleanup physical records as deleted or cleanup_failed", async () => {
     const collection = await registry.createCollection(context, collectionInput);
 

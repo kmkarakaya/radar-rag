@@ -1,16 +1,16 @@
 # Graph Report - Vanilla Rag Backend  (2026-06-30)
 
 ## Corpus Check
-- 91 files · ~1,149,806 words
+- 91 files · ~1,152,432 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1362 nodes · 2362 edges · 113 communities (105 shown, 8 thin omitted)
+- 1380 nodes · 2401 edges · 115 communities (106 shown, 9 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 16 edges (avg confidence: 0.81)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `cbfccee8`
+- Built from commit: `50771f8a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -118,26 +118,28 @@
 - [[_COMMUNITY_Community 110|Community 110]]
 - [[_COMMUNITY_Community 111|Community 111]]
 - [[_COMMUNITY_Community 112|Community 112]]
+- [[_COMMUNITY_Community 113|Community 113]]
+- [[_COMMUNITY_Community 114|Community 114]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `Multi-Collection Refactor Done Log` - 44 edges
-2. `createEl()` - 32 edges
-3. `SqliteCollectionRegistry` - 31 edges
+2. `createEl()` - 34 edges
+3. `SqliteCollectionRegistry` - 32 edges
 4. `Vanilla RAG Backend` - 31 edges
 5. `clearNode()` - 24 edges
 6. `RAG Admin Panel Development Plan` - 24 edges
 7. `saveCollection()` - 23 edges
 8. `Ücretli ve Lokal LLM'leri Birlikte Kullanarak Ölçeklenebilir Kod Geliştirme` - 23 edges
 9. `Admin Panel Prompt Denetim Kaydi` - 22 edges
-10. `loadJobs()` - 21 edges
+10. `openInspector()` - 21 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `startEphemeralApp()` --calls--> `createApp()`  [EXTRACTED]
   test/acceptance/api.endpoints.test.ts → src/app.ts
 - `startServer()` --calls--> `createApp()`  [EXTRACTED]
   test/app.foundation.test.ts → src/app.ts
-- `seedPhysical()` --calls--> `createPhysicalCollectionName()`  [EXTRACTED]
-  test/collections.registry.test.ts → src/collections/ids.ts
+- `seedPhysicalRecord()` --calls--> `createPhysicalCollectionName()`  [EXTRACTED]
+  test/indexing.cleanup.test.ts → src/collections/ids.ts
 - `Zero-Downtime Index/Rebuild Plan` --conceptually_related_to--> `Zero-Downtime Rebuild`  [EXTRACTED]
   notes/multicollection_plan.md → README.md
 - `Vanilla RAG Test Console UI` --conceptually_related_to--> `Hybrid LLM Coding Workflow`  [INFERRED]
@@ -155,11 +157,11 @@
 - **Educational content about Hybrid LLM Workflow** — egitim_egitim_icerigi, egitim_index, egitim_output [EXTRACTED 1.00]
 - **RAG Backend ecosystem** — dataset2_readme_rag_sistemi, test_frontend_index_rag_api_endpoints, test_frontend_index_rag_test_console, egitim_egitim_icerigi_hybrid_llm_workflow [INFERRED 0.75]
 
-## Communities (113 total, 8 thin omitted)
+## Communities (115 total, 9 thin omitted)
 
 ### Community 0 - "RAG Backend Core"
 Cohesion: 0.07
-Nodes (28): 0. System Readiness Diagnostics, 1. Public RAG Flow, 2. Admin Collection Creation Flow, 3. Reindex Flow, 4. Job Cancel And Delete Flow, 5. Rate Limit Failure Example, 6. Invalid Request Example, 7. Recommended Frontend Polling Strategy (+20 more)
+Nodes (29): 0. System Readiness Diagnostics, 1. Public RAG Flow, 2. Admin Collection Creation Flow, 3. Reindex Flow, 4. Job Cancel And Delete Flow, 5. Rate Limit Failure Example, 6. Invalid Request Example, 7. Recommended Frontend Polling Strategy (+21 more)
 
 ### Community 1 - "Turkish Historical Data"
 Cohesion: 0.18
@@ -170,8 +172,8 @@ Cohesion: 0.32
 Nodes (7): Cold Start Prompt, done.md logging convention, Hybrid LLM Coding Workflow, Lokal Model (Local LLM), Yüksek Kapasiteli Model (Paid LLM), index.html - Educational content HTML page, output.html - Partial HTML output of lesson
 
 ### Community 3 - "Multi-Collection Architecture"
-Cohesion: 0.11
-Nodes (16): Multi-Collection Support, Chroma Dokümanlarıyla Uyum Notları, Concurrency Stratejisi, Endpoint Path'ine Collection Hash Ekleyelim mi?, Collection ID Strategy, Index/Rebuild Path, İkinci Repo İncelemesiyle Eklenen Netleştirmeler, Kısa Karar (+8 more)
+Cohesion: 0.13
+Nodes (14): Multi-Collection Support, Chroma Dokümanlarıyla Uyum Notları, Endpoint Path'ine Collection Hash Ekleyelim mi?, Collection ID Strategy, İkinci Repo İncelemesiyle Eklenen Netleştirmeler, Kısa Karar, Mimari Etkinlik Değerlendirmesi, Readiness ve Healthcheck (+6 more)
 
 ### Community 4 - "Admin Panel Design"
 Cohesion: 0.06
@@ -191,15 +193,15 @@ Nodes (24): Admin Panel HTML, Tailwind CSS, Admin Panel Prompt Denetim Kaydi, Ek
 
 ### Community 10 - "Onboarding Flow"
 Cohesion: 0.10
-Nodes (28): addIfNumber(), addIfText(), API, buildCollectionPayload(), clearEditorForm(), EDIT_FIELD_IDS, elements, fieldValueFromCollection() (+20 more)
+Nodes (29): addIfNumber(), addIfText(), API, buildCollectionPayload(), clearEditorForm(), EDIT_FIELD_IDS, elements, fieldValueFromCollection() (+21 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.29
-Nodes (8): buildCreateCollectionRequest(), chromaClientParams(), createPhysicalChromaCollection(), deletePhysicalChromaCollection(), isRecord(), listPhysicalChromaCollections(), normalizeChromaCollectionConfiguration(), RagQueryError
+Cohesion: 0.24
+Nodes (11): assertChromaCollectionReadable(), buildCreateCollectionRequest(), chromaClientParams(), createPhysicalChromaCollection(), deletePhysicalChromaCollection(), isRecord(), listPhysicalChromaCollections(), normalizeChromaCollectionConfiguration() (+3 more)
 
 ### Community 12 - "Community 12"
 Cohesion: 0.15
-Nodes (27): appendCell(), appendChildren(), appendIssueSection(), appendJsonDetails(), appendText(), collectionQueryUrl(), collectionRetrieveUrl(), createButton() (+19 more)
+Nodes (32): appendCell(), appendChildren(), appendJsonDetails(), appendText(), clearNode(), clearReadinessRefreshNotice(), collectionQueryUrl(), collectionReadyUrl() (+24 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.05
@@ -218,8 +220,8 @@ Cohesion: 0.07
 Nodes (30): 0. Ollama modelleri saglikli yakalanmiyor, isleme giriyor, 10. Lint ve format adimi yok, 11. CI pipeline yok, 13.1. `test_frontend` artik ayri bir bakim yuzeyi, 13.2. TODO'nun kendisi hizla stale olabilir, 13. README teknik olarak yeterli ama kalite sinirlari daha acik yazilmali, 14. Konfigurasyon dogrulamasi kisitli, 15. All-in-One Deployment Paketi (Dockerization) Eksikligi (+22 more)
 
 ### Community 17 - "Community 17"
-Cohesion: 0.09
-Nodes (10): createVersionString(), mapIndexJobRow(), mapIndexJobSummaryRow(), mapPhysicalCollectionRow(), SqliteCollectionRegistry, BeginIndexJobInput, CompleteIndexJobResult, IndexJob (+2 more)
+Cohesion: 0.11
+Nodes (7): createVersionString(), mapIndexJobRow(), mapIndexJobSummaryRow(), SqliteCollectionRegistry, BeginIndexJobInput, CompleteIndexJobResult, IndexJob
 
 ### Community 18 - "Community 18"
 Cohesion: 0.08
@@ -231,18 +233,18 @@ Nodes (18): 10. Final Audit Prompt Şablonu, 12. Test Stratejisi, 13. Kayıt tut
 
 ### Community 20 - "Community 20"
 Cohesion: 0.11
-Nodes (18): typescript, Başlıca Hata Kodları:, Frontend Integration Paketi, Health ve Readiness, Hızlı Kullanım Kılavuzu, Kolleksiyon oluşturma, Kurulum, Nerede Ne Var? (+10 more)
+Nodes (18): LangChain Framework, langchain, Başlıca Hata Kodları:, Frontend Integration Paketi, Health ve Readiness, Hızlı Kullanım Kılavuzu, Kolleksiyon oluşturma, Kurulum (+10 more)
 
 ### Community 21 - "Community 21"
 Cohesion: 0.12
 Nodes (16): Coding Agent İçin Uygulama Blueprint'i, Coding Agent Çalışma Sırası, Doğrulama Komutları, HTTP Hata Kodları, Registry Storage Kararı, Registry Åeması, `src/app.ts` ve `src/server.ts`, `src/collections/chromaCollections.ts` (+8 more)
 
 ### Community 22 - "Community 22"
-Cohesion: 0.08
-Nodes (25): IndexJobStatus, collectionCreateSchema, collectionUpdateSchema, analyzeSourcePath(), buildChangedFields(), buildCreateCollectionInput(), buildCreateValidationDraft(), buildImpact() (+17 more)
+Cohesion: 0.10
+Nodes (29): buildCollectionReadinessPayload(), CollectionReadinessHealthChecks, CollectionReadinessIssue, CollectionReadinessPayload, makeIssue(), analyzeSourcePath(), buildChangedFields(), buildImpact() (+21 more)
 
 ### Community 23 - "Community 23"
-Cohesion: 0.15
+Cohesion: 0.13
 Nodes (13): Faz 0.5: Test ve Bootstrap Hazirligi, Faz 0: Davranis Sozlesmesini Netlestir, Faz 1: RAG Core'u Collection-Aware Yap, Faz 2: Collection Registry Ekle, Faz 3: API Endpointlerini Yeniden Tasarla, Faz 4: Zero-Downtime Index/Rebuild, Faz 5: Backend Operasyonel Olgunluk, Faz 6: Test Frontend ve Dokumantasyon (+5 more)
 
 ### Community 24 - "Community 24"
@@ -267,7 +269,7 @@ Nodes (10): 5.1.1 Mevcut Endpoint Yüzeyi, 5.1 API Katmanı, Admin API Endpointl
 
 ### Community 29 - "Community 29"
 Cohesion: 0.22
-Nodes (9): description, minLength, type, properties, datasetName, schemaVersion, default, description (+1 more)
+Nodes (9): description, minLength, type, properties, datasetName, sourceFile, description, minLength (+1 more)
 
 ### Community 30 - "Community 30"
 Cohesion: 0.22
@@ -278,12 +280,12 @@ Cohesion: 0.22
 Nodes (9): Değiştirilmeyecek Backend Kontratı, Endpoint İyileştirme Notları İçin Kural, Endpoint Kullanım Rehberi, Global Uygulama İlkeleri, Küçük Model / Cold Start Uygulama Rehberi, Ortak Doğrulama Komutları, Plan Tamlık Kontrol Listesi, RAG Admin Panel Development Plan (+1 more)
 
 ### Community 32 - "Community 32"
-Cohesion: 0.21
-Nodes (11): CollectionRegistry, addMetadataToChunks(), buildPhysicalCollection(), runIndexJob(), startReindexJob(), emitOperationalLog(), normalizeLogEvent(), OperationalLogEvent (+3 more)
+Cohesion: 0.11
+Nodes (25): CollectionRegistry, addMetadataToChunks(), buildPhysicalCollection(), cleanupRetiredPhysicalCollections(), DeletePhysicalCollectionFn, isPhysicalCollectionMissingError(), createIndexJobRunner(), IndexJobRunner (+17 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.15
-Nodes (24): clearCollectionIndexStateBanner(), clearCollectionValidation(), clearNode(), clearReadinessRefreshNotice(), closeInspector(), collectionReadyUrl(), formatCount(), handleOverlayClick() (+16 more)
+Cohesion: 0.25
+Nodes (3): AppDependencies, HealthChecks, startServer()
 
 ### Community 34 - "Community 34"
 Cohesion: 0.25
@@ -362,20 +364,20 @@ Cohesion: 0.33
 Nodes (6): Değiştirilen Dosyalar, Prompt XX — <Başlık>, Sonraki Prompt İçin Notlar, Yapılamayanlar veya Riskler, Yapılanlar, Çalıştırılan Testler
 
 ### Community 54 - "Community 54"
-Cohesion: 0.10
-Nodes (21): answerCalls, AppRagAnswerHandler, AppRagHandlers, AppRagRetrieveHandler, availableOllamaModels, createQueuedJob(), ollamaModelCapabilities, operationalLogs (+13 more)
+Cohesion: 0.13
+Nodes (14): answerCalls, AppRagAnswerHandler, AppRagHandlers, AppRagRetrieveHandler, availableOllamaModels, createQueuedJob(), ollamaModelCapabilities, operationalLogs (+6 more)
 
 ### Community 55 - "Community 55"
 Cohesion: 0.33
 Nodes (6): 1. Collection Yaratma (Admin API), 2. Re-Index / Job Başlatma, 3. Job Durumunu Görüntüleme, Backend Yönetimi ve Admin Workflow, Operasyonel Config Yüzeyi, Sistem Onboarding (İlk Kurulum)
 
 ### Community 56 - "Community 56"
-Cohesion: 0.35
-Nodes (11): assertValidChromaCollectionName(), createPhysicalCollectionName(), generateCollectionId(), isIPv4AddressLike(), isValidChromaCollectionName(), normalizeText(), slugifyCollectionName(), slugifyPhysicalNamePart() (+3 more)
+Cohesion: 0.22
+Nodes (14): assertValidChromaCollectionName(), createPhysicalCollectionName(), generateCollectionId(), isIPv4AddressLike(), isValidChromaCollectionName(), normalizeText(), slugifyCollectionName(), slugifyPhysicalNamePart() (+6 more)
 
 ### Community 57 - "Community 57"
-Cohesion: 0.20
-Nodes (17): adminJobUrl(), buildJobRecord(), clearJobSelection(), collectionNameById(), getJobViewEmptyMessage(), getJobViewRows(), getVisibleSelectableJobIds(), markJobInaccessible() (+9 more)
+Cohesion: 0.12
+Nodes (28): adminJobsBulkDeleteUrl(), adminJobsListUrl(), adminJobUrl(), buildJobRecord(), changeJobsStatusFilter(), clearJobSelection(), collectionNameById(), getJobViewEmptyMessage() (+20 more)
 
 ### Community 58 - "Community 58"
 Cohesion: 0.40
@@ -394,36 +396,36 @@ Cohesion: 0.40
 Nodes (5): Collection DTO, Collection Readiness DTO, Error DTO, Job DTO, Response Semantiği
 
 ### Community 63 - "Community 63"
-Cohesion: 0.12
-Nodes (21): analyzeIndexingSource(), AnalyzeIndexingSourceOptions, analyzeOzelgeIndexingSource(), collectSourceFiles(), createLoader(), extractPageNumber(), hashPath(), IndexingSourceAnalysis (+13 more)
+Cohesion: 0.14
+Nodes (20): analyzeIndexingSource(), AnalyzeIndexingSourceOptions, analyzeOzelgeIndexingSource(), collectSourceFiles(), createLoader(), extractPageNumber(), hashPath(), IndexingSourceAnalysis (+12 more)
 
 ### Community 64 - "Community 64"
 Cohesion: 0.40
 Nodes (5): Adım A: Registry Interface ve Kalıcı Registry Eklenir, Adım B: Lock ve Job State Eklenir, Adım C: RAG Core ve Indexing Versioned Physical Collection Modeline Geçirilir, Adım D: Yeni API ve Test Frontend Eski Endpointleri Silerek Eklenir, Doğrudan Hedef Mimariyi Uygulama Stratejisi
 
 ### Community 65 - "Community 65"
-Cohesion: 0.15
-Nodes (31): adminCollectionUrl(), adminCollectionValidateUrl(), adminJobDeleteUrl(), adminJobsBulkDeleteUrl(), adminJobsListUrl(), apiRequest(), cancelJob(), changeJobsStatusFilter() (+23 more)
+Cohesion: 0.16
+Nodes (29): adminCollectionUrl(), adminCollectionValidateUrl(), adminJobDeleteUrl(), apiRequest(), cancelJob(), clearCollectionIndexStateBanner(), clearCollectionValidation(), closeInspector() (+21 more)
 
 ### Community 66 - "Community 66"
 Cohesion: 0.29
 Nodes (7): Admin UX Checks, Contract Checks, Error Handling Checks, Final Quality Checks, Frontend Acceptance Checklist, Public UX Checks, Rate Limit And Polling Checks
 
 ### Community 67 - "Community 67"
-Cohesion: 0.13
-Nodes (20): addNullablePatch(), addPatch(), clampInteger(), CollectionRow, decodeJobCursor(), encodeJobCursor(), ensureColumn(), IndexJobRow (+12 more)
+Cohesion: 0.14
+Nodes (17): clampInteger(), CollectionRow, decodeJobCursor(), encodeJobCursor(), ensureColumn(), IndexJobRow, IndexJobSummaryRow, initializeSchema() (+9 more)
 
 ### Community 68 - "Community 68"
-Cohesion: 0.26
-Nodes (12): runDependencyChecks(), checkChromaHealth(), checkEmbeddingHealth(), checkOllamaHealth(), chromaClientParams(), createEmbeddings(), createVectorStore(), errorMessage() (+4 more)
+Cohesion: 0.21
+Nodes (14): checkChromaHealth(), checkEmbeddingHealth(), checkOllamaHealth(), chromaClientParams(), createEmbeddings(), createVectorStore(), errorMessage(), getEmbeddingSemaphore() (+6 more)
 
 ### Community 69 - "Community 69"
 Cohesion: 0.29
 Nodes (6): Admin API, RAG API, Readiness System, Benchmark Runner Gap, Ollama Model Validation Gap, Test Coverage Gap
 
 ### Community 70 - "Community 70"
-Cohesion: 0.14
-Nodes (22): createAdminRouter(), buildCollectionReadinessPayload(), CollectionReadinessHealthChecks, CollectionReadinessIssue, CollectionReadinessPayload, makeIssue(), createRagRouter(), createRateLimitMiddleware() (+14 more)
+Cohesion: 0.50
+Nodes (4): schemaVersion, default, description, type
 
 ### Community 83 - "Community 83"
 Cohesion: 0.13
@@ -438,8 +440,8 @@ Cohesion: 0.50
 Nodes (4): Kalan Backend Eksikleri - Öncelik Sırası, Kısa karar kuralı, P2 - Kullanıcı deneyimini güçlendiren eksikler, P3 - Operasyon şeffaflığı ve bakım
 
 ### Community 86 - "Community 86"
-Cohesion: 0.22
-Nodes (13): createBadge(), createReadinessRow(), getCollectionCardStatusBadge(), getCollectionCardStatusNote(), getCollectionCardStatusPresentation(), getStatusBadge(), getStatusColor(), hasDependencyBlocker() (+5 more)
+Cohesion: 0.18
+Nodes (17): appendIssueSection(), createBadge(), createReadinessRow(), getCollectionCardStatusBadge(), getCollectionCardStatusNote(), getCollectionCardStatusPresentation(), getStatusBadge(), getStatusColor() (+9 more)
 
 ### Community 87 - "Community 87"
 Cohesion: 0.18
@@ -450,20 +452,20 @@ Cohesion: 0.22
 Nodes (9): Faz 0.5: Test ve Bootstrap Hazırlığı, Faz 0: Davranış Sözleşmesini Netleştir, Faz 1: RAG Core'u Collection-Aware Yap, Faz 2: Collection Registry Ekle, Faz 3: API Endpointlerini Yeniden Tasarla, Faz 4: Zero-Downtime Index/Rebuild, Faz 5: Backend Operasyonel Olgunluk, Faz 6: Test Frontend ve Dokümantasyon (+1 more)
 
 ### Community 89 - "Community 89"
-Cohesion: 0.27
-Nodes (7): assertChromaCollectionReadable(), isTimeoutOrAbortError(), OperationAbortError, OperationTimeoutError, withTimeoutAndAbort(), getEmbeddingSemaphore(), retrieveSources()
+Cohesion: 0.20
+Nodes (9): Bucket, createInMemoryRequestRateLimiter(), createRateLimitKey(), getRateLimitTarget(), RateLimitDecision, RateLimitOperation, getHttpOperationTarget(), OperationAbortError (+1 more)
 
 ### Community 90 - "Community 90"
-Cohesion: 0.26
-Nodes (8): createSqliteCollectionRegistry(), analyzeIndexingSource(), checkIndexingSourceHealth(), IndexingRunResult, IndexingSourceHealthDetails, main(), parseCollectionIdArg(), runIndexing()
+Cohesion: 0.22
+Nodes (9): createSqliteCollectionRegistry(), openDatabase(), UnsupportedSourceFile, checkIndexingSourceHealth(), IndexingRunResult, IndexingSourceHealthDetails, main(), parseCollectionIdArg() (+1 more)
 
 ### Community 91 - "Community 91"
 Cohesion: 0.14
-Nodes (22): CliOptions, DISTANCE_METRICS, main(), parseArgs(), printConfigSummary(), printSourceAnalysis(), promptBoolean(), promptConfig() (+14 more)
+Nodes (23): CliOptions, DISTANCE_METRICS, main(), parseArgs(), printConfigSummary(), printSourceAnalysis(), promptBoolean(), promptConfig() (+15 more)
 
 ### Community 92 - "Community 92"
-Cohesion: 0.19
-Nodes (13): cleanupRetiredPhysicalCollections(), DeletePhysicalCollectionFn, isPhysicalCollectionMissingError(), createIndexJobRunner(), IndexJobRunner, createConsoleLogSink(), createApp(), main() (+5 more)
+Cohesion: 0.13
+Nodes (17): createAdminRouter(), errorHandler(), notFoundHandler(), sendErrorResponse(), createRagRouter(), createRateLimitMiddleware(), createOperationalHttpLogger(), CheckStatus (+9 more)
 
 ### Community 94 - "Community 94"
 Cohesion: 0.40
@@ -478,24 +480,24 @@ Cohesion: 0.50
 Nodes (4): description, minLength, type, ozelgeId
 
 ### Community 97 - "Community 97"
-Cohesion: 0.23
-Nodes (10): resolveReadableCollection(), Express HTTP Framework, ApiErrorCode, ApiErrorResponse, errorHandler(), HttpError, notFoundHandler(), sendErrorResponse() (+2 more)
+Cohesion: 0.18
+Nodes (13): resolveReadableCollection(), Express HTTP Framework, collectionCreateSchema, collectionUpdateSchema, buildCreateCollectionInput(), buildCreateValidationDraft(), ApiErrorCode, ApiErrorResponse (+5 more)
 
 ### Community 98 - "Community 98"
 Cohesion: 0.50
 Nodes (4): tarih, description, pattern, type
 
 ### Community 99 - "Community 99"
-Cohesion: 0.15
-Nodes (14): buildCollectionIndexSnapshot(), buildCollectionIndexState(), isDistanceMetric(), parseCollectionIndexSnapshot(), mapCollectionRow(), parseCollectionIndexSnapshotJson(), CollectionIndexSnapshot, CollectionIndexState (+6 more)
+Cohesion: 0.18
+Nodes (12): buildCollectionIndexSnapshot(), buildCollectionIndexState(), isDistanceMetric(), parseCollectionIndexSnapshot(), parseCollectionIndexSnapshotJson(), CollectionIndexSnapshot, CollectionIndexState, CollectionStatus (+4 more)
 
 ### Community 100 - "Community 100"
 Cohesion: 0.29
 Nodes (7): Example Frontend In This Repo, Fast Integration Summary, Reading Order, Source Of Truth, Suggested Prompt For End Users, Vanilla RAG Backend Documentation, Which File To Give A Coding Agent
 
 ### Community 101 - "Community 101"
-Cohesion: 0.22
-Nodes (10): Chroma Vector Store, RAG Config YAML, Collection Defaults, Observability Config, Model Backpressure, Concurrency Strategy, Registry Model, Ollama LLM Gateway (+2 more)
+Cohesion: 0.28
+Nodes (8): Chroma Vector Store, RAG Config YAML, Collection Defaults, Observability Config, Model Backpressure, Concurrency Strategy, Ollama LLM Gateway, Rate Limiting
 
 ### Community 102 - "Community 102"
 Cohesion: 0.33
@@ -507,33 +509,37 @@ Nodes (10): Contract Rules You Should Not Break, How To Reuse It In A Real Front
 
 ### Community 104 - "Community 104"
 Cohesion: 0.25
-Nodes (9): LangChain Framework, langchain, Logical Collection, Index Job, Onboarding CLI, Physical Chroma Collection, Retention Cleanup, Stale Job Recovery (+1 more)
+Nodes (9): typescript, Logical Collection, Index Job, Onboarding CLI, Physical Chroma Collection, Retention Cleanup, Stale Job Recovery, TypeScript Language (+1 more)
 
 ### Community 105 - "Community 105"
-Cohesion: 0.09
-Nodes (27): answerQuestion(), ChatGenerationHealthDetails, checkChatGenerationHealth(), ChromaHealthDetails, contentToString(), createChatModel(), DependencyHealth, EmbeddingHealthDetails (+19 more)
+Cohesion: 0.11
+Nodes (24): answerQuestion(), checkChatGenerationHealth(), ChromaHealthDetails, contentToString(), createChatModel(), DependencyHealth, embeddingSemaphores, estimateGenerationContextCharBudget() (+16 more)
 
 ### Community 106 - "Community 106"
 Cohesion: 0.22
 Nodes (9): `package.json` ve Test Altyapısı, Repo ile Mevcut Durum Karşılaştırması, `src/admin/onboard.ts`, `src/config.ts`, `src/index.ts`, `src/ingestion/pipeline.ts`, `src/rag.ts`, `src/server.ts` (+1 more)
 
 ### Community 107 - "Community 107"
-Cohesion: 0.33
-Nodes (4): PhysicalCollectionStatus, collectionInput, context, seedPhysical()
+Cohesion: 0.17
+Nodes (9): addNullablePatch(), addPatch(), isRecord(), mapCollectionRow(), normalizeChromaCollectionConfiguration(), CreateCollectionInput, RagCollection, RequestContext (+1 more)
 
 ### Community 108 - "Community 108"
-Cohesion: 0.33
-Nodes (6): 5.2 RAG Orchestrator Katmanı, 5.3 Retrieval Katmanı, 5.4 Generation Katmanı, 5.5 İndeksleme Katmanı, 5.6 Konfigürasyon Katmanı, 5. Temel Bileşenler
+Cohesion: 0.50
+Nodes (4): Concurrency Stratejisi, Index/Rebuild Path, Ollama ve Chroma Backpressure, Query/Retrieve Path
 
 ### Community 110 - "Community 110"
 Cohesion: 0.40
 Nodes (5): 12. Tasarım Trade-off'ları, Trade-off 1: Basitlik vs kalite, Trade-off 2: Tek orkestratör dosyası vs daha fazla ayrışım, Trade-off 3: Full reset index vs incremental updates, Trade-off 4: Lokal model bağımlılığı vs taşınabilirlik
 
 ### Community 111 - "Community 111"
-Cohesion: 0.50
-Nodes (4): sourceFile, description, minLength, type
+Cohesion: 0.24
+Nodes (12): appendMetricSection(), createSummaryListCard(), formatBoolean(), formatCount(), formatDateTime(), formatDurationSeconds(), getOperationsSnapshot(), renderChecks() (+4 more)
 
 ### Community 112 - "Community 112"
+Cohesion: 0.33
+Nodes (6): 5.2 RAG Orchestrator Katmanı, 5.3 Retrieval Katmanı, 5.4 Generation Katmanı, 5.5 İndeksleme Katmanı, 5.6 Konfigürasyon Katmanı, 5. Temel Bileşenler
+
+### Community 114 - "Community 114"
 Cohesion: 0.50
 Nodes (4): 9.1 Development Server, 9.2 Offline Index Build, 9.3 Production-like Start, 9. Çalışma Modeli ve Operasyonel Modlar
 
@@ -552,9 +558,9 @@ Nodes (4): 9.1 Development Server, 9.2 Offline Index Build, 9.3 Production-like 
   egitim/image/egitim_icerigi/1782318549808.png · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **712 isolated node(s):** `$schema`, `plugin`, `@opencode-ai/plugin`, `API`, `EDIT_FIELD_IDS` (+707 more)
+- **717 isolated node(s):** `$schema`, `plugin`, `@opencode-ai/plugin`, `API`, `EDIT_FIELD_IDS` (+712 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **8 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **9 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -571,5 +577,5 @@ _Questions this graph is uniquely positioned to answer:_
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **What is the exact relationship between `En Önemli Prensipler (Key Principles)` and `Zihinsel Model (Mental Model Diagram)`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **Why does `Express HTTP Framework` connect `Community 97` to `Community 32`, `Community 70`, `Community 104`, `Community 15`, `Community 20`, `Community 54`, `Community 22`?**
-  _High betweenness centrality (0.080) - this node is a cross-community bridge._
+- **Why does `Express HTTP Framework` connect `Community 97` to `Community 32`, `Community 104`, `Community 15`, `Community 20`, `Community 89`, `Community 92`?**
+  _High betweenness centrality (0.087) - this node is a cross-community bridge._

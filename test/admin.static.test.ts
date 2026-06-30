@@ -129,6 +129,12 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("readiness.blockers"), "Collection readiness should render backend blockers");
     assert.ok(js.includes("readiness.warnings"), "Collection readiness should render backend warnings");
     assert.ok(js.includes("item.recommendedAction"), "Readiness issue rendering should surface backend recommended actions");
+    assert.ok(js.includes("operationalAlerts"), "Health dashboard should render operational alerts from backend");
+    assert.ok(js.includes("operations"), "Health dashboard should render aggregate operations summary from backend");
+    assert.ok(js.includes("cleanupBacklog"), "Health dashboard should surface cleanup backlog metrics");
+    assert.ok(js.includes("Loading system health..."), "Health dashboard should show an initial loading state");
+    assert.ok(js.includes("Refreshing system health..."), "Health dashboard should keep the last snapshot visible during refresh");
+    assert.ok(js.includes("Loading system health details..."), "Health detail panel should show loading feedback");
     assert.ok(js.includes("const hasSnapshot = Boolean(state.selectedReadiness);"), "Readiness refresh should preserve the last known snapshot during refresh");
     assert.ok(js.includes("setReadinessRefreshNotice(\"Refreshing readiness snapshot...\""), "Readiness refresh should show a non-blocking notice");
     assert.ok(!js.includes("if (state.isLoading.readiness) return { enabled: false, reason: \"Readiness is loading.\" };"), "Playground capability should not be disabled just because readiness is refreshing");

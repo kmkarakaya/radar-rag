@@ -94,6 +94,42 @@ export type ListJobsResult = {
   nextCursor: string | null;
 };
 
+export type SystemOperationsAggregateSummary = {
+  observedAt: string;
+  collections: {
+    total: number;
+    creating: number;
+    indexing: number;
+    ready: number;
+    failed: number;
+    archived: number;
+  };
+  jobs: {
+    total: number;
+    active: number;
+    queued: number;
+    running: number;
+    terminal: number;
+    succeeded: number;
+    failed: number;
+    cancelled: number;
+    oldestActiveUpdatedAt: string | null;
+    oldestActiveAgeSec: number | null;
+    newestFailureAt: string | null;
+  };
+  physicalCollections: {
+    total: number;
+    building: number;
+    active: number;
+    failedBuild: number;
+    deletePending: number;
+    cleanupFailed: number;
+    deleted: number;
+    cleanupBacklog: number;
+    oldestDueDeleteAt: string | null;
+  };
+};
+
 export type CreateCollectionInput = {
   displayName: string;
   description?: string;
@@ -167,6 +203,7 @@ export interface CollectionRegistry {
   listVisibleCollections(context: RequestContext): Promise<RagCollection[]>;
   getVisibleCollection(context: RequestContext, collectionId: string): Promise<RagCollection | null>;
   listJobs(context: RequestContext, filters?: ListJobsInput): Promise<ListJobsResult>;
+  getSystemOperationsSummary(nowIso: string): Promise<SystemOperationsAggregateSummary>;
   getJob(jobId: string): Promise<IndexJob | null>;
   deleteJob(context: RequestContext, jobId: string): Promise<void>;
   deleteJobs(context: RequestContext, jobIds: string[]): Promise<void>;

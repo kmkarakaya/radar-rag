@@ -1,6 +1,6 @@
 ﻿import path from "node:path";
 import express, { type Express } from "express";
-import type { CollectionRegistry } from "./collections/types.js";
+import type { CollectionRegistry, SystemOperationsAggregateSummary } from "./collections/types.js";
 import { resolveReadableCollection } from "./collections/resolveReadableCollection.js";
 import { config, type ResolvedConfig } from "./config.js";
 import { errorHandler, notFoundHandler, sendErrorResponse } from "./http/errors.js";
@@ -58,6 +58,37 @@ type ReadinessCheck = {
   details?: Record<string, unknown>;
 };
 
+type OperationalAlertCode =
+  | "FAILED_COLLECTIONS_PRESENT"
+  | "FAILED_JOBS_PRESENT"
+  | "CLEANUP_BACKLOG_PRESENT"
+  | "CLEANUP_RETRY_REQUIRED";
+
+type OperationalAlert = {
+  code: OperationalAlertCode;
+  severity: "warn" | "info";
+  message: string;
+  recommendedAction?: string;
+};
+
+type ReadyOperationsSummary = SystemOperationsAggregateSummary & {
+  runtime: {
+    rateLimit: {
+      enabled: boolean;
+      windowMs: number;
+      maxRequestsPerWindow: number;
+    };
+    concurrency: {
+      maxConcurrentEmbeddings: number;
+      maxConcurrentGenerations: number;
+    };
+    timeouts: {
+      readinessMs: number;
+      ragMs: number;
+    };
+  };
+};
+
 export function createApp(deps: AppDependencies = {}): Express {
   const app = express();
   const runtimeConfig = deps.runtimeConfig ?? config;
@@ -93,6 +124,110 @@ export async function checkRegistryHealth(registry?: CollectionRegistry): Promis
   } catch (error) {
     return { ok: false, latencyMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+function emptySystemOperationsAggregateSummary(observedAt: string): SystemOperationsAggregateSummary {
+  return {
+    observedAt,
+    collections: {
+      total: 0,
+      creating: 0,
+      indexing: 0,
+      ready: 0,
+      failed: 0,
+      archived: 0,
+    },
+    jobs: {
+      total: 0,
+      active: 0,
+      queued: 0,
+      running: 0,
+      terminal: 0,
+      succeeded: 0,
+      failed: 0,
+      cancelled: 0,
+      oldestActiveUpdatedAt: null,
+      oldestActiveAgeSec: null,
+      newestFailureAt: null,
+    },
+    physicalCollections: {
+      total: 0,
+      building: 0,
+      active: 0,
+      failedBuild: 0,
+      deletePending: 0,
+      cleanupFailed: 0,
+      deleted: 0,
+      cleanupBacklog: 0,
+      oldestDueDeleteAt: null,
+    },
+  };
+}
+
+function buildReadyOperationsSummary(
+  aggregate: SystemOperationsAggregateSummary,
+  runtimeConfig: ResolvedConfig,
+): ReadyOperationsSummary {
+  return {
+    ...aggregate,
+    runtime: {
+      rateLimit: {
+        enabled: runtimeConfig.rateLimitEnabled,
+        windowMs: runtimeConfig.rateLimitWindowMs,
+        maxRequestsPerWindow: runtimeConfig.rateLimitMaxRequestsPerWindow,
+      },
+      concurrency: {
+        maxConcurrentEmbeddings: runtimeConfig.maxConcurrentEmbeddings,
+        maxConcurrentGenerations: runtimeConfig.maxConcurrentGenerations,
+      },
+      timeouts: {
+        readinessMs: runtimeConfig.readyTimeoutMs,
+        ragMs: runtimeConfig.ragTimeoutMs,
+      },
+    },
+  };
+}
+
+function buildOperationalAlerts(operations: ReadyOperationsSummary): OperationalAlert[] {
+  const alerts: OperationalAlert[] = [];
+
+  if (operations.collections.failed > 0) {
+    alerts.push({
+      code: "FAILED_COLLECTIONS_PRESENT",
+      severity: "warn",
+      message: `${operations.collections.failed} collections are currently in failed state.`,
+      recommendedAction: "Review failed collections in the admin panel and rerun indexing after the underlying dependency or data issue is fixed.",
+    });
+  }
+
+  if (operations.jobs.failed > 0) {
+    alerts.push({
+      code: "FAILED_JOBS_PRESENT",
+      severity: "warn",
+      message: `${operations.jobs.failed} jobs have failed. Latest failure was observed at ${operations.jobs.newestFailureAt ?? "an unknown time"}.`,
+      recommendedAction: "Inspect recent failed jobs and retry indexing only after the root cause is understood.",
+    });
+  }
+
+  if (operations.physicalCollections.cleanupBacklog > 0) {
+    alerts.push({
+      code: "CLEANUP_BACKLOG_PRESENT",
+      severity: "info",
+      message: `${operations.physicalCollections.cleanupBacklog} retired physical collections are due for cleanup.`,
+      recommendedAction: "Allow startup or maintenance cleanup to run, or inspect cleanup scheduling if backlog keeps growing.",
+    });
+  }
+
+  if (operations.physicalCollections.cleanupFailed > 0) {
+    alerts.push({
+      code: "CLEANUP_RETRY_REQUIRED",
+      severity: "warn",
+      message: `${operations.physicalCollections.cleanupFailed} physical collections are waiting for cleanup retry.`,
+      recommendedAction: "Review cleanup errors and retry or manually remove orphaned physical collections if automated cleanup keeps failing.",
+    });
+  }
+
+  return alerts;
 }
 
 function configureApp(app: Express): void {
@@ -181,6 +316,7 @@ function configureApp(app: Express): void {
 
 async function getReadinessPayload(registry?: CollectionRegistry) {
   const healthChecks = deps.healthChecks;
+  const observedAt = new Date().toISOString();
   const [chroma, ollama, dataSource, registryHealth] = await Promise.all([
     (healthChecks?.checkChromaHealth ?? checkChromaHealth)(runtimeConfig),
     (healthChecks?.checkOllamaHealth ?? checkOllamaHealth)(runtimeConfig),
@@ -190,6 +326,11 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
   const ollamaDetails = (ollama.details ?? {}) as Partial<OllamaHealthDetails>;
   const dataSourceDetails = (dataSource.details ?? {}) as Partial<IndexingSourceHealthDetails>;
   const chromaReachable = chroma.ok;
+  const operationsAggregate = registry
+    ? await registry.getSystemOperationsSummary(observedAt).catch(() => emptySystemOperationsAggregateSummary(observedAt))
+    : emptySystemOperationsAggregateSummary(observedAt);
+  const operations = buildReadyOperationsSummary(operationsAggregate, runtimeConfig);
+  const operationalAlerts = buildOperationalAlerts(operations);
 
   const embedding = ollama.ok && ollamaDetails.embeddingModelAvailable
     ? await (healthChecks?.checkEmbeddingHealth ?? checkEmbeddingHealth)(runtimeConfig)
@@ -524,6 +665,8 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
         path: runtimeConfig.sourcePath,
         ...dataSource,
       },
+      operations,
+      operationalAlerts,
     },
   };
 }
@@ -573,6 +716,8 @@ function summarizeReadinessPayload(payload: ReadinessPayload) {
       strictHttpStatus: "GET /ready?strict=true",
       fullStrict: "GET /ready?details=true&strict=true",
     },
+    operations: payload.operations,
+    operationalAlerts: payload.operationalAlerts,
   };
 }
 

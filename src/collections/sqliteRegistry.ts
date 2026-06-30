@@ -20,6 +20,7 @@ import type {
   PhysicalCollectionStatus,
   RagCollection,
   RequestContext,
+  SystemOperationsAggregateSummary,
   UpdateCollectionPatch,
 } from "./types.js";
 
@@ -318,6 +319,104 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     return {
       jobs: pageRows.map(mapIndexJobSummaryRow),
       nextCursor: hasNextPage ? encodeJobCursor(pageRows[pageRows.length - 1]!) : null,
+    };
+  }
+
+  async getSystemOperationsSummary(nowIso: string): Promise<SystemOperationsAggregateSummary> {
+    const collectionCounts = this.db.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status = 'creating' THEN 1 ELSE 0 END) AS creating,
+        SUM(CASE WHEN status = 'indexing' THEN 1 ELSE 0 END) AS indexing,
+        SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END) AS ready,
+        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+        SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END) AS archived
+      FROM collections
+    `).get() as Record<string, unknown>;
+
+    const jobCounts = this.db.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status IN ('queued', 'running') THEN 1 ELSE 0 END) AS active,
+        SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) AS queued,
+        SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS running,
+        SUM(CASE WHEN status IN ('succeeded', 'failed', 'cancelled') THEN 1 ELSE 0 END) AS terminal,
+        SUM(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END) AS succeeded,
+        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
+        MIN(CASE WHEN status IN ('queued', 'running') THEN updated_at END) AS oldest_active_updated_at,
+        MAX(CASE WHEN status = 'failed' THEN COALESCE(finished_at, updated_at) END) AS newest_failure_at
+      FROM index_jobs
+    `).get() as Record<string, unknown>;
+
+    const physicalCollectionCounts = this.db.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status = 'building' THEN 1 ELSE 0 END) AS building,
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
+        SUM(CASE WHEN status = 'failed_build' THEN 1 ELSE 0 END) AS failed_build,
+        SUM(CASE WHEN status = 'delete_pending' THEN 1 ELSE 0 END) AS delete_pending,
+        SUM(CASE WHEN status = 'cleanup_failed' THEN 1 ELSE 0 END) AS cleanup_failed,
+        SUM(CASE WHEN status = 'deleted' THEN 1 ELSE 0 END) AS deleted,
+        SUM(
+          CASE
+            WHEN status IN ('delete_pending', 'cleanup_failed')
+             AND delete_after IS NOT NULL
+             AND delete_after <= @nowIso
+            THEN 1
+            ELSE 0
+          END
+        ) AS cleanup_backlog,
+        MIN(
+          CASE
+            WHEN status IN ('delete_pending', 'cleanup_failed')
+             AND delete_after IS NOT NULL
+             AND delete_after <= @nowIso
+            THEN delete_after
+          END
+        ) AS oldest_due_delete_at
+      FROM physical_collections
+    `).get({ nowIso }) as Record<string, unknown>;
+
+    const oldestActiveUpdatedAt = stringOrNull(jobCounts.oldest_active_updated_at);
+    const oldestActiveAgeSec = oldestActiveUpdatedAt
+      ? Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(oldestActiveUpdatedAt)) / 1000))
+      : null;
+
+    return {
+      observedAt: nowIso,
+      collections: {
+        total: numberOrZero(collectionCounts.total),
+        creating: numberOrZero(collectionCounts.creating),
+        indexing: numberOrZero(collectionCounts.indexing),
+        ready: numberOrZero(collectionCounts.ready),
+        failed: numberOrZero(collectionCounts.failed),
+        archived: numberOrZero(collectionCounts.archived),
+      },
+      jobs: {
+        total: numberOrZero(jobCounts.total),
+        active: numberOrZero(jobCounts.active),
+        queued: numberOrZero(jobCounts.queued),
+        running: numberOrZero(jobCounts.running),
+        terminal: numberOrZero(jobCounts.terminal),
+        succeeded: numberOrZero(jobCounts.succeeded),
+        failed: numberOrZero(jobCounts.failed),
+        cancelled: numberOrZero(jobCounts.cancelled),
+        oldestActiveUpdatedAt,
+        oldestActiveAgeSec,
+        newestFailureAt: stringOrNull(jobCounts.newest_failure_at),
+      },
+      physicalCollections: {
+        total: numberOrZero(physicalCollectionCounts.total),
+        building: numberOrZero(physicalCollectionCounts.building),
+        active: numberOrZero(physicalCollectionCounts.active),
+        failedBuild: numberOrZero(physicalCollectionCounts.failed_build),
+        deletePending: numberOrZero(physicalCollectionCounts.delete_pending),
+        cleanupFailed: numberOrZero(physicalCollectionCounts.cleanup_failed),
+        deleted: numberOrZero(physicalCollectionCounts.deleted),
+        cleanupBacklog: numberOrZero(physicalCollectionCounts.cleanup_backlog),
+        oldestDueDeleteAt: stringOrNull(physicalCollectionCounts.oldest_due_delete_at),
+      },
     };
   }
 
@@ -1370,6 +1469,14 @@ function clampInteger(value: number, minimum: number, maximum: number): number {
 
   const rounded = Math.trunc(value);
   return Math.min(maximum, Math.max(minimum, rounded));
+}
+
+function numberOrZero(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function encodeJobCursor(row: IndexJobSummaryRow): string {

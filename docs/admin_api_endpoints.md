@@ -467,6 +467,70 @@ Notes:
 - A different tenant receives `404 ROUTE_NOT_FOUND`, not `403`.
 - Response includes the `targetPhysicalCollection`, which is useful for operational troubleshooting.
 
+### `GET /v1/admin/jobs/:jobId/events`
+
+Returns the persisted event timeline for one job.
+
+Example response:
+
+```json
+{
+  "jobId": "job_001",
+  "events": [
+    {
+      "id": "job_001:evt:1",
+      "jobId": "job_001",
+      "tenantId": "default",
+      "collectionId": "col_123",
+      "sequence": 1,
+      "status": "queued",
+      "stage": "queued",
+      "code": "JOB_QUEUED",
+      "level": "info",
+      "message": "Job queued for execution.",
+      "progress": {
+        "phase": 1,
+        "phaseCount": 6
+      },
+      "createdAt": "2026-06-30T10:00:00.000Z"
+    },
+    {
+      "id": "job_001:evt:4",
+      "jobId": "job_001",
+      "tenantId": "default",
+      "collectionId": "col_123",
+      "sequence": 4,
+      "status": "running",
+      "stage": "loading_source",
+      "code": "SOURCE_ANALYSIS_COMPLETED",
+      "level": "info",
+      "message": "Indexing source analysis completed.",
+      "details": {
+        "fileCount": 12,
+        "parsedSourceDocumentCount": 87,
+        "unsupportedFileCount": 1,
+        "sampleLimited": false
+      },
+      "progress": {
+        "phase": 3,
+        "phaseCount": 6,
+        "itemsCompleted": 87,
+        "unit": "documents"
+      },
+      "createdAt": "2026-06-30T10:00:04.000Z"
+    }
+  ]
+}
+```
+
+Notes:
+
+- Events are returned in ascending `sequence` order.
+- `status` remains one of `queued`, `running`, `succeeded`, `failed`, `cancelled`; use `stage` and `code` for the finer-grained timeline.
+- `progress.phase` / `progress.phaseCount` describe stage progress, not a fake byte-level percentage.
+- `details` contains stage-specific metrics such as parsed document count, chunk count, unsupported file count, and the target physical collection name.
+- Response includes `Cache-Control: no-store`.
+
 ### `DELETE /v1/admin/jobs/:jobId`
 
 Deletes a terminal job and returns `204 No Content`.

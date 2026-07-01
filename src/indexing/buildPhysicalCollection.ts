@@ -2,10 +2,12 @@ import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { analyzeIndexingSource } from "../ingestion/pipeline.js";
 import { createPhysicalChromaCollection, assertChromaCollectionReadable, deletePhysicalChromaCollection } from "../collections/chromaCollections.js";
 import { createVectorStore } from "../rag.js";
-import type { RagCollection } from "../collections/types.js";
+import type { CreateIndexJobEventInput, RagCollection } from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
 import { emitOperationalLog, type OperationalLogSink } from "../observability/logger.js";
 import type { Document } from "@langchain/core/documents";
+
+const JOB_PHASE_COUNT = 6;
 
 export function addMetadataToChunks(
   chunks: Document[],
@@ -34,6 +36,7 @@ export async function buildPhysicalCollection(input: {
   jobId?: string;
   log?: (message: string) => void;
   logEvent?: OperationalLogSink;
+  onEvent?: (event: CreateIndexJobEventInput) => Promise<void> | void;
   deps?: {
     analyzeIndexingSource?: typeof analyzeIndexingSource;
     createPhysicalChromaCollection?: typeof createPhysicalChromaCollection;
@@ -60,6 +63,7 @@ export async function buildPhysicalCollection(input: {
     const splitter = new RecursiveCharacterTextSplitter(options);
     return splitter.splitDocuments(documents);
   });
+  const onEvent = input.onEvent;
 
   emitOperationalLog(input.logEvent, {
     tenantId: collection.tenantId,
@@ -76,6 +80,20 @@ export async function buildPhysicalCollection(input: {
   try {
     if (signal?.aborted) throw new Error("Build aborted");
     log(`Creating physical collection "${targetPhysicalCollection}" (version: ${targetVersion})`);
+    await onEvent?.({
+      status: "running",
+      stage: "preparing_target",
+      code: "PHYSICAL_COLLECTION_CREATING",
+      message: "Creating target physical collection in Chroma.",
+      details: {
+        targetPhysicalCollection,
+        targetVersion,
+      },
+      progress: {
+        phase: 2,
+        phaseCount: JOB_PHASE_COUNT,
+      },
+    });
     const chromaConfiguration = collection.chromaCollectionConfiguration ?? {
       hnsw: {
         space: collection.distanceMetric,
@@ -91,11 +109,45 @@ export async function buildPhysicalCollection(input: {
 
     if (signal?.aborted) throw new Error("Build aborted");
     log(`Analyzing indexing source from ${collection.sourcePath}`);
+    await onEvent?.({
+      status: "running",
+      stage: "loading_source",
+      code: "SOURCE_ANALYSIS_STARTED",
+      message: "Analyzing indexing source.",
+      details: {
+        sourcePath: collection.sourcePath,
+        ozelgeDataPath: collection.ozelgeDataPath,
+      },
+      progress: {
+        phase: 3,
+        phaseCount: JOB_PHASE_COUNT,
+      },
+    });
     const analysis = await loadSource({
       sourcePath: collection.sourcePath,
       ozelgeDataPath: collection.ozelgeDataPath,
       indexSampleSize: runtimeConfig.indexSampleSize,
       logEvent: input.logEvent,
+    });
+    await onEvent?.({
+      status: "running",
+      stage: "loading_source",
+      code: "SOURCE_ANALYSIS_COMPLETED",
+      message: "Indexing source analysis completed.",
+      details: {
+        fileCount: analysis.fileCount,
+        parsedSourceDocumentCount: analysis.loadedDocumentCount,
+        unsupportedFileCount: analysis.unsupportedFiles.length,
+        sampleLimited: analysis.sampleLimited,
+        recordCount: analysis.recordCount,
+        sampledRecordCount: analysis.sampledRecordCount,
+      },
+      progress: {
+        phase: 3,
+        phaseCount: JOB_PHASE_COUNT,
+        itemsCompleted: analysis.loadedDocumentCount,
+        unit: "documents",
+      },
     });
 
     const documents = analysis.documents;
@@ -106,6 +158,22 @@ export async function buildPhysicalCollection(input: {
 
     if (signal?.aborted) throw new Error("Build aborted");
     log(`Loaded ${documents.length} indexable documents from ${analysis.loadedDocumentCount} parsed source documents`);
+    await onEvent?.({
+      status: "running",
+      stage: "chunking",
+      code: "CHUNKING_STARTED",
+      message: "Splitting parsed documents into chunks.",
+      details: {
+        documentCount: documents.length,
+      },
+      progress: {
+        phase: 4,
+        phaseCount: JOB_PHASE_COUNT,
+        itemsCompleted: documents.length,
+        itemsTotal: documents.length,
+        unit: "documents",
+      },
+    });
 
     const chunks = await splitDocuments(documents, {
       chunkSize: collection.chunkSize,
@@ -122,8 +190,45 @@ export async function buildPhysicalCollection(input: {
       throw new Error(`No indexable chunks produced from ${documents.length} documents. To prevent empty collections, build is aborted.`);
     }
 
+    await onEvent?.({
+      status: "running",
+      stage: "chunking",
+      code: "CHUNKING_COMPLETED",
+      message: "Chunking completed.",
+      details: {
+        documentCount: documents.length,
+        chunkCount: indexedChunks.length,
+        chunkSize: collection.chunkSize,
+        chunkOverlap: collection.chunkOverlap,
+      },
+      progress: {
+        phase: 4,
+        phaseCount: JOB_PHASE_COUNT,
+        itemsCompleted: indexedChunks.length,
+        itemsTotal: indexedChunks.length,
+        unit: "chunks",
+      },
+    });
+
     if (signal?.aborted) throw new Error("Build aborted");
     log(`Split documents into ${indexedChunks.length} chunks. Indexing into Chroma...`);
+    await onEvent?.({
+      status: "running",
+      stage: "indexing",
+      code: "VECTOR_INDEXING_STARTED",
+      message: "Writing chunks into Chroma.",
+      details: {
+        chunkCount: indexedChunks.length,
+        targetPhysicalCollection,
+      },
+      progress: {
+        phase: 5,
+        phaseCount: JOB_PHASE_COUNT,
+        itemsCompleted: 0,
+        itemsTotal: indexedChunks.length,
+        unit: "chunks",
+      },
+    });
 
     const vectorStore = vectorStoreFactory({
       collectionName: targetPhysicalCollection,
@@ -134,14 +239,56 @@ export async function buildPhysicalCollection(input: {
     await vectorStore.addDocuments(indexedChunks, {
       ids: indexedChunks.map((chunk) => `${chunk.metadata.documentId}:${chunk.metadata.chunkIndex}`),
     });
+    await onEvent?.({
+      status: "running",
+      stage: "indexing",
+      code: "VECTOR_INDEXING_COMPLETED",
+      message: "Chunk indexing completed.",
+      details: {
+        chunkCount: indexedChunks.length,
+      },
+      progress: {
+        phase: 5,
+        phaseCount: JOB_PHASE_COUNT,
+        itemsCompleted: indexedChunks.length,
+        itemsTotal: indexedChunks.length,
+        unit: "chunks",
+      },
+    });
 
     if (signal?.aborted) throw new Error("Build aborted");
     log(`Verifying readability of physical collection "${targetPhysicalCollection}"`);
+    await onEvent?.({
+      status: "running",
+      stage: "verifying",
+      code: "READABILITY_CHECK_STARTED",
+      message: "Verifying target physical collection readability.",
+      details: {
+        targetPhysicalCollection,
+      },
+      progress: {
+        phase: 6,
+        phaseCount: JOB_PHASE_COUNT,
+      },
+    });
     await assertReadable({
       name: targetPhysicalCollection,
       runtimeConfig,
       abortSignal: signal,
       timeoutMs: runtimeConfig.readyTimeoutMs,
+    });
+    await onEvent?.({
+      status: "running",
+      stage: "verifying",
+      code: "READABILITY_CHECK_COMPLETED",
+      message: "Target physical collection verified as readable.",
+      details: {
+        targetPhysicalCollection,
+      },
+      progress: {
+        phase: 6,
+        phaseCount: JOB_PHASE_COUNT,
+      },
     });
 
     const output = {

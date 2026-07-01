@@ -10,8 +10,14 @@ import type {
   CollectionRegistry,
   CollectionStatus,
   CompleteIndexJobResult,
+  CreateIndexJobEventInput,
   CreateCollectionInput,
   IndexJob,
+  IndexJobEvent,
+  IndexJobEventCode,
+  IndexJobEventLevel,
+  IndexJobEventProgress,
+  IndexJobEventStage,
   IndexJobListItem,
   IndexJobStatus,
   ListJobsInput,
@@ -79,6 +85,22 @@ type IndexJobSummaryRow = IndexJobRow & {
   collection_snapshot_id: string | null;
   collection_snapshot_display_name: string | null;
   collection_snapshot_status: CollectionStatus | null;
+};
+
+type IndexJobEventRow = {
+  id: string;
+  job_id: string;
+  tenant_id: string;
+  collection_id: string;
+  sequence: number;
+  status: IndexJobStatus;
+  stage: IndexJobEventStage;
+  code: IndexJobEventCode;
+  level: IndexJobEventLevel;
+  message: string;
+  details_json: string | null;
+  progress_json: string | null;
+  created_at: string;
 };
 
 type PhysicalCollectionRow = {
@@ -185,8 +207,29 @@ function initializeSchema(db: SqliteDatabase): void {
       FOREIGN KEY(collection_id) REFERENCES collections(id)
     );
 
+    CREATE TABLE IF NOT EXISTS index_job_events (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      tenant_id TEXT NOT NULL,
+      collection_id TEXT NOT NULL,
+      sequence INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      stage TEXT NOT NULL,
+      code TEXT NOT NULL,
+      level TEXT NOT NULL,
+      message TEXT NOT NULL,
+      details_json TEXT,
+      progress_json TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(job_id) REFERENCES index_jobs(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_collections_tenant ON collections(tenant_id);
     CREATE INDEX IF NOT EXISTS idx_index_jobs_collection ON index_jobs(collection_id, tenant_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_index_job_events_job_sequence
+      ON index_job_events(job_id, sequence);
+    CREATE INDEX IF NOT EXISTS idx_index_job_events_job_created
+      ON index_job_events(job_id, created_at, sequence);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_index_jobs_one_active_per_collection
       ON index_jobs(collection_id, tenant_id)
       WHERE status IN ('queued', 'running');
@@ -423,6 +466,35 @@ class SqliteCollectionRegistry implements CollectionRegistry {
   async getJob(jobId: string): Promise<IndexJob | null> {
     const row = this.getJobRow(jobId);
     return row ? mapIndexJobRow(row) : null;
+  }
+
+  async listJobEvents(context: RequestContext, jobId: string): Promise<IndexJobEvent[]> {
+    const job = this.getJobRow(jobId);
+    if (!job || job.tenant_id !== context.tenantId) {
+      throw new Error(`Job not found: ${jobId}`);
+    }
+
+    const rows = this.db.prepare(`
+      SELECT * FROM index_job_events
+      WHERE job_id = ? AND tenant_id = ?
+      ORDER BY sequence ASC, created_at ASC
+    `).all(jobId, context.tenantId) as IndexJobEventRow[];
+
+    return rows.map(mapIndexJobEventRow);
+  }
+
+  async appendJobEvent(jobId: string, input: CreateIndexJobEventInput): Promise<IndexJobEvent> {
+    const transaction = this.db.transaction(() => {
+      const job = this.getJobRow(jobId);
+      if (!job) {
+        throw new Error(`Job not found: ${jobId}`);
+      }
+
+      const event = this.insertJobEvent(job, input);
+      return mapIndexJobEventRow(event);
+    });
+
+    return transaction();
   }
 
   async deleteJob(context: RequestContext, jobId: string): Promise<void> {
@@ -727,6 +799,18 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         updatedAt: job.updatedAt,
       });
 
+      this.insertJobEvent(job, {
+        status: "queued",
+        stage: "queued",
+        code: "JOB_QUEUED",
+        message: "Job queued for execution.",
+        progress: {
+          phase: 1,
+          phaseCount: 6,
+        },
+        createdAt: now,
+      });
+
       // Status goes to indexing immediately when queued. We will separate running later if needed.
       this.db.prepare(`
         UPDATE collections
@@ -766,6 +850,23 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         updatedAt: now,
       });
 
+      this.insertJobEvent({
+        ...existing,
+        status: "running",
+        started_at: now,
+        updated_at: now,
+      }, {
+        status: "running",
+        stage: "running",
+        code: "JOB_RUNNING",
+        message: "Job is now running.",
+        progress: {
+          phase: 2,
+          phaseCount: 6,
+        },
+        createdAt: now,
+      });
+
       const updated = this.getJobRow(jobId);
       if (!updated) {
         throw new Error(`Running job ${jobId} could not be loaded.`);
@@ -801,6 +902,23 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         id: jobId,
         finishedAt: now,
         updatedAt: now,
+      });
+
+      this.insertJobEvent({
+        ...existing,
+        status: "cancelled",
+        finished_at: now,
+        updated_at: now,
+      }, {
+        status: "cancelled",
+        stage: "cancelled",
+        code: "JOB_CANCELLED",
+        message: "Job was cancelled.",
+        progress: {
+          phase: 6,
+          phaseCount: 6,
+        },
+        createdAt: now,
       });
 
       this.db.prepare(`
@@ -864,6 +982,23 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           SET status = 'cancelled', finished_at = @now, updated_at = @now
           WHERE id = @id AND status = 'running'
         `).run({ id: jobId, now });
+
+        this.insertJobEvent({
+          ...existing,
+          status: "cancelled",
+          finished_at: now,
+          updated_at: now,
+        }, {
+          status: "cancelled",
+          stage: "cancelled",
+          code: "JOB_CANCELLED",
+          message: "Job was cancelled because its collection no longer exists.",
+          progress: {
+            phase: 6,
+            phaseCount: 6,
+          },
+          createdAt: now,
+        });
         
         const cancelledJob = this.getJobRow(jobId);
         return mapIndexJobRow(cancelledJob!);
@@ -1003,6 +1138,34 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         updatedAt: now,
       });
 
+      this.insertJobEvent({
+        ...existing,
+        status: "succeeded",
+        finished_at: now,
+        updated_at: now,
+        document_count: result.documentCount ?? existing.document_count,
+        chunk_count: result.chunkCount ?? existing.chunk_count,
+      }, {
+        status: "succeeded",
+        stage: "succeeded",
+        code: "JOB_SUCCEEDED",
+        message: "Job completed successfully.",
+        details: {
+          activePhysicalCollection,
+          activeVersion,
+          documentCount: result.documentCount ?? existing.document_count ?? undefined,
+          chunkCount: result.chunkCount ?? existing.chunk_count ?? undefined,
+        },
+        progress: {
+          phase: 6,
+          phaseCount: 6,
+          itemsCompleted: result.chunkCount ?? existing.chunk_count ?? undefined,
+          itemsTotal: result.chunkCount ?? existing.chunk_count ?? undefined,
+          unit: "chunks",
+        },
+        createdAt: now,
+      });
+
       const updated = this.getJobRow(jobId);
       if (!updated) {
         throw new Error(`Completed job ${jobId} could not be loaded.`);
@@ -1035,6 +1198,29 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         finishedAt: now,
         error,
         updatedAt: now,
+      });
+
+      this.insertJobEvent({
+        ...existing,
+        status: "failed",
+        finished_at: now,
+        updated_at: now,
+        error,
+      }, {
+        status: "failed",
+        stage: "failed",
+        code: "JOB_FAILED",
+        level: "error",
+        message: error,
+        details: {
+          targetPhysicalCollection: existing.target_physical_collection,
+          targetVersion: existing.target_version,
+        },
+        progress: {
+          phase: 6,
+          phaseCount: 6,
+        },
+        createdAt: now,
       });
 
       this.db.prepare(`
@@ -1102,6 +1288,29 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           error: "Job timed out (stale lock)",
           updatedAt: now,
           finishedAt: now,
+        });
+
+        this.insertJobEvent({
+          ...job,
+          status: "failed",
+          finished_at: now,
+          updated_at: now,
+          error: "Job timed out (stale lock)",
+        }, {
+          status: "failed",
+          stage: "failed",
+          code: "JOB_FAILED",
+          level: "error",
+          message: "Job timed out (stale lock)",
+          details: {
+            targetPhysicalCollection: job.target_physical_collection,
+            targetVersion: job.target_version,
+          },
+          progress: {
+            phase: 6,
+            phaseCount: 6,
+          },
+          createdAt: now,
         });
 
         this.db.prepare(`
@@ -1221,10 +1430,10 @@ class SqliteCollectionRegistry implements CollectionRegistry {
 
       // Find active jobs to return for aborting in memory
       const activeJobs = this.db.prepare(`
-        SELECT id FROM index_jobs
+        SELECT * FROM index_jobs
         WHERE collection_id = ? AND status IN ('queued', 'running')
-      `).all(collectionId) as { id: string }[];
-      const activeJobIds = activeJobs.map(j => j.id);
+      `).all(collectionId) as IndexJobRow[];
+      const activeJobIds = activeJobs.map((job) => job.id);
 
       // Cancel active jobs
       this.db.prepare(`
@@ -1232,6 +1441,28 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         SET status = 'cancelled', finished_at = @now, updated_at = @now
         WHERE collection_id = @collectionId AND status IN ('queued', 'running')
       `).run({ now, collectionId });
+
+      for (const job of activeJobs) {
+        this.insertJobEvent({
+          ...job,
+          status: "cancelled",
+          finished_at: now,
+          updated_at: now,
+        }, {
+          status: "cancelled",
+          stage: "cancelled",
+          code: "JOB_CANCELLED",
+          message: "Job was cancelled because the collection was deleted.",
+          details: {
+            collectionDeleted: true,
+          },
+          progress: {
+            phase: 6,
+            phaseCount: 6,
+          },
+          createdAt: now,
+        });
+      }
 
       // Mark all physical collections for cleanup
       this.db.prepare(`
@@ -1260,6 +1491,73 @@ class SqliteCollectionRegistry implements CollectionRegistry {
 
   close(): void {
     this.db.close();
+  }
+
+  private insertJobEvent(job: IndexJobRow | IndexJob, input: CreateIndexJobEventInput): IndexJobEventRow {
+    const createdAt = input.createdAt ?? new Date().toISOString();
+    const jobId = job.id;
+    const tenantId = "tenant_id" in job ? job.tenant_id : job.tenantId;
+    const collectionId = "collection_id" in job ? job.collection_id : job.collectionId;
+    const nextSequenceRow = this.db.prepare(`
+      SELECT COALESCE(MAX(sequence), 0) AS max_sequence
+      FROM index_job_events
+      WHERE job_id = ?
+    `).get(jobId) as { max_sequence: number | null };
+    const sequence = (nextSequenceRow.max_sequence ?? 0) + 1;
+    const id = `${jobId}:evt:${sequence}`;
+
+    this.db.prepare(`
+      INSERT INTO index_job_events (
+        id,
+        job_id,
+        tenant_id,
+        collection_id,
+        sequence,
+        status,
+        stage,
+        code,
+        level,
+        message,
+        details_json,
+        progress_json,
+        created_at
+      ) VALUES (
+        @id,
+        @jobId,
+        @tenantId,
+        @collectionId,
+        @sequence,
+        @status,
+        @stage,
+        @code,
+        @level,
+        @message,
+        @detailsJson,
+        @progressJson,
+        @createdAt
+      )
+    `).run({
+      id,
+      jobId,
+      tenantId,
+      collectionId,
+      sequence,
+      status: input.status,
+      stage: input.stage,
+      code: input.code,
+      level: input.level ?? "info",
+      message: input.message,
+      detailsJson: input.details ? JSON.stringify(input.details) : null,
+      progressJson: input.progress ? JSON.stringify(input.progress) : null,
+      createdAt,
+    });
+
+    const row = this.db.prepare("SELECT * FROM index_job_events WHERE id = ?").get(id) as IndexJobEventRow | undefined;
+    if (!row) {
+      throw new Error(`Job event ${id} could not be loaded.`);
+    }
+
+    return row;
   }
 
   private createUniqueCollectionId(displayName: string): string {
@@ -1435,6 +1733,24 @@ function mapIndexJobSummaryRow(row: IndexJobSummaryRow): IndexJobListItem {
   };
 }
 
+function mapIndexJobEventRow(row: IndexJobEventRow): IndexJobEvent {
+  return {
+    id: row.id,
+    jobId: row.job_id,
+    tenantId: row.tenant_id,
+    collectionId: row.collection_id,
+    sequence: row.sequence,
+    status: row.status,
+    stage: row.stage,
+    code: row.code,
+    level: row.level,
+    message: row.message,
+    details: parseJsonRecord(row.details_json) ?? undefined,
+    progress: parseJobEventProgress(row.progress_json) ?? undefined,
+    createdAt: row.created_at,
+  };
+}
+
 function mapPhysicalCollectionRow(row: PhysicalCollectionRow): PhysicalCollectionRecord {
   return {
     name: row.name,
@@ -1477,6 +1793,43 @@ function numberOrZero(value: unknown): number {
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function parseJsonRecord(value: string | null): Record<string, unknown> | null {
+  if (!value) return null;
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseJobEventProgress(value: string | null): IndexJobEventProgress | null {
+  if (!value) return null;
+
+  try {
+    const parsed = JSON.parse(value) as Partial<IndexJobEventProgress>;
+    if (
+      typeof parsed !== "object"
+      || parsed === null
+      || typeof parsed.phase !== "number"
+      || typeof parsed.phaseCount !== "number"
+    ) {
+      return null;
+    }
+
+    return {
+      phase: parsed.phase,
+      phaseCount: parsed.phaseCount,
+      itemsCompleted: typeof parsed.itemsCompleted === "number" ? parsed.itemsCompleted : undefined,
+      itemsTotal: typeof parsed.itemsTotal === "number" ? parsed.itemsTotal : undefined,
+      unit: parsed.unit,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function encodeJobCursor(row: IndexJobSummaryRow): string {

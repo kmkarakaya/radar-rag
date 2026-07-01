@@ -242,6 +242,20 @@ describe("indexing jobs", () => {
         },
       }),
       getJob: async () => ({ ...job, status: currentStatus }),
+      listJobEvents: async () => [],
+      appendJobEvent: async () => ({
+        id: `${job.id}:evt:1`,
+        jobId: job.id,
+        tenantId: job.tenantId,
+        collectionId: job.collectionId,
+        sequence: 1,
+        status: "running",
+        stage: "running",
+        code: "JOB_RUNNING",
+        level: "info",
+        message: "stub",
+        createdAt: "2026-06-04T00:00:00.000Z",
+      }),
       deleteJob: async () => {},
       deleteJobs: async () => {},
       getActiveJobForCollection: async () => null,
@@ -352,6 +366,74 @@ describe("indexing jobs", () => {
     assert.equal(succeededEvent.jobId, job.id);
     assert.equal(succeededEvent.details?.chunkCount, 5);
     assert.equal(typeof succeededEvent.latencyMs, "number");
+  });
+
+  it("runIndexJob persists a stage timeline for queued, running, build, and success events", async () => {
+    const context = { tenantId: "tenant-events", userId: "u", requestId: "r" };
+    const collection = await createCollection(context, "Event Timeline");
+    const job = await startReindexJob({ registry, collectionId: collection.id, context, runtimeConfig: config });
+
+    await runIndexJob({
+      registry,
+      jobId: job.id,
+      runtimeConfig: config,
+      log: () => {},
+      deps: {
+        buildPhysicalCollection: async (input) => {
+          await input.onEvent?.({
+            status: "running",
+            stage: "loading_source",
+            code: "SOURCE_ANALYSIS_COMPLETED",
+            message: "Indexing source analysis completed.",
+            details: {
+              fileCount: 2,
+              parsedSourceDocumentCount: 3,
+            },
+            progress: {
+              phase: 3,
+              phaseCount: 6,
+              itemsCompleted: 3,
+              unit: "documents",
+            },
+          });
+          await input.onEvent?.({
+            status: "running",
+            stage: "chunking",
+            code: "CHUNKING_COMPLETED",
+            message: "Chunking completed.",
+            details: {
+              chunkCount: 5,
+            },
+            progress: {
+              phase: 4,
+              phaseCount: 6,
+              itemsCompleted: 5,
+              itemsTotal: 5,
+              unit: "chunks",
+            },
+          });
+
+          return {
+            sourceDocumentCount: 3,
+            parsedSourceDocumentCount: 3,
+            chunkCount: 5,
+          };
+        },
+      },
+    });
+
+    const events = await registry.listJobEvents(context, job.id);
+    assert.deepEqual(events.map((event) => event.code), [
+      "JOB_QUEUED",
+      "JOB_RUNNING",
+      "TARGET_RECORD_CREATED",
+      "SOURCE_ANALYSIS_COMPLETED",
+      "CHUNKING_COMPLETED",
+      "JOB_SUCCEEDED",
+    ]);
+    assert.deepEqual(events.map((event) => event.sequence), [1, 2, 3, 4, 5, 6]);
+    assert.equal(events[events.length - 1]?.details?.chunkCount, 5);
+    assert.equal(events[events.length - 1]?.status, "succeeded");
   });
 
   it("runIndexJob keeps the previous active pointer and marks the target record failed_build on build failure", async () => {

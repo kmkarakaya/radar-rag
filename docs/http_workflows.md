@@ -204,6 +204,18 @@ curl.exe -s `
   "$BASE_URL/v1/admin/jobs/$JOB_ID"
 ```
 
+### Poll job event timeline
+
+```powershell
+curl.exe -s `
+  -H "x-tenant-id: $TENANT_ID" `
+  -H "x-user-id: $USER_ID" `
+  -H "x-request-id: $REQUEST_ID" `
+  "$BASE_URL/v1/admin/jobs/$JOB_ID/events"
+```
+
+Use this response for stage-aware progress UIs. `status` stays coarse; `stage`, `code`, and `details` explain what the job is doing now and what it has already completed.
+
 ### Poll job list
 
 ```powershell

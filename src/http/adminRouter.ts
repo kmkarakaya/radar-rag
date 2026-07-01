@@ -351,6 +351,29 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     }
   });
 
+  router.get("/jobs/:jobId/events", requireRegistry, async (req, res, next) => {
+    try {
+      const context = res.locals.requestContext as RequestContext;
+      const jobId = req.params.jobId as string;
+      const job = await deps.registry!.getJob(jobId);
+      if (!job || job.tenantId !== context.tenantId) {
+        throw new HttpError(404, "ROUTE_NOT_FOUND", "Job not found.");
+      }
+
+      const events = await deps.registry!.listJobEvents(context, jobId);
+      res.setHeader("Cache-Control", "no-store");
+      res.locals.collectionId = job.collectionId;
+      res.locals.jobId = job.id;
+      res.locals.physicalCollection = job.targetPhysicalCollection;
+      res.json({
+        jobId: job.id,
+        events,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.delete("/jobs/:jobId", requireRegistry, async (req, res, next) => {
     try {
       const context = res.locals.requestContext as RequestContext;

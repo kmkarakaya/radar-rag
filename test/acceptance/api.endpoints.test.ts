@@ -1398,6 +1398,43 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(body.code, "INVALID_JOB_STATUS");
   });
 
+  it("GET /v1/admin/jobs/:jobId/events returns the persisted job timeline", async () => {
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "job-events" };
+    const collection = await registry.createCollection(ctx, {
+      displayName: "Job Events",
+      sourcePath: "data",
+      ozelgeDataPath: "data/ozelge.json",
+      embeddingModel: "embed",
+      chatModel: "chat",
+      distanceMetric: "l2",
+      chunkSize: 500,
+      chunkOverlap: 50,
+      retrievalK: 5,
+      retrievalDistanceThreshold: 1,
+    });
+
+    const queuedJob = await registry.beginIndexJob(ctx, collection.id);
+    await registry.markIndexJobRunning(queuedJob.id);
+
+    const response = await request(`/v1/admin/jobs/${queuedJob.id}/events`, {
+      headers: { "x-tenant-id": "default" },
+    });
+    const body = await response.json() as any;
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(body.jobId, queuedJob.id);
+    assert.deepEqual(body.events.map((event: any) => event.code), [
+      "JOB_QUEUED",
+      "JOB_RUNNING",
+    ]);
+    assert.deepEqual(body.events.map((event: any) => event.stage), [
+      "queued",
+      "running",
+    ]);
+    assert.deepEqual(body.events.map((event: any) => event.sequence), [1, 2]);
+  });
+
   it("POST /v1/admin/jobs/bulk-delete removes terminal jobs and hides them from the list", async () => {
     const ctx = { tenantId: "default", userId: "local-dev", requestId: "job-bulk-delete-terminal" };
 

@@ -1,7 +1,28 @@
-import type { CollectionRegistry, IndexJob, RequestContext, RagCollection } from "../collections/types.js";
+import type {
+  CollectionRegistry,
+  CreateIndexJobEventInput,
+  IndexJob,
+  RequestContext,
+  RagCollection,
+} from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
 import { emitOperationalLog, type OperationalLogSink } from "../observability/logger.js";
 import { buildPhysicalCollection } from "./buildPhysicalCollection.js";
+
+const JOB_PHASE_COUNT = 6;
+
+async function recordJobEvent(
+  registry: CollectionRegistry,
+  jobId: string,
+  input: CreateIndexJobEventInput,
+): Promise<void> {
+  try {
+    await registry.appendJobEvent(jobId, input);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`Failed to persist job event for ${jobId}: ${message}`);
+  }
+}
 
 export async function startReindexJob(input: {
   registry: CollectionRegistry;
@@ -102,6 +123,20 @@ export async function runIndexJob(input: {
       version: targetVersion,
       chromaConfiguration: job.targetChromaConfiguration,
     });
+    await recordJobEvent(registry, jobId, {
+      status: "running",
+      stage: "preparing_target",
+      code: "TARGET_RECORD_CREATED",
+      message: "Target physical collection record created.",
+      details: {
+        targetPhysicalCollection: job.targetPhysicalCollection,
+        targetVersion,
+      },
+      progress: {
+        phase: 2,
+        phaseCount: JOB_PHASE_COUNT,
+      },
+    });
 
     // Override collection settings with job snapshots to ensure consistency
     const collectionForBuild: RagCollection = {
@@ -119,6 +154,7 @@ export async function runIndexJob(input: {
       signal,
       log,
       logEvent: input.logEvent,
+      onEvent: (event) => recordJobEvent(registry, jobId, event),
     });
 
     job = await registry.completeIndexJob(jobId, {

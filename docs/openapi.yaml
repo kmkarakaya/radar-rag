@@ -576,6 +576,30 @@ paths:
           $ref: "#/components/responses/ApiError"
         "500":
           $ref: "#/components/responses/ApiError"
+  /v1/admin/jobs/{jobId}/events:
+    get:
+      tags: [Admin Jobs]
+      operationId: listJobEvents
+      summary: Get the persisted event timeline for one job
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: Job event timeline
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControlNoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobEventsResponse"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
   /v1/admin/jobs/{jobId}/cancel:
     post:
       tags: [Admin Jobs]
@@ -1900,6 +1924,87 @@ components:
         updatedAt:
           type: string
           format: date-time
+    IndexJobEventProgress:
+      type: object
+      required: [phase, phaseCount]
+      properties:
+        phase:
+          type: integer
+          minimum: 1
+        phaseCount:
+          type: integer
+          minimum: 1
+        itemsCompleted:
+          type: integer
+          minimum: 0
+        itemsTotal:
+          type: integer
+          minimum: 0
+        unit:
+          type: string
+          enum: [files, documents, chunks]
+    IndexJobEvent:
+      type: object
+      required:
+        - id
+        - jobId
+        - tenantId
+        - collectionId
+        - sequence
+        - status
+        - stage
+        - code
+        - level
+        - message
+        - createdAt
+      properties:
+        id:
+          type: string
+        jobId:
+          type: string
+        tenantId:
+          type: string
+        collectionId:
+          type: string
+        sequence:
+          type: integer
+          minimum: 1
+        status:
+          $ref: "#/components/schemas/IndexJobStatus"
+        stage:
+          type: string
+          enum: [queued, running, preparing_target, loading_source, chunking, indexing, verifying, succeeded, failed, cancelled]
+        code:
+          type: string
+          enum:
+            - JOB_QUEUED
+            - JOB_RUNNING
+            - TARGET_RECORD_CREATED
+            - PHYSICAL_COLLECTION_CREATING
+            - SOURCE_ANALYSIS_STARTED
+            - SOURCE_ANALYSIS_COMPLETED
+            - CHUNKING_STARTED
+            - CHUNKING_COMPLETED
+            - VECTOR_INDEXING_STARTED
+            - VECTOR_INDEXING_COMPLETED
+            - READABILITY_CHECK_STARTED
+            - READABILITY_CHECK_COMPLETED
+            - JOB_SUCCEEDED
+            - JOB_FAILED
+            - JOB_CANCELLED
+        level:
+          type: string
+          enum: [info, error]
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        progress:
+          $ref: "#/components/schemas/IndexJobEventProgress"
+        createdAt:
+          type: string
+          format: date-time
     IndexJobCollectionSnapshot:
       type: object
       required: [id, displayName, status]
@@ -1936,6 +2041,16 @@ components:
       properties:
         job:
           $ref: "#/components/schemas/IndexJob"
+    JobEventsResponse:
+      type: object
+      required: [jobId, events]
+      properties:
+        jobId:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/IndexJobEvent"
     BulkDeleteJobsRequest:
       type: object
       required: [jobIds]

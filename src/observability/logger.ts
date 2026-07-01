@@ -119,6 +119,14 @@ export function getHttpOperationTarget(req: Request): { operation: string; colle
   }
 
   if (req.method === "GET") {
+    const jobEventsMatch = /^\/v1\/admin\/jobs\/([^/]+)\/events$/.exec(req.path);
+    if (jobEventsMatch) {
+      return {
+        jobId: decodeURIComponent(jobEventsMatch[1] ?? ""),
+        operation: "job_events",
+      };
+    }
+
     const jobMatch = /^\/v1\/admin\/jobs\/([^/]+)$/.exec(req.path);
     if (jobMatch) {
       return {

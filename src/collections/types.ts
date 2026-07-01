@@ -9,6 +9,43 @@ export type RequestContext = {
 export type CollectionStatus = "creating" | "indexing" | "ready" | "failed" | "archived";
 export type IndexJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 export type PhysicalCollectionStatus = "building" | "failed_build" | "active" | "retired" | "delete_pending" | "deleted" | "cleanup_failed";
+export type IndexJobEventLevel = "info" | "error";
+export type IndexJobEventStage =
+  | "queued"
+  | "running"
+  | "preparing_target"
+  | "loading_source"
+  | "chunking"
+  | "indexing"
+  | "verifying"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+export type IndexJobEventCode =
+  | "JOB_QUEUED"
+  | "JOB_RUNNING"
+  | "TARGET_RECORD_CREATED"
+  | "PHYSICAL_COLLECTION_CREATING"
+  | "SOURCE_ANALYSIS_STARTED"
+  | "SOURCE_ANALYSIS_COMPLETED"
+  | "CHUNKING_STARTED"
+  | "CHUNKING_COMPLETED"
+  | "VECTOR_INDEXING_STARTED"
+  | "VECTOR_INDEXING_COMPLETED"
+  | "READABILITY_CHECK_STARTED"
+  | "READABILITY_CHECK_COMPLETED"
+  | "JOB_SUCCEEDED"
+  | "JOB_FAILED"
+  | "JOB_CANCELLED";
+export type IndexJobEventProgressUnit = "files" | "documents" | "chunks";
+
+export type IndexJobEventProgress = {
+  phase: number;
+  phaseCount: number;
+  itemsCompleted?: number;
+  itemsTotal?: number;
+  unit?: IndexJobEventProgressUnit;
+};
 
 export type CollectionIndexSnapshot = {
   sourcePath: string;
@@ -73,6 +110,33 @@ export type IndexJob = {
   lockToken: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type IndexJobEvent = {
+  id: string;
+  jobId: string;
+  tenantId: string;
+  collectionId: string;
+  sequence: number;
+  status: IndexJobStatus;
+  stage: IndexJobEventStage;
+  code: IndexJobEventCode;
+  level: IndexJobEventLevel;
+  message: string;
+  details?: Record<string, unknown>;
+  progress?: IndexJobEventProgress;
+  createdAt: string;
+};
+
+export type CreateIndexJobEventInput = {
+  status: IndexJobStatus;
+  stage: IndexJobEventStage;
+  code: IndexJobEventCode;
+  message: string;
+  level?: IndexJobEventLevel;
+  details?: Record<string, unknown>;
+  progress?: IndexJobEventProgress;
+  createdAt?: string;
 };
 
 export type IndexJobCollectionSnapshot = Pick<RagCollection, "id" | "displayName" | "status">;
@@ -205,6 +269,8 @@ export interface CollectionRegistry {
   listJobs(context: RequestContext, filters?: ListJobsInput): Promise<ListJobsResult>;
   getSystemOperationsSummary(nowIso: string): Promise<SystemOperationsAggregateSummary>;
   getJob(jobId: string): Promise<IndexJob | null>;
+  listJobEvents(context: RequestContext, jobId: string): Promise<IndexJobEvent[]>;
+  appendJobEvent(jobId: string, input: CreateIndexJobEventInput): Promise<IndexJobEvent>;
   deleteJob(context: RequestContext, jobId: string): Promise<void>;
   deleteJobs(context: RequestContext, jobIds: string[]): Promise<void>;
   getActiveJobForCollection(context: RequestContext, collectionId: string): Promise<IndexJob | null>;

@@ -1232,10 +1232,7 @@ Aşağıdaki sıra, bu eksikleri hangi hızda ele almak gerektiğini gösterir. 
 
 ### P3 - Operasyon şeffaflığı ve bakım
 
-8. **Physical collection görünürlüğü eksik**
-
-   - Zero-downtime rebuild sonrası fiziksel koleksiyon yaşam döngüsü panelde şeffaf değil.
-   - Öneri: `GET /v1/admin/collections/:id/physical-collections`
+8. 
 9. **Operasyon geçmişi kaydı yok**
 
 - Re-index, delete, query/retrieve ve hata geçmişi panelden sonradan okunamıyor.

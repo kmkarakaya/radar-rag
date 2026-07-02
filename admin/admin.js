@@ -129,6 +129,7 @@ const elements = {
     blockerList: document.getElementById("blockerList"),
     physicalCollectionsSection: document.getElementById("physicalCollectionsSection"),
     physicalCollectionsSummary: document.getElementById("physicalCollectionsSummary"),
+    physicalCollectionsActions: document.getElementById("physicalCollectionsActions"),
     physicalCollectionsList: document.getElementById("physicalCollectionsList"),
 
     pgModeBtns: document.querySelectorAll(".mode-btn"),
@@ -1416,6 +1417,7 @@ function resetPhysicalCollectionsSection({ hide = false, message = "Physical col
     state.selectedPhysicalCollections = null;
     state.selectedPhysicalCollectionsError = null;
     clearNode(elements.physicalCollectionsSummary);
+    clearNode(elements.physicalCollectionsActions);
     clearNode(elements.physicalCollectionsList);
     if (elements.physicalCollectionsSection) {
         elements.physicalCollectionsSection.classList.toggle("hidden", hide);
@@ -1506,6 +1508,7 @@ function renderPhysicalCollectionsData(records) {
     if (!elements.physicalCollectionsSection || !elements.physicalCollectionsSummary || !elements.physicalCollectionsList) return;
     elements.physicalCollectionsSection.classList.remove("hidden");
     clearNode(elements.physicalCollectionsSummary);
+    clearNode(elements.physicalCollectionsActions);
     clearNode(elements.physicalCollectionsList);
 
     const summary = getPhysicalCollectionsSummary(records);
@@ -1514,6 +1517,15 @@ function renderPhysicalCollectionsData(records) {
         createSummaryChip("Cleanup Pending", summary.cleanupPending, "delete_pending"),
         createSummaryChip("Failed", summary.failed, summary.failed > 0 ? "failed_build" : "muted"),
     ]);
+
+    const cleanupButton = createButton("View cleanup backlog", "inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50", () => {
+        switchView("health");
+        requestAnimationFrame(() => {
+            document.querySelector(".health-cleanup-summary")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+    });
+    elements.physicalCollectionsActions.appendChild(cleanupButton);
+    elements.physicalCollectionsActions.appendChild(createEl("span", "text-xs text-slate-500", "Health view shows aggregate cleanup backlog and oldest due delete time."));
 
     if (records.length === 0) {
         renderPhysicalCollectionsPlaceholder("No physical collection lifecycle records found for this collection.");
@@ -2825,6 +2837,13 @@ function createSummaryListCard(title, entries) {
     return card;
 }
 
+function createSummaryListCardWithId(id, title, entries) {
+    const card = createSummaryListCard(title, entries);
+    card.id = id;
+    card.classList.add("health-cleanup-summary");
+    return card;
+}
+
 function renderOperationsSummaryCards(grid, operations) {
     if (!operations) return;
 
@@ -2846,7 +2865,7 @@ function renderOperationsSummaryCards(grid, operations) {
         ["Cancelled", formatCount(operations.jobs?.cancelled)],
     ]));
 
-    grid.appendChild(createSummaryListCard("Cleanup", [
+    grid.appendChild(createSummaryListCardWithId("healthCleanupSummary", "Cleanup", [
         ["Backlog", formatCount(operations.physicalCollections?.cleanupBacklog)],
         ["Delete pending", formatCount(operations.physicalCollections?.deletePending)],
         ["Cleanup failed", formatCount(operations.physicalCollections?.cleanupFailed)],

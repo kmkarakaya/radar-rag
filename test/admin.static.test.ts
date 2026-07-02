@@ -145,10 +145,13 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("Promise.allSettled"), "Health dashboard should preserve summaries if details fail");
     assert.ok(html.includes('id="physicalCollectionsSection"'));
     assert.ok(html.includes('id="physicalCollectionsSummary"'));
+    assert.ok(html.includes('id="physicalCollectionsActions"'));
     assert.ok(html.includes('id="physicalCollectionsList"'));
+    assert.ok(js.includes("healthCleanupSummary"));
     assert.ok(js.includes("function adminCollectionPhysicalCollectionsUrl(id)"));
     assert.ok(js.includes("data?.physicalCollections"), "Physical collection lifecycle should read the data.physicalCollections wrapper");
     assert.ok(js.includes("Failed to load physical collection lifecycle"));
+    assert.ok(js.includes("View cleanup backlog"));
   });
 
   it("contains the planned playground and job monitor controls", async () => {

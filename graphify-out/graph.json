@@ -254,7 +254,7 @@
       "label": "collectionReadyUrl()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L173",
+      "source_location": "L174",
       "_origin": "ast",
       "id": "admin_admin_collectionreadyurl",
       "community": 11,
@@ -264,27 +264,27 @@
       "label": "collectionQueryUrl()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L177",
+      "source_location": "L178",
       "_origin": "ast",
       "id": "admin_admin_collectionqueryurl",
-      "community": 12,
+      "community": 98,
       "norm_label": "collectionqueryurl()"
     },
     {
       "label": "collectionRetrieveUrl()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L181",
+      "source_location": "L182",
       "_origin": "ast",
       "id": "admin_admin_collectionretrieveurl",
-      "community": 12,
+      "community": 98,
       "norm_label": "collectionretrieveurl()"
     },
     {
       "label": "adminCollectionUrl()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L185",
+      "source_location": "L186",
       "_origin": "ast",
       "id": "admin_admin_admincollectionurl",
       "community": 65,
@@ -294,17 +294,17 @@
       "label": "adminCollectionValidateUrl()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L189",
+      "source_location": "L190",
       "_origin": "ast",
       "id": "admin_admin_admincollectionvalidateurl",
-      "community": 10,
+      "community": 65,
       "norm_label": "admincollectionvalidateurl()"
     },
     {
       "label": "adminCollectionPhysicalCollectionsUrl()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L193",
+      "source_location": "L194",
       "_origin": "ast",
       "id": "admin_admin_admincollectionphysicalcollectionsurl",
       "community": 65,
@@ -314,7 +314,7 @@
       "label": "adminJobUrl()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L197",
+      "source_location": "L198",
       "_origin": "ast",
       "id": "admin_admin_adminjoburl",
       "community": 57,
@@ -324,17 +324,17 @@
       "label": "adminJobDeleteUrl()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L201",
+      "source_location": "L202",
       "_origin": "ast",
       "id": "admin_admin_adminjobdeleteurl",
-      "community": 10,
+      "community": 65,
       "norm_label": "adminjobdeleteurl()"
     },
     {
       "label": "adminJobsBulkDeleteUrl()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L205",
+      "source_location": "L206",
       "_origin": "ast",
       "id": "admin_admin_adminjobsbulkdeleteurl",
       "community": 10,
@@ -344,7 +344,7 @@
       "label": "adminJobsListUrl()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L209",
+      "source_location": "L210",
       "_origin": "ast",
       "id": "admin_admin_adminjobslisturl",
       "community": 57,
@@ -354,7 +354,7 @@
       "label": "normalizeModelList()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L219",
+      "source_location": "L220",
       "_origin": "ast",
       "id": "admin_admin_normalizemodellist",
       "community": 10,
@@ -364,7 +364,7 @@
       "label": "getModelDiscoveryFieldConfig()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L227",
+      "source_location": "L228",
       "_origin": "ast",
       "id": "admin_admin_getmodeldiscoveryfieldconfig",
       "community": 10,
@@ -374,7 +374,7 @@
       "label": "syncModelSelect()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L243",
+      "source_location": "L244",
       "_origin": "ast",
       "id": "admin_admin_syncmodelselect",
       "community": 10,
@@ -384,7 +384,7 @@
       "label": "setModelFromSelect()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L267",
+      "source_location": "L268",
       "_origin": "ast",
       "id": "admin_admin_setmodelfromselect",
       "community": 10,
@@ -394,7 +394,7 @@
       "label": "syncModelDiscoveryPanel()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L274",
+      "source_location": "L275",
       "_origin": "ast",
       "id": "admin_admin_syncmodeldiscoverypanel",
       "community": 10,
@@ -404,7 +404,7 @@
       "label": "formatConfigDefault()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L297",
+      "source_location": "L298",
       "_origin": "ast",
       "id": "admin_admin_formatconfigdefault",
       "community": 10,
@@ -414,7 +414,7 @@
       "label": "setCreateFieldDefault()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L302",
+      "source_location": "L303",
       "_origin": "ast",
       "id": "admin_admin_setcreatefielddefault",
       "community": 10,
@@ -424,7 +424,7 @@
       "label": "syncConfigDefaultsPanel()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L307",
+      "source_location": "L308",
       "_origin": "ast",
       "id": "admin_admin_syncconfigdefaultspanel",
       "community": 10,
@@ -434,7 +434,7 @@
       "label": "loadConfigDefaults()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L410",
+      "source_location": "L411",
       "_origin": "ast",
       "id": "admin_admin_loadconfigdefaults",
       "community": 10,
@@ -444,7 +444,7 @@
       "label": "loadModelDiscovery()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L444",
+      "source_location": "L445",
       "_origin": "ast",
       "id": "admin_admin_loadmodeldiscovery",
       "community": 10,
@@ -454,7 +454,7 @@
       "label": "clearNode()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L479",
+      "source_location": "L480",
       "_origin": "ast",
       "id": "admin_admin_clearnode",
       "community": 11,
@@ -464,17 +464,17 @@
       "label": "appendText()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L485",
+      "source_location": "L486",
       "_origin": "ast",
       "id": "admin_admin_appendtext",
-      "community": 10,
+      "community": 12,
       "norm_label": "appendtext()"
     },
     {
       "label": "createEl()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L491",
+      "source_location": "L492",
       "_origin": "ast",
       "id": "admin_admin_createel",
       "community": 12,
@@ -484,7 +484,7 @@
       "label": "appendChildren()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L498",
+      "source_location": "L499",
       "_origin": "ast",
       "id": "admin_admin_appendchildren",
       "community": 12,
@@ -494,17 +494,17 @@
       "label": "createButton()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L503",
+      "source_location": "L504",
       "_origin": "ast",
       "id": "admin_admin_createbutton",
-      "community": 12,
+      "community": 11,
       "norm_label": "createbutton()"
     },
     {
       "label": "isRecord()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L513",
+      "source_location": "L514",
       "_origin": "ast",
       "id": "admin_admin_isrecord",
       "community": 86,
@@ -514,7 +514,7 @@
       "label": "formatDateTime()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L517",
+      "source_location": "L518",
       "_origin": "ast",
       "id": "admin_admin_formatdatetime",
       "community": 12,
@@ -524,7 +524,7 @@
       "label": "formatCount()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L524",
+      "source_location": "L525",
       "_origin": "ast",
       "id": "admin_admin_formatcount",
       "community": 12,
@@ -534,7 +534,7 @@
       "label": "formatBoolean()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L530",
+      "source_location": "L531",
       "_origin": "ast",
       "id": "admin_admin_formatboolean",
       "community": 12,
@@ -544,7 +544,7 @@
       "label": "formatMetric()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L536",
+      "source_location": "L537",
       "_origin": "ast",
       "id": "admin_admin_formatmetric",
       "community": 12,
@@ -554,17 +554,17 @@
       "label": "formatDurationSeconds()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L542",
+      "source_location": "L543",
       "_origin": "ast",
       "id": "admin_admin_formatdurationseconds",
-      "community": 12,
+      "community": 10,
       "norm_label": "formatdurationseconds()"
     },
     {
       "label": "stringifyForDisplay()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L556",
+      "source_location": "L557",
       "_origin": "ast",
       "id": "admin_admin_stringifyfordisplay",
       "community": 86,
@@ -574,17 +574,17 @@
       "label": "shortId()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L567",
+      "source_location": "L568",
       "_origin": "ast",
       "id": "admin_admin_shortid",
-      "community": 11,
+      "community": 86,
       "norm_label": "shortid()"
     },
     {
       "label": "createBadge()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L572",
+      "source_location": "L573",
       "_origin": "ast",
       "id": "admin_admin_createbadge",
       "community": 86,
@@ -594,7 +594,7 @@
       "label": "getStatusColor()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L580",
+      "source_location": "L581",
       "_origin": "ast",
       "id": "admin_admin_getstatuscolor",
       "community": 86,
@@ -604,7 +604,7 @@
       "label": "getStatusBadge()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L610",
+      "source_location": "L611",
       "_origin": "ast",
       "id": "admin_admin_getstatusbadge",
       "community": 86,
@@ -614,7 +614,7 @@
       "label": "getCollectionCardStatusPresentation()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L614",
+      "source_location": "L615",
       "_origin": "ast",
       "id": "admin_admin_getcollectioncardstatuspresentation",
       "community": 86,
@@ -624,7 +624,7 @@
       "label": "getCollectionCardStatusBadge()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L679",
+      "source_location": "L680",
       "_origin": "ast",
       "id": "admin_admin_getcollectioncardstatusbadge",
       "community": 86,
@@ -634,7 +634,7 @@
       "label": "getCollectionCardStatusNote()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L684",
+      "source_location": "L685",
       "_origin": "ast",
       "id": "admin_admin_getcollectioncardstatusnote",
       "community": 86,
@@ -644,7 +644,7 @@
       "label": "createMetaItem()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L690",
+      "source_location": "L691",
       "_origin": "ast",
       "id": "admin_admin_createmetaitem",
       "community": 12,
@@ -654,7 +654,7 @@
       "label": "appendJsonDetails()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L698",
+      "source_location": "L699",
       "_origin": "ast",
       "id": "admin_admin_appendjsondetails",
       "community": 12,
@@ -664,7 +664,7 @@
       "label": "setButtonLoading()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L712",
+      "source_location": "L713",
       "_origin": "ast",
       "id": "admin_admin_setbuttonloading",
       "community": 65,
@@ -674,7 +674,7 @@
       "label": "normalizeError()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L725",
+      "source_location": "L726",
       "_origin": "ast",
       "id": "admin_admin_normalizeerror",
       "community": 65,
@@ -684,7 +684,7 @@
       "label": "apiRequest()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L740",
+      "source_location": "L741",
       "_origin": "ast",
       "id": "admin_admin_apirequest",
       "community": 65,
@@ -694,7 +694,7 @@
       "label": "renderIssuesList()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L799",
+      "source_location": "L800",
       "_origin": "ast",
       "id": "admin_admin_renderissueslist",
       "community": 12,
@@ -704,7 +704,7 @@
       "label": "renderApiErrorContent()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L811",
+      "source_location": "L812",
       "_origin": "ast",
       "id": "admin_admin_renderapierrorcontent",
       "community": 12,
@@ -714,7 +714,7 @@
       "label": "VALIDATION_FIELD_LABELS",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L829",
+      "source_location": "L830",
       "_origin": "ast",
       "id": "admin_admin_validation_field_labels",
       "community": 10,
@@ -724,7 +724,7 @@
       "label": "formatValidationFieldLabel()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L843",
+      "source_location": "L844",
       "_origin": "ast",
       "id": "admin_admin_formatvalidationfieldlabel",
       "community": 10,
@@ -734,7 +734,7 @@
       "label": "VALIDATION_DEPENDENCY_BLOCKERS",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L847",
+      "source_location": "L848",
       "_origin": "ast",
       "id": "admin_admin_validation_dependency_blockers",
       "community": 10,
@@ -744,7 +744,7 @@
       "label": "isDependencyBlocker()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L853",
+      "source_location": "L854",
       "_origin": "ast",
       "id": "admin_admin_isdependencyblocker",
       "community": 86,
@@ -754,7 +754,7 @@
       "label": "hasDependencyBlocker()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L857",
+      "source_location": "L858",
       "_origin": "ast",
       "id": "admin_admin_hasdependencyblocker",
       "community": 86,
@@ -764,7 +764,7 @@
       "label": "renderValidationImpact()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L861",
+      "source_location": "L862",
       "_origin": "ast",
       "id": "admin_admin_rendervalidationimpact",
       "community": 86,
@@ -774,7 +774,7 @@
       "label": "clearCollectionValidation()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L909",
+      "source_location": "L910",
       "_origin": "ast",
       "id": "admin_admin_clearcollectionvalidation",
       "community": 11,
@@ -784,7 +784,7 @@
       "label": "clearCollectionIndexStateBanner()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L919",
+      "source_location": "L920",
       "_origin": "ast",
       "id": "admin_admin_clearcollectionindexstatebanner",
       "community": 11,
@@ -794,17 +794,17 @@
       "label": "renderCollectionIndexStateBanner()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L929",
+      "source_location": "L930",
       "_origin": "ast",
       "id": "admin_admin_rendercollectionindexstatebanner",
-      "community": 11,
+      "community": 86,
       "norm_label": "rendercollectionindexstatebanner()"
     },
     {
       "label": "renderCollectionValidation()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1047",
+      "source_location": "L1048",
       "_origin": "ast",
       "id": "admin_admin_rendercollectionvalidation",
       "community": 86,
@@ -814,7 +814,7 @@
       "label": "showToast()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1121",
+      "source_location": "L1122",
       "_origin": "ast",
       "id": "admin_admin_showtoast",
       "community": 65,
@@ -824,7 +824,7 @@
       "label": "showErrorToast()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1147",
+      "source_location": "L1148",
       "_origin": "ast",
       "id": "admin_admin_showerrortoast",
       "community": 65,
@@ -834,7 +834,7 @@
       "label": "collectionNameById()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1157",
+      "source_location": "L1158",
       "_origin": "ast",
       "id": "admin_admin_collectionnamebyid",
       "community": 57,
@@ -844,17 +844,17 @@
       "label": "mergeCollectionIntoState()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1161",
+      "source_location": "L1162",
       "_origin": "ast",
       "id": "admin_admin_mergecollectionintostate",
-      "community": 11,
+      "community": 86,
       "norm_label": "mergecollectionintostate()"
     },
     {
       "label": "loadAdminCollectionDetail()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1173",
+      "source_location": "L1174",
       "_origin": "ast",
       "id": "admin_admin_loadadmincollectiondetail",
       "community": 65,
@@ -864,7 +864,7 @@
       "label": "switchView()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1185",
+      "source_location": "L1186",
       "_origin": "ast",
       "id": "admin_admin_switchview",
       "community": 57,
@@ -874,7 +874,7 @@
       "label": "loadCollections()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1209",
+      "source_location": "L1210",
       "_origin": "ast",
       "id": "admin_admin_loadcollections",
       "community": 65,
@@ -884,7 +884,7 @@
       "label": "renderCollections()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1228",
+      "source_location": "L1229",
       "_origin": "ast",
       "id": "admin_admin_rendercollections",
       "community": 12,
@@ -894,7 +894,7 @@
       "label": "openPanel()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1269",
+      "source_location": "L1270",
       "_origin": "ast",
       "id": "admin_admin_openpanel",
       "community": 11,
@@ -904,7 +904,7 @@
       "label": "openInspector()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1275",
+      "source_location": "L1276",
       "_origin": "ast",
       "id": "admin_admin_openinspector",
       "community": 11,
@@ -914,7 +914,7 @@
       "label": "closeInspector()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1336",
+      "source_location": "L1337",
       "_origin": "ast",
       "id": "admin_admin_closeinspector",
       "community": 11,
@@ -924,7 +924,7 @@
       "label": "handleOverlayClick()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1345",
+      "source_location": "L1346",
       "_origin": "ast",
       "id": "admin_admin_handleoverlayclick",
       "community": 11,
@@ -934,7 +934,7 @@
       "label": "switchTab()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1349",
+      "source_location": "L1350",
       "_origin": "ast",
       "id": "admin_admin_switchtab",
       "community": 11,
@@ -944,7 +944,7 @@
       "label": "setCollectionTabsEnabled()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1365",
+      "source_location": "L1366",
       "_origin": "ast",
       "id": "admin_admin_setcollectiontabsenabled",
       "community": 11,
@@ -954,7 +954,7 @@
       "label": "setInspectorActionsEnabled()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1375",
+      "source_location": "L1376",
       "_origin": "ast",
       "id": "admin_admin_setinspectoractionsenabled",
       "community": 11,
@@ -964,7 +964,7 @@
       "label": "resetPlaygroundResult()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1386",
+      "source_location": "L1387",
       "_origin": "ast",
       "id": "admin_admin_resetplaygroundresult",
       "community": 11,
@@ -974,7 +974,7 @@
       "label": "clearReadinessRefreshNotice()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1391",
+      "source_location": "L1392",
       "_origin": "ast",
       "id": "admin_admin_clearreadinessrefreshnotice",
       "community": 11,
@@ -984,7 +984,7 @@
       "label": "setReadinessRefreshNotice()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1397",
+      "source_location": "L1398",
       "_origin": "ast",
       "id": "admin_admin_setreadinessrefreshnotice",
       "community": 11,
@@ -994,7 +994,7 @@
       "label": "renderPhysicalCollectionsPlaceholder()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1408",
+      "source_location": "L1409",
       "_origin": "ast",
       "id": "admin_admin_renderphysicalcollectionsplaceholder",
       "community": 11,
@@ -1004,7 +1004,7 @@
       "label": "resetPhysicalCollectionsSection()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1415",
+      "source_location": "L1416",
       "_origin": "ast",
       "id": "admin_admin_resetphysicalcollectionssection",
       "community": 11,
@@ -1014,7 +1014,7 @@
       "label": "resetReadinessAndPlayground()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1428",
+      "source_location": "L1430",
       "_origin": "ast",
       "id": "admin_admin_resetreadinessandplayground",
       "community": 11,
@@ -1024,7 +1024,7 @@
       "label": "getPhysicalCollectionsSummary()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1441",
+      "source_location": "L1443",
       "_origin": "ast",
       "id": "admin_admin_getphysicalcollectionssummary",
       "community": 11,
@@ -1034,7 +1034,7 @@
       "label": "createSummaryChip()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1449",
+      "source_location": "L1451",
       "_origin": "ast",
       "id": "admin_admin_createsummarychip",
       "community": 86,
@@ -1044,17 +1044,17 @@
       "label": "getPhysicalCollectionStatusTone()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1456",
+      "source_location": "L1458",
       "_origin": "ast",
       "id": "admin_admin_getphysicalcollectionstatustone",
-      "community": 12,
+      "community": 10,
       "norm_label": "getphysicalcollectionstatustone()"
     },
     {
       "label": "createPhysicalCollectionCard()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1469",
+      "source_location": "L1471",
       "_origin": "ast",
       "id": "admin_admin_createphysicalcollectioncard",
       "community": 12,
@@ -1064,7 +1064,7 @@
       "label": "renderPhysicalCollectionsData()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1505",
+      "source_location": "L1507",
       "_origin": "ast",
       "id": "admin_admin_renderphysicalcollectionsdata",
       "community": 11,
@@ -1074,7 +1074,7 @@
       "label": "renderReadinessIssueList()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1528",
+      "source_location": "L1540",
       "_origin": "ast",
       "id": "admin_admin_renderreadinessissuelist",
       "community": 11,
@@ -1084,7 +1084,7 @@
       "label": "loadPhysicalCollections()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1545",
+      "source_location": "L1557",
       "_origin": "ast",
       "id": "admin_admin_loadphysicalcollections",
       "community": 65,
@@ -1094,7 +1094,7 @@
       "label": "updateReadinessTab()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1557",
+      "source_location": "L1569",
       "_origin": "ast",
       "id": "admin_admin_updatereadinesstab",
       "community": 11,
@@ -1104,7 +1104,7 @@
       "label": "createReadinessRow()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1628",
+      "source_location": "L1640",
       "_origin": "ast",
       "id": "admin_admin_createreadinessrow",
       "community": 86,
@@ -1114,7 +1114,7 @@
       "label": "renderReadinessData()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1636",
+      "source_location": "L1648",
       "_origin": "ast",
       "id": "admin_admin_renderreadinessdata",
       "community": 11,
@@ -1124,17 +1124,17 @@
       "label": "getCapabilityState()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1682",
+      "source_location": "L1694",
       "_origin": "ast",
       "id": "admin_admin_getcapabilitystate",
-      "community": 12,
+      "community": 98,
       "norm_label": "getcapabilitystate()"
     },
     {
       "label": "updatePlaygroundCapabilityState()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1692",
+      "source_location": "L1704",
       "_origin": "ast",
       "id": "admin_admin_updateplaygroundcapabilitystate",
       "community": 11,
@@ -1144,7 +1144,7 @@
       "label": "clearEditorForm()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1710",
+      "source_location": "L1722",
       "_origin": "ast",
       "id": "admin_admin_cleareditorform",
       "community": 10,
@@ -1154,7 +1154,7 @@
       "label": "fieldValueFromCollection()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1720",
+      "source_location": "L1732",
       "_origin": "ast",
       "id": "admin_admin_fieldvaluefromcollection",
       "community": 10,
@@ -1164,7 +1164,7 @@
       "label": "hasUnsavedCollectionChanges()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1725",
+      "source_location": "L1737",
       "_origin": "ast",
       "id": "admin_admin_hasunsavedcollectionchanges",
       "community": 10,
@@ -1174,7 +1174,7 @@
       "label": "setupEditorTab()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1731",
+      "source_location": "L1743",
       "_origin": "ast",
       "id": "admin_admin_setupeditortab",
       "community": 10,
@@ -1184,7 +1184,7 @@
       "label": "readTrimmed()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1749",
+      "source_location": "L1761",
       "_origin": "ast",
       "id": "admin_admin_readtrimmed",
       "community": 10,
@@ -1194,7 +1194,7 @@
       "label": "readOptionalInteger()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1753",
+      "source_location": "L1765",
       "_origin": "ast",
       "id": "admin_admin_readoptionalinteger",
       "community": 10,
@@ -1204,7 +1204,7 @@
       "label": "readOptionalNumber()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1760",
+      "source_location": "L1772",
       "_origin": "ast",
       "id": "admin_admin_readoptionalnumber",
       "community": 10,
@@ -1214,7 +1214,7 @@
       "label": "readEditorValues()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1767",
+      "source_location": "L1779",
       "_origin": "ast",
       "id": "admin_admin_readeditorvalues",
       "community": 10,
@@ -1224,7 +1224,7 @@
       "label": "validateCollectionForm()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1783",
+      "source_location": "L1795",
       "_origin": "ast",
       "id": "admin_admin_validatecollectionform",
       "community": 10,
@@ -1234,7 +1234,7 @@
       "label": "addIfText()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1807",
+      "source_location": "L1819",
       "_origin": "ast",
       "id": "admin_admin_addiftext",
       "community": 10,
@@ -1244,7 +1244,7 @@
       "label": "addIfNumber()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1811",
+      "source_location": "L1823",
       "_origin": "ast",
       "id": "admin_admin_addifnumber",
       "community": 10,
@@ -1254,7 +1254,7 @@
       "label": "buildCollectionPayload()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1815",
+      "source_location": "L1827",
       "_origin": "ast",
       "id": "admin_admin_buildcollectionpayload",
       "community": 10,
@@ -1264,7 +1264,7 @@
       "label": "getValidationTitle()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1855",
+      "source_location": "L1867",
       "_origin": "ast",
       "id": "admin_admin_getvalidationtitle",
       "community": 10,
@@ -1274,7 +1274,7 @@
       "label": "hasValidationBlockers()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1859",
+      "source_location": "L1871",
       "_origin": "ast",
       "id": "admin_admin_hasvalidationblockers",
       "community": 65,
@@ -1284,7 +1284,7 @@
       "label": "hasValidationWarnings()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1863",
+      "source_location": "L1875",
       "_origin": "ast",
       "id": "admin_admin_hasvalidationwarnings",
       "community": 65,
@@ -1294,7 +1294,7 @@
       "label": "validateCollectionOnServer()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1867",
+      "source_location": "L1879",
       "_origin": "ast",
       "id": "admin_admin_validatecollectiononserver",
       "community": 65,
@@ -1304,7 +1304,7 @@
       "label": "saveCollection()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1875",
+      "source_location": "L1887",
       "_origin": "ast",
       "id": "admin_admin_savecollection",
       "community": 65,
@@ -1314,7 +1314,7 @@
       "label": "setPlaygroundMode()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1960",
+      "source_location": "L1972",
       "_origin": "ast",
       "id": "admin_admin_setplaygroundmode",
       "community": 11,
@@ -1324,7 +1324,7 @@
       "label": "renderSourceFields()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L1973",
+      "source_location": "L1985",
       "_origin": "ast",
       "id": "admin_admin_rendersourcefields",
       "community": 12,
@@ -1334,7 +1334,7 @@
       "label": "renderSourceList()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2008",
+      "source_location": "L2020",
       "_origin": "ast",
       "id": "admin_admin_rendersourcelist",
       "community": 12,
@@ -1344,7 +1344,7 @@
       "label": "renderRetrieveResult()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2019",
+      "source_location": "L2031",
       "_origin": "ast",
       "id": "admin_admin_renderretrieveresult",
       "community": 12,
@@ -1354,7 +1354,7 @@
       "label": "renderQueryResult()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2037",
+      "source_location": "L2049",
       "_origin": "ast",
       "id": "admin_admin_renderqueryresult",
       "community": 12,
@@ -1364,17 +1364,17 @@
       "label": "friendlyRagMessage()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2056",
+      "source_location": "L2068",
       "_origin": "ast",
       "id": "admin_admin_friendlyragmessage",
-      "community": 12,
+      "community": 10,
       "norm_label": "friendlyragmessage()"
     },
     {
       "label": "renderPlaygroundError()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2070",
+      "source_location": "L2082",
       "_origin": "ast",
       "id": "admin_admin_renderplaygrounderror",
       "community": 12,
@@ -1384,17 +1384,17 @@
       "label": "runPlayground()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2089",
+      "source_location": "L2101",
       "_origin": "ast",
       "id": "admin_admin_runplayground",
-      "community": 12,
+      "community": 98,
       "norm_label": "runplayground()"
     },
     {
       "label": "reindexCollection()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2141",
+      "source_location": "L2153",
       "_origin": "ast",
       "id": "admin_admin_reindexcollection",
       "community": 65,
@@ -1404,7 +1404,7 @@
       "label": "deleteCollection()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2180",
+      "source_location": "L2192",
       "_origin": "ast",
       "id": "admin_admin_deletecollection",
       "community": 65,
@@ -1414,7 +1414,7 @@
       "label": "loadKnownJobsFromStorage()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2197",
+      "source_location": "L2209",
       "_origin": "ast",
       "id": "admin_admin_loadknownjobsfromstorage",
       "community": 10,
@@ -1424,7 +1424,7 @@
       "label": "saveKnownJobsToStorage()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2208",
+      "source_location": "L2220",
       "_origin": "ast",
       "id": "admin_admin_saveknownjobstostorage",
       "community": 57,
@@ -1434,7 +1434,7 @@
       "label": "buildJobRecord()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2216",
+      "source_location": "L2228",
       "_origin": "ast",
       "id": "admin_admin_buildjobrecord",
       "community": 57,
@@ -1444,7 +1444,7 @@
       "label": "rememberJob()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2241",
+      "source_location": "L2253",
       "_origin": "ast",
       "id": "admin_admin_rememberjob",
       "community": 57,
@@ -1454,7 +1454,7 @@
       "label": "mergeActiveJobFromReadiness()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2259",
+      "source_location": "L2271",
       "_origin": "ast",
       "id": "admin_admin_mergeactivejobfromreadiness",
       "community": 57,
@@ -1464,7 +1464,7 @@
       "label": "markJobInaccessible()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2264",
+      "source_location": "L2276",
       "_origin": "ast",
       "id": "admin_admin_markjobinaccessible",
       "community": 57,
@@ -1474,7 +1474,7 @@
       "label": "refreshJob()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2281",
+      "source_location": "L2293",
       "_origin": "ast",
       "id": "admin_admin_refreshjob",
       "community": 57,
@@ -1484,7 +1484,7 @@
       "label": "deleteJob()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2296",
+      "source_location": "L2308",
       "_origin": "ast",
       "id": "admin_admin_deletejob",
       "community": 65,
@@ -1494,7 +1494,7 @@
       "label": "isTerminalJobStatus()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2328",
+      "source_location": "L2340",
       "_origin": "ast",
       "id": "admin_admin_isterminaljobstatus",
       "community": 10,
@@ -1504,7 +1504,7 @@
       "label": "getVisibleSelectableJobIds()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2332",
+      "source_location": "L2344",
       "_origin": "ast",
       "id": "admin_admin_getvisibleselectablejobids",
       "community": 57,
@@ -1514,7 +1514,7 @@
       "label": "pruneSelectedJobIds()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2339",
+      "source_location": "L2351",
       "_origin": "ast",
       "id": "admin_admin_pruneselectedjobids",
       "community": 57,
@@ -1524,7 +1524,7 @@
       "label": "updateJobSelectionControls()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2351",
+      "source_location": "L2363",
       "_origin": "ast",
       "id": "admin_admin_updatejobselectioncontrols",
       "community": 57,
@@ -1534,7 +1534,7 @@
       "label": "clearJobSelection()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2380",
+      "source_location": "L2392",
       "_origin": "ast",
       "id": "admin_admin_clearjobselection",
       "community": 57,
@@ -1544,7 +1544,7 @@
       "label": "removeSelectedJobs()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2386",
+      "source_location": "L2398",
       "_origin": "ast",
       "id": "admin_admin_removeselectedjobs",
       "community": 65,
@@ -1554,7 +1554,7 @@
       "label": "getJobViewRows()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2423",
+      "source_location": "L2435",
       "_origin": "ast",
       "id": "admin_admin_getjobviewrows",
       "community": 57,
@@ -1564,7 +1564,7 @@
       "label": "getJobViewEmptyMessage()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2430",
+      "source_location": "L2442",
       "_origin": "ast",
       "id": "admin_admin_getjobviewemptymessage",
       "community": 57,
@@ -1574,7 +1574,7 @@
       "label": "updateJobPaginationControls()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2450",
+      "source_location": "L2462",
       "_origin": "ast",
       "id": "admin_admin_updatejobpaginationcontrols",
       "community": 57,
@@ -1584,7 +1584,7 @@
       "label": "resetJobPagination()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2471",
+      "source_location": "L2483",
       "_origin": "ast",
       "id": "admin_admin_resetjobpagination",
       "community": 65,
@@ -1594,7 +1594,7 @@
       "label": "loadJobs()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2476",
+      "source_location": "L2488",
       "_origin": "ast",
       "id": "admin_admin_loadjobs",
       "community": 57,
@@ -1604,7 +1604,7 @@
       "label": "refreshJobsList()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2531",
+      "source_location": "L2543",
       "_origin": "ast",
       "id": "admin_admin_refreshjobslist",
       "community": 57,
@@ -1614,7 +1614,7 @@
       "label": "goToNextJobsPage()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2535",
+      "source_location": "L2547",
       "_origin": "ast",
       "id": "admin_admin_gotonextjobspage",
       "community": 57,
@@ -1624,7 +1624,7 @@
       "label": "goToPreviousJobsPage()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2542",
+      "source_location": "L2554",
       "_origin": "ast",
       "id": "admin_admin_gotopreviousjobspage",
       "community": 57,
@@ -1634,7 +1634,7 @@
       "label": "changeJobsStatusFilter()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2549",
+      "source_location": "L2561",
       "_origin": "ast",
       "id": "admin_admin_changejobsstatusfilter",
       "community": 57,
@@ -1644,7 +1644,7 @@
       "label": "cancelJob()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2563",
+      "source_location": "L2575",
       "_origin": "ast",
       "id": "admin_admin_canceljob",
       "community": 65,
@@ -1654,7 +1654,7 @@
       "label": "removeJobFromMonitor()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2576",
+      "source_location": "L2588",
       "_origin": "ast",
       "id": "admin_admin_removejobfrommonitor",
       "community": 57,
@@ -1664,7 +1664,7 @@
       "label": "removeJobsFromMonitor()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2580",
+      "source_location": "L2592",
       "_origin": "ast",
       "id": "admin_admin_removejobsfrommonitor",
       "community": 57,
@@ -1674,17 +1674,17 @@
       "label": "appendCell()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2594",
+      "source_location": "L2606",
       "_origin": "ast",
       "id": "admin_admin_appendcell",
-      "community": 10,
+      "community": 12,
       "norm_label": "appendcell()"
     },
     {
       "label": "renderJobs()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2602",
+      "source_location": "L2614",
       "_origin": "ast",
       "id": "admin_admin_renderjobs",
       "community": 57,
@@ -1694,7 +1694,7 @@
       "label": "loadHealth()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2698",
+      "source_location": "L2710",
       "_origin": "ast",
       "id": "admin_admin_loadhealth",
       "community": 12,
@@ -1704,7 +1704,7 @@
       "label": "dependencyStatus()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2745",
+      "source_location": "L2757",
       "_origin": "ast",
       "id": "admin_admin_dependencystatus",
       "community": 10,
@@ -1714,7 +1714,7 @@
       "label": "createInlineLoadingBar()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2752",
+      "source_location": "L2764",
       "_origin": "ast",
       "id": "admin_admin_createinlineloadingbar",
       "community": 12,
@@ -1724,7 +1724,7 @@
       "label": "createHealthStatusBanner()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2759",
+      "source_location": "L2771",
       "_origin": "ast",
       "id": "admin_admin_createhealthstatusbanner",
       "community": 12,
@@ -1734,7 +1734,7 @@
       "label": "createLoadingSkeletonCard()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2775",
+      "source_location": "L2787",
       "_origin": "ast",
       "id": "admin_admin_createloadingskeletoncard",
       "community": 12,
@@ -1744,7 +1744,7 @@
       "label": "renderHealthLoadingState()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2788",
+      "source_location": "L2800",
       "_origin": "ast",
       "id": "admin_admin_renderhealthloadingstate",
       "community": 12,
@@ -1754,7 +1754,7 @@
       "label": "renderReadinessLoadingState()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2800",
+      "source_location": "L2812",
       "_origin": "ast",
       "id": "admin_admin_renderreadinessloadingstate",
       "community": 12,
@@ -1764,7 +1764,7 @@
       "label": "getOperationsSnapshot()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2810",
+      "source_location": "L2822",
       "_origin": "ast",
       "id": "admin_admin_getoperationssnapshot",
       "community": 12,
@@ -1774,17 +1774,27 @@
       "label": "createSummaryListCard()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2814",
+      "source_location": "L2826",
       "_origin": "ast",
       "id": "admin_admin_createsummarylistcard",
       "community": 12,
       "norm_label": "createsummarylistcard()"
     },
     {
+      "label": "createSummaryListCardWithId()",
+      "file_type": "code",
+      "source_file": "admin/admin.js",
+      "source_location": "L2840",
+      "_origin": "ast",
+      "id": "admin_admin_createsummarylistcardwithid",
+      "community": 12,
+      "norm_label": "createsummarylistcardwithid()"
+    },
+    {
       "label": "renderOperationsSummaryCards()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2828",
+      "source_location": "L2847",
       "_origin": "ast",
       "id": "admin_admin_renderoperationssummarycards",
       "community": 12,
@@ -1794,7 +1804,7 @@
       "label": "appendMetricSection()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2859",
+      "source_location": "L2878",
       "_origin": "ast",
       "id": "admin_admin_appendmetricsection",
       "community": 12,
@@ -1804,7 +1814,7 @@
       "label": "renderOperationsDetail()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2870",
+      "source_location": "L2889",
       "_origin": "ast",
       "id": "admin_admin_renderoperationsdetail",
       "community": 12,
@@ -1814,7 +1824,7 @@
       "label": "renderHealthSummary()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2920",
+      "source_location": "L2939",
       "_origin": "ast",
       "id": "admin_admin_renderhealthsummary",
       "community": 12,
@@ -1824,17 +1834,17 @@
       "label": "appendIssueSection()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L2980",
+      "source_location": "L2999",
       "_origin": "ast",
       "id": "admin_admin_appendissuesection",
-      "community": 86,
+      "community": 12,
       "norm_label": "appendissuesection()"
     },
     {
       "label": "renderChecks()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L3009",
+      "source_location": "L3028",
       "_origin": "ast",
       "id": "admin_admin_renderchecks",
       "community": 12,
@@ -1844,7 +1854,7 @@
       "label": "renderReadinessDetail()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L3036",
+      "source_location": "L3055",
       "_origin": "ast",
       "id": "admin_admin_renderreadinessdetail",
       "community": 12,
@@ -1854,7 +1864,7 @@
       "label": "bindEvents()",
       "file_type": "code",
       "source_file": "admin/admin.js",
-      "source_location": "L3104",
+      "source_location": "L3123",
       "_origin": "ast",
       "id": "admin_admin_bindevents",
       "community": 10,
@@ -2037,7 +2047,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_properties_sourcefile",
-      "community": 29,
+      "community": 104,
       "norm_label": "sourcefile"
     },
     {
@@ -2047,7 +2057,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_sourcefile_type",
-      "community": 29,
+      "community": 104,
       "norm_label": "type"
     },
     {
@@ -2057,7 +2067,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_sourcefile_description",
-      "community": 29,
+      "community": 104,
       "norm_label": "description"
     },
     {
@@ -2067,7 +2077,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_sourcefile_minlength",
-      "community": 29,
+      "community": 104,
       "norm_label": "minlength"
     },
     {
@@ -2077,7 +2087,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_properties_ozelgeler",
-      "community": 42,
+      "community": 85,
       "norm_label": "ozelgeler"
     },
     {
@@ -2087,7 +2097,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_ozelgeler_type",
-      "community": 42,
+      "community": 85,
       "norm_label": "type"
     },
     {
@@ -2097,7 +2107,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_ozelgeler_description",
-      "community": 42,
+      "community": 85,
       "norm_label": "description"
     },
     {
@@ -2107,7 +2117,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_ozelgeler_minitems",
-      "community": 42,
+      "community": 85,
       "norm_label": "minitems"
     },
     {
@@ -2137,7 +2147,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_ozelgeler_uniqueitems",
-      "community": 42,
+      "community": 85,
       "norm_label": "uniqueitems"
     },
     {
@@ -2277,7 +2287,7 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_properties_tarih",
-      "community": 35,
+      "community": 107,
       "norm_label": "tarih"
     },
     {
@@ -2287,7 +2297,7 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_tarih_type",
-      "community": 35,
+      "community": 107,
       "norm_label": "type"
     },
     {
@@ -2297,7 +2307,7 @@
       "source_location": "L60",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_tarih_description",
-      "community": 35,
+      "community": 107,
       "norm_label": "description"
     },
     {
@@ -2307,7 +2317,7 @@
       "source_location": "L61",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_tarih_pattern",
-      "community": 35,
+      "community": 107,
       "norm_label": "pattern"
     },
     {
@@ -2457,7 +2467,7 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_properties_questionid",
-      "community": 98,
+      "community": 18,
       "norm_label": "questionid"
     },
     {
@@ -2467,7 +2477,7 @@
       "source_location": "L87",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_questionid_type",
-      "community": 98,
+      "community": 18,
       "norm_label": "type"
     },
     {
@@ -2477,7 +2487,7 @@
       "source_location": "L88",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_questionid_description",
-      "community": 98,
+      "community": 18,
       "norm_label": "description"
     },
     {
@@ -2487,7 +2497,7 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_questionid_minlength",
-      "community": 98,
+      "community": 18,
       "norm_label": "minlength"
     },
     {
@@ -2617,7 +2627,7 @@
       "source_location": "L106",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_properties_tags",
-      "community": 93,
+      "community": 18,
       "norm_label": "tags"
     },
     {
@@ -2627,7 +2637,7 @@
       "source_location": "L107",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_tags_type",
-      "community": 93,
+      "community": 18,
       "norm_label": "type"
     },
     {
@@ -2637,7 +2647,7 @@
       "source_location": "L108",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_tags_description",
-      "community": 93,
+      "community": 18,
       "norm_label": "description"
     },
     {
@@ -2647,7 +2657,7 @@
       "source_location": "L109",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_tags_items",
-      "community": 93,
+      "community": 18,
       "norm_label": "items"
     },
     {
@@ -2657,7 +2667,7 @@
       "source_location": "L110",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_items_type",
-      "community": 93,
+      "community": 18,
       "norm_label": "type"
     },
     {
@@ -2667,7 +2677,7 @@
       "source_location": "L111",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_items_minlength",
-      "community": 93,
+      "community": 18,
       "norm_label": "minlength"
     },
     {
@@ -2677,7 +2687,7 @@
       "source_location": "L113",
       "_origin": "ast",
       "id": "benchmark_benchmark_schema_tags_uniqueitems",
-      "community": 93,
+      "community": 18,
       "norm_label": "uniqueitems"
     },
     {
@@ -3087,7 +3097,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "package_devdependencies_typescript",
-      "community": 69,
+      "community": 20,
       "norm_label": "typescript"
     },
     {
@@ -3247,7 +3257,7 @@
       "source_location": "L367",
       "_origin": "ast",
       "id": "admin_onboard_rundependencychecks",
-      "community": 85,
+      "community": 91,
       "norm_label": "rundependencychecks()"
     },
     {
@@ -3277,7 +3287,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "src_app_appdependencies",
-      "community": 33,
+      "community": 97,
       "norm_label": "appdependencies"
     },
     {
@@ -3337,7 +3347,7 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "src_app_createapp",
-      "community": 90,
+      "community": 54,
       "norm_label": "createapp()"
     },
     {
@@ -3757,7 +3767,7 @@
       "source_location": "L125",
       "_origin": "ast",
       "id": "collections_sqliteregistry_createsqlitecollectionregistry",
-      "community": 90,
+      "community": 22,
       "norm_label": "createsqlitecollectionregistry()"
     },
     {
@@ -3767,7 +3777,7 @@
       "source_location": "L132",
       "_origin": "ast",
       "id": "collections_sqliteregistry_opendatabase",
-      "community": 90,
+      "community": 22,
       "norm_label": "opendatabase()"
     },
     {
@@ -3827,7 +3837,7 @@
       "source_location": "L298",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_listvisiblecollections",
-      "community": 17,
+      "community": 94,
       "norm_label": ".listvisiblecollections()"
     },
     {
@@ -3907,7 +3917,7 @@
       "source_location": "L513",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_deletejob",
-      "community": 17,
+      "community": 94,
       "norm_label": ".deletejob()"
     },
     {
@@ -3917,7 +3927,7 @@
       "source_location": "L517",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_deletejobs",
-      "community": 17,
+      "community": 94,
       "norm_label": ".deletejobs()"
     },
     {
@@ -3947,7 +3957,7 @@
       "source_location": "L644",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_updatecollection",
-      "community": 67,
+      "community": 94,
       "norm_label": ".updatecollection()"
     },
     {
@@ -4067,7 +4077,7 @@
       "source_location": "L1435",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_deletecollection",
-      "community": 17,
+      "community": 94,
       "norm_label": ".deletecollection()"
     },
     {
@@ -4157,7 +4167,7 @@
       "source_location": "L1641",
       "_origin": "ast",
       "id": "collections_sqliteregistry_addpatch",
-      "community": 67,
+      "community": 94,
       "norm_label": "addpatch()"
     },
     {
@@ -4167,7 +4177,7 @@
       "source_location": "L1656",
       "_origin": "ast",
       "id": "collections_sqliteregistry_addnullablepatch",
-      "community": 67,
+      "community": 94,
       "norm_label": "addnullablepatch()"
     },
     {
@@ -4347,7 +4357,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "collections_types_requestcontext",
-      "community": 17,
+      "community": 94,
       "norm_label": "requestcontext"
     },
     {
@@ -4377,7 +4387,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "collections_types_physicalcollectionstatus",
-      "community": 56,
+      "community": 22,
       "norm_label": "physicalcollectionstatus"
     },
     {
@@ -4457,7 +4467,7 @@
       "source_location": "L68",
       "_origin": "ast",
       "id": "collections_types_ragcollection",
-      "community": 32,
+      "community": 94,
       "norm_label": "ragcollection"
     },
     {
@@ -4487,7 +4497,7 @@
       "source_location": "L131",
       "_origin": "ast",
       "id": "collections_types_createindexjobeventinput",
-      "community": 32,
+      "community": 17,
       "norm_label": "createindexjobeventinput"
     },
     {
@@ -4557,7 +4567,7 @@
       "source_location": "L212",
       "_origin": "ast",
       "id": "collections_types_updatecollectionpatch",
-      "community": 67,
+      "community": 94,
       "norm_label": "updatecollectionpatch"
     },
     {
@@ -4597,7 +4607,7 @@
       "source_location": "L266",
       "_origin": "ast",
       "id": "collections_types_collectionregistry",
-      "community": 32,
+      "community": 22,
       "norm_label": "collectionregistry"
     },
     {
@@ -4607,7 +4617,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_config",
-      "community": 90,
+      "community": 91,
       "norm_label": "config.ts"
     },
     {
@@ -4627,7 +4637,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "src_config_distancemetricschema",
-      "community": 90,
+      "community": 91,
       "norm_label": "distancemetricschema"
     },
     {
@@ -4637,7 +4647,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "src_config_configschema",
-      "community": 90,
+      "community": 91,
       "norm_label": "configschema"
     },
     {
@@ -4697,7 +4707,7 @@
       "source_location": "L145",
       "_origin": "ast",
       "id": "src_config_resolvedconfig",
-      "community": 32,
+      "community": 97,
       "norm_label": "resolvedconfig"
     },
     {
@@ -4737,7 +4747,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "http_adminrouter",
-      "community": 22,
+      "community": 97,
       "norm_label": "adminrouter.ts"
     },
     {
@@ -4757,7 +4767,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "http_collectionreadiness",
-      "community": 92,
+      "community": 33,
       "norm_label": "collectionreadiness.ts"
     },
     {
@@ -4767,7 +4777,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "http_collectionreadiness_collectionreadinessissue",
-      "community": 92,
+      "community": 33,
       "norm_label": "collectionreadinessissue"
     },
     {
@@ -4777,7 +4787,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "http_collectionreadiness_collectionreadinesspayload",
-      "community": 92,
+      "community": 33,
       "norm_label": "collectionreadinesspayload"
     },
     {
@@ -4787,7 +4797,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "http_collectionreadiness_collectionreadinesshealthchecks",
-      "community": 92,
+      "community": 33,
       "norm_label": "collectionreadinesshealthchecks"
     },
     {
@@ -4797,7 +4807,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "http_collectionreadiness_makeissue",
-      "community": 92,
+      "community": 33,
       "norm_label": "makeissue()"
     },
     {
@@ -4807,7 +4817,7 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "http_collectionreadiness_buildcollectionreadinesspayload",
-      "community": 92,
+      "community": 33,
       "norm_label": "buildcollectionreadinesspayload()"
     },
     {
@@ -4817,7 +4827,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "http_collectionschemas",
-      "community": 22,
+      "community": 97,
       "norm_label": "collectionschemas.ts"
     },
     {
@@ -4827,7 +4837,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "http_collectionschemas_collectioncreateschema",
-      "community": 22,
+      "community": 97,
       "norm_label": "collectioncreateschema"
     },
     {
@@ -4837,7 +4847,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "http_collectionschemas_collectionupdateschema",
-      "community": 22,
+      "community": 97,
       "norm_label": "collectionupdateschema"
     },
     {
@@ -4847,7 +4857,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "http_collectionvalidation",
-      "community": 22,
+      "community": 63,
       "norm_label": "collectionvalidation.ts"
     },
     {
@@ -4857,7 +4867,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "http_collectionvalidation_collectionvalidationissue",
-      "community": 22,
+      "community": 63,
       "norm_label": "collectionvalidationissue"
     },
     {
@@ -4867,7 +4877,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "http_collectionvalidation_collectionvalidationimpact",
-      "community": 22,
+      "community": 63,
       "norm_label": "collectionvalidationimpact"
     },
     {
@@ -4877,7 +4887,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "http_collectionvalidation_collectionvalidationresult",
-      "community": 22,
+      "community": 63,
       "norm_label": "collectionvalidationresult"
     },
     {
@@ -4887,7 +4897,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "http_collectionvalidation_collectionvalidationmode",
-      "community": 22,
+      "community": 63,
       "norm_label": "collectionvalidationmode"
     },
     {
@@ -4897,7 +4907,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "http_collectionvalidation_collectionvalidationdraft",
-      "community": 22,
+      "community": 63,
       "norm_label": "collectionvalidationdraft"
     },
     {
@@ -4907,7 +4917,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "http_collectionvalidation_collectionvalidationhealthchecks",
-      "community": 22,
+      "community": 63,
       "norm_label": "collectionvalidationhealthchecks"
     },
     {
@@ -4917,7 +4927,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "http_collectionvalidation_makeissue",
-      "community": 22,
+      "community": 63,
       "norm_label": "makeissue()"
     },
     {
@@ -4927,7 +4937,7 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "http_collectionvalidation_immediate_fields",
-      "community": 22,
+      "community": 63,
       "norm_label": "immediate_fields"
     },
     {
@@ -4937,7 +4947,7 @@
       "source_location": "L71",
       "_origin": "ast",
       "id": "http_collectionvalidation_reindex_fields",
-      "community": 22,
+      "community": 63,
       "norm_label": "reindex_fields"
     },
     {
@@ -4947,7 +4957,7 @@
       "source_location": "L80",
       "_origin": "ast",
       "id": "http_collectionvalidation_ollama_fields",
-      "community": 22,
+      "community": 63,
       "norm_label": "ollama_fields"
     },
     {
@@ -4957,7 +4967,7 @@
       "source_location": "L85",
       "_origin": "ast",
       "id": "http_collectionvalidation_validation_field_order",
-      "community": 22,
+      "community": 63,
       "norm_label": "validation_field_order"
     },
     {
@@ -4967,7 +4977,7 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "http_collectionvalidation_buildimpact",
-      "community": 22,
+      "community": 63,
       "norm_label": "buildimpact()"
     },
     {
@@ -4977,7 +4987,7 @@
       "source_location": "L144",
       "_origin": "ast",
       "id": "http_collectionvalidation_haschangedfield",
-      "community": 22,
+      "community": 63,
       "norm_label": "haschangedfield()"
     },
     {
@@ -4987,7 +4997,7 @@
       "source_location": "L148",
       "_origin": "ast",
       "id": "http_collectionvalidation_buildcreatecollectioninput",
-      "community": 22,
+      "community": 63,
       "norm_label": "buildcreatecollectioninput()"
     },
     {
@@ -4997,7 +5007,7 @@
       "source_location": "L168",
       "_origin": "ast",
       "id": "http_collectionvalidation_buildcreatevalidationdraft",
-      "community": 22,
+      "community": 63,
       "norm_label": "buildcreatevalidationdraft()"
     },
     {
@@ -5007,7 +5017,7 @@
       "source_location": "L193",
       "_origin": "ast",
       "id": "http_collectionvalidation_buildchangedfields",
-      "community": 22,
+      "community": 63,
       "norm_label": "buildchangedfields()"
     },
     {
@@ -5017,7 +5027,7 @@
       "source_location": "L216",
       "_origin": "ast",
       "id": "http_collectionvalidation_buildupdatevalidationdraft",
-      "community": 22,
+      "community": 63,
       "norm_label": "buildupdatevalidationdraft()"
     },
     {
@@ -5027,7 +5037,7 @@
       "source_location": "L242",
       "_origin": "ast",
       "id": "http_collectionvalidation_analyzesourcepath",
-      "community": 22,
+      "community": 63,
       "norm_label": "analyzesourcepath()"
     },
     {
@@ -5037,7 +5047,7 @@
       "source_location": "L288",
       "_origin": "ast",
       "id": "http_collectionvalidation_validatecollectiondraft",
-      "community": 22,
+      "community": 63,
       "norm_label": "validatecollectiondraft()"
     },
     {
@@ -5097,7 +5107,7 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "http_errors_senderrorresponse",
-      "community": 97,
+      "community": 92,
       "norm_label": "senderrorresponse()"
     },
     {
@@ -5107,7 +5117,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "http_errors_notfoundhandler",
-      "community": 97,
+      "community": 92,
       "norm_label": "notfoundhandler()"
     },
     {
@@ -5117,7 +5127,7 @@
       "source_location": "L84",
       "_origin": "ast",
       "id": "http_errors_errorhandler",
-      "community": 97,
+      "community": 92,
       "norm_label": "errorhandler()"
     },
     {
@@ -5167,7 +5177,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "http_ratelimit",
-      "community": 68,
+      "community": 97,
       "norm_label": "ratelimit.ts"
     },
     {
@@ -5177,7 +5187,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "http_ratelimit_ratelimitoperation",
-      "community": 68,
+      "community": 97,
       "norm_label": "ratelimitoperation"
     },
     {
@@ -5187,7 +5197,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "http_ratelimit_ratelimitinput",
-      "community": 68,
+      "community": 54,
       "norm_label": "ratelimitinput"
     },
     {
@@ -5197,7 +5207,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "http_ratelimit_ratelimitdecision",
-      "community": 68,
+      "community": 97,
       "norm_label": "ratelimitdecision"
     },
     {
@@ -5207,7 +5217,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "http_ratelimit_requestratelimiter",
-      "community": 68,
+      "community": 54,
       "norm_label": "requestratelimiter"
     },
     {
@@ -5217,7 +5227,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "http_ratelimit_bucket",
-      "community": 68,
+      "community": 97,
       "norm_label": "bucket"
     },
     {
@@ -5257,7 +5267,7 @@
       "source_location": "L187",
       "_origin": "ast",
       "id": "http_ratelimit_getratelimittarget",
-      "community": 68,
+      "community": 97,
       "norm_label": "getratelimittarget()"
     },
     {
@@ -5287,7 +5297,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "http_requestcontext_readheadervalue",
-      "community": 97,
+      "community": 92,
       "norm_label": "readheadervalue()"
     },
     {
@@ -5297,7 +5307,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "http_requestcontext_createrequestcontext",
-      "community": 97,
+      "community": 92,
       "norm_label": "createrequestcontext()"
     },
     {
@@ -5467,7 +5477,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "indexing_buildphysicalcollection",
-      "community": 32,
+      "community": 70,
       "norm_label": "buildphysicalcollection.ts"
     },
     {
@@ -5477,7 +5487,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "indexing_buildphysicalcollection_addmetadatatochunks",
-      "community": 32,
+      "community": 90,
       "norm_label": "addmetadatatochunks()"
     },
     {
@@ -5487,7 +5497,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "indexing_buildphysicalcollection_buildphysicalcollection",
-      "community": 32,
+      "community": 90,
       "norm_label": "buildphysicalcollection()"
     },
     {
@@ -5497,7 +5507,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "indexing_cleanup",
-      "community": 32,
+      "community": 68,
       "norm_label": "cleanup.ts"
     },
     {
@@ -5507,7 +5517,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "indexing_cleanup_deletephysicalcollectionfn",
-      "community": 32,
+      "community": 68,
       "norm_label": "deletephysicalcollectionfn"
     },
     {
@@ -5517,7 +5527,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "indexing_cleanup_cleanupretiredphysicalcollections",
-      "community": 32,
+      "community": 68,
       "norm_label": "cleanupretiredphysicalcollections()"
     },
     {
@@ -5527,7 +5537,7 @@
       "source_location": "L98",
       "_origin": "ast",
       "id": "indexing_cleanup_isphysicalcollectionmissingerror",
-      "community": 32,
+      "community": 68,
       "norm_label": "isphysicalcollectionmissingerror()"
     },
     {
@@ -5537,7 +5547,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "indexing_jobrunner",
-      "community": 32,
+      "community": 68,
       "norm_label": "jobrunner.ts"
     },
     {
@@ -5547,7 +5557,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "indexing_jobrunner_indexjobrunner",
-      "community": 90,
+      "community": 68,
       "norm_label": "indexjobrunner"
     },
     {
@@ -5557,7 +5567,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "indexing_jobrunner_createindexjobrunner",
-      "community": 90,
+      "community": 68,
       "norm_label": "createindexjobrunner()"
     },
     {
@@ -5567,7 +5577,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "indexing_jobs",
-      "community": 32,
+      "community": 90,
       "norm_label": "jobs.ts"
     },
     {
@@ -5577,7 +5587,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "indexing_jobs_recordjobevent",
-      "community": 32,
+      "community": 90,
       "norm_label": "recordjobevent()"
     },
     {
@@ -5587,7 +5597,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "indexing_jobs_startreindexjob",
-      "community": 32,
+      "community": 90,
       "norm_label": "startreindexjob()"
     },
     {
@@ -5597,7 +5607,7 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "indexing_jobs_runindexjob",
-      "community": 32,
+      "community": 90,
       "norm_label": "runindexjob()"
     },
     {
@@ -5647,7 +5657,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "ingestion_pipeline_unsupportedsourcefile",
-      "community": 90,
+      "community": 63,
       "norm_label": "unsupportedsourcefile"
     },
     {
@@ -5887,7 +5897,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "observability_logger_operationallogsink",
-      "community": 32,
+      "community": 97,
       "norm_label": "operationallogsink"
     },
     {
@@ -5917,7 +5927,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "observability_logger_emitoperationallog",
-      "community": 32,
+      "community": 68,
       "norm_label": "emitoperationallog()"
     },
     {
@@ -5947,7 +5957,7 @@
       "source_location": "L95",
       "_origin": "ast",
       "id": "observability_logger_gethttpoperationtarget",
-      "community": 68,
+      "community": 97,
       "norm_label": "gethttpoperationtarget()"
     },
     {
@@ -5957,7 +5967,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "observability_timeout",
-      "community": 70,
+      "community": 68,
       "norm_label": "timeout.ts"
     },
     {
@@ -6017,7 +6027,7 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "observability_timeout_istimeoutoraborterror",
-      "community": 70,
+      "community": 68,
       "norm_label": "istimeoutoraborterror()"
     },
     {
@@ -6077,7 +6087,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "src_rag_ollamahealthdetails",
-      "community": 91,
+      "community": 92,
       "norm_label": "ollamahealthdetails"
     },
     {
@@ -6107,7 +6117,7 @@
       "source_location": "L78",
       "_origin": "ast",
       "id": "src_rag_embeddinghealthdetails",
-      "community": 105,
+      "community": 92,
       "norm_label": "embeddinghealthdetails"
     },
     {
@@ -6117,7 +6127,7 @@
       "source_location": "L84",
       "_origin": "ast",
       "id": "src_rag_chatgenerationhealthdetails",
-      "community": 105,
+      "community": 92,
       "norm_label": "chatgenerationhealthdetails"
     },
     {
@@ -6187,7 +6197,7 @@
       "source_location": "L127",
       "_origin": "ast",
       "id": "src_rag_createembeddings",
-      "community": 85,
+      "community": 105,
       "norm_label": "createembeddings()"
     },
     {
@@ -6227,7 +6237,7 @@
       "source_location": "L153",
       "_origin": "ast",
       "id": "src_rag_getollamamodeldiscovery",
-      "community": 85,
+      "community": 105,
       "norm_label": "getollamamodeldiscovery()"
     },
     {
@@ -6237,7 +6247,7 @@
       "source_location": "L208",
       "_origin": "ast",
       "id": "src_rag_chromaclientparams",
-      "community": 85,
+      "community": 105,
       "norm_label": "chromaclientparams()"
     },
     {
@@ -6247,7 +6257,7 @@
       "source_location": "L217",
       "_origin": "ast",
       "id": "src_rag_errormessage",
-      "community": 85,
+      "community": 105,
       "norm_label": "errormessage()"
     },
     {
@@ -6257,7 +6267,7 @@
       "source_location": "L221",
       "_origin": "ast",
       "id": "src_rag_isnetworkerror",
-      "community": 85,
+      "community": 105,
       "norm_label": "isnetworkerror()"
     },
     {
@@ -6267,7 +6277,7 @@
       "source_location": "L231",
       "_origin": "ast",
       "id": "src_rag_wrapnetworkerror",
-      "community": 85,
+      "community": 105,
       "norm_label": "wrapnetworkerror()"
     },
     {
@@ -6277,7 +6287,7 @@
       "source_location": "L242",
       "_origin": "ast",
       "id": "src_rag_withtimeout",
-      "community": 85,
+      "community": 70,
       "norm_label": "withtimeout()"
     },
     {
@@ -6287,7 +6297,7 @@
       "source_location": "L246",
       "_origin": "ast",
       "id": "src_rag_normalizeollamamodelname",
-      "community": 92,
+      "community": 63,
       "norm_label": "normalizeollamamodelname()"
     },
     {
@@ -6297,7 +6307,7 @@
       "source_location": "L250",
       "_origin": "ast",
       "id": "src_rag_hasconfiguredmodel",
-      "community": 92,
+      "community": 63,
       "norm_label": "hasconfiguredmodel()"
     },
     {
@@ -6327,7 +6337,7 @@
       "source_location": "L260",
       "_origin": "ast",
       "id": "src_rag_getembeddingsemaphore",
-      "community": 85,
+      "community": 105,
       "norm_label": "getembeddingsemaphore()"
     },
     {
@@ -6347,7 +6357,7 @@
       "source_location": "L278",
       "_origin": "ast",
       "id": "src_rag_checkchromahealth",
-      "community": 85,
+      "community": 70,
       "norm_label": "checkchromahealth()"
     },
     {
@@ -6357,7 +6367,7 @@
       "source_location": "L326",
       "_origin": "ast",
       "id": "src_rag_checkollamahealth",
-      "community": 85,
+      "community": 105,
       "norm_label": "checkollamahealth()"
     },
     {
@@ -6367,7 +6377,7 @@
       "source_location": "L372",
       "_origin": "ast",
       "id": "src_rag_checkembeddinghealth",
-      "community": 85,
+      "community": 91,
       "norm_label": "checkembeddinghealth()"
     },
     {
@@ -6387,7 +6397,7 @@
       "source_location": "L442",
       "_origin": "ast",
       "id": "src_rag_createvectorstore",
-      "community": 85,
+      "community": 105,
       "norm_label": "createvectorstore()"
     },
     {
@@ -6397,7 +6407,7 @@
       "source_location": "L455",
       "_origin": "ast",
       "id": "src_rag_resolvecollectionruntimesettings",
-      "community": 85,
+      "community": 105,
       "norm_label": "resolvecollectionruntimesettings()"
     },
     {
@@ -6507,7 +6517,7 @@
       "source_location": "L579",
       "_origin": "ast",
       "id": "src_rag_retrievesources",
-      "community": 85,
+      "community": 105,
       "norm_label": "retrievesources()"
     },
     {
@@ -6587,7 +6597,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_server",
-      "community": 90,
+      "community": 68,
       "norm_label": "server.ts"
     },
     {
@@ -6597,7 +6607,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "src_server_startuplogger",
-      "community": 90,
+      "community": 68,
       "norm_label": "startuplogger"
     },
     {
@@ -6607,7 +6617,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "src_server_runstartupmaintenance",
-      "community": 90,
+      "community": 68,
       "norm_label": "runstartupmaintenance()"
     },
     {
@@ -6617,7 +6627,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "src_server_startserver",
-      "community": 90,
+      "community": 68,
       "norm_label": "startserver()"
     },
     {
@@ -6627,7 +6637,7 @@
       "source_location": "L88",
       "_origin": "ast",
       "id": "src_server_main",
-      "community": 90,
+      "community": 68,
       "norm_label": "main()"
     },
     {
@@ -6797,7 +6807,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_app_foundation_test",
-      "community": 33,
+      "community": 54,
       "norm_label": "app.foundation.test.ts"
     },
     {
@@ -6807,7 +6817,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "test_app_foundation_test_healthchecks",
-      "community": 33,
+      "community": 54,
       "norm_label": "healthchecks"
     },
     {
@@ -6817,7 +6827,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "test_app_foundation_test_createhealthyregistrystub",
-      "community": 33,
+      "community": 54,
       "norm_label": "createhealthyregistrystub()"
     },
     {
@@ -6827,7 +6837,7 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "test_app_foundation_test_startserver",
-      "community": 33,
+      "community": 54,
       "norm_label": "startserver()"
     },
     {
@@ -6837,7 +6847,7 @@
       "source_location": "L113",
       "_origin": "ast",
       "id": "test_app_foundation_test_createhealthyhealthchecks",
-      "community": 33,
+      "community": 54,
       "norm_label": "createhealthyhealthchecks()"
     },
     {
@@ -6847,7 +6857,7 @@
       "source_location": "L168",
       "_origin": "ast",
       "id": "test_app_foundation_test_stopserver",
-      "community": 33,
+      "community": 54,
       "norm_label": "stopserver()"
     },
     {
@@ -6857,7 +6867,7 @@
       "source_location": "L194",
       "_origin": "ast",
       "id": "test_app_foundation_test_request",
-      "community": 33,
+      "community": 54,
       "norm_label": "request()"
     },
     {
@@ -6897,7 +6907,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_collections_registry_test",
-      "community": 56,
+      "community": 22,
       "norm_label": "collections.registry.test.ts"
     },
     {
@@ -6907,7 +6917,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "test_collections_registry_test_context",
-      "community": 56,
+      "community": 22,
       "norm_label": "context"
     },
     {
@@ -6917,7 +6927,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "test_collections_registry_test_collectioninput",
-      "community": 56,
+      "community": 22,
       "norm_label": "collectioninput"
     },
     {
@@ -6927,7 +6937,7 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "test_collections_registry_test_createrunningjob",
-      "community": 56,
+      "community": 22,
       "norm_label": "createrunningjob()"
     },
     {
@@ -6937,7 +6947,7 @@
       "source_location": "L704",
       "_origin": "ast",
       "id": "test_collections_registry_test_seedphysical",
-      "community": 56,
+      "community": 22,
       "norm_label": "seedphysical()"
     },
     {
@@ -6977,7 +6987,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_index_cli_test",
-      "community": 90,
+      "community": 22,
       "norm_label": "index.cli.test.ts"
     },
     {
@@ -6987,7 +6997,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test",
-      "community": 90,
+      "community": 22,
       "norm_label": "indexing.cleanup.test.ts"
     },
     {
@@ -6997,7 +7007,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_context",
-      "community": 90,
+      "community": 22,
       "norm_label": "context"
     },
     {
@@ -7007,7 +7017,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_collectioninput",
-      "community": 90,
+      "community": 22,
       "norm_label": "collectioninput"
     },
     {
@@ -7017,7 +7027,7 @@
       "source_location": "L62",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_createruntimeconfig",
-      "community": 90,
+      "community": 22,
       "norm_label": "createruntimeconfig()"
     },
     {
@@ -7027,7 +7037,7 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_createlogger",
-      "community": 90,
+      "community": 22,
       "norm_label": "createlogger()"
     },
     {
@@ -7037,7 +7047,7 @@
       "source_location": "L88",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_seedphysicalrecord",
-      "community": 56,
+      "community": 22,
       "norm_label": "seedphysicalrecord()"
     },
     {
@@ -7047,7 +7057,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_indexing_jobs_test",
-      "community": 32,
+      "community": 90,
       "norm_label": "indexing.jobs.test.ts"
     },
     {
@@ -7057,7 +7067,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "test_indexing_jobs_test_createcollection",
-      "community": 32,
+      "community": 90,
       "norm_label": "createcollection()"
     },
     {
@@ -7097,7 +7107,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_ingestion_fault_tolerance_test",
-      "community": 63,
+      "community": 90,
       "norm_label": "ingestion.fault-tolerance.test.ts"
     },
     {
@@ -7137,7 +7147,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_rag_core_test",
-      "community": 90,
+      "community": 70,
       "norm_label": "rag.core.test.ts"
     },
     {
@@ -7337,7 +7347,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "readme",
-      "community": 69,
+      "community": 101,
       "norm_label": "readme.md"
     },
     {
@@ -10674,7 +10684,7 @@
       "label": "K\u0131sa karar kural\u0131",
       "file_type": "document",
       "source_file": "notes/adminpanel_plan.md",
-      "source_location": "L1250",
+      "source_location": "L1247",
       "_origin": "ast",
       "id": "notes_adminpanel_plan_k\u0131sa_karar_kural\u0131",
       "community": 31,
@@ -11737,7 +11747,7 @@
       "source_location": "L915",
       "_origin": "ast",
       "id": "notes_multicollection_plan_concurrency_stratejisi",
-      "community": 104,
+      "community": 3,
       "norm_label": "concurrency stratejisi"
     },
     {
@@ -11747,7 +11757,7 @@
       "source_location": "L917",
       "_origin": "ast",
       "id": "notes_multicollection_plan_query_retrieve_path",
-      "community": 104,
+      "community": 3,
       "norm_label": "query/retrieve path"
     },
     {
@@ -11757,7 +11767,7 @@
       "source_location": "L941",
       "_origin": "ast",
       "id": "notes_multicollection_plan_index_rebuild_path",
-      "community": 104,
+      "community": 3,
       "norm_label": "index/rebuild path"
     },
     {
@@ -11767,7 +11777,7 @@
       "source_location": "L961",
       "_origin": "ast",
       "id": "notes_multicollection_plan_ollama_ve_chroma_backpressure",
-      "community": 104,
+      "community": 3,
       "norm_label": "ollama ve chroma backpressure"
     },
     {
@@ -12337,7 +12347,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "notes_onboardin_plan",
-      "community": 69,
+      "community": 101,
       "norm_label": "onboardin_plan.md"
     },
     {
@@ -12687,7 +12697,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "todos",
-      "community": 107,
+      "community": 101,
       "norm_label": "todos.md"
     },
     {
@@ -13057,7 +13067,7 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_5_temel_bile\u015fenler",
-      "community": 28,
+      "community": 69,
       "norm_label": "5. temel bilesenler"
     },
     {
@@ -13167,7 +13177,7 @@
       "source_location": "L397",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_5_2_rag_orchestrator_katman\u0131",
-      "community": 28,
+      "community": 69,
       "norm_label": "5.2 rag orchestrator katman\u0131"
     },
     {
@@ -13177,7 +13187,7 @@
       "source_location": "L429",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_5_3_retrieval_katman\u0131",
-      "community": 28,
+      "community": 69,
       "norm_label": "5.3 retrieval katman\u0131"
     },
     {
@@ -13187,7 +13197,7 @@
       "source_location": "L460",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_5_4_generation_katman\u0131",
-      "community": 28,
+      "community": 69,
       "norm_label": "5.4 generation katman\u0131"
     },
     {
@@ -13197,7 +13207,7 @@
       "source_location": "L488",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_5_5_i\u0307ndeksleme_katman\u0131",
-      "community": 28,
+      "community": 69,
       "norm_label": "5.5 indeksleme katman\u0131"
     },
     {
@@ -13207,7 +13217,7 @@
       "source_location": "L506",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_5_6_konfig\u00fcrasyon_katman\u0131",
-      "community": 28,
+      "community": 69,
       "norm_label": "5.6 konfigurasyon katman\u0131"
     },
     {
@@ -13457,7 +13467,7 @@
       "source_location": "L840",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_12_tasar\u0131m_trade_off_lar\u0131",
-      "community": 25,
+      "community": 93,
       "norm_label": "12. tasar\u0131m trade-off'lar\u0131"
     },
     {
@@ -13467,7 +13477,7 @@
       "source_location": "L844",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_trade_off_1_basitlik_vs_kalite",
-      "community": 25,
+      "community": 93,
       "norm_label": "trade-off 1: basitlik vs kalite"
     },
     {
@@ -13477,7 +13487,7 @@
       "source_location": "L860",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_trade_off_2_tek_orkestrat\u00f6r_dosyas\u0131_vs_daha_fazla_ayr\u0131\u015f\u0131m",
-      "community": 25,
+      "community": 93,
       "norm_label": "trade-off 2: tek orkestrator dosyas\u0131 vs daha fazla ayr\u0131s\u0131m"
     },
     {
@@ -13487,7 +13497,7 @@
       "source_location": "L874",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_trade_off_3_full_reset_index_vs_incremental_updates",
-      "community": 25,
+      "community": 93,
       "norm_label": "trade-off 3: full reset index vs incremental updates"
     },
     {
@@ -13497,7 +13507,7 @@
       "source_location": "L888",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_trade_off_4_lokal_model_ba\u011f\u0131ml\u0131l\u0131\u011f\u0131_vs_ta\u015f\u0131nabilirlik",
-      "community": 25,
+      "community": 93,
       "norm_label": "trade-off 4: lokal model bag\u0131ml\u0131l\u0131g\u0131 vs tas\u0131nabilirlik"
     },
     {
@@ -13568,7 +13578,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 69,
+      "community": 3,
       "norm_label": "multi-collection support",
       "id": "multi_collection_support"
     },
@@ -13581,7 +13591,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 69,
+      "community": 101,
       "norm_label": "zero-downtime rebuild",
       "id": "zero_downtime_rebuild"
     },
@@ -13607,7 +13617,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 69,
+      "community": 101,
       "norm_label": "retention cleanup",
       "id": "retention_cleanup"
     },
@@ -13633,7 +13643,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 69,
+      "community": 101,
       "norm_label": "stale job recovery",
       "id": "stale_job_recovery"
     },
@@ -13711,7 +13721,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 69,
+      "community": 20,
       "norm_label": "typescript language",
       "id": "typescript"
     },
@@ -13724,7 +13734,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 69,
+      "community": 101,
       "norm_label": "logical collection",
       "id": "readme_collection"
     },
@@ -13737,7 +13747,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 69,
+      "community": 101,
       "norm_label": "index job",
       "id": "readme_index_job"
     },
@@ -13750,7 +13760,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 69,
+      "community": 101,
       "norm_label": "physical chroma collection",
       "id": "readme_physical_collection"
     },
@@ -13763,7 +13773,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 69,
+      "community": 101,
       "norm_label": "onboarding cli",
       "id": "readme_onboarding_cli"
     },
@@ -13776,7 +13786,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 107,
+      "community": 101,
       "norm_label": "admin api",
       "id": "readme_admin_api"
     },
@@ -13789,7 +13799,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 107,
+      "community": 101,
       "norm_label": "rag api",
       "id": "readme_rag_api"
     },
@@ -13802,7 +13812,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 107,
+      "community": 101,
       "norm_label": "readiness system",
       "id": "readme_readiness"
     },
@@ -13815,7 +13825,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 69,
+      "community": 3,
       "norm_label": "zero-downtime index/rebuild plan",
       "id": "notes_multicollection_plan_zero_downtime"
     },
@@ -13919,7 +13929,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 107,
+      "community": 101,
       "norm_label": "ollama model validation gap",
       "id": "todos_ollama_model_validation"
     },
@@ -13932,7 +13942,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 107,
+      "community": 101,
       "norm_label": "benchmark runner gap",
       "id": "todos_benchmark_gap"
     },
@@ -13945,7 +13955,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 107,
+      "community": 101,
       "norm_label": "test coverage gap",
       "id": "todos_test_coverage_gap"
     },
@@ -14534,9 +14544,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L193",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin",
-      "target": "admin_admin_admincollectionphysicalcollectionsurl",
-      "confidence_score": 1.0
+      "target": "admin_admin_admincollectionphysicalcollectionsurl"
     },
     {
       "relation": "contains",
@@ -14914,9 +14924,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1469",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin",
-      "target": "admin_admin_createphysicalcollectioncard",
-      "confidence_score": 1.0
+      "target": "admin_admin_createphysicalcollectioncard"
     },
     {
       "relation": "contains",
@@ -14934,9 +14944,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1449",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin",
-      "target": "admin_admin_createsummarychip",
-      "confidence_score": 1.0
+      "target": "admin_admin_createsummarychip"
     },
     {
       "relation": "contains",
@@ -14947,6 +14957,16 @@
       "confidence_score": 1.0,
       "source": "admin_admin",
       "target": "admin_admin_createsummarylistcard"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "admin/admin.js",
+      "source_location": "L2840",
+      "weight": 1.0,
+      "source": "admin_admin",
+      "target": "admin_admin_createsummarylistcardwithid",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -15174,9 +15194,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1441",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin",
-      "target": "admin_admin_getphysicalcollectionssummary",
-      "confidence_score": 1.0
+      "target": "admin_admin_getphysicalcollectionssummary"
     },
     {
       "relation": "contains",
@@ -15184,9 +15204,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1456",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin",
-      "target": "admin_admin_getphysicalcollectionstatustone",
-      "confidence_score": 1.0
+      "target": "admin_admin_getphysicalcollectionstatustone"
     },
     {
       "relation": "contains",
@@ -15404,9 +15424,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1545",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin",
-      "target": "admin_admin_loadphysicalcollections",
-      "confidence_score": 1.0
+      "target": "admin_admin_loadphysicalcollections"
     },
     {
       "relation": "contains",
@@ -15724,9 +15744,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1505",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin",
-      "target": "admin_admin_renderphysicalcollectionsdata",
-      "confidence_score": 1.0
+      "target": "admin_admin_renderphysicalcollectionsdata"
     },
     {
       "relation": "contains",
@@ -15734,9 +15754,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1408",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin",
-      "target": "admin_admin_renderphysicalcollectionsplaceholder",
-      "confidence_score": 1.0
+      "target": "admin_admin_renderphysicalcollectionsplaceholder"
     },
     {
       "relation": "contains",
@@ -15854,9 +15874,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1415",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin",
-      "target": "admin_admin_resetphysicalcollectionssection",
-      "confidence_score": 1.0
+      "target": "admin_admin_resetphysicalcollectionssection"
     },
     {
       "relation": "contains",
@@ -16252,9 +16272,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1546",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_loadphysicalcollections",
-      "target": "admin_admin_admincollectionphysicalcollectionsurl",
-      "confidence_score": 1.0
+      "target": "admin_admin_admincollectionphysicalcollectionsurl"
     },
     {
       "relation": "calls",
@@ -16659,9 +16679,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1508",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_renderphysicalcollectionsdata",
-      "target": "admin_admin_clearnode",
-      "confidence_score": 1.0
+      "target": "admin_admin_clearnode"
     },
     {
       "relation": "calls",
@@ -16670,9 +16690,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1411",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_renderphysicalcollectionsplaceholder",
-      "target": "admin_admin_clearnode",
-      "confidence_score": 1.0
+      "target": "admin_admin_clearnode"
     },
     {
       "relation": "calls",
@@ -16758,9 +16778,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1418",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_resetphysicalcollectionssection",
-      "target": "admin_admin_clearnode",
-      "confidence_score": 1.0
+      "target": "admin_admin_clearnode"
     },
     {
       "relation": "calls",
@@ -16978,9 +16998,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1470",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_createphysicalcollectioncard",
-      "target": "admin_admin_createel",
-      "confidence_score": 1.0
+      "target": "admin_admin_createel"
     },
     {
       "relation": "calls",
@@ -17000,9 +17020,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1450",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_createsummarychip",
-      "target": "admin_admin_createel",
-      "confidence_score": 1.0
+      "target": "admin_admin_createel"
     },
     {
       "relation": "calls",
@@ -17119,11 +17139,22 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "admin/admin.js",
-      "source_location": "L1412",
+      "source_location": "L1528",
       "weight": 1.0,
-      "source": "admin_admin_renderphysicalcollectionsplaceholder",
+      "source": "admin_admin_renderphysicalcollectionsdata",
       "target": "admin_admin_createel",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "admin/admin.js",
+      "source_location": "L1412",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "admin_admin_renderphysicalcollectionsplaceholder",
+      "target": "admin_admin_createel"
     },
     {
       "relation": "calls",
@@ -17319,8 +17350,19 @@
       "source_file": "admin/admin.js",
       "source_location": "L1512",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_renderphysicalcollectionsdata",
-      "target": "admin_admin_appendchildren",
+      "target": "admin_admin_appendchildren"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "admin/admin.js",
+      "source_location": "L1521",
+      "weight": 1.0,
+      "source": "admin_admin_renderphysicalcollectionsdata",
+      "target": "admin_admin_createbutton",
       "confidence_score": 1.0
     },
     {
@@ -17396,9 +17438,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1482",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_createphysicalcollectioncard",
-      "target": "admin_admin_formatdatetime",
-      "confidence_score": 1.0
+      "target": "admin_admin_formatdatetime"
     },
     {
       "relation": "calls",
@@ -17451,9 +17493,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1480",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_createphysicalcollectioncard",
-      "target": "admin_admin_formatcount",
-      "confidence_score": 1.0
+      "target": "admin_admin_formatcount"
     },
     {
       "relation": "calls",
@@ -17462,9 +17504,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1452",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_createsummarychip",
-      "target": "admin_admin_formatcount",
-      "confidence_score": 1.0
+      "target": "admin_admin_formatcount"
     },
     {
       "relation": "calls",
@@ -17627,9 +17669,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1476",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_createphysicalcollectioncard",
-      "target": "admin_admin_createbadge",
-      "confidence_score": 1.0
+      "target": "admin_admin_createbadge"
     },
     {
       "relation": "calls",
@@ -17649,9 +17691,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1451",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_createsummarychip",
-      "target": "admin_admin_createbadge",
-      "confidence_score": 1.0
+      "target": "admin_admin_createbadge"
     },
     {
       "relation": "calls",
@@ -17704,9 +17746,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1476",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_createphysicalcollectioncard",
-      "target": "admin_admin_getstatuscolor",
-      "confidence_score": 1.0
+      "target": "admin_admin_getstatuscolor"
     },
     {
       "relation": "calls",
@@ -17726,9 +17768,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1451",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_createsummarychip",
-      "target": "admin_admin_getstatuscolor",
-      "confidence_score": 1.0
+      "target": "admin_admin_getstatuscolor"
     },
     {
       "relation": "calls",
@@ -17825,9 +17867,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1480",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_createphysicalcollectioncard",
-      "target": "admin_admin_createmetaitem",
-      "confidence_score": 1.0
+      "target": "admin_admin_createmetaitem"
     },
     {
       "relation": "calls",
@@ -18078,9 +18120,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1548",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_loadphysicalcollections",
-      "target": "admin_admin_normalizeerror",
-      "confidence_score": 1.0
+      "target": "admin_admin_normalizeerror"
     },
     {
       "relation": "calls",
@@ -18177,9 +18219,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1614",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_updatereadinesstab",
-      "target": "admin_admin_normalizeerror",
-      "confidence_score": 1.0
+      "target": "admin_admin_normalizeerror"
     },
     {
       "relation": "calls",
@@ -18265,9 +18307,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1546",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_loadphysicalcollections",
-      "target": "admin_admin_apirequest",
-      "confidence_score": 1.0
+      "target": "admin_admin_apirequest"
     },
     {
       "relation": "calls",
@@ -18991,9 +19033,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1280",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_openinspector",
-      "target": "admin_admin_resetphysicalcollectionssection",
-      "confidence_score": 1.0
+      "target": "admin_admin_resetphysicalcollectionssection"
     },
     {
       "relation": "calls",
@@ -19068,9 +19110,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1341",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_closeinspector",
-      "target": "admin_admin_resetphysicalcollectionssection",
-      "confidence_score": 1.0
+      "target": "admin_admin_resetphysicalcollectionssection"
     },
     {
       "relation": "calls",
@@ -19178,9 +19220,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1519",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_renderphysicalcollectionsdata",
-      "target": "admin_admin_renderphysicalcollectionsplaceholder",
-      "confidence_score": 1.0
+      "target": "admin_admin_renderphysicalcollectionsplaceholder"
     },
     {
       "relation": "calls",
@@ -19189,9 +19231,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1424",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_resetphysicalcollectionssection",
-      "target": "admin_admin_renderphysicalcollectionsplaceholder",
-      "confidence_score": 1.0
+      "target": "admin_admin_renderphysicalcollectionsplaceholder"
     },
     {
       "relation": "calls",
@@ -19200,9 +19242,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1572",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_updatereadinesstab",
-      "target": "admin_admin_renderphysicalcollectionsplaceholder",
-      "confidence_score": 1.0
+      "target": "admin_admin_renderphysicalcollectionsplaceholder"
     },
     {
       "relation": "calls",
@@ -19222,9 +19264,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1511",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_renderphysicalcollectionsdata",
-      "target": "admin_admin_getphysicalcollectionssummary",
-      "confidence_score": 1.0
+      "target": "admin_admin_getphysicalcollectionssummary"
     },
     {
       "relation": "calls",
@@ -19233,9 +19275,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1513",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_renderphysicalcollectionsdata",
-      "target": "admin_admin_createsummarychip",
-      "confidence_score": 1.0
+      "target": "admin_admin_createsummarychip"
     },
     {
       "relation": "calls",
@@ -19244,9 +19286,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1476",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_createphysicalcollectioncard",
-      "target": "admin_admin_getphysicalcollectionstatustone",
-      "confidence_score": 1.0
+      "target": "admin_admin_getphysicalcollectionstatustone"
     },
     {
       "relation": "calls",
@@ -19255,9 +19297,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1611",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_updatereadinesstab",
-      "target": "admin_admin_renderphysicalcollectionsdata",
-      "confidence_score": 1.0
+      "target": "admin_admin_renderphysicalcollectionsdata"
     },
     {
       "relation": "calls",
@@ -19277,9 +19319,9 @@
       "source_file": "admin/admin.js",
       "source_location": "L1579",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "admin_admin_updatereadinesstab",
-      "target": "admin_admin_loadphysicalcollections",
-      "confidence_score": 1.0
+      "target": "admin_admin_loadphysicalcollections"
     },
     {
       "relation": "calls",
@@ -20353,11 +20395,33 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "admin/admin.js",
+      "source_location": "L2841",
+      "weight": 1.0,
+      "source": "admin_admin_createsummarylistcardwithid",
+      "target": "admin_admin_createsummarylistcard",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "admin/admin.js",
       "source_location": "L2581",
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "admin_admin_renderoperationssummarycards",
       "target": "admin_admin_createsummarylistcard"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "admin/admin.js",
+      "source_location": "L2868",
+      "weight": 1.0,
+      "source": "admin_admin_renderoperationssummarycards",
+      "target": "admin_admin_createsummarylistcardwithid",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -40657,5 +40721,5 @@
       "source_file": "data/dataset2/README.md"
     }
   ],
-  "built_at_commit": "4b88b7faf68cfbe30e9679d1323bf73eea2e5ffb"
+  "built_at_commit": "695770ea73f5059ad34f801cd4d88a234a79b776"
 }

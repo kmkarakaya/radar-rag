@@ -1,4 +1,5 @@
-﻿import type { DistanceMetric } from "../config.js";
+import type { DistanceMetric } from "../config.js";
+import type { OperationalLogEvent, OperationalLogStatus } from "../observability/logger.js";
 
 export type RequestContext = {
   requestId: string;
@@ -263,6 +264,33 @@ export type PhysicalCollectionRecord = {
   cleanupError?: string;
 };
 
+export type AuditLogRecord = {
+  timestamp: string;
+  collectionId?: string;
+  operation: string;
+  status: OperationalLogStatus;
+  requestId?: string;
+  userId?: string;
+  jobId?: string;
+  physicalCollection?: string;
+  errorCode?: string;
+  message?: string;
+  details?: Record<string, unknown>;
+  latencyMs?: number;
+};
+
+export type ListAuditLogInput = {
+  collectionId?: string[];
+  operation?: string[];
+  limit?: number;
+  cursor?: string | null;
+};
+
+export type ListAuditLogResult = {
+  auditLog: AuditLogRecord[];
+  nextCursor: string | null;
+};
+
 export interface CollectionRegistry {
   listVisibleCollections(context: RequestContext): Promise<RagCollection[]>;
   getVisibleCollection(context: RequestContext, collectionId: string): Promise<RagCollection | null>;
@@ -275,6 +303,8 @@ export interface CollectionRegistry {
   getJob(jobId: string): Promise<IndexJob | null>;
   listJobEvents(context: RequestContext, jobId: string): Promise<IndexJobEvent[]>;
   appendJobEvent(jobId: string, input: CreateIndexJobEventInput): Promise<IndexJobEvent>;
+  appendOperationalLog?(event: OperationalLogEvent): Promise<void>;
+  listAuditLog?(context: RequestContext, filters?: ListAuditLogInput): Promise<ListAuditLogResult>;
   deleteJob(context: RequestContext, jobId: string): Promise<void>;
   deleteJobs(context: RequestContext, jobIds: string[]): Promise<void>;
   getActiveJobForCollection(context: RequestContext, collectionId: string): Promise<IndexJob | null>;

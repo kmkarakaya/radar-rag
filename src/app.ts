@@ -9,7 +9,12 @@ import { createRateLimitMiddleware, createInMemoryRequestRateLimiter, type Reque
 import { checkIndexingSourceHealth, type IndexingSourceHealthDetails } from "./index.js";
 import { createAdminRouter } from "./http/adminRouter.js";
 import { createRagRouter } from "./http/ragRouter.js";
-import { createConsoleLogSink, createOperationalHttpLogger, type OperationalLogSink } from "./observability/logger.js";
+import {
+  createConsoleLogSink,
+  createOperationalHttpLogger,
+  createPersistentOperationalLogSink,
+  type OperationalLogSink,
+} from "./observability/logger.js";
 import { capabilitySummary, recommendedActionFor, unique, type Capability, type ReadinessIssue } from "./readiness.js";
 import {
   answerQuestion,
@@ -92,7 +97,7 @@ type ReadyOperationsSummary = SystemOperationsAggregateSummary & {
 export function createApp(deps: AppDependencies = {}): Express {
   const app = express();
   const runtimeConfig = deps.runtimeConfig ?? config;
-  const logEvent = deps.logEvent ?? createConsoleLogSink();
+  const logEvent = createPersistentOperationalLogSink(deps.logEvent ?? createConsoleLogSink(), deps.registry);
   const rateLimiter = deps.rateLimiter ?? createInMemoryRequestRateLimiter({
     enabled: runtimeConfig.rateLimitEnabled,
     windowMs: runtimeConfig.rateLimitWindowMs,

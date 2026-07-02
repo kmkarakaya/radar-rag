@@ -21,11 +21,46 @@ export type OperationalLogEvent = {
 
 export type OperationalLogSink = (event: OperationalLogEvent) => void;
 
+export type OperationalLogPersistence = {
+  appendOperationalLog?: (event: OperationalLogEvent) => Promise<void>;
+};
+
 export const noopLogSink: OperationalLogSink = () => {};
 
 export function createConsoleLogSink(): OperationalLogSink {
   return (event) => {
     console.log(JSON.stringify(normalizeLogEvent(event)));
+  };
+}
+
+export function createPersistentOperationalLogSink(
+  baseSink: OperationalLogSink,
+  persistence?: OperationalLogPersistence | null,
+): OperationalLogSink {
+  if (!persistence?.appendOperationalLog) {
+    return baseSink;
+  }
+
+  return (event) => {
+    const normalizedEvent = normalizeLogEvent(event);
+
+    try {
+      baseSink(normalizedEvent);
+    } finally {
+      void Promise.resolve()
+        .then(() => persistence.appendOperationalLog?.(normalizedEvent))
+        .catch((error) => {
+          try {
+            console.error("Failed to persist operational log event", {
+              operation: normalizedEvent.operation,
+              status: normalizedEvent.status,
+              error,
+            });
+          } catch {
+            // Persistence is best-effort only.
+          }
+        });
+    }
   };
 }
 
@@ -137,6 +172,14 @@ export function getHttpOperationTarget(req: Request): { operation: string; colle
   }
 
   if (req.method === "DELETE") {
+    const collectionMatch = /^\/v1\/admin\/collections\/([^/]+)$/.exec(req.path);
+    if (collectionMatch) {
+      return {
+        collectionId: decodeURIComponent(collectionMatch[1] ?? ""),
+        operation: "delete",
+      };
+    }
+
     const jobMatch = /^\/v1\/admin\/jobs\/([^/]+)$/.exec(req.path);
     if (jobMatch) {
       return {

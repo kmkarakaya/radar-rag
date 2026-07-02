@@ -11,6 +11,24 @@ const API = {
 
 const JOB_STORAGE_KEY = "ragAdmin.knownJobs.v1";
 const JOB_LIST_LIMIT = 25;
+const AUDIT_LOG_LIMIT = 25;
+const AUDIT_LOG_OPERATION_OPTIONS = [
+    { value: "query", label: "Query" },
+    { value: "retrieve", label: "Retrieve" },
+    { value: "reindex", label: "Reindex" },
+    { value: "delete", label: "Delete collection" },
+    { value: "index_job", label: "Index job" },
+    { value: "job_delete_batch", label: "Bulk delete jobs" },
+    { value: "job_delete", label: "Delete job" },
+    { value: "job", label: "Job detail" },
+    { value: "job_events", label: "Job events" },
+    { value: "collection_readiness", label: "Collection readiness" },
+    { value: "index_build", label: "Index build" },
+    { value: "cleanup", label: "Cleanup" },
+    { value: "load_ozelge_file", label: "Load ozelge file" },
+    { value: "load_file", label: "Load file" },
+];
+const AUDIT_COLLECTION_PANEL_WIDTH_CLASS = "w-[min(92vw,34rem)]";
 
 const EDIT_FIELD_IDS = {
     displayName: "editDisplayName",
@@ -58,6 +76,13 @@ let state = {
     jobListCursorStack: [],
     jobListStatusFilter: "all",
     jobListError: null,
+    auditLog: [],
+    auditLogError: null,
+    auditLogCollectionFilter: [],
+    auditLogOperationFilter: [],
+    auditLogNextCursor: null,
+    auditLogCursor: null,
+    auditLogCursorStack: [],
     selectedJobIds: new Set(),
     editorInitialSnapshot: null,
     isLoading: {
@@ -67,6 +92,7 @@ let state = {
         health: false,
         readiness: false,
         physicalCollections: false,
+        auditLog: false,
     },
     collectionError: null,
     healthStatus: null,
@@ -78,6 +104,7 @@ let state = {
 const loadTokens = {
     configDefaults: 0,
     modelDiscovery: 0,
+    auditLog: 0,
 };
 
 const elements = {
@@ -95,6 +122,32 @@ const elements = {
     jobsBulkSelectionCount: document.getElementById("jobsBulkSelectionCount"),
     jobsBulkRemove: document.getElementById("jobsBulkRemove"),
     jobsSelectAll: document.getElementById("jobsSelectAll"),
+    auditLogTableBody: document.getElementById("auditLogTableBody"),
+    auditCollectionPicker: document.getElementById("auditCollectionPicker"),
+    auditCollectionToggle: document.getElementById("auditCollectionToggle"),
+    auditCollectionSummary: document.getElementById("auditCollectionSummary"),
+    auditCollectionDetail: document.getElementById("auditCollectionDetail"),
+    auditCollectionPanel: document.getElementById("auditCollectionPanel"),
+    auditCollectionSearch: document.getElementById("auditCollectionSearch"),
+    auditCollectionAll: document.getElementById("auditCollectionAll"),
+    auditCollectionClear: document.getElementById("auditCollectionClear"),
+    auditCollectionList: document.getElementById("auditCollectionList"),
+    auditCollectionMeta: document.getElementById("auditCollectionMeta"),
+    auditOperationPicker: document.getElementById("auditOperationPicker"),
+    auditOperationToggle: document.getElementById("auditOperationToggle"),
+    auditOperationSummary: document.getElementById("auditOperationSummary"),
+    auditOperationDetail: document.getElementById("auditOperationDetail"),
+    auditOperationPanel: document.getElementById("auditOperationPanel"),
+    auditOperationSearch: document.getElementById("auditOperationSearch"),
+    auditOperationAll: document.getElementById("auditOperationAll"),
+    auditOperationClear: document.getElementById("auditOperationClear"),
+    auditOperationList: document.getElementById("auditOperationList"),
+    auditOperationMeta: document.getElementById("auditOperationMeta"),
+    auditClearFilters: document.getElementById("auditClearFilters"),
+    auditRefreshList: document.getElementById("auditRefreshList"),
+    auditPrevPage: document.getElementById("auditPrevPage"),
+    auditNextPage: document.getElementById("auditNextPage"),
+    auditPageInfo: document.getElementById("auditPageInfo"),
     healthGrid: document.getElementById("healthGrid"),
     readinessDetail: document.getElementById("readinessDetail"),
     readinessWarnings: document.getElementById("readinessWarnings"),
@@ -164,6 +217,7 @@ const elements = {
 
     btnReindex: document.getElementById("btnReindex"),
     btnDeleteCol: document.getElementById("btnDeleteCol"),
+    btnViewHistory: document.getElementById("btnViewHistory"),
 
     tabReady: document.getElementById("tab-ready"),
     tabPlayground: document.getElementById("tab-playground"),
@@ -215,6 +269,265 @@ function adminJobsListUrl(options = {}) {
     if (options.collectionId) params.set("collectionId", options.collectionId);
     const query = params.toString();
     return query ? `${API.admin}/jobs?${query}` : `${API.admin}/jobs`;
+}
+
+function adminAuditLogUrl(options = {}) {
+    const params = new URLSearchParams();
+    params.set("limit", String(options.limit || AUDIT_LOG_LIMIT));
+    if (options.cursor) params.set("cursor", options.cursor);
+    const collectionValues = Array.isArray(options.collectionIds)
+        ? options.collectionIds
+        : Array.isArray(options.collectionId)
+            ? options.collectionId
+            : typeof options.collectionId === "string"
+                ? options.collectionId.split(",")
+                : [];
+    const operationValues = Array.isArray(options.operations)
+        ? options.operations
+        : Array.isArray(options.operation)
+            ? options.operation
+            : typeof options.operation === "string"
+                ? options.operation.split(",")
+                : [];
+    normalizeAuditCollectionValues(collectionValues).forEach((collectionId) => {
+        params.append("collectionId", collectionId);
+    });
+    normalizeAuditOperationValues(operationValues).forEach((operation) => {
+        params.append("operation", operation);
+    });
+    const query = params.toString();
+    return query ? `${API.admin}/audit-log?${query}` : `${API.admin}/audit-log`;
+}
+
+function normalizeAuditSelectionValues(values = [], allowedValues = []) {
+    const allowedSet = new Set(allowedValues);
+    return [...new Set(
+        (Array.isArray(values) ? values : values ? [values] : [])
+            .flatMap((value) => String(value).split(","))
+            .map((value) => value.trim())
+            .filter((value) => value && allowedSet.has(value)),
+    )];
+}
+
+function getAuditVisibleCollections() {
+    return [...state.collections]
+        .filter((collection) => collection && collection.status !== "archived")
+        .sort((a, b) => {
+            const primaryA = isAuditCollectionPrimary(a) ? 0 : 1;
+            const primaryB = isAuditCollectionPrimary(b) ? 0 : 1;
+            if (primaryA !== primaryB) return primaryA - primaryB;
+            const nameA = (a.displayName || a.id || "").toLowerCase();
+            const nameB = (b.displayName || b.id || "").toLowerCase();
+            if (nameA !== nameB) return nameA.localeCompare(nameB);
+            return String(a.id || "").localeCompare(String(b.id || ""));
+        });
+}
+
+function isAuditCollectionPrimary(collection) {
+    return Boolean(collection?.activePhysicalCollection) || collection?.status === "ready";
+}
+
+function normalizeAuditCollectionValues(values = []) {
+    return normalizeAuditSelectionValues(values, getAuditVisibleCollections().map((collection) => collection.id));
+}
+
+function normalizeAuditOperationValues(values = []) {
+    return normalizeAuditSelectionValues(values, AUDIT_LOG_OPERATION_OPTIONS.map((option) => option.value));
+}
+
+function getAuditCollectionFilterValues() {
+    return normalizeAuditCollectionValues(state.auditLogCollectionFilter);
+}
+
+function getAuditOperationFilterValues() {
+    return normalizeAuditOperationValues(state.auditLogOperationFilter);
+}
+
+function setAuditCollectionFilterValues(values) {
+    state.auditLogCollectionFilter = normalizeAuditCollectionValues(values);
+}
+
+function setAuditOperationFilterValues(values) {
+    state.auditLogOperationFilter = normalizeAuditOperationValues(values);
+}
+
+function getAuditCollectionSummaryText() {
+    const visibleCount = getAuditVisibleCollections().length;
+    const selectedCount = getAuditCollectionFilterValues().length;
+    if (visibleCount === 0) return "No visible collections";
+    if (selectedCount === 0 || selectedCount === visibleCount) return "All visible collections";
+    return `${selectedCount} collection${selectedCount === 1 ? "" : "s"} selected`;
+}
+
+function getAuditCollectionDetailText() {
+    const visibleCount = getAuditVisibleCollections().length;
+    const selectedCount = getAuditCollectionFilterValues().length;
+    if (visibleCount === 0) {
+        return "Load collections to filter audit history.";
+    }
+    if (selectedCount === 0 || selectedCount === visibleCount) {
+        return `${visibleCount} visible collection${visibleCount === 1 ? "" : "s"}`;
+    }
+    return `${selectedCount} of ${visibleCount} selected`;
+}
+
+function getAuditOperationSummaryText() {
+    const selectedCount = getAuditOperationFilterValues().length;
+    if (selectedCount === 0 || selectedCount === AUDIT_LOG_OPERATION_OPTIONS.length) return "All operations";
+    return `${selectedCount} operation${selectedCount === 1 ? "" : "s"} selected`;
+}
+
+function getAuditOperationDetailText() {
+    const selectedCount = getAuditOperationFilterValues().length;
+    if (selectedCount === 0 || selectedCount === AUDIT_LOG_OPERATION_OPTIONS.length) {
+        return `${AUDIT_LOG_OPERATION_OPTIONS.length} available operations`;
+    }
+    return `${selectedCount} of ${AUDIT_LOG_OPERATION_OPTIONS.length} selected`;
+}
+
+function renderAuditCollectionPickerList() {
+    if (!elements.auditCollectionList) return;
+    clearNode(elements.auditCollectionList);
+
+    const search = (elements.auditCollectionSearch?.value || "").trim().toLowerCase();
+    const selectedValues = new Set(getAuditCollectionFilterValues());
+    const collections = getAuditVisibleCollections().filter((collection) => {
+        if (!search) return true;
+        return [collection.displayName, collection.id]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(search));
+    });
+
+    if (elements.auditCollectionMeta) {
+        const totalVisibleCount = getAuditVisibleCollections().length;
+        elements.auditCollectionMeta.textContent = totalVisibleCount === 0
+            ? "No visible collections are available for this tenant."
+            : `${collections.length} visible collection${collections.length === 1 ? "" : "s"} match this search.`;
+    }
+
+    if (collections.length === 0) {
+        elements.auditCollectionList.appendChild(createEl(
+            "div",
+            "rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500",
+            getAuditVisibleCollections().length === 0 ? "No visible collections are available for this tenant." : "No collections match this search.",
+        ));
+        return;
+    }
+
+    collections.forEach((collection) => {
+        const row = createEl(
+            "label",
+            `flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 shadow-sm transition-colors hover:bg-slate-50 ${isAuditCollectionPrimary(collection) ? "border-emerald-200 bg-emerald-50/60" : "border-slate-200 bg-white"}`,
+        );
+        const checkbox = createEl("input", "mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500");
+        checkbox.type = "checkbox";
+        checkbox.value = collection.id;
+        checkbox.checked = selectedValues.has(collection.id);
+        checkbox.dataset.auditCollection = collection.id;
+        const content = createEl("div", "min-w-0 flex-1");
+        const header = createEl("div", "flex flex-wrap items-center gap-2");
+        header.appendChild(createEl("div", "break-all-words text-sm font-semibold text-slate-800", collection.displayName || "Unnamed Collection"));
+        if (isAuditCollectionPrimary(collection)) {
+            header.appendChild(createBadge("Active", getStatusColor("active")));
+        }
+        content.appendChild(header);
+        content.appendChild(createEl("div", "mt-1 break-all font-mono text-xs text-slate-500", collection.id));
+        row.appendChild(checkbox);
+        row.appendChild(content);
+        elements.auditCollectionList.appendChild(row);
+    });
+}
+
+function renderAuditOperationPickerList() {
+    if (!elements.auditOperationList) return;
+    clearNode(elements.auditOperationList);
+
+    const search = (elements.auditOperationSearch?.value || "").trim().toLowerCase();
+    const selectedValues = new Set(getAuditOperationFilterValues());
+    const operations = AUDIT_LOG_OPERATION_OPTIONS.filter((option) => {
+        if (!search) return true;
+        return [option.label, option.value]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(search));
+    });
+
+    if (elements.auditOperationMeta) {
+        elements.auditOperationMeta.textContent = `${operations.length} operation option${operations.length === 1 ? "" : "s"} match this search.`;
+    }
+
+    if (operations.length === 0) {
+        elements.auditOperationList.appendChild(createEl("div", "rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500", "No operations match this search."));
+        return;
+    }
+
+    operations.forEach((option) => {
+        const row = createEl("label", "flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm transition-colors hover:bg-slate-50");
+        const checkbox = createEl("input", "h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500");
+        checkbox.type = "checkbox";
+        checkbox.value = option.value;
+        checkbox.checked = selectedValues.has(option.value);
+        checkbox.dataset.auditOperation = option.value;
+        const content = createEl("div", "min-w-0 flex-1");
+        content.appendChild(createEl("div", "break-all-words text-sm font-semibold text-slate-800", option.label));
+        content.appendChild(createEl("div", "mt-1 break-all font-mono text-xs text-slate-500", option.value));
+        row.appendChild(checkbox);
+        row.appendChild(content);
+        elements.auditOperationList.appendChild(row);
+    });
+}
+
+function renderAuditFilterControls() {
+    if (elements.auditCollectionSummary) {
+        elements.auditCollectionSummary.textContent = getAuditCollectionSummaryText();
+    }
+    if (elements.auditCollectionDetail) {
+        elements.auditCollectionDetail.textContent = getAuditCollectionDetailText();
+    }
+    if (elements.auditOperationSummary) {
+        elements.auditOperationSummary.textContent = getAuditOperationSummaryText();
+    }
+    if (elements.auditOperationDetail) {
+        elements.auditOperationDetail.textContent = getAuditOperationDetailText();
+    }
+
+    renderAuditCollectionPickerList();
+    renderAuditOperationPickerList();
+    updateAuditLogControls();
+}
+
+function openAuditPicker(panelElement, triggerElement) {
+    if (!panelElement || !triggerElement) return;
+    panelElement.classList.remove("hidden");
+    triggerElement.setAttribute("aria-expanded", "true");
+}
+
+function closeAuditPicker(panelElement, triggerElement) {
+    if (!panelElement || !triggerElement) return;
+    panelElement.classList.add("hidden");
+    triggerElement.setAttribute("aria-expanded", "false");
+}
+
+function toggleAuditPicker(panelElement, triggerElement) {
+    if (!panelElement || !triggerElement) return;
+    if (panelElement.classList.contains("hidden")) {
+        if (panelElement === elements.auditCollectionPanel) {
+            closeAuditPicker(elements.auditOperationPanel, elements.auditOperationToggle);
+        } else if (panelElement === elements.auditOperationPanel) {
+            closeAuditPicker(elements.auditCollectionPanel, elements.auditCollectionToggle);
+        }
+        openAuditPicker(panelElement, triggerElement);
+    } else {
+        closeAuditPicker(panelElement, triggerElement);
+    }
+}
+
+function closeAuditPickers() {
+    closeAuditPicker(elements.auditCollectionPanel, elements.auditCollectionToggle);
+    closeAuditPicker(elements.auditOperationPanel, elements.auditOperationToggle);
+}
+
+function syncAuditLogFilterInputs() {
+    renderAuditFilterControls();
 }
 
 function normalizeModelList(models) {
@@ -1185,6 +1498,7 @@ async function loadAdminCollectionDetail(collectionId) {
 
 function switchView(viewId) {
     state.currentView = viewId;
+    closeAuditPickers();
     elements.navItems.forEach((item) => {
         const active = item.dataset.view === viewId;
         item.classList.toggle("active", active);
@@ -1199,11 +1513,13 @@ function switchView(viewId) {
     const titles = {
         collections: "Collections",
         jobs: "Job Monitor",
+        audit: "Audit Log",
         health: "System Health",
     };
     elements.viewTitle.textContent = titles[viewId] || "Dashboard";
 
     if (viewId === "jobs") loadJobs();
+    if (viewId === "audit") loadAuditLog({ cursor: state.auditLogCursor, resetHistory: false });
     if (viewId === "health") loadHealth();
 }
 
@@ -1222,6 +1538,8 @@ async function loadCollections() {
         showErrorToast(error, "Failed to load collections");
     } finally {
         state.isLoading.collections = false;
+        state.auditLogCollectionFilter = normalizeAuditCollectionValues(state.auditLogCollectionFilter);
+        renderAuditFilterControls();
         renderCollections();
     }
 }
@@ -1285,6 +1603,7 @@ async function openInspector(id) {
         elements.inspectorTitle.textContent = "Create Collection";
         clearNode(elements.inspectorStatusBadge);
         elements.inspectorStatusBadge.classList.add("hidden");
+        elements.btnViewHistory?.classList.add("hidden");
         setInspectorActionsEnabled(false, "Save the collection before using this action.");
         setCollectionTabsEnabled(false);
         switchTab("editor");
@@ -1309,6 +1628,7 @@ async function openInspector(id) {
     clearNode(elements.inspectorStatusBadge);
     elements.inspectorStatusBadge.classList.remove("hidden");
     elements.inspectorStatusBadge.appendChild(getStatusBadge(collection.status));
+    elements.btnViewHistory?.classList.remove("hidden");
     setInspectorActionsEnabled(true);
     setCollectionTabsEnabled(true);
     setupEditorTab(collection);
@@ -1340,6 +1660,7 @@ function closeInspector() {
     clearCollectionIndexStateBanner();
     clearCollectionValidation();
     resetPhysicalCollectionsSection({ hide: true });
+    elements.btnViewHistory?.classList.add("hidden");
     setTimeout(() => elements.inspectorOverlay.classList.add("hidden"), 200);
 }
 
@@ -1374,7 +1695,7 @@ function setCollectionTabsEnabled(enabled) {
 }
 
 function setInspectorActionsEnabled(enabled, reason = "") {
-    [elements.btnReindex, elements.btnDeleteCol].forEach((button) => {
+    [elements.btnReindex, elements.btnDeleteCol, elements.btnViewHistory].forEach((button) => {
         if (!button) return;
         button.disabled = !enabled;
         button.classList.toggle("opacity-50", !enabled);
@@ -1453,6 +1774,175 @@ function createSummaryChip(label, value, tone = "muted") {
     chip.appendChild(createBadge(label, getStatusColor(tone)));
     chip.appendChild(createEl("span", "font-semibold text-slate-700", formatCount(value)));
     return chip;
+}
+
+function getAuditStatusTone(status) {
+    const tones = {
+        succeeded: "active",
+        started: "info",
+        failed: "failed",
+        rejected: "fail",
+        skipped: "muted",
+        cancelled: "muted",
+    };
+    return tones[status] || "muted";
+}
+
+function formatAuditCollection(record) {
+    if (!record?.collectionId) return "-";
+    const name = collectionNameById(record.collectionId);
+    return name ? `${name} (${record.collectionId})` : record.collectionId;
+}
+
+function formatAuditCorrelation(record) {
+    const parts = [];
+    if (record?.requestId) parts.push(`req ${shortId(record.requestId)}`);
+    if (record?.jobId) parts.push(`job ${shortId(record.jobId)}`);
+    if (record?.physicalCollection) parts.push(`pc ${shortId(record.physicalCollection)}`);
+    return parts.length > 0 ? parts.join(" / ") : "-";
+}
+
+function createAuditDetailsBlock(details) {
+    const wrapper = createEl("details", "rounded-lg border border-slate-200 bg-white p-3");
+    const summary = createEl("summary", "cursor-pointer text-xs font-bold text-slate-500", "View details");
+    const pre = createEl("pre", "mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs text-slate-600");
+    try {
+        pre.textContent = JSON.stringify(details, null, 2);
+    } catch {
+        pre.textContent = stringifyForDisplay(details);
+    }
+    appendChildren(wrapper, [summary, pre]);
+    return wrapper;
+}
+
+function createAuditLogRow(record) {
+    const isError = ["failed", "rejected"].includes(record?.status);
+    const row = createEl("tr", isError ? "bg-rose-50/60" : "");
+    const cells = [];
+
+    const timeCell = createEl("td", "px-4 py-4 align-top");
+    timeCell.appendChild(createEl("div", "font-medium text-slate-700", formatDateTime(record?.timestamp)));
+    timeCell.appendChild(createEl("div", "mt-1 text-xs text-slate-400", record?.timestamp || "-"));
+    cells.push(timeCell);
+
+    const collectionCell = createEl("td", "px-4 py-4 align-top");
+    collectionCell.appendChild(createEl("div", "break-all-words font-medium text-slate-700", formatAuditCollection(record)));
+    if (record?.collectionId) {
+        collectionCell.appendChild(createEl("div", "mt-1 text-xs text-slate-400 break-all-words", record.collectionId));
+    }
+    cells.push(collectionCell);
+
+    const operationCell = createEl("td", "px-4 py-4 align-top");
+    operationCell.appendChild(createBadge(record?.operation || "unknown", "bg-slate-100 text-slate-700"));
+    cells.push(operationCell);
+
+    const statusCell = createEl("td", "px-4 py-4 align-top");
+    statusCell.appendChild(createBadge(record?.status || "unknown", getStatusColor(getAuditStatusTone(record?.status))));
+    cells.push(statusCell);
+
+    const correlationCell = createEl("td", "px-4 py-4 align-top text-xs text-slate-600");
+    correlationCell.appendChild(createEl("div", "break-all-words", formatAuditCorrelation(record)));
+    cells.push(correlationCell);
+
+    const errorCell = createEl("td", "px-4 py-4 align-top text-xs text-slate-700");
+    errorCell.appendChild(createEl("div", "break-all-words", record?.errorCode || "-"));
+    cells.push(errorCell);
+
+    const messageCell = createEl("td", "px-4 py-4 align-top text-xs text-slate-700");
+    messageCell.appendChild(createEl("div", `break-all-words ${isError ? "font-semibold text-rose-700" : "text-slate-700"}`, record?.message || "-"));
+    cells.push(messageCell);
+
+    const detailsCell = createEl("td", "px-4 py-4 align-top");
+    if (record?.details && isRecord(record.details)) {
+        detailsCell.appendChild(createAuditDetailsBlock(record.details));
+    } else {
+        detailsCell.appendChild(createEl("span", "text-xs text-slate-400", "-"));
+    }
+    cells.push(detailsCell);
+
+    cells.forEach((cell) => row.appendChild(cell));
+    return row;
+}
+
+function updateAuditLogControls() {
+    if (elements.auditPageInfo) {
+        const pageNumber = state.auditLogCursorStack.length + 1;
+        const suffix = state.auditLog.length > 0 ? ` · ${state.auditLog.length} rows` : "";
+        elements.auditPageInfo.textContent = `Page ${pageNumber}${suffix}`;
+    }
+
+    if (elements.auditPrevPage) {
+        elements.auditPrevPage.disabled = state.isLoading.auditLog || state.auditLogCursorStack.length === 0;
+    }
+
+    if (elements.auditNextPage) {
+        elements.auditNextPage.disabled = state.isLoading.auditLog || !state.auditLogNextCursor;
+    }
+
+    if (elements.auditClearFilters) {
+        const hasFilters = getAuditCollectionFilterValues().length > 0 || getAuditOperationFilterValues().length > 0;
+        elements.auditClearFilters.disabled = state.isLoading.auditLog || !hasFilters;
+    }
+
+    if (elements.auditRefreshList) {
+        elements.auditRefreshList.disabled = state.isLoading.auditLog;
+    }
+}
+
+function getAuditLogEmptyMessage() {
+    if (getAuditCollectionFilterValues().length > 0 || getAuditOperationFilterValues().length > 0) {
+        return "No audit log entries found for the current filters.";
+    }
+    return "No audit log entries have been recorded since this deployment.";
+}
+
+function renderAuditLogTable() {
+    if (!elements.auditLogTableBody) return;
+    clearNode(elements.auditLogTableBody);
+
+    updateAuditLogControls();
+    syncAuditLogFilterInputs();
+
+    if (state.isLoading.auditLog) {
+        const row = createEl("tr");
+        const cell = createEl("td", "px-4 py-8 text-center text-sm text-slate-500", "Loading audit log...");
+        cell.colSpan = 8;
+        row.appendChild(cell);
+        elements.auditLogTableBody.appendChild(row);
+        return;
+    }
+
+    if (state.auditLogError && state.auditLog.length === 0) {
+        const row = createEl("tr");
+        const cell = createEl("td", "px-4 py-4");
+        cell.colSpan = 8;
+        renderApiErrorContent(cell, state.auditLogError, "Failed to load audit log");
+        row.appendChild(cell);
+        elements.auditLogTableBody.appendChild(row);
+        return;
+    }
+
+    if (state.auditLogError) {
+        const row = createEl("tr");
+        const cell = createEl("td", "px-4 py-4");
+        cell.colSpan = 8;
+        renderApiErrorContent(cell, state.auditLogError, "Audit log refresh failed");
+        row.appendChild(cell);
+        elements.auditLogTableBody.appendChild(row);
+    }
+
+    if (!state.auditLog || state.auditLog.length === 0) {
+        const row = createEl("tr");
+        const cell = createEl("td", "px-4 py-8 text-center text-sm text-slate-500 italic", getAuditLogEmptyMessage());
+        cell.colSpan = 8;
+        row.appendChild(cell);
+        elements.auditLogTableBody.appendChild(row);
+        return;
+    }
+
+    state.auditLog.forEach((record) => {
+        elements.auditLogTableBody.appendChild(createAuditLogRow(record));
+    });
 }
 
 function getPhysicalCollectionStatusTone(status) {
@@ -1564,6 +2054,82 @@ async function loadPhysicalCollections(collectionId) {
         });
     }
     return data.physicalCollections;
+}
+
+async function loadAuditLog(options = {}) {
+    const token = ++loadTokens.auditLog;
+    const cursor = Object.prototype.hasOwnProperty.call(options, "cursor") ? options.cursor : state.auditLogCursor;
+    const resetHistory = options.resetHistory !== false;
+
+    if (resetHistory) {
+        state.auditLogCursorStack = [];
+        state.auditLog = [];
+        state.auditLogNextCursor = null;
+    }
+
+    state.auditLogCursor = cursor ?? null;
+    state.isLoading.auditLog = true;
+    state.auditLogError = null;
+    renderAuditLogTable();
+
+    try {
+        const data = await apiRequest(adminAuditLogUrl({
+            limit: AUDIT_LOG_LIMIT,
+            cursor: state.auditLogCursor || undefined,
+            collectionIds: getAuditCollectionFilterValues(),
+            operations: getAuditOperationFilterValues(),
+        }));
+
+        if (token !== loadTokens.auditLog) return;
+        state.auditLog = Array.isArray(data?.auditLog) ? data.auditLog : [];
+        state.auditLogNextCursor = typeof data?.nextCursor === "string" && data.nextCursor ? data.nextCursor : null;
+    } catch (error) {
+        if (token !== loadTokens.auditLog) return;
+        state.auditLogError = normalizeError(error);
+    } finally {
+        if (token !== loadTokens.auditLog) return;
+        state.isLoading.auditLog = false;
+        renderAuditLogTable();
+    }
+}
+
+async function refreshAuditLog() {
+    await loadAuditLog({ cursor: state.auditLogCursor, resetHistory: false });
+}
+
+async function applyAuditLogFilters() {
+    await loadAuditLog({ cursor: null, resetHistory: true });
+}
+
+async function clearAuditLogFilters() {
+    setAuditCollectionFilterValues([]);
+    setAuditOperationFilterValues([]);
+    syncAuditLogFilterInputs();
+    await loadAuditLog({ cursor: null, resetHistory: true });
+}
+
+async function goToNextAuditLogPage() {
+    if (!state.auditLogNextCursor) return;
+    state.auditLogCursorStack.push(state.auditLogCursor);
+    await loadAuditLog({ cursor: state.auditLogNextCursor, resetHistory: false });
+}
+
+async function goToPreviousAuditLogPage() {
+    if (state.auditLogCursorStack.length === 0) return;
+    const previousCursor = state.auditLogCursorStack.pop() ?? null;
+    await loadAuditLog({ cursor: previousCursor, resetHistory: false });
+}
+
+async function openAuditLogForCollection(collectionId) {
+    if (!collectionId) return;
+    setAuditCollectionFilterValues([collectionId]);
+    setAuditOperationFilterValues([]);
+    state.auditLogCursor = null;
+    state.auditLogCursorStack = [];
+    syncAuditLogFilterInputs();
+    closeAuditPickers();
+    closeInspector();
+    switchView("audit");
 }
 
 async function updateReadinessTab() {
@@ -3131,8 +3697,12 @@ function bindEvents() {
     elements.btnRefresh.addEventListener("click", () => {
         loadModelDiscovery();
         loadCollections();
-        loadJobs();
-        loadHealth();
+        if (state.currentView === "audit") {
+            refreshAuditLog();
+        } else {
+            loadJobs();
+            loadHealth();
+        }
         if (state.selectedCollection) updateReadinessTab();
     });
     if (elements.jobsRefreshList) {
@@ -3171,6 +3741,100 @@ function bindEvents() {
             removeSelectedJobs();
         });
     }
+    if (elements.auditCollectionToggle) {
+        elements.auditCollectionToggle.addEventListener("click", () => {
+            toggleAuditPicker(elements.auditCollectionPanel, elements.auditCollectionToggle);
+        });
+    }
+    if (elements.auditOperationToggle) {
+        elements.auditOperationToggle.addEventListener("click", () => {
+            toggleAuditPicker(elements.auditOperationPanel, elements.auditOperationToggle);
+        });
+    }
+    if (elements.auditCollectionSearch) {
+        elements.auditCollectionSearch.addEventListener("input", () => {
+            renderAuditCollectionPickerList();
+        });
+    }
+    if (elements.auditOperationSearch) {
+        elements.auditOperationSearch.addEventListener("input", () => {
+            renderAuditOperationPickerList();
+        });
+    }
+    if (elements.auditCollectionAll) {
+        elements.auditCollectionAll.addEventListener("click", () => {
+            setAuditCollectionFilterValues(getAuditVisibleCollections().map((collection) => collection.id));
+            renderAuditFilterControls();
+            if (state.currentView === "audit") void applyAuditLogFilters();
+        });
+    }
+    if (elements.auditCollectionClear) {
+        elements.auditCollectionClear.addEventListener("click", () => {
+            setAuditCollectionFilterValues([]);
+            renderAuditFilterControls();
+            if (state.currentView === "audit") void applyAuditLogFilters();
+        });
+    }
+    if (elements.auditOperationAll) {
+        elements.auditOperationAll.addEventListener("click", () => {
+            setAuditOperationFilterValues(AUDIT_LOG_OPERATION_OPTIONS.map((option) => option.value));
+            renderAuditFilterControls();
+            if (state.currentView === "audit") void applyAuditLogFilters();
+        });
+    }
+    if (elements.auditOperationClear) {
+        elements.auditOperationClear.addEventListener("click", () => {
+            setAuditOperationFilterValues([]);
+            renderAuditFilterControls();
+            if (state.currentView === "audit") void applyAuditLogFilters();
+        });
+    }
+    if (elements.auditCollectionList) {
+        elements.auditCollectionList.addEventListener("change", (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLInputElement) || target.type !== "checkbox" || !target.dataset.auditCollection) return;
+            const selectedValues = [...elements.auditCollectionList.querySelectorAll('input[type="checkbox"][data-audit-collection]')]
+                .filter((checkbox) => checkbox.checked)
+                .map((checkbox) => checkbox.dataset.auditCollection || "")
+                .filter(Boolean);
+            setAuditCollectionFilterValues(selectedValues);
+            renderAuditFilterControls();
+            if (state.currentView === "audit") void applyAuditLogFilters();
+        });
+    }
+    if (elements.auditOperationList) {
+        elements.auditOperationList.addEventListener("change", (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLInputElement) || target.type !== "checkbox" || !target.dataset.auditOperation) return;
+            const selectedValues = [...elements.auditOperationList.querySelectorAll('input[type="checkbox"][data-audit-operation]')]
+                .filter((checkbox) => checkbox.checked)
+                .map((checkbox) => checkbox.dataset.auditOperation || "")
+                .filter(Boolean);
+            setAuditOperationFilterValues(selectedValues);
+            renderAuditFilterControls();
+            if (state.currentView === "audit") void applyAuditLogFilters();
+        });
+    }
+    if (elements.auditClearFilters) {
+        elements.auditClearFilters.addEventListener("click", () => {
+            clearAuditLogFilters();
+        });
+    }
+    if (elements.auditRefreshList) {
+        elements.auditRefreshList.addEventListener("click", () => {
+            applyAuditLogFilters();
+        });
+    }
+    if (elements.auditPrevPage) {
+        elements.auditPrevPage.addEventListener("click", () => {
+            goToPreviousAuditLogPage();
+        });
+    }
+    if (elements.auditNextPage) {
+        elements.auditNextPage.addEventListener("click", () => {
+            goToNextAuditLogPage();
+        });
+    }
     if (elements.embeddingModelSelect) {
         elements.embeddingModelSelect.addEventListener("change", () => setModelFromSelect("embedding"));
     }
@@ -3193,6 +3857,11 @@ function bindEvents() {
     });
     elements.btnReindex.addEventListener("click", reindexCollection);
     elements.btnDeleteCol.addEventListener("click", deleteCollection);
+    elements.btnViewHistory?.addEventListener("click", () => {
+        if (state.selectedCollection?.id) {
+            openAuditLogForCollection(state.selectedCollection.id);
+        }
+    });
     elements.btnPgRun.addEventListener("click", runPlayground);
 
     elements.tabBtns.forEach((button) => {
@@ -3212,12 +3881,26 @@ function bindEvents() {
     });
 
     document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && !elements.inspectorOverlay.classList.contains("hidden")) closeInspector();
+        if (event.key !== "Escape") return;
+        if (!elements.inspectorOverlay.classList.contains("hidden")) {
+            closeInspector();
+            return;
+        }
+        closeAuditPickers();
+    });
+    document.addEventListener("click", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const insideCollection = Boolean(elements.auditCollectionPicker?.contains(event.target));
+        const insideOperation = Boolean(elements.auditOperationPicker?.contains(event.target));
+        if (!insideCollection && !insideOperation) {
+            closeAuditPickers();
+        }
     });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
     bindEvents();
+    renderAuditFilterControls();
     switchView("collections");
     setPlaygroundMode("retrieve");
     resetReadinessAndPlayground("Select a collection to inspect readiness.");

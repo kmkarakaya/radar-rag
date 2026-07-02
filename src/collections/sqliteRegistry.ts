@@ -5,13 +5,17 @@ import Database from "better-sqlite3";
 import type { DistanceMetric } from "../config.js";
 import { createPhysicalCollectionName, generateCollectionId } from "./ids.js";
 import { buildCollectionIndexSnapshot, buildCollectionIndexState, parseCollectionIndexSnapshot } from "./indexState.js";
+import type { OperationalLogEvent } from "../observability/logger.js";
 import type {
+  AuditLogRecord,
   BeginIndexJobInput,
   CollectionRegistry,
   CollectionStatus,
   CompleteIndexJobResult,
   CreateIndexJobEventInput,
   CreateCollectionInput,
+  ListAuditLogInput,
+  ListAuditLogResult,
   IndexJob,
   IndexJobEvent,
   IndexJobEventCode,
@@ -120,6 +124,23 @@ type PhysicalCollectionRow = {
   cleanup_error: string | null;
 };
 
+type OperationalLogRow = {
+  id: number;
+  timestamp: string;
+  tenant_id: string;
+  request_id: string | null;
+  user_id: string | null;
+  collection_id: string | null;
+  physical_collection: string | null;
+  job_id: string | null;
+  operation: string;
+  status: string;
+  latency_ms: number | null;
+  error_code: string | null;
+  message: string | null;
+  details_json: string | null;
+};
+
 type SqliteDatabase = Database.Database;
 
 export function createSqliteCollectionRegistry(options: SqliteRegistryOptions): CollectionRegistry {
@@ -224,6 +245,23 @@ function initializeSchema(db: SqliteDatabase): void {
       FOREIGN KEY(job_id) REFERENCES index_jobs(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS operational_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      tenant_id TEXT NOT NULL,
+      request_id TEXT,
+      user_id TEXT,
+      collection_id TEXT,
+      physical_collection TEXT,
+      job_id TEXT,
+      operation TEXT NOT NULL,
+      status TEXT NOT NULL,
+      latency_ms INTEGER,
+      error_code TEXT,
+      message TEXT,
+      details_json TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_collections_tenant ON collections(tenant_id);
     CREATE INDEX IF NOT EXISTS idx_index_jobs_collection ON index_jobs(collection_id, tenant_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_index_job_events_job_sequence
@@ -236,6 +274,10 @@ function initializeSchema(db: SqliteDatabase): void {
     DROP INDEX IF EXISTS idx_physical_collections_cleanup;
     CREATE INDEX IF NOT EXISTS idx_physical_collections_cleanup ON physical_collections(delete_after, status)
       WHERE status IN ('delete_pending', 'cleanup_failed');
+    CREATE INDEX IF NOT EXISTS idx_operational_logs_tenant_id_desc
+      ON operational_logs(tenant_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_operational_logs_collection_operation_desc
+      ON operational_logs(tenant_id, collection_id, operation, id DESC);
   `);
 
   migrateSchema(db);
@@ -508,6 +550,114 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     });
 
     return transaction();
+  }
+
+  async appendOperationalLog(event: OperationalLogEvent): Promise<void> {
+    try {
+      this.db.prepare(`
+        INSERT INTO operational_logs (
+          timestamp,
+          tenant_id,
+          request_id,
+          user_id,
+          collection_id,
+          physical_collection,
+          job_id,
+          operation,
+          status,
+          latency_ms,
+          error_code,
+          message,
+          details_json
+        ) VALUES (
+          @timestamp,
+          @tenantId,
+          @requestId,
+          @userId,
+          @collectionId,
+          @physicalCollection,
+          @jobId,
+          @operation,
+          @status,
+          @latencyMs,
+          @errorCode,
+          @message,
+          @detailsJson
+        )
+      `).run({
+        timestamp: event.timestamp ?? new Date().toISOString(),
+        tenantId: event.tenantId ?? "default",
+        requestId: event.requestId ?? null,
+        userId: event.userId ?? null,
+        collectionId: event.collectionId ?? null,
+        physicalCollection: event.physicalCollection ?? null,
+        jobId: event.jobId ?? null,
+        operation: event.operation,
+        status: event.status,
+        latencyMs: Number.isFinite(event.latencyMs) ? Math.trunc(event.latencyMs ?? 0) : null,
+        errorCode: event.errorCode ?? null,
+        message: event.message ?? null,
+        detailsJson: event.details ? JSON.stringify(event.details) : null,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`Failed to persist operational log event: ${message}`);
+    }
+  }
+
+  async listAuditLog(context: RequestContext, filters: ListAuditLogInput = {}): Promise<ListAuditLogResult> {
+    const limit = clampInteger(filters.limit ?? 50, 1, 100);
+    const where: string[] = ["tenant_id = @tenantId"];
+    const params: Record<string, unknown> = {
+      tenantId: context.tenantId,
+      limit: limit + 1,
+    };
+
+    if (filters.collectionId && filters.collectionId.length > 0) {
+      const collectionIds = [...new Set(filters.collectionId.filter((collectionId) => collectionId.trim() !== ""))];
+      if (collectionIds.length > 0) {
+        const placeholders = collectionIds.map((_, index) => `@collectionId${index}`);
+        where.push(`collection_id IN (${placeholders.join(", ")})`);
+        collectionIds.forEach((collectionId, index) => {
+          params[`collectionId${index}`] = collectionId;
+        });
+      }
+    }
+
+    if (filters.operation) {
+      const operations = [...new Set(filters.operation.filter((operation) => operation.trim() !== ""))];
+      if (operations.length > 0) {
+        const placeholders = operations.map((_, index) => `@operation${index}`);
+        where.push(`operation IN (${placeholders.join(", ")})`);
+        operations.forEach((operation, index) => {
+          params[`operation${index}`] = operation;
+        });
+      }
+    }
+
+    if (filters.cursor) {
+      const cursor = decodeOperationalLogCursor(filters.cursor);
+      where.push("id < @cursorId");
+      params.cursorId = cursor.id;
+    }
+
+    const rows = this.db
+      .prepare(`
+        SELECT *
+        FROM operational_logs
+        WHERE ${where.join(" AND ")}
+        ORDER BY id DESC
+        LIMIT @limit
+      `)
+      .all(params) as OperationalLogRow[];
+
+    const hasNextPage = rows.length > limit;
+    const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
+
+    return {
+      auditLog: pageRows.map(mapOperationalLogRow),
+      nextCursor: hasNextPage ? encodeOperationalLogCursor(pageRows[pageRows.length - 1]!) : null,
+    };
   }
 
   async deleteJob(context: RequestContext, jobId: string): Promise<void> {
@@ -1783,6 +1933,23 @@ function mapPhysicalCollectionRow(row: PhysicalCollectionRow): PhysicalCollectio
   };
 }
 
+function mapOperationalLogRow(row: OperationalLogRow): AuditLogRecord {
+  return {
+    timestamp: row.timestamp,
+    collectionId: row.collection_id ?? undefined,
+    operation: row.operation,
+    status: row.status as AuditLogRecord["status"],
+    requestId: row.request_id ?? undefined,
+    userId: row.user_id ?? undefined,
+    jobId: row.job_id ?? undefined,
+    physicalCollection: row.physical_collection ?? undefined,
+    errorCode: row.error_code ?? undefined,
+    message: row.message ?? undefined,
+    details: parseJsonRecord(row.details_json) ?? undefined,
+    latencyMs: row.latency_ms ?? undefined,
+  };
+}
+
 function createVersionString(isoDate: string): string {
   // Add ms to prevent same-second physical collection name collisions
   return isoDate
@@ -1852,6 +2019,12 @@ function encodeJobCursor(row: IndexJobSummaryRow): string {
   }), "utf8").toString("base64url");
 }
 
+function encodeOperationalLogCursor(row: OperationalLogRow): string {
+  return Buffer.from(JSON.stringify({
+    id: row.id,
+  }), "utf8").toString("base64url");
+}
+
 function decodeJobCursor(cursor: string): { updatedAt: string; id: string } {
   try {
     const decoded = Buffer.from(cursor, "base64url").toString("utf8");
@@ -1866,6 +2039,22 @@ function decodeJobCursor(cursor: string): { updatedAt: string; id: string } {
     };
   } catch {
     throw new Error("Invalid job cursor.");
+  }
+}
+
+function decodeOperationalLogCursor(cursor: string): { id: number } {
+  try {
+    const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+    const parsed = JSON.parse(decoded) as Record<string, unknown>;
+    if (typeof parsed.id !== "number" || !Number.isFinite(parsed.id) || parsed.id <= 0) {
+      throw new Error("Invalid audit log cursor.");
+    }
+
+    return {
+      id: parsed.id,
+    };
+  } catch {
+    throw new Error("Invalid audit log cursor.");
   }
 }
 

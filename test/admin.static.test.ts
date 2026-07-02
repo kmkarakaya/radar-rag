@@ -152,6 +152,64 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("data?.physicalCollections"), "Physical collection lifecycle should read the data.physicalCollections wrapper");
     assert.ok(js.includes("Failed to load physical collection lifecycle"));
     assert.ok(js.includes("View cleanup backlog"));
+    assert.ok(html.includes('data-view="audit"'));
+    assert.ok(html.includes('id="view-audit"'));
+    assert.ok(html.includes('id="auditCollectionPicker"'));
+    assert.ok(html.includes('id="auditCollectionToggle"'));
+    assert.ok(html.includes('id="auditCollectionSummary"'));
+    assert.ok(html.includes('id="auditCollectionPanel"'));
+    assert.ok(html.includes('id="auditCollectionSearch"'));
+    assert.ok(html.includes('id="auditCollectionAll"'));
+    assert.ok(html.includes('id="auditCollectionClear"'));
+    assert.ok(html.includes('id="auditCollectionList"'));
+    assert.ok(html.includes('id="auditOperationPicker"'));
+    assert.ok(html.includes('id="auditOperationToggle"'));
+    assert.ok(html.includes('id="auditOperationSummary"'));
+    assert.ok(html.includes('id="auditOperationPanel"'));
+    assert.ok(html.includes('id="auditOperationSearch"'));
+    assert.ok(html.includes('id="auditOperationAll"'));
+    assert.ok(html.includes('id="auditOperationClear"'));
+    assert.ok(html.includes('id="auditOperationList"'));
+    assert.ok(html.includes('id="auditClearFilters"'));
+    assert.ok(html.includes('id="auditRefreshList"'));
+    assert.ok(html.includes('id="auditPrevPage"'));
+    assert.ok(html.includes('id="auditNextPage"'));
+    assert.ok(html.includes('id="auditPageInfo"'));
+    assert.ok(html.includes('id="auditLogTableBody"'));
+    assert.ok(html.includes('id="btnViewHistory"'));
+    assert.ok(html.includes("View history"));
+    assert.ok(html.includes("Audit Log"));
+    assert.ok(js.includes("function adminAuditLogUrl(options = {})"));
+    assert.ok(js.includes("data?.auditLog"), "Audit log history should read the data.auditLog wrapper");
+    assert.ok(js.includes("openAuditLogForCollection"));
+    assert.ok(js.includes("btnViewHistory"));
+    assert.ok(js.includes('params.append("collectionId", collectionId);'));
+    assert.ok(js.includes('params.append("operation", operation);'));
+    assert.ok(html.includes("All visible collections"));
+    assert.ok(html.includes("All operations"));
+    assert.ok(html.includes("Search collections"));
+    assert.ok(html.includes("Search operations"));
+    assert.ok(!html.includes('placeholder="Optional collectionId"'));
+  });
+
+  it("renders audit log and history shortcuts without unsafe html usage", async () => {
+    const [html, js] = await Promise.all([
+      readAdminFile("index.html"),
+      readAdminFile("admin.js"),
+    ]);
+
+    assert.ok(html.includes('id="view-audit"'));
+    assert.ok(html.includes('id="auditLogTableBody"'));
+    assert.ok(js.includes("createAuditLogRow"));
+    assert.ok(js.includes("renderAuditLogTable"));
+    assert.ok(js.includes("renderAuditFilterControls"));
+    assert.ok(js.includes("renderApiErrorContent(cell, state.auditLogError, \"Failed to load audit log\")"));
+    assert.ok(js.includes("renderApiErrorContent(cell, state.auditLogError, \"Audit log refresh failed\")"));
+    assert.ok(js.includes("function getAuditLogEmptyMessage()"));
+    assert.ok(js.includes("No audit log entries have been recorded since this deployment."));
+    assert.ok(js.includes("No audit log entries found for the current filters."));
+    assert.ok(js.includes("createAuditDetailsBlock"));
+    assert.ok(!js.includes(".innerHTML"));
   });
 
   it("contains the planned playground and job monitor controls", async () => {

@@ -5,7 +5,11 @@ import { createSqliteCollectionRegistry } from "./collections/sqliteRegistry.js"
 import { createIndexJobRunner, type IndexJobRunner } from "./indexing/jobRunner.js";
 import { cleanupRetiredPhysicalCollections } from "./indexing/cleanup.js";
 import { config, type ResolvedConfig } from "./config.js";
-import { createConsoleLogSink, type OperationalLogSink } from "./observability/logger.js";
+import {
+  createConsoleLogSink,
+  createPersistentOperationalLogSink,
+  type OperationalLogSink,
+} from "./observability/logger.js";
 
 type StartupLogger = Pick<Console, "log" | "error">;
 
@@ -59,7 +63,8 @@ export async function startServer(input: {
   const runtimeConfig = input.runtimeConfig ?? config;
   const registry = input.registry ?? createSqliteCollectionRegistry({ dbPath: runtimeConfig.registryPath });
   const log = input.log ?? console;
-  const logEvent = input.logEvent ?? createConsoleLogSink();
+  const rawLogEvent = input.logEvent ?? createConsoleLogSink();
+  const logEvent = createPersistentOperationalLogSink(rawLogEvent, registry);
   const jobRunner = input.jobRunner ?? createIndexJobRunner({
     registry,
     runtimeConfig,
@@ -68,7 +73,7 @@ export async function startServer(input: {
   });
   const startupMaintenance = input.startupMaintenance ?? runStartupMaintenance;
 
-  const app = createApp({ registry, jobRunner, runtimeConfig, logEvent });
+  const app = createApp({ registry, jobRunner, runtimeConfig, logEvent: rawLogEvent });
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
     const startedServer = app.listen(runtimeConfig.port, () => {
       log.log(`RAG backend listening on http://localhost:${runtimeConfig.port}`);

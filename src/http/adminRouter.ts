@@ -5,7 +5,7 @@ import { HttpError } from "./errors.js";
 import { config, type ResolvedConfig } from "../config.js";
 import { startReindexJob } from "../indexing/jobs.js";
 import type { RequestContext } from "./requestContext.js";
-import type { CreateCollectionInput, IndexJobStatus, ListJobsInput } from "../collections/types.js";
+import type { CreateCollectionInput, IndexJobStatus, ListAuditLogInput, ListJobsInput } from "../collections/types.js";
 import { collectionCreateSchema, collectionUpdateSchema } from "./collectionSchemas.js";
 import {
   buildCreateCollectionInput,
@@ -88,6 +88,39 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       limit,
       statuses: parseJobStatuses(query.status),
     };
+  }
+
+  function parseAuditLogQuery(query: Record<string, unknown>): ListAuditLogInput {
+    const cursor = typeof query.cursor === "string" ? query.cursor.trim() : undefined;
+    const limitRaw = query.limit;
+    const limit = typeof limitRaw === "string" && limitRaw.trim() !== ""
+      ? Number(limitRaw)
+      : Array.isArray(limitRaw) && typeof limitRaw[0] === "string"
+        ? Number(limitRaw[0])
+        : undefined;
+    const collectionIds = normalizeStringList(query.collectionId);
+    const operationValues = normalizeStringList(query.operation);
+
+    if (limit !== undefined && (!Number.isFinite(limit) || !Number.isInteger(limit) || limit <= 0)) {
+      throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid audit log limit.");
+    }
+
+    return {
+      collectionId: collectionIds.length > 0 ? collectionIds : undefined,
+      operation: operationValues.length > 0 ? operationValues : undefined,
+      cursor: cursor || undefined,
+      limit,
+    };
+  }
+
+  function normalizeStringList(input: unknown): string[] {
+    const rawValues = Array.isArray(input) ? input : input ? [input] : [];
+    return [...new Set(
+      rawValues
+        .flatMap((value) => String(value).split(","))
+        .map((value) => value.trim())
+        .filter(Boolean),
+    )];
   }
 
   function parseJobDeleteBody(body: unknown): string[] {
@@ -212,6 +245,37 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
         physicalCollections,
       });
     } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/audit-log", requireRegistry, async (req, res, next) => {
+    try {
+      const context = res.locals.requestContext as RequestContext;
+      const filters = parseAuditLogQuery(req.query as Record<string, unknown>);
+      const listAuditLog = deps.registry!.listAuditLog;
+
+      if (filters.collectionId && filters.collectionId.length > 0) {
+        for (const collectionId of filters.collectionId) {
+          await requireVisibleCollection(context, collectionId);
+        }
+      }
+
+      if (!listAuditLog) {
+        throw new HttpError(500, "INTERNAL_ERROR", "Audit log persistence is not available");
+      }
+
+      const result = await deps.registry!.listAuditLog!(context, filters);
+      res.setHeader("Cache-Control", "no-store");
+      res.json({
+        auditLog: result.auditLog,
+        nextCursor: result.nextCursor,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "Invalid audit log cursor.") {
+        next(new HttpError(400, "INVALID_REQUEST_BODY", "Invalid audit log cursor."));
+        return;
+      }
       next(error);
     }
   });

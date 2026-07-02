@@ -14,6 +14,7 @@ tags:
   - name: Public RAG
   - name: Admin Collections
   - name: Admin Jobs
+  - name: Admin Audit
 paths:
   /:
     get:
@@ -531,6 +532,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/IndexJobListResponse"
         "400":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/audit-log:
+    get:
+      tags: [Admin Audit]
+      operationId: listAuditLog
+      summary: List persisted operational audit log entries
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - name: collectionId
+          in: query
+          required: false
+          description: Exact collection filter. Repeat the parameter to filter by multiple collections. When provided, collection visibility is validated with the same tenant-scoped rules as other admin collection routes, one collection at a time.
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: operation
+          in: query
+          required: false
+          description: Exact operation filter. Repeat the parameter to match any selected operation.
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit log list
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControlNoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLogListResponse"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
           $ref: "#/components/responses/ApiError"
         "500":
           $ref: "#/components/responses/ApiError"
@@ -2119,6 +2179,16 @@ components:
             $ref: "#/components/schemas/IndexJobListItem"
         nextCursor:
           type: [string, "null"]
+    AuditLogListResponse:
+      type: object
+      required: [auditLog, nextCursor]
+      properties:
+        auditLog:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLogEntry"
+        nextCursor:
+          type: [string, "null"]
     SingleJobResponse:
       type: object
       required: [job]
@@ -2145,3 +2215,33 @@ components:
           minItems: 1
           items:
             type: string
+    AuditLogEntry:
+      type: object
+      required: [timestamp, operation, status]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        collectionId:
+          type: [string, "null"]
+        operation:
+          type: string
+        status:
+          type: string
+        requestId:
+          type: [string, "null"]
+        userId:
+          type: [string, "null"]
+        jobId:
+          type: [string, "null"]
+        physicalCollection:
+          type: [string, "null"]
+        errorCode:
+          type: [string, "null"]
+        message:
+          type: [string, "null"]
+        latencyMs:
+          type: [integer, "null"]
+        details:
+          type: [object, "null"]
+          additionalProperties: true

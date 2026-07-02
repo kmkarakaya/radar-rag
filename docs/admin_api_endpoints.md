@@ -1,6 +1,6 @@
 # Admin API Reference
 
-This file documents the collection-management and job-management endpoints under `/v1/admin`.
+This file documents the collection-management, job-management, and audit-log endpoints under `/v1/admin`.
 
 If the frontend only needs end-user question answering, this file is optional. For admin consoles, provisioning tools, and operational dashboards, it is required.
 
@@ -335,6 +335,53 @@ Notes:
 - `delete_pending` and `cleanup_failed` indicate retention/cleanup work that is still pending or needs retry.
 - `failed_build` indicates a target physical collection that never became active.
 - Response includes `Cache-Control: no-store`.
+
+### `GET /v1/admin/audit-log`
+
+Returns the persisted operational audit log in newest-first order.
+
+Supported query params:
+
+- `collectionId`
+- `operation`
+- `limit`
+- `cursor`
+
+`collectionId` ve `operation` tekrar eden query param olarak gönderilebilir; backend bunları çoklu seçim filtreleri olarak işler.
+
+Example response:
+
+```json
+{
+  "auditLog": [
+    {
+      "timestamp": "2026-07-01T11:20:00.000Z",
+      "collectionId": "col_123",
+      "operation": "query",
+      "status": "succeeded",
+      "requestId": "audit-query-ok",
+      "userId": "local-dev",
+      "physicalCollection": "rag_default_col-123_20260701t112000_000z",
+      "message": "Query completed.",
+      "details": {
+        "method": "POST",
+        "path": "/v1/rag/collections/col_123/query",
+        "statusCode": 200
+      }
+    }
+  ],
+  "nextCursor": "opaque-cursor"
+}
+```
+
+Notes:
+
+- `collectionId` and `operation` are optional filters; both can be supplied multiple times for an OR filter over exact matches.
+- When `collectionId` is provided, the route applies the same tenant visibility checks as other collection-scoped admin endpoints, one collection at a time.
+- Another tenant's collection returns `403 COLLECTION_FORBIDDEN`; an unknown collection returns `404 COLLECTION_NOT_FOUND`.
+- `limit` is capped by the backend, and `nextCursor` is opaque.
+- The endpoint is tenant-scoped and returns `Cache-Control: no-store`.
+- `details` is safe JSON metadata for operator troubleshooting; render it with escaped text, not raw HTML.
 
 ### `POST /v1/admin/collections/validate`
 

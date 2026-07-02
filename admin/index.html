@@ -30,6 +30,10 @@
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                 Job Monitor
             </a>
+            <a href="#" data-view="audit" class="nav-item flex items-center gap-3 px-3 py-2 rounded-md transition-colors hover:text-white hover:bg-slate-800">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6M9 8h6M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"></path></svg>
+                Audit Log
+            </a>
             <a href="#" data-view="health" class="nav-item flex items-center gap-3 px-3 py-2 rounded-md transition-colors hover:text-white hover:bg-slate-800">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 System Health
@@ -125,6 +129,99 @@
                             </tr>
                         </thead>
                         <tbody id="jobsTableBody" class="divide-y divide-slate-100">
+                            <!-- Rows injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Audit View -->
+            <div id="view-audit" class="view-container hidden space-y-6">
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+                    <div class="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1.35fr)_auto] xl:items-end">
+                        <div class="relative min-w-0" id="auditCollectionPicker">
+                            <div class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Collections</div>
+                            <button id="auditCollectionToggle" type="button" class="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:bg-slate-50 focus:border-indigo-500 focus:outline-none">
+                                <span class="min-w-0 flex-1">
+                                    <span id="auditCollectionSummary" class="block truncate text-sm font-semibold text-slate-800">All visible collections</span>
+                                    <span id="auditCollectionDetail" class="mt-1 block truncate text-xs text-slate-500">Visible collections from this tenant</span>
+                                </span>
+                                <svg class="h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </button>
+                            <div id="auditCollectionPanel" class="absolute left-0 top-full z-20 mt-2 hidden w-[min(92vw,34rem)] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                    <label class="flex-1">
+                                        <span class="sr-only">Search collections</span>
+                                        <input id="auditCollectionSearch" type="search" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-500 focus:outline-none" placeholder="Search collections">
+                                    </label>
+                                    <div class="flex gap-2">
+                                        <button id="auditCollectionAll" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-600 transition-colors hover:bg-slate-50">All</button>
+                                        <button id="auditCollectionClear" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-600 transition-colors hover:bg-slate-50">Clear</button>
+                                    </div>
+                                </div>
+                                <p id="auditCollectionMeta" class="mt-3 text-[11px] text-slate-500"></p>
+                                <div id="auditCollectionList" class="mt-3 max-h-72 space-y-2 overflow-auto pr-1"></div>
+                            </div>
+                        </div>
+                        <div class="relative min-w-0" id="auditOperationPicker">
+                            <div class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Operations</div>
+                            <button id="auditOperationToggle" type="button" class="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:bg-slate-50 focus:border-indigo-500 focus:outline-none">
+                                <span class="min-w-0 flex-1">
+                                    <span id="auditOperationSummary" class="block truncate text-sm font-semibold text-slate-800">All operations</span>
+                                    <span id="auditOperationDetail" class="mt-1 block truncate text-xs text-slate-500">Select one or more operation types</span>
+                                </span>
+                                <svg class="h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </button>
+                            <div id="auditOperationPanel" class="absolute left-0 top-full z-20 mt-2 hidden w-[min(92vw,34rem)] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                    <label class="flex-1">
+                                        <span class="sr-only">Search operations</span>
+                                        <input id="auditOperationSearch" type="search" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-500 focus:outline-none" placeholder="Search operations">
+                                    </label>
+                                    <div class="flex gap-2">
+                                        <button id="auditOperationAll" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-600 transition-colors hover:bg-slate-50">All</button>
+                                        <button id="auditOperationClear" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-600 transition-colors hover:bg-slate-50">Clear</button>
+                                    </div>
+                                </div>
+                                <p id="auditOperationMeta" class="mt-3 text-[11px] text-slate-500"></p>
+                                <div id="auditOperationList" class="mt-3 max-h-72 space-y-2 overflow-auto pr-1"></div>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap gap-2 xl:justify-end">
+                            <button id="auditClearFilters" type="button" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50">
+                                Clear filters
+                            </button>
+                            <button id="auditRefreshList" type="button" class="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-800">
+                                Refresh list
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button id="auditPrevPage" type="button" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+                            Previous
+                        </button>
+                        <span id="auditPageInfo" class="text-xs font-semibold uppercase tracking-wider text-slate-400">Page 1</span>
+                        <button id="auditNextPage" type="button" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+                            Next
+                        </button>
+                    </div>
+                    <p class="mt-3 text-xs text-slate-500">Newest-first operational history backed by <code>/v1/admin/audit-log</code>.</p>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm table-responsive">
+                    <table class="w-full min-w-[1320px] text-left text-sm">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-xs font-semibold">
+                            <tr>
+                                <th class="px-4 py-4">Time</th>
+                                <th class="px-4 py-4">Collection</th>
+                                <th class="px-4 py-4">Operation</th>
+                                <th class="px-4 py-4">Status</th>
+                                <th class="px-4 py-4">Correlation</th>
+                                <th class="px-4 py-4">Error</th>
+                                <th class="px-4 py-4">Message</th>
+                                <th class="px-4 py-4">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditLogTableBody" class="divide-y divide-slate-100">
                             <!-- Rows injected by JS -->
                         </tbody>
                     </table>
@@ -359,6 +456,9 @@
         </div>
 
         <div class="p-6 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
+            <button id="btnViewHistory" type="button" class="hidden px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg text-sm font-bold transition-all flex items-center gap-2">
+                View history
+            </button>
             <button id="btnReindex" type="button" class="bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm" title="Start re-index for this collection">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11V5a8 8 0 00-16 0v12a8 8 0 008 8 8 8 0 008-8z"></path></svg>
                 Re-index Collection

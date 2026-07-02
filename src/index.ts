@@ -13,7 +13,11 @@ import {
   type OzelgeRecord,
 } from "./ingestion/loaders/ozelgeJsonLoader.js";
 import { createVectorStore } from "./rag.js";
-import { createConsoleLogSink, type OperationalLogSink } from "./observability/logger.js";
+import {
+  createConsoleLogSink,
+  createPersistentOperationalLogSink,
+  type OperationalLogSink,
+} from "./observability/logger.js";
 
 export type IndexingSourceHealthDetails = {
   sourcePath: string;
@@ -101,7 +105,6 @@ export async function runIndexing(
   } = {},
 ): Promise<void> {
   const log = options.log ?? console.log;
-  const logEvent = options.logEvent ?? createConsoleLogSink();
   const collectionId = options.collectionId;
   if (!collectionId) {
     throw new Error(
@@ -112,6 +115,7 @@ export async function runIndexing(
   log(`Starting reindex job for logical collection "${collectionId}"`);
 
   const registry = createSqliteCollectionRegistry({ dbPath: runtimeConfig.registryPath });
+  const logEvent = createPersistentOperationalLogSink(options.logEvent ?? createConsoleLogSink(), registry);
   const context = {
     tenantId: "default",
     userId: "local-dev",

@@ -10,8 +10,8 @@
     "semantic_hash": "990e827940a6196eb3aea4c6e23a605c"
   },
   "admin/admin.js": {
-    "mtime": 1782975671.6762514,
-    "ast_hash": "a818863cf82204f36b710e042a50aa92",
+    "mtime": 1782992018.569177,
+    "ast_hash": "15669fe3811d40b6bb844e5d1263475d",
     "semantic_hash": ""
   },
   "benchmark/benchmark.json": {
@@ -45,8 +45,8 @@
     "semantic_hash": "8229bba76e1581c7e81d2f3cb9831317"
   },
   "src/app.ts": {
-    "mtime": 1782839503.0444343,
-    "ast_hash": "077829bf726084bead6c19c74b934ee1",
+    "mtime": 1782980046.5772574,
+    "ast_hash": "c8d88103ec51fd423b92d09c07108be1",
     "semantic_hash": ""
   },
   "src/collections/chromaCollections.ts": {
@@ -65,13 +65,13 @@
     "semantic_hash": "5d387d81974b0e879a7f11b9e085f984"
   },
   "src/collections/sqliteRegistry.ts": {
-    "mtime": 1782888569.812049,
-    "ast_hash": "af31ff3356ed0189b98e69ebb67fa3c4",
+    "mtime": 1782991761.958902,
+    "ast_hash": "cde14e8cdcf237541a25b56b4bbb2ed7",
     "semantic_hash": ""
   },
   "src/collections/types.ts": {
-    "mtime": 1782888565.4423463,
-    "ast_hash": "70fc55072e307663d224229faa51a996",
+    "mtime": 1782991749.4260197,
+    "ast_hash": "b99dbaa10eaef4f174c4b19e273188c2",
     "semantic_hash": ""
   },
   "src/config.ts": {
@@ -80,8 +80,8 @@
     "semantic_hash": "337cec9c03bab806564d84cf4776f2d3"
   },
   "src/http/adminRouter.ts": {
-    "mtime": 1782888575.588023,
-    "ast_hash": "4d2f936ff7e5d046c0ef3022a6da3872",
+    "mtime": 1782991757.3056173,
+    "ast_hash": "bb5d3882cb12305c2df1308da03313d4",
     "semantic_hash": ""
   },
   "src/http/errors.ts": {
@@ -110,9 +110,9 @@
     "semantic_hash": "4c3d9cf1dba4fd8d08220e4e6f26d394"
   },
   "src/index.ts": {
-    "mtime": 1782505546.7666845,
-    "ast_hash": "c6477a61638480fd0615c9eb6c6a422e",
-    "semantic_hash": "c6477a61638480fd0615c9eb6c6a422e"
+    "mtime": 1782980071.688367,
+    "ast_hash": "fba075d5084a52f5a57e536e4b47bbe0",
+    "semantic_hash": ""
   },
   "src/indexing/buildPhysicalCollection.ts": {
     "mtime": 1782840877.6909676,
@@ -150,8 +150,8 @@
     "semantic_hash": "76330f15cff9c304c462cf51787cee86"
   },
   "src/observability/logger.ts": {
-    "mtime": 1782840891.267224,
-    "ast_hash": "6d4b8d6925db45280e8b49a3a8675e85",
+    "mtime": 1782979894.8948975,
+    "ast_hash": "a616392a94040cb84859727db2ae207d",
     "semantic_hash": ""
   },
   "src/observability/timeout.ts": {
@@ -165,18 +165,18 @@
     "semantic_hash": ""
   },
   "src/server.ts": {
-    "mtime": 1782505546.77552,
-    "ast_hash": "4a890806f32be9a5ad6c8f7358b7e82b",
-    "semantic_hash": "4a890806f32be9a5ad6c8f7358b7e82b"
+    "mtime": 1782980052.7441807,
+    "ast_hash": "39794cdf83d40143dd00ac02c65f8f95",
+    "semantic_hash": ""
   },
   "test/acceptance/api.endpoints.test.ts": {
-    "mtime": 1782888613.0379508,
-    "ast_hash": "9127cc1179240079f2c40eced1289a01",
+    "mtime": 1782991829.628484,
+    "ast_hash": "5445c718729cec9349f7f2a42efe12ba",
     "semantic_hash": ""
   },
   "test/admin.static.test.ts": {
-    "mtime": 1782975597.5569425,
-    "ast_hash": "78d3b90ad8f9fa019651349edd373a20",
+    "mtime": 1782991799.2874098,
+    "ast_hash": "6b4bb1fc40d87da1a02c4f167653d4d3",
     "semantic_hash": ""
   },
   "test/app.foundation.test.ts": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "admin/index.html": {
-    "mtime": 1782975531.495675,
-    "ast_hash": "dce0a2613a9d8294431660ae257894b7",
+    "mtime": 1782991271.3528874,
+    "ast_hash": "0865bdacba27027d18fd98c555a46c21",
     "semantic_hash": ""
   },
   "config/rag.config.yaml": {
@@ -500,8 +500,8 @@
     "semantic_hash": ""
   },
   "docs/admin_api_endpoints.md": {
-    "mtime": 1782888647.7310586,
-    "ast_hash": "29e0a6638423d19384a69e62a22f146a",
+    "mtime": 1782991778.4212756,
+    "ast_hash": "3251c2bd58e5f73771f29d669b4c12b3",
     "semantic_hash": ""
   },
   "docs/user_api_endpoints.md": {
@@ -520,8 +520,8 @@
     "semantic_hash": ""
   },
   "docs/openapi.yaml": {
-    "mtime": 1782888636.0841765,
-    "ast_hash": "75a039a23e02abb90a630e6ed8b43a9d",
+    "mtime": 1782991783.1826818,
+    "ast_hash": "00dc7770fe6d6eee57e5ea923c3e7bb0",
     "semantic_hash": ""
   },
   "docs/coding_agent_prompt_template.md": {

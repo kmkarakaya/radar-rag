@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
@@ -202,6 +205,8 @@ async function startEphemeralApp(deps: AppDependencies): Promise<{ server: Serve
 }
 
 async function stopServer(serverToStop: Server): Promise<void> {
+  serverToStop.closeIdleConnections?.();
+  serverToStop.closeAllConnections?.();
   await new Promise<void>((resolve, reject) => {
     serverToStop.close((error) => {
       if (error) {
@@ -606,6 +611,354 @@ describe("v1 admin and rag api endpoints", () => {
       assert.equal(typeof queryLog.latencyMs, "number");
     } finally {
       resolveReadableCollectionOverride = undefined;
+    }
+  });
+
+  it("persists audit log entries, filters them and survives registry reopen", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vanilla-rag-audit-"));
+    const dbPath = path.join(tempDir, "audit.sqlite");
+    const auditRegistry = createSqliteCollectionRegistry({ dbPath });
+    const auditContext = { tenantId: "default", userId: "local-dev", requestId: "audit-test" };
+    const otherTenantContext = { tenantId: "other-tenant", userId: "other-user", requestId: "audit-other" };
+    let auditCollection: RagCollection;
+    let auditPeerCollection: RagCollection;
+    let otherTenantCollection: RagCollection;
+
+    const auditJobRunner: IndexJobRunner = {
+      start: (jobId: string) => {
+        void (async () => {
+          const job = await auditRegistry.getJob(jobId);
+          if (!job) return;
+
+          try {
+            await auditRegistry.createPhysicalCollectionRecord({
+              name: job.targetPhysicalCollection,
+              tenantId: job.tenantId,
+              collectionId: job.collectionId,
+              version: job.targetVersion,
+              chromaConfiguration: job.targetChromaConfiguration,
+            });
+          } catch {
+            // The target record may already exist if the route retried; continue.
+          }
+
+          await auditRegistry.markIndexJobRunning(jobId);
+          void auditRegistry.appendOperationalLog({
+            tenantId: auditContext.tenantId,
+            userId: auditContext.userId,
+            jobId,
+            collectionId: job.collectionId,
+            physicalCollection: job.targetPhysicalCollection,
+            operation: "index_job",
+            status: "started",
+            message: "Index job started.",
+          });
+          await auditRegistry.completeIndexJob(jobId, {
+            activePhysicalCollection: job.targetPhysicalCollection,
+            activeVersion: job.targetVersion,
+            documentCount: 7,
+            chunkCount: 14,
+            retentionMs: 0,
+          });
+          void auditRegistry.appendOperationalLog({
+            tenantId: auditContext.tenantId,
+            userId: auditContext.userId,
+            jobId,
+            collectionId: job.collectionId,
+            physicalCollection: job.targetPhysicalCollection,
+            operation: "index_job",
+            status: "succeeded",
+            message: "Index job completed.",
+          });
+        })().catch(() => {});
+      },
+      drain: async () => {},
+      shutdown: async () => {},
+      abort: async (jobId: string) => {
+        await auditRegistry.cancelIndexJob(jobId);
+      },
+    };
+
+    try {
+      auditCollection = await auditRegistry.createCollection(auditContext, {
+        displayName: "Audit Collection",
+        sourcePath: "data/audit",
+        ozelgeDataPath: "data/ozelge_veri.json",
+        embeddingModel: "embed-audit",
+        chatModel: "chat-audit",
+        distanceMetric: "cosine",
+        chunkSize: 128,
+        chunkOverlap: 16,
+        retrievalK: 4,
+        retrievalDistanceThreshold: 0.5,
+      });
+
+      auditCollection = await auditRegistry.updateCollection(auditContext, auditCollection.id, {
+        status: "ready",
+        activeEmbeddingModel: "embed-audit",
+        documentCount: 7,
+        chunkCount: 14,
+      });
+
+      otherTenantCollection = await auditRegistry.createCollection(otherTenantContext, {
+        displayName: "Other Tenant Audit Collection",
+        sourcePath: "data/other-audit",
+        ozelgeDataPath: "data/other-ozelge.json",
+        embeddingModel: "embed-other",
+        chatModel: "chat-other",
+        distanceMetric: "cosine",
+        chunkSize: 128,
+        chunkOverlap: 16,
+        retrievalK: 4,
+        retrievalDistanceThreshold: 0.5,
+      });
+
+      auditPeerCollection = await auditRegistry.createCollection(auditContext, {
+        displayName: "Audit Peer Collection",
+        sourcePath: "data/audit-peer",
+        ozelgeDataPath: "data/ozelge_peer.json",
+        embeddingModel: "embed-peer",
+        chatModel: "chat-peer",
+        distanceMetric: "cosine",
+        chunkSize: 128,
+        chunkOverlap: 16,
+        retrievalK: 4,
+        retrievalDistanceThreshold: 0.5,
+      });
+
+      auditPeerCollection = await auditRegistry.updateCollection(auditContext, auditPeerCollection.id, {
+        status: "ready",
+        activeEmbeddingModel: "embed-peer",
+        documentCount: 3,
+        chunkCount: 6,
+      });
+
+      const auditApp = await startEphemeralApp({
+        registry: auditRegistry,
+        jobRunner: auditJobRunner,
+        ragHandlers: {
+          retrieveSources: async (_question, options) => ({
+            distanceScoreThreshold: options.retrievalDistanceThreshold ?? 0.5,
+            sources: [],
+          }),
+          answerQuestion: async (_question, options) => ({
+            answer: "audit-answer",
+            embeddingModel: options.embeddingModel ?? "embed-audit",
+            chatModel: options.chatModel ?? "chat-audit",
+            distanceScoreThreshold: options.retrievalDistanceThreshold ?? 0.5,
+            sources: [],
+          }),
+          resolveReadableCollection: async () => auditCollection,
+        },
+        logEvent: () => {},
+      });
+
+      try {
+        const querySuccess = await fetch(`${auditApp.baseUrl}/v1/rag/collections/${auditCollection.id}/query`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-request-id": "audit-query-ok",
+          },
+          body: JSON.stringify({ question: "query audit?" }),
+        });
+        assert.equal(querySuccess.status, 200);
+        await querySuccess.text();
+
+        const retrieveSuccess = await fetch(`${auditApp.baseUrl}/v1/rag/collections/${auditCollection.id}/retrieve`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-request-id": "audit-retrieve-ok",
+          },
+          body: JSON.stringify({ question: "retrieve audit?" }),
+        });
+        assert.equal(retrieveSuccess.status, 200);
+        await retrieveSuccess.text();
+
+        const queryFailure = await fetch(`${auditApp.baseUrl}/v1/rag/collections/${auditCollection.id}/query`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-request-id": "audit-query-fail",
+          },
+          body: JSON.stringify({}),
+        });
+        assert.equal(queryFailure.status, 400);
+        await queryFailure.text();
+
+        const retrieveFailure = await fetch(`${auditApp.baseUrl}/v1/rag/collections/${auditCollection.id}/retrieve`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-request-id": "audit-retrieve-fail",
+          },
+          body: JSON.stringify({}),
+        });
+        assert.equal(retrieveFailure.status, 400);
+        await retrieveFailure.text();
+
+        const reindexResponse = await fetch(`${auditApp.baseUrl}/v1/admin/collections/${auditCollection.id}/reindex`, {
+          method: "POST",
+          headers: {
+            "x-request-id": "audit-reindex",
+          },
+        });
+        const reindexBody = await reindexResponse.json() as any;
+        assert.equal(reindexResponse.status, 202);
+        assert.ok(reindexBody.job?.id);
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        const peerReindexResponse = await fetch(`${auditApp.baseUrl}/v1/admin/collections/${auditPeerCollection.id}/reindex`, {
+          method: "POST",
+          headers: {
+            "x-request-id": "audit-peer-reindex",
+          },
+        });
+        const peerReindexBody = await peerReindexResponse.json() as any;
+        assert.equal(peerReindexResponse.status, 202);
+        assert.ok(peerReindexBody.job?.id);
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        const batchJob1 = await auditRegistry.beginIndexJob(auditContext, auditCollection.id);
+        await auditRegistry.failIndexJob(batchJob1.id, "Batch delete job 1 failed for audit test.");
+        const batchJob2 = await auditRegistry.beginIndexJob(auditContext, auditCollection.id);
+        await auditRegistry.failIndexJob(batchJob2.id, "Batch delete job 2 failed for audit test.");
+
+        const bulkDeleteResponse = await fetch(`${auditApp.baseUrl}/v1/admin/jobs/bulk-delete`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-request-id": "audit-bulk-delete",
+          },
+          body: JSON.stringify({ jobIds: [batchJob1.id, batchJob2.id] }),
+        });
+        assert.equal(bulkDeleteResponse.status, 204);
+
+        const auditResponse = await fetch(`${auditApp.baseUrl}/v1/admin/audit-log?collectionId=${encodeURIComponent(auditCollection.id)}&limit=2`);
+        const auditBody = await auditResponse.json() as any;
+        assert.equal(auditResponse.status, 200);
+        assert.equal(auditResponse.headers.get("cache-control"), "no-store");
+        assert.ok(Array.isArray(auditBody.auditLog));
+        assert.ok(auditBody.auditLog.length > 0);
+        assert.ok(auditBody.nextCursor);
+
+        const queryAuditPage1 = await fetch(`${auditApp.baseUrl}/v1/admin/audit-log?collectionId=${encodeURIComponent(auditCollection.id)}&operation=query&limit=1`);
+        const queryAuditBody1 = await queryAuditPage1.json() as any;
+        assert.equal(queryAuditPage1.status, 200);
+        assert.equal(queryAuditBody1.auditLog.length, 1);
+        assert.ok(queryAuditBody1.nextCursor);
+        assert.equal(queryAuditBody1.auditLog[0]?.status, "failed");
+
+        const queryAuditPage2 = await fetch(`${auditApp.baseUrl}/v1/admin/audit-log?collectionId=${encodeURIComponent(auditCollection.id)}&operation=query&limit=1&cursor=${encodeURIComponent(queryAuditBody1.nextCursor)}`);
+        const queryAuditBody2 = await queryAuditPage2.json() as any;
+        assert.equal(queryAuditPage2.status, 200);
+        assert.equal(queryAuditBody2.auditLog.length, 1);
+        assert.equal(queryAuditBody2.auditLog[0]?.status, "succeeded");
+
+        const retrieveAuditPage1 = await fetch(`${auditApp.baseUrl}/v1/admin/audit-log?collectionId=${encodeURIComponent(auditCollection.id)}&operation=retrieve&limit=1`);
+        const retrieveAuditBody1 = await retrieveAuditPage1.json() as any;
+        assert.equal(retrieveAuditPage1.status, 200);
+        assert.equal(retrieveAuditBody1.auditLog.length, 1);
+        assert.ok(retrieveAuditBody1.nextCursor);
+        assert.equal(retrieveAuditBody1.auditLog[0]?.status, "failed");
+
+        const retrieveAuditPage2 = await fetch(`${auditApp.baseUrl}/v1/admin/audit-log?collectionId=${encodeURIComponent(auditCollection.id)}&operation=retrieve&limit=1&cursor=${encodeURIComponent(retrieveAuditBody1.nextCursor)}`);
+        const retrieveAuditBody2 = await retrieveAuditPage2.json() as any;
+        assert.equal(retrieveAuditPage2.status, 200);
+        assert.equal(retrieveAuditBody2.auditLog.length, 1);
+        assert.equal(retrieveAuditBody2.auditLog[0]?.status, "succeeded");
+
+        const jobAuditResponse = await fetch(`${auditApp.baseUrl}/v1/admin/audit-log?collectionId=${encodeURIComponent(auditCollection.id)}&operation=index_job&limit=10`);
+        const jobAuditBody = await jobAuditResponse.json() as any;
+        assert.equal(jobAuditResponse.status, 200);
+        assert.ok(jobAuditBody.auditLog.some((entry: any) => entry.status === "started" && entry.jobId === reindexBody.job.id));
+        assert.ok(jobAuditBody.auditLog.some((entry: any) => entry.status === "succeeded" && entry.jobId === reindexBody.job.id));
+
+        const multiOperationResponse = await fetch(`${auditApp.baseUrl}/v1/admin/audit-log?collectionId=${encodeURIComponent(auditCollection.id)}&operation=query&operation=retrieve&limit=10`);
+        const multiOperationBody = await multiOperationResponse.json() as any;
+        assert.equal(multiOperationResponse.status, 200);
+        assert.ok(multiOperationBody.auditLog.some((entry: any) => entry.operation === "query"));
+        assert.ok(multiOperationBody.auditLog.some((entry: any) => entry.operation === "retrieve"));
+
+        const multiCollectionResponse = await fetch(
+          `${auditApp.baseUrl}/v1/admin/audit-log?collectionId=${encodeURIComponent(auditCollection.id)}&collectionId=${encodeURIComponent(auditPeerCollection.id)}&operation=index_job&limit=10`,
+        );
+        const multiCollectionBody = await multiCollectionResponse.json() as any;
+        assert.equal(multiCollectionResponse.status, 200);
+        assert.ok(multiCollectionBody.auditLog.some((entry: any) => entry.collectionId === auditCollection.id));
+        assert.ok(multiCollectionBody.auditLog.some((entry: any) => entry.collectionId === auditPeerCollection.id));
+
+        const multiCollectionOperationResponse = await fetch(
+          `${auditApp.baseUrl}/v1/admin/audit-log?collectionId=${encodeURIComponent(auditCollection.id)}&collectionId=${encodeURIComponent(auditPeerCollection.id)}&operation=query&operation=index_job&limit=50`,
+        );
+        const multiCollectionOperationBody = await multiCollectionOperationResponse.json() as any;
+        assert.equal(multiCollectionOperationResponse.status, 200);
+        assert.ok(multiCollectionOperationBody.auditLog.some((entry: any) => entry.operation === "query"));
+        assert.ok(multiCollectionOperationBody.auditLog.some((entry: any) => entry.operation === "index_job"));
+
+        const forbiddenAuditResponse = await fetch(`${auditApp.baseUrl}/v1/admin/audit-log?collectionId=${encodeURIComponent(otherTenantCollection.id)}&limit=10`);
+        const forbiddenAuditBody = await forbiddenAuditResponse.json() as any;
+        assert.equal(forbiddenAuditResponse.status, 403);
+        assert.equal(forbiddenAuditBody.code, "COLLECTION_FORBIDDEN");
+
+        const missingAuditResponse = await fetch(`${auditApp.baseUrl}/v1/admin/audit-log?collectionId=${encodeURIComponent("col_missing_audit")}&limit=10`);
+        const missingAuditBody = await missingAuditResponse.json() as any;
+        assert.equal(missingAuditResponse.status, 404);
+        assert.equal(missingAuditBody.code, "COLLECTION_NOT_FOUND");
+
+        const invalidCursorResponse = await fetch(`${auditApp.baseUrl}/v1/admin/audit-log?collectionId=${encodeURIComponent(auditCollection.id)}&cursor=not-a-valid-cursor`);
+        const invalidCursorBody = await invalidCursorResponse.json() as any;
+        assert.equal(invalidCursorResponse.status, 400);
+        assert.equal(invalidCursorBody.code, "INVALID_REQUEST_BODY");
+
+        const deleteResponse = await fetch(`${auditApp.baseUrl}/v1/admin/collections/${auditCollection.id}`, {
+          method: "DELETE",
+          headers: {
+            "x-request-id": "audit-delete",
+          },
+        });
+        assert.equal(deleteResponse.status, 204);
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      } finally {
+        auditApp.server.closeIdleConnections?.();
+        auditApp.server.closeAllConnections?.();
+        auditApp.server.close();
+      }
+
+      const reopenedRegistry = createSqliteCollectionRegistry({ dbPath });
+      const reopenedApp = await startEphemeralApp({
+        registry: reopenedRegistry,
+        jobRunner: {
+          start: () => {},
+          drain: async () => {},
+          shutdown: async () => {},
+          abort: async () => {},
+        },
+      });
+
+      try {
+        const reopenedResponse = await fetch(`${reopenedApp.baseUrl}/v1/admin/audit-log?limit=100`);
+        const reopenedBody = await reopenedResponse.json() as any;
+        assert.equal(reopenedResponse.status, 200);
+        assert.ok(reopenedBody.auditLog.some((entry: any) => entry.operation === "delete" && entry.collectionId === auditCollection.id));
+
+        const reopenedBulkResponse = await fetch(`${reopenedApp.baseUrl}/v1/admin/audit-log?operation=job_delete_batch&limit=10`);
+        const reopenedBulkBody = await reopenedBulkResponse.json() as any;
+        assert.equal(reopenedBulkResponse.status, 200);
+        assert.ok(reopenedBulkBody.auditLog.some((entry: any) => entry.operation === "job_delete_batch"));
+      } finally {
+        reopenedApp.server.closeIdleConnections?.();
+        reopenedApp.server.closeAllConnections?.();
+        reopenedApp.server.close();
+        (reopenedRegistry as { close?: () => void }).close?.();
+      }
+    } finally {
+      (auditRegistry as { close?: () => void }).close?.();
+      await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 

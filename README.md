@@ -1,96 +1,70 @@
 # Vanilla RAG Backend
 
-Minimal TypeScript Express backend for a traditional LangChain RAG flow over documents in `data/`.
+TypeScript Express backend for multi-collection LangChain RAG over documents in `data/`, with optional admin auth, background indexing, a browser-ready public API, and a built-in admin panel for collection management.
 
-Bu repo, agentic bir akış yerine sağlam, operasyonel olarak güvenli ve çoklu koleksiyon (multi-collection) destekleyen basit bir Vanilla RAG backend uygular. Temel odak noktası **sıfır kesinti (zero-downtime) ile endeksleme**, **backpressure yönetimi** ve **güvenli durum (state) yönetimidir**.
+## What it ships
 
-Detaylı mimari ve endpoint sözleşmeleri için [vanilla_rag_backend_mimarisi.md](vanilla_rag_backend_mimarisi.md) dosyasına bakabilirsiniz.
+- Multi-collection RAG with per-collection embedding models, chat models, distance metrics, chunk sizes, overlaps, retrieval `k`, and distance thresholds.
+- Public read APIs for listing collections, loading collection details, checking readiness, retrieving evidence, and generating grounded answers.
+- Optional cookie-backed admin auth with role-based access control and short-lived action tokens for protected mutations.
+- Asynchronous indexing and rebuild jobs so active queries keep working while a collection is being refreshed.
+- Operational guardrails including request IDs, tenant/user scoping, rate limiting, concurrency limits, 1 MB JSON bodies, and structured errors.
+- Full admin visibility for defaults, model discovery, job progress, physical collection lifecycle, and audit history.
+- Frontend-facing docs, OpenAPI, HTTP workflow examples, a runnable browser example, and a static admin panel in this repo.
 
-## Öne Çıkan Özellikler
+## Feature Map
 
-- **Çoklu Koleksiyon (Multi-Collection) Desteği:** Tek bir backend üzerinden farklı yapılandırmalara (farklı embedding modeli, distance metric, chunk size vb.) sahip birden fazla mantıksal (logical) RAG koleksiyonu yönetebilirsiniz.
-- **Sıfır Kesinti ile Endeksleme (Zero-Downtime Rebuild):** Endeksleme işlemleri arka planda her seferinde yeni bir "versiyonlu fiziksel Chroma koleksiyonuna" yazılır. İşlem başarıyla bittiğinde aktif yönlendirici (pointer) ve aktif embedding modeli snapshot'ı (`activeEmbeddingModel`) atomik olarak değiştirilir. Böylece sorgu (query) işlemleri endeksleme süresince eski veriden ve eski embedding modelinden kesintisiz hizmet almaya devam eder; admin tarafından istenen model değişikliği ancak re-index bittiğinde devreye girer.
-- **Model Backpressure & Concurrency Koruması:** Eşzamanlı istek yığılmalarına karşı Ollama ve Chroma etkileşimlerinde asenkron kilitler (semaphore) kullanılır (`maxConcurrentEmbeddings`, `maxConcurrentGenerations`). Sistem kapasitesi aşıldığında veya client bağlantıyı kestiğinde (abort), istekler `503 MODEL_BACKPRESSURE` ile güvenli şekilde sonlandırılır.
-- **Gelişmiş Hata Yönetimi ve Payload Koruması:** Tüm JSON gövdeleri 1MB limit ile korunur (Aşımında `413 Payload Too Large` döner). Hatalar standart bir JSON şeması ile, Request ID izlenebilirliği (traceability) eşliğinde loglanır ve iletilir.
-- **Stale Job Recovery & Otomatik Temizlik:** Sunucu yeniden başladığında asılı kalan (stale) index kilitleri otomatik temizlenir. Yeni bir re-index başarıyla tamamlandığında, Chroma üzerinde yer kaplayan eski fiziksel koleksiyonlar `cleanup.retentionMs` süresi dolunca arka planda temizlenir.
-- **Dürüst Operasyonel Limitler:** Request rate limiter [src/http/rateLimit.ts](src/http/rateLimit.ts) içinde merkezi middleware olarak çalışır ve anahtarı `tenantId`, `userId`, `collectionId` ve operation (`query`, `retrieve`, `reindex`) alanlarından üretir. Model backpressure limitleri (`maxConcurrentEmbeddings`, `maxConcurrentGenerations`) ve 1MB JSON body limiti ayrı koruma katmanlarıdır.
+### Public RAG
 
-## Nerede Ne Var?
+- `GET /v1/rag/collections` to list collections visible to the current tenant.
+- `GET /v1/rag/collections/:collectionId` to inspect one collection.
+- `GET /v1/rag/collections/:collectionId/ready` to gate query and retrieve UI state before enabling actions.
+- `POST /v1/rag/collections/:collectionId/retrieve` to fetch evidence chunks and the effective embedding model.
+- `POST /v1/rag/collections/:collectionId/query` to retrieve context, generate an answer, and return sources plus model metadata.
+- Public responses include the effective model names actually used for the request.
 
-- [README.md](README.md): hızlı kurulum, çalıştırma ve kısa kullanım özeti
-- [vanilla_rag_backend_mimarisi.md](vanilla_rag_backend_mimarisi.md): mimari kararlar, endpoint kontratları ve akışlar
-- [config/rag.config.yaml](config/rag.config.yaml): aktif runtime ayarları (limitler, default değerler vb.)
-- [data/registry.sqlite](data/registry.sqlite): logical collection ve job durumu registry'si
-- [test_frontend/index.html](test_frontend/index.html): browser tabanlı manuel test arayüzü
-- [src/app.ts](src/app.ts): HTTP API kompozisyonu, readiness ve router bağlama katmanı
-- [src/server.ts](src/server.ts): runtime bootstrap, registry/job runner wiring ve startup cleanup
-- [src/rag.ts](src/rag.ts): retrieval + generation orkestrasyonu ve backpressure yönetimi
-- [src/indexing/jobs.ts](src/indexing/jobs.ts): Arka plan re-index job yönetimi
+### Admin and Operations
 
-## Hızlı Kullanım Kılavuzu
+- A built-in admin panel at [admin/index.html](admin/index.html) for day-to-day collection management.
+- Optional admin auth with `viewer`, `operator`, and `admin` roles.
+- Login, session hydration, logout, and action-token minting under `/v1/admin/auth/*`.
+- Collection create, update, validate, reindex, delete, and bulk delete flows.
+- Create-form defaults and model discovery so the panel can show backend defaults and model suggestions.
+- Index job status, stage events, cancel, delete, and recovery visibility.
+- Audit log for persisted operational history.
+- Physical collection visibility for rebuild, retention, cleanup, and failed target states.
 
-Varsayılan örnek config `adminAuth.enabled=false` ile gelir; aşağıdaki kısa akış lokal geliştirme kolaylığı içindir. Production-benzeri admin kullanımı için alttaki güvenli admin quickstart bölümünü izleyin.
+### Reliability and Safety
 
-0. **Kurulum** (sadece ilk kez): 'docker + install + run dev' -> backend kur
-1. **Onboarding** (sadece ilk kez): `npm run onboard` → config oluşturur
-2. **Collection oluştur**: `POST /v1/admin/collections` → collection ID al
-3. **İndekslemeyi başlat**: `POST /v1/admin/collections/{id}/reindex` → job ID al
-4. **Job durumunu takip et**: `GET /v1/admin/jobs/{id}` → `succeeded` olana kadar bekle
-5. **Frontend'i aç**: `http://localhost:3010/test-frontend/` → collection artık görünür
+- System endpoints for introspection, liveness, and readiness checks: `/`, `/health`, and `/ready`.
+- Zero-downtime rebuilds and stale job recovery on startup.
+- Cleanup of retired physical collections.
+- Concurrency protection and request rate limiting with `Retry-After` headers.
+- Request tracing via `x-request-id`.
+- Collection-level capability checks instead of blind UI enablement.
+- Strict versioned APIs; legacy routes intentionally return `404`.
 
-## Frontend Integration Paketi
+### Frontend and Integration Assets
 
-Bu repo artik sadece backend kodu degil, ayni zamanda backend'i baskalarina kullandirmayi kolaylastiran bir frontend integration paketi de icerir.
+- Working public RAG example at [test_frontend/README.md](test_frontend/README.md).
+- Human-oriented docs index at [docs/README.md](docs/README.md).
+- Endpoint reference, HTTP workflows, OpenAPI spec, frontend handoff, and acceptance checklist.
 
-Hazirlanan paket su parcalardan olusur:
+### Data and Indexing
 
-- `docs/README.md`: coding agent dostu dokumantasyon setinin giris noktasi
-- `docs/frontend_agent_handoff.md`: frontend yazacak kisiye veya coding agent'a verilmesi gereken ana ozet
-- `docs/user_api_endpoints.md`: public `/v1/rag` endpoint referansi
-- `docs/admin_api_endpoints.md`: `/v1/admin` endpoint referansi
-- `docs/http_workflows.md`: ornek HTTP akislari
-- `docs/openapi.yaml`: makine tarafindan okunabilir guncel API kontrati
-- `docs/coding_agent_prompt_template.md`: son kullanicinin coding agent'a verebilecegi prompt sablonlari
-- `docs/frontend_acceptance_checklist.md`: uretilen frontend'in backend kontratina uyup uymadigini kontrol etmek icin checklist
-- `test_frontend/index.html`: current `/v1/rag` kontratina uyan calisan ornek frontend
-- `test_frontend/README.md`: bu ornek frontend'in nasil kullanilacagini ve nasil turetilecegini anlatan kisa rehber
+- Document ingestion for PDF, DOCX, TXT, and custom JSON sources.
+- Chunking controls, retrieval thresholds, and distance-metric selection per collection.
+- Configurable source path and auxiliary data path for collection provisioning.
 
-Bu hazirligin amaci:
+## Start here
 
-- son kullanicinin kendi ihtiyacina gore frontend yazabilmesi
-- bunu ister elle, ister bir coding agent ile yapabilmesi
-- coding agent'in backend davranisini tahmin etmek zorunda kalmamasi
-- endpoint, readiness, hata ve header kontratlarini dogrudan belgelerden ve ornek frontend'den okuyabilmesi
+- [docs/README.md](docs/README.md) for the documentation index and reading order.
+- [docs/admin_api_endpoints.md](docs/admin_api_endpoints.md) for admin auth, roles, and collection management.
+- [docs/http_workflows.md](docs/http_workflows.md) for end-to-end curl examples.
+- [test_frontend/README.md](test_frontend/README.md) for the runnable public RAG example.
+- [vanilla_rag_backend_mimarisi.md](vanilla_rag_backend_mimarisi.md) for architecture and design rationale.
 
-Public frontend tarafinda korunmasi gereken ana kurallar:
-
-- sadece versioned `/v1` endpoint'lerini kullanin
-- `GET /v1/rag/collections/:collectionId/ready` sonucunu query ve retrieve butonlari icin capability gate olarak kullanin
-- public `/v1/rag/**` request'lerinde `x-tenant-id`, `x-user-id` ve `x-request-id` gonderin; admin auth aciksa `/v1/admin/**` tarafinda tenant/user kaynagi aktif session olmali
-- `POST /query` ile `POST /retrieve` akislarini ayri dusunun
-- `429 RATE_LIMIT_EXCEEDED` durumunda `Retry-After` degerini dikkate alin
-- `query.sources` alanini her zaman tam retrieval sonucu sanmayin; generation-context subset olabilir
-
-## Son Kullanici Icin Kisa Kullanim
-
-Bu backend ile kendi frontend'inizi yazmak istiyorsaniz en kisa kullanim akisi su:
-
-1. Backend'i ayaga kaldirin.
-2. En az bir collection create edin ve reindex ile aktif hale getirin.
-3. `docs/README.md` dosyasindan baslayarak ilgili API belgelerini okuyun.
-4. `test_frontend/index.html` ve `test_frontend/README.md` dosyalarina bakarak calisan referans akisi inceleyin.
-5. Kendi frontend'inizi yazacaksaniz veya bir coding agent kullanacaksaniz, en az su dosyalari birlikte verin:
-   `docs/frontend_agent_handoff.md`, `docs/user_api_endpoints.md`, `docs/http_workflows.md`, `docs/openapi.yaml`, `test_frontend/index.html`, `test_frontend/README.md`
-
-Eger coding agent kullanacaksaniz:
-
-- `docs/coding_agent_prompt_template.md` icindeki sablonlardan biriyle baslayin
-- agent'a yeni endpoint uydurmamasini ve mevcut readiness/error kontratini takip etmesini soyleyin
-- ciktinin backend ile uyumunu `docs/frontend_acceptance_checklist.md` ile kontrol edin
-
-## Kurulum
-
-Windows PowerShell:
+## Quick start
 
 ```powershell
 cd "C:\Codes\Vanilla Rag Backend"
@@ -98,110 +72,59 @@ docker compose up -d chroma
 npm.cmd install
 ollama pull gemma3:4b-cloud
 ollama pull bge-m3
+npm.cmd run onboard
 npm.cmd run dev
 ```
 
-## On boarding
+What each command does:
 
-```powershell
-# **Onboarding** (sadece ilk kez):
-npm.cmd run onboard
-```
+- `cd "C:\Codes\Vanilla Rag Backend"` changes the shell into the project root so the rest of the commands resolve the right files and config.
+- `docker compose up -d chroma` starts the Chroma vector database in the background. You need this before indexing or querying collections.
+- `npm.cmd install` installs the Node.js dependencies listed in `package.json`.
+- `ollama pull gemma3:4b-cloud` downloads the default chat model used by the backend.
+- `ollama pull bge-m3` downloads the default embedding model used for chunk indexing and retrieval.
+- `npm.cmd run onboard` creates or refreshes runtime config and registry state for local development. It does not create or edit collections.
+- `npm.cmd run dev` starts the backend in watch mode.
 
-## Kolleksiyon oluşturma
+How to extend it:
 
-```powershell
-# 1. Collection oluştur
-$collection = @{
-  displayName = "Veri Klasörü"
-  sourcePath = "C:\Codes\Vanilla Rag Backend\data"
-  ozelgeDataPath = "data/ozelge_veri.json"
-  distanceMetric = "l2"
-  chunkSize = 500
-  chunkOverlap = 200
-  retrievalK = 5
-  retrievalDistanceThreshold = 1.2
-  embeddingModel = "bge-m3"
-  chatModel = "gemma3:4b-cloud"
-} | ConvertTo-Json
+- Pull more chat models with `ollama pull <chat-model-name>` and then point `ollama.chatModel` or a collection-specific chat model setting at that model in [config/rag.config.yaml](config/rag.config.yaml).
+- Pull more embedding models with `ollama pull <embedding-model-name>` and then update `ollama.embeddingModel` or a collection-specific embedding model setting.
+- If you want to test a different vector store or service layout, adjust the Compose stack first, then update the config to match the new runtime target.
+- If you add more collection templates or data sources, re-run `npm.cmd run onboard` so the registry and runtime defaults stay in sync.
+- If you want a different local workflow, keep `ollama pull` commands for the models you actually use and remove the rest.
 
-$response = Invoke-RestMethod -Uri http://localhost:3010/v1/admin/collections -Method Post -ContentType "application/json; charset=utf-8" -Body $collection
-$collectionId = $response.collection.id
-Write-Host "✅ Collection oluşturuldu: $collectionId" -ForegroundColor Green
+## What onboarding is for
 
-# 2. İndeksleme job'ını başlat
-$jobRes = Invoke-RestMethod -Uri "http://localhost:3010/v1/admin/collections/$collectionId/reindex" -Method Post -ContentType "application/json; charset=utf-8"
-$jobId = $jobRes.job.id
-Write-Host "✅ İndeksleme job'ı başlatıldı: $jobId" -ForegroundColor Green
+Onboarding is the local bootstrap step. It prepares the runtime environment so the backend and admin panel can work correctly, but it does not manage collections.
 
-# 3. Job bitene kadar bekle ve durumu göster
-Write-Host "`n⏳ İndeksleme bekleniyor..." -ForegroundColor Yellow
-do {
-  Start-Sleep -Seconds 5
-  $jobStatus = Invoke-RestMethod -Uri "http://localhost:3010/v1/admin/jobs/$jobId"
-  $status = $jobStatus.job.status
-  Write-Host "   Durum: $status" -ForegroundColor Cyan
-} while ($status -ne "succeeded" -and $status -ne "failed")
+What `npm.cmd run onboard` does:
 
-# 4. Sonucu göster
-if ($status -eq "succeeded") {
-  Write-Host "`n✅ İndeksleme tamamlandı! Frontend'de collection görünür." -ForegroundColor Green
-  Write-Host "   Collection ID: $collectionId" -ForegroundColor Cyan
-  Write-Host "   Frontend: http://localhost:3010/test-frontend/" -ForegroundColor Cyan
-} else {
-  Write-Host "`n❌ İndeksleme başarısız: $($jobStatus.job.error)" -ForegroundColor Red
-}
-```
+- creates or refreshes the runtime config for this machine
+- writes a backup copy of the previous config before changes are saved
+- resolves local defaults such as ports, paths, model names, and registry state
+- checks whether Chroma, Ollama, and the configured models are reachable
+- verifies that indexing can run against the current source data
 
-## Test arayüzünü açmak için tarayıcınızda şu adrese gidin:
+What it does not do:
 
-```text
-http://localhost:3010/test-frontend/
-```
+- create, edit, validate, reindex, or monitor collections
+- replace the admin panel for daily collection management
 
-Bu test arayüzü üzerinden sistemdeki koleksiyonların listesini görebilir, durumlarını anlık denetleyebilir (Readiness) ve seçtiğiniz koleksiyona soru sorabilirsiniz. Eğer henüz hiç koleksiyon yaratmadıysanız liste boş gelecektir. Sistem, veritabanı (SQLite) tabanlı bir yaşam döngüsü sunar.
+Use onboarding again when you change machines, reset the config, add new source data, or switch local models. If the runtime is already healthy and you are only working in the admin panel, you usually do not need to rerun it.
 
-## Backend Yönetimi ve Admin Workflow
+## Admin auth quickstart
 
-Sistemin RAG sorgularına yanıt verebilmesi için önce bir koleksiyonun yaratılması ve arka planda endekslenmesi gerekir. Tüm bu adımlar Admin API üzerinden yürütülür.
+Admin auth is opt-in. Turn it on in [config/rag.config.yaml](config/rag.config.yaml) by setting `adminAuth.enabled: true`, then provide a session secret and at least one admin user.
 
-Admin surface opt-in auth supports local session cookies for `/admin` and `/v1/admin`. When `adminAuth.enabled=true`, the backend reads admin users from config, requires the `RAG_ADMIN_SESSION_SECRET` env var, and uses short-lived signed action tokens for mutating admin requests. Generate safe `passwordHash` values with `npm run admin:hash-password`.
+1. Set `RAG_ADMIN_SESSION_SECRET` in your shell.
+2. Run `npm run admin:hash-password -- "your-password"` to generate the stored password hash.
+3. Put that hash into `adminAuth.users[]` with `username`, `role`, and `tenantId`.
+4. Restart the backend.
+5. Log in with `POST /v1/admin/auth/login`.
+6. For mutating admin requests, fetch a token from `POST /v1/admin/auth/action-token` and send it as `x-admin-action-token`.
 
-### Admin Auth Quickstart
-
-Admin auth, `config/rag.config.yaml` içindeki `adminAuth.enabled` ile açılır. Bu modda backend iki ayrı güvenlik katmanı kullanır: kullanıcı girişi için `username + password`, mutating admin işlemler için de session cookie + kısa ömürlü signed action token.
-
-Burada iki farklı gizli değer vardır ve birbirine eşit olmaları gerekmez:
-
-- `RAG_ADMIN_SESSION_SECRET`: Sunucunun kendi gizli anahtarıdır. Session cookie ve action token imzalamak için kullanılır.
-- `passwordHash`: Admin kullanıcısının gerçek şifresinden üretilmiş hash değeridir. Login doğrulaması için kullanılır.
-
-#### Lokal quickstart (`adminAuth.enabled=false`)
-
-Varsayılan örnek `config/rag.config.yaml` bu modda gelir.
-
-- `/v1/admin/**` çağrıları auth olmadan çalışır.
-- Geliştirme ortamında tenant görünürlüğünü test etmek için `x-tenant-id` ve `x-user-id` header'larını manuel gönderebilirsiniz.
-- Bu mod hızlı deneme içindir; production kullanımı için uygun değildir.
-
-Örnek:
-
-```yaml
-adminAuth:
-  enabled: false
-```
-
-#### Güvenli admin quickstart (`adminAuth.enabled=true`)
-
-1. Güçlü bir secret üretin ve `RAG_ADMIN_SESSION_SECRET` env var'ını set edin.
-2. `npm run admin:hash-password -- "..."` çalıştırıp admin kullanıcınız için bir `passwordHash` üretin.
-3. `config/rag.config.yaml` içinde `adminAuth.enabled: true` yapın ve `users[]` altına en az bir kullanıcı ekleyin.
-4. Backend'i yeniden başlatın. Secret eksikse, `users[]` boşsa, `passwordHash` formatı bozuksa veya `role` / `tenantId` eksikse servis fail-fast olarak açılmaz.
-5. Tarayıcıda `/admin/` açın. Session yoksa backend login ekranına yönlendirir.
-6. `POST /v1/admin/auth/login` ile giriş yapın. Bu adım yalnızca session cookie üretir.
-7. `POST`, `PATCH` ve `DELETE` yapan admin çağrılarında önce `POST /v1/admin/auth/action-token` ile token alın, sonra isteği `x-admin-action-token` header'ı ile gönderin.
-
-Örnek config:
+Example config:
 
 ```yaml
 adminAuth:
@@ -217,264 +140,83 @@ adminAuth:
       tenantId: "default"
 ```
 
-Login örneği:
+Session flow:
 
-```powershell
-$body = @{
-  username = "kmkarakaya"
-  password = "Sifre1991"
-} | ConvertTo-Json
+1. `POST /v1/admin/auth/login` with `{ username, password }`
+2. The backend verifies the stored `passwordHash`
+3. The backend sets an `HttpOnly` `SameSite=Lax` cookie
+4. The frontend calls `GET /v1/admin/auth/session` on boot
+5. Mutating requests fetch `POST /v1/admin/auth/action-token`
+6. `POST /v1/admin/auth/logout` clears the cookie
 
-Invoke-RestMethod -Uri "http://localhost:3010/v1/admin/auth/login" -Method Post -ContentType "application/json" -Body $body
-```
+## Admin panel workflow
 
-Action token örneği:
+After onboarding, use the admin panel for collection setup, validation, reindexing, job monitoring, and audit review. The panel is the normal human workflow; the raw `/v1/admin/**` POST examples exist for automation, scripting, and integration tests.
 
-```powershell
-$tokenBody = @{
-  method = "POST"
-  path = "/v1/admin/collections"
-} | ConvertTo-Json
+The panel surface is split across:
 
-$token = Invoke-RestMethod -Uri "http://localhost:3010/v1/admin/auth/action-token" -Method Post -ContentType "application/json" -Body $tokenBody
-```
-
-Bu token yalnızca ilgili method/path için geçerlidir, tek kullanımlıktır ve süresi dolunca yenisi alınmalıdır. Mutating isteklerde header adı `x-admin-action-token`'dır.
+- [admin/index.html](admin/index.html) for collection management and operational workflows
+- [docs/admin_api_endpoints.md](docs/admin_api_endpoints.md) for the underlying admin contract
+- [docs/http_workflows.md](docs/http_workflows.md) for API examples when you need to automate the same actions
 
-Role matrisi:
+## Typical workflows
 
-- `viewer`: read-only admin görünümü
-- `operator`: create, validate, update, reindex ve job cancel
-- `admin`: operator yetkileri + collection/job delete ve bulk job delete
+### Public question answering
 
-Kısa özet:
+1. List collections for the current tenant.
+2. Check `GET /v1/rag/collections/:collectionId/ready`.
+3. Use `POST /v1/rag/collections/:collectionId/retrieve` when you want evidence only.
+4. Use `POST /v1/rag/collections/:collectionId/query` when you want an answer plus sources.
 
-- Önce secret set edilir.
-- Sonra kullanıcı şifresi hash'lenip config'e yazılır.
-- Login session cookie üretir.
-- Action token mutating istekleri korur.
-- `RAG_ADMIN_SESSION_SECRET` ile kullanıcı şifresi aynı şey değildir.
+### Admin collection setup
 
-### Sistem Onboarding (İlk Kurulum)
+1. Open the admin panel at [admin/index.html](admin/index.html).
+2. Create or edit the collection in the panel instead of hand-writing POSTs.
+3. Use the panel's validate and reindex actions to build the active index.
+4. Monitor job progress and physical collection state from the panel views.
+5. Use the admin API docs only when you need to automate the same actions outside the UI.
 
-Sistemi ilk kez ayağa kaldırırken `config/rag.config.yaml` dosyasını terminal üzerinden interaktif bir şekilde oluşturup doğrulamak için onboarding CLI aracı mevcuttur:
+## Docs map
 
-```powershell
-npm.cmd run onboard
-```
+- [docs/user_api_endpoints.md](docs/user_api_endpoints.md) - Public `/v1/rag` query, retrieve, readiness, and list endpoints
+- [docs/admin_api_endpoints.md](docs/admin_api_endpoints.md) - Admin auth, collections, jobs, and audit endpoints
+- [docs/http_workflows.md](docs/http_workflows.md) - End-to-end HTTP examples
+- [docs/openapi.yaml](docs/openapi.yaml) - Machine-readable API contract
+- [docs/frontend_agent_handoff.md](docs/frontend_agent_handoff.md) - Hand-off for frontend builders and coding agents
+- [docs/frontend_acceptance_checklist.md](docs/frontend_acceptance_checklist.md) - Validation checklist for generated frontends
+- [docs/coding_agent_prompt_template.md](docs/coding_agent_prompt_template.md) - Prompt templates for coding agents
+- [test_frontend/README.md](test_frontend/README.md) - Reference public frontend guide
+- [config/rag.config.yaml](config/rag.config.yaml) - Runtime configuration
 
-Bu komut:
+## Key scripts
 
-1. İhtiyacınız olan Ollama/Chroma bağlantılarını, model isimlerini (örn. `gemma3:4b-cloud`) ve varsayılan limitleri sorar.
-2. Servis sağlık kontrollerini (Health Check) ve veri yolu kontrollerini yapar.
-3. Sonuçları `config/rag.config.yaml` dosyasına yazar.
+- `npm run dev` - Start the backend in watch mode
+- `npm run onboard` - Create or refresh runtime config and registry state for the local runtime; does not manage collections
+- `npm run index` - Trigger indexing from the CLI
+- `npm run admin:hash-password` - Generate an admin password hash
+- `npm run build` - Compile TypeScript
+- `npm run test` - Run tests
+- `npm run typecheck` - Type-check the codebase
+- `npm start` - Run the compiled server
 
-Hızlı bir şekilde mevcut config ile devam etmek için (etkileşimli soruları atlayarak):
+## Public API reminders
 
-```powershell
-npm.cmd run onboard -- --yes
-```
+- Use only versioned `/v1` routes.
+- Send `x-request-id` on every request.
+- Send `x-tenant-id` and `x-user-id` on public `/v1/rag/**` requests.
+- Use `GET /v1/rag/collections/:collectionId/ready` as the capability gate before enabling query and retrieve actions.
+- Treat `POST /v1/rag/collections/:collectionId/query` and `POST /v1/rag/collections/:collectionId/retrieve` as separate flows.
+- `query.sources` may be only the subset used for answer generation.
+- Handle `429 RATE_LIMIT_EXCEEDED` with the returned `Retry-After` header.
 
-> **Not:** Eski sürümde onboarding aracı direkt olarak Chroma indekslemeyi de başlatıyordu. Multi-collection yapısına geçilmesiyle birlikte, onboarding aracı **yalnızca sistem konfigürasyonunu (config) hazırlar**. Endeksleme adımı ayrı bir komuta (`npm run index`) veya API çağrısına devredilmiştir.
+## Stack
 
-### Operasyonel Config Yüzeyi
+- Node.js, TypeScript, Express
+- LangChain, Chroma, Ollama
+- SQLite registry and job state
+- PDF, DOCX, TXT, and custom JSON ingestion support
 
-`config/rag.config.yaml` içinde aşağıdaki operasyonel alanlar görünür ve onboarding CLI tarafından korunur:
+## Notes
 
-```yaml
-cleanup:
-  retentionMs: 3600000
-limits:
-  maxConcurrentEmbeddings: 5
-  maxConcurrentGenerations: 2
-rateLimit:
-  enabled: true
-  windowMs: 60000
-  maxRequestsPerWindow: 60
-observability:
-  includeDebugTimings: false
-```
-
-- `cleanup.retentionMs`: Eski fiziksel Chroma koleksiyonlarının emekliye ayrıldıktan sonra ne kadar süre tutulacağını belirler.
-- `limits.maxConcurrentEmbeddings`: Embedding istekleri için model backpressure sınırı.
-- `limits.maxConcurrentGenerations`: Chat generation istekleri için model backpressure sınırı.
-- `rateLimit.enabled`: Query, retrieve ve reindex istekleri için merkezi request rate limiter'ı açar/kapatır.
-- `rateLimit.windowMs` ve `rateLimit.maxRequestsPerWindow`: Her `tenantId:userId:collectionId:operation` anahtarı için fixed-window request limitini belirler. Limit aşılırsa API `429 RATE_LIMIT_EXCEEDED` döndürür.
-- `observability.includeDebugTimings`: `false` iken query/retrieve response shape'i sade kalır. `true` iken response'a `debug.latency` eklenir; retrieve için `retrievalMs,totalMs`, query için `retrievalMs,generationMs,totalMs` döner.
-- Rebuild başarıyla bittiğinde eski aktif fiziksel koleksiyon hemen silinmez; önce registry içinde `delete_pending` durumuna alınır ve `delete_after = now + cleanup.retentionMs` olarak işaretlenir.
-- Sunucu açılışında bir kez stale job recovery ve due cleanup çalışır. Bu tarama `delete_pending` ve `cleanup_failed` kayıtları arasından süresi dolmuş fiziksel koleksiyonları yeniden denemeye uygundur.
-
-Retention cleanup state contract:
-
-- `delete_pending`: A previously active physical collection was replaced by a successful pointer swap and can be deleted after `delete_after`.
-- `cleanup_failed`: A due delete failed. The record keeps `cleanup_error` and is retried when still due.
-- `deleted`: The physical collection delete succeeded, or storage reported an idempotent not-found delete. `deleted_at` is set and `cleanup_error` is cleared.
-- `failed_build`: A build target failed before pointer swap. It is not treated as an old active collection and is not selected by retention cleanup.
-- Startup maintenance is scheduled after `listen`; it is fire-and-forget, logs failures, and does not block server startup. `startServer()` returns `startupMaintenancePromise`, which tests or embedded callers can await before closing the registry during controlled shutdown.
-
-Structured operational logs share the same event shape across HTTP, RAG, indexing build/job runner and cleanup flows: `requestId`, `tenantId`, `userId`, `collectionId`, `physicalCollection`, `jobId`, `operation`, `status`, `latencyMs` and `errorCode`. Tests inject a fake log sink; production defaults to JSON lines on stdout.
-
-### 1. Collection Yaratma (Admin API)
-
-Koleksiyonun mantıksal (logical) konfigürasyonunu tanımlayın. Burada belirlediğiniz mesafe metriği (distanceMetric), embedding modeli, chat modeli, retrieval eşiği ve parçalama boyutları o koleksiyonun build/query akışında gerçekten kullanılır:
-
-`adminAuth.enabled=true` ise bu çağrıdan önce giriş yapmanız ve request için geçerli bir action token almanız gerekir. Auth kapalı lokal modda aşağıdaki örnek doğrudan çalışır.
-
-```powershell
-$collection = @{
-  displayName = "IK Belgeleri"
-  sourcePath = "data"
-  ozelgeDataPath = "data/ozelge_veri.json"
-  distanceMetric = "cosine"
-  chunkSize = 500
-  chunkOverlap = 200
-  retrievalK = 5
-  retrievalDistanceThreshold = 1
-  embeddingModel = "bge-m3"
-  chatModel = "gemma3:4b-cloud"
-} | ConvertTo-Json
-
-$response = Invoke-RestMethod -Uri http://localhost:3010/v1/admin/collections -Method Post -ContentType "application/json; charset=utf-8" -Body $collection
-$collectionId = $response.collection.id
-Write-Host "Created collection: $collectionId"
-```
-
-Bu `collectionId`, kullanıcıya açık ve tenant-scoped bir public kimliktir; Chroma içindeki gerçek fiziksel collection adı değildir. Lokal geliştirmede farklı tenant görünürlüğünü denemek için `x-tenant-id` header'ı kullanılabilir.
-
-### 2. Re-Index / Job Başlatma
-
-Tanımladığınız koleksiyon için verileri Chroma'ya aktaracak (ve versiyonlu physical collection üretecek) arka plan index görevini HTTP API ile başlatın:
-
-```powershell
-$jobRes = Invoke-RestMethod -Uri "http://localhost:3010/v1/admin/collections/$collectionId/reindex" -Method Post -ContentType "application/json; charset=utf-8"
-$jobId = $jobRes.job.id
-Write-Host "Started Job: $jobId"
-```
-
-Aynı anda aynı koleksiyon için ikinci bir index görevi başlatmaya çalışırsanız sistem `409 COLLECTION_INDEX_ALREADY_RUNNING` hatası ile bunu güvenli bir şekilde engeller.
-
-Başarılı bir rebuild sonrasında registry aktif pointer'ı atomik olarak yeni fiziksel collection'a çevrilir. Önceki aktif fiziksel collection ise hemen silinmez; `delete_pending` durumuna alınır ve due cleanup aşamasına bırakılır.
-
-**Alternatif (CLI ile İndeksleme):**
-HTTP API yerine doğrudan komut satırı üzerinden (sunucu çalışırken veya çalışmazken) indeksleme tetiklemek için `npm run index` aracını kullanabilirsiniz. Mantıksal koleksiyonun ID'sini vermeniz zorunludur:
-
-```powershell
-npm.cmd run index -- --collection-id $collectionId
-```
-
-### 3. Job Durumunu Görüntüleme
-
-Başlatılan görevin durumunu (`queued`, `running`, `succeeded`, `failed`) API üzerinden takip edebilirsiniz:
-
-```powershell
-Invoke-RestMethod -Uri "http://localhost:3010/v1/admin/jobs/$jobId"
-```
-
-## RAG Kullanımı (Frontend / API)
-
-Koleksiyon durumu `ready` (yani endeksleme başarılı) olduğunda artık RAG sorguları atabilirsiniz.
-
-Sistemdeki tüm görünür koleksiyonları listelemek için:
-
-```powershell
-Invoke-RestMethod -Uri http://localhost:3010/v1/rag/collections
-```
-
-Not: Collection list item shape sabittir; henuz aktif index yoksa `activeVersion` ve `chunkCount` alanlari `null` doner.
-
-Bu endpoint yalnızca request tenant'ının görebildiği logical collection kayıtlarını döndürür. Geliştirme ortamında tenant kapsamını denemek isterseniz `x-tenant-id` header'ı gönderebilirsiniz.
-
-Collection listesi bilinçli olarak sadece ucuz registry discovery kontratıdır; Chroma veya Ollama readiness probe çalıştırmaz ve `capabilities.query/retrieve` iddiası taşımaz. Her item en az `status`, `activeVersion`, `chunkCount`, `updatedAt`, `readyUrl`, `queryUrl` ve `retrieveUrl` alanlarıyla gelir. Gerçek query/retrieve uygunluğu için listedeki `readyUrl` (`GET /v1/rag/collections/:collectionId/ready`) çağrılmalıdır.
-
-Spesifik bir koleksiyonun Chroma üzerindeki fiziksel karşılığının erişilebilir (readable) olup olmadığını, doküman sayısını ve hazırlık durumunu doğrulamak için:
-
-```powershell
-Invoke-RestMethod -Uri "http://localhost:3010/v1/rag/collections/$collectionId/ready"
-```
-
-Bu readiness cevabı artık yalnızca `hasActivePhysicalCollection` ve `chromaCount` bilgilerini değil, seçili koleksiyonun `embeddingModel` ve `chatModel` değerlerinin Ollama tarafında gerçekten bulunup bulunmadığını da `modelAvailability` alanı altında raporlar. `capabilities.query` ancak aktif fiziksel collection okunabiliyor ve koleksiyonun chat+embedding modelleri mevcutsa `true` olur.
-
-## Health ve Readiness
-
-- `GET /v1/rag/collections`: Cheap registry-only collection discovery. It does not run Chroma/Ollama readiness probes and does not return query/retrieve capability flags. Use each item's `readyUrl` for collection-level capability checks before enabling query/retrieve.
-- `GET /health`: Sadece proses liveness durumunu döndürür.
-- `GET /ready`: Varsayılan summary contract döndürür. En az `status`, `ready`, `systemReadyFor`, `queryReady`, `indexReady`, `blockerCodes`, `warningCodes`, `dependencies.{registry,chroma,ollama}.ok` ve `diagnostics` alanlarını içerir.
-- `GET /ready?details=true`: Ayrıntılı readiness payload'unu (`checks`, `blockers`, `warnings`, `dependencies`, `dataSource`) döndürür.
-- `GET /ready?strict=true`: Sistem hazır değilse HTTP `503` döndürür.
-
-Bu endpoint collection'dan bağımsızdır; boş bir registry veya henüz default collection olmaması tek başına `/ready` başarısızlığı sayılmaz. Collection bazlı erişilebilirlik için `GET /v1/rag/collections/:collectionId/ready` kullanılmalıdır.
-
-### RAG Sorguları: Retrieve ve Query
-
-```powershell
-$body = @{ question = "Turizm amacli kiralama izin belgesi alinmis konutun kiraya verilmesi nasil vergilendirilir?" } | ConvertTo-Json
-
-# Yalnızca ilgili dokümanları (kaynakları) getirme
-Invoke-RestMethod -Uri "http://localhost:3010/v1/rag/collections/$collectionId/retrieve" -Method Post -ContentType "application/json; charset=utf-8" -Body $body
-
-# Retrieve edilen kaynaklar üzerinden Ollama LLM'i ile nihai cevabı üretme
-Invoke-RestMethod -Uri "http://localhost:3010/v1/rag/collections/$collectionId/query" -Method Post -ContentType "application/json; charset=utf-8" -Body $body
-```
-
-`retrieve` akışında koleksiyonun kendi `embeddingModel` ve `retrievalDistanceThreshold` ayarları, `query` akışında ise bunlara ek olarak koleksiyonun `chatModel` ayarı kullanılır. Global config bu alanlar için fallback/default görevi görür; logical collection kaydı varsa asıl source of truth registry'dir.
-
-## Veri Kaynakları ve Ingestion (İndeksleme Altyapısı)
-
-Koleksiyon yaratırken belirttiğiniz `sourcePath` (veya `ozelgeDataPath`) değerleri üzerinden indeksleme yapılır. Bu yollar yerel diskteki dosya veya klasörlere işaret edebilir.
-
-İndeksleme sırasında desteklenen dosya tipleri:
-
-- `.txt` ve `.md`: LangChain `TextLoader`
-- `.pdf`: LangChain `PDFLoader`
-- `.doc` / `.docx`: LangChain `DocxLoader`
-- Özel JSON Modeli: Sadece `ozelgeDataPath` ile işaretlenen ve projeye özgü özel formatlanmış (özelge) JSON dosyası desteklenir.
-
-İndekslenen her veri parçası (chunk) şu standart metadataları taşır:
-
-- `documentId`, `sourcePath`, `sourceType`, `chunkIndex`
-- Çoklu koleksiyon yapısı gereği eklenen: `collectionId`, `collectionVersion`, `physicalCollection`
-
-Veri tabanı indeksleme örneklemini kısıtlamak için `config/rag.config.yaml` içinde yer alan `collectionDefaults.indexSampleSize` değeri kullanılabilir. Değer `0` ise hedef dizindeki tüm veriler endekslenir.
-
-## Response ve Hata Semantigi
-
-`POST /v1/rag/collections/:id/retrieve` basarili oldugunda su alanlari dondurur:
-
-- `question`
-- `k`
-- `embeddingModel` (retrieval için kullanılan Ollama embedding modeli)
-- `distanceScoreThreshold`
-- `sourceCount`
-- `sources[]` (`documentId`, `sourcePath`, `sourceType`, `chunkIndex`, `distanceScore` dahil)
-- `collectionId`
-- `collectionDisplayName`
-- `activeVersion`
-
-`POST /v1/rag/collections/:id/query` basarili oldugunda su alanlari dondurur:
-
-- `answer`
-- `embeddingModel` (cevaba kaynak olan retrieval embedding modeli)
-- `chatModel` (cevabi üreten Ollama chat modeli)
-- `distanceScoreThreshold`
-- `sources[]` (`documentId`, `sourcePath`, `sourceType`, `chunkIndex`, `distanceScore` dahil)
-- `collectionId`
-- `collectionDisplayName`
-- `activeVersion`
-
-Bu backend bilincli olarak kullaniciya placeholder veya fallback answer dondurmez. Query/retrieve akislarinda baglam yetersizse, boyut limitleri aşılırsa veya model backpressure yaşanırsa standartlaştırılmış JSON hatası döndürülür.
-
-### Başlıca Hata Kodları:
-
-- `INVALID_REQUEST_BODY` (`400` / `413`): Gönderilen JSON geçersiz veya 1MB payload limitini aşıyor.
-- `COLLECTION_FORBIDDEN` (`403`): Koleksiyon ID'si var ama başka tenant kapsamına ait olduğu için erişim reddedildi.
-- `COLLECTION_NOT_FOUND` (`404`): Koleksiyon ID'si registry'de bulunamadı.
-- `COLLECTION_NOT_READY` (`404`): Koleksiyon var ama henüz başarılı bir endekse (aktif fiziksel pointer'a) sahip değil.
-- `COLLECTION_INDEXING` (`503`): Koleksiyon şu anda sıfırdan ilk kez endeksleniyor. (Daha önce başarıyla bitmiş bir index olsaydı, `zero-downtime` prensibi gereği sorgular eski indeksten dönmeye devam ederdi).
-- `COLLECTION_INDEX_ALREADY_RUNNING` (`409`): Aynı koleksiyon için eşzamanlı çalıştırılmaya çalışılan çakışan job uyarısı.
-- `RATE_LIMIT_EXCEEDED` (`429`): Aynı tenant/user/collection/operation anahtarı için `rateLimit.maxRequestsPerWindow` aşıldı.
-- `NO_RELEVANT_CONTEXT` (`422`): `retrievalDistanceThreshold` altinda ilgili (yakın) hiçbir kaynak doküman bulunamadı.
-- `ANSWER_NOT_IN_RETRIEVED_CONTEXT` (`422`): Retrieval ile kaynaklar bulundu ama LLM, bu kaynaklardan (grounded) kesin bir cevap uretemedi.
-- `MODEL_BACKPRESSURE` (`503`): Sistem eşzamanlı limitleri (`maxConcurrentEmbeddings` / `maxConcurrentGenerations`) aştı, vector search/generation zaman aşımına uğradı veya client tarafından iptal (abort) edildi.
-- `EMPTY_MODEL_RESPONSE` (`502`): Chat modeli boş cevap döndü.
-- `DISALLOWED_FALLBACK_ANSWER` (`502`): Model yasakli fallback (ezbere) metni döndü; backend bunu bir RAG ihlali/hatası sayar.
-
+- The backend currently listens on port `3010` in the shipped config.
+- The docs under [docs/](docs/README.md) are the authoritative source for request/response examples and integration details.

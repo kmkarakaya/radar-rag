@@ -79,9 +79,13 @@ describe("runtime static contract", () => {
     assert.match(onboard, /rateLimit\.maxRequestsPerWindow/);
     assert.match(onboard, /observability\.includeDebugTimings/);
     assert.match(onboard, /adminAuth\.enabled/);
+    assert.match(onboard, /adminAuth\.sessionSecretValue/);
+    assert.match(onboard, /adminAuth\.users\[0\]\.password/);
     assert.match(onboard, /adminAuth\.sessionSecretEnvVar/);
     assert.match(onboard, /adminAuth\.sessionSecretConfigured/);
     assert.match(onboard, /adminAuth\.users/);
+    assert.match(onboard, /defaultAdminSessionSecretFilePath/);
+    assert.match(onboard, /writeAdminSessionSecretFile/);
     assert.match(onboard, /validateAdminAuthConfig/);
     assert.match(onboard, /Run: ollama pull \$\{runtimeConfig\.ollamaEmbeddingModel\}/);
     assert.match(onboard, /Run: ollama pull \$\{runtimeConfig\.ollamaChatModel\}/);
@@ -89,6 +93,7 @@ describe("runtime static contract", () => {
     assert.match(onboard, /\/test-frontend\//);
     assert.match(onboard, /admin panel or the admin API\/job flow/i);
     assert.match(onboard, /admin:hash-password/);
+    assert.match(onboard, /\.local\/rag_admin_session\.secret/);
     assert.match(adminAuth, /export function validateAdminAuthConfig/);
     assert.doesNotMatch(onboard, /request rate limiting: not enabled yet/i);
   });

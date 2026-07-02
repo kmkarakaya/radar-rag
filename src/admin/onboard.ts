@@ -2,6 +2,7 @@
 import path from "node:path";
 import { createInterface, type Interface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { hashPassword } from "./passwordHash.js";
 import {
   defaultConfigPath,
   loadConfig,
@@ -12,7 +13,7 @@ import {
   type RawConfig,
   type ResolvedConfig,
 } from "../config.js";
-import { validateAdminAuthConfig } from "../http/adminAuth.js";
+import { defaultAdminSessionSecretFilePath, validateAdminAuthConfig } from "../http/adminAuth.js";
 import { analyzeIndexingSource } from "../index.js";
 import {
   checkChatGenerationHealth,
@@ -28,6 +29,11 @@ type CliOptions = {
   yes: boolean;
   skipIndex: boolean;
   noWrite: boolean;
+};
+
+type PromptedConfig = {
+  rawConfig: RawConfig;
+  adminSessionSecretValue?: string;
 };
 
 const DISTANCE_METRICS = ["l2", "cosine", "ip"] as const;
@@ -135,6 +141,31 @@ async function promptBoolean(
   }
 }
 
+async function promptRequiredString(rl: Interface, label: string): Promise<string> {
+  while (true) {
+    const answer = await rl.question(`${label}: `);
+    const trimmed = answer.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+
+    console.log("Please enter a value.");
+  }
+}
+
+async function promptSecretConfirmation(rl: Interface, label: string): Promise<string> {
+  while (true) {
+    const secret = await promptRequiredString(rl, `${label}`);
+    const confirmation = await promptRequiredString(rl, `${label} (confirm)`);
+
+    if (secret === confirmation) {
+      return secret;
+    }
+
+    console.log("Values do not match. Please try again.");
+  }
+}
+
 async function promptEnum<T extends string>(
   rl: Interface,
   label: string,
@@ -156,7 +187,51 @@ async function promptEnum<T extends string>(
   }
 }
 
-async function promptConfig(rawConfig: RawConfig): Promise<RawConfig> {
+async function promptAdminAuth(
+  rl: Interface,
+  rawAdminAuth: RawConfig["adminAuth"],
+): Promise<{
+  adminAuth: RawConfig["adminAuth"];
+  adminSessionSecretValue?: string;
+}> {
+  console.log(
+    "Admin auth is optional. If you enable it, onboarding stores the session secret locally and hashes the first admin password for you.\n",
+  );
+
+  const enabled = await promptBoolean(rl, "adminAuth.enabled", rawAdminAuth.enabled ?? false);
+  if (!enabled) {
+    return {
+      adminAuth: {
+        ...rawAdminAuth,
+        enabled: false,
+        users: [],
+      },
+    };
+  }
+
+  const adminSessionSecretValue = await promptSecretConfirmation(rl, "adminAuth.sessionSecretValue");
+  const username = await promptString(rl, "adminAuth.users[0].username", rawAdminAuth.users[0]?.username ?? "admin");
+  const tenantId = await promptString(rl, "adminAuth.users[0].tenantId", rawAdminAuth.users[0]?.tenantId ?? "default");
+  const password = await promptSecretConfirmation(rl, "adminAuth.users[0].password");
+
+  return {
+    adminAuth: {
+      ...rawAdminAuth,
+      enabled: true,
+      users: [
+        {
+          username,
+          passwordHash: hashPassword(password),
+          role: "admin",
+          tenantId,
+        },
+      ],
+    },
+    adminSessionSecretValue,
+  };
+}
+
+async function promptConfig(rawConfig: RawConfig): Promise<PromptedConfig> {
   const rl = createInterface({ input, output });
 
   try {
@@ -165,144 +240,155 @@ async function promptConfig(rawConfig: RawConfig): Promise<RawConfig> {
       "collectionDefaults.indexSampleSize is the default sample size for newly created collections; 0 means all parsed ozelge records.\n",
     );
 
+    const adminAuthResult = await promptAdminAuth(rl, rawConfig.adminAuth);
+
     return {
-      server: {
-        port: await promptNumber(rl, "server.port", rawConfig.server.port, positiveInteger),
+      rawConfig: {
+        server: {
+          port: await promptNumber(rl, "server.port", rawConfig.server.port, positiveInteger),
+        },
+        registry: {
+          path: await promptString(rl, "registry.path", rawConfig.registry.path),
+        },
+        chroma: {
+          url: await promptString(rl, "chroma.url", rawConfig.chroma.url),
+        },
+        ollama: {
+          baseUrl: await promptString(rl, "ollama.baseUrl", rawConfig.ollama.baseUrl),
+          chatModel: await promptString(rl, "ollama.chatModel", rawConfig.ollama.chatModel),
+          embeddingModel: await promptString(rl, "ollama.embeddingModel", rawConfig.ollama.embeddingModel),
+          numCtx: await promptNumber(rl, "ollama.numCtx", rawConfig.ollama.numCtx, positiveInteger),
+          numPredict: await promptNumber(rl, "ollama.numPredict", rawConfig.ollama.numPredict, positiveInteger),
+        },
+        collectionDefaults: {
+          sourcePath: await promptString(rl, "collectionDefaults.sourcePath", rawConfig.collectionDefaults.sourcePath),
+          ozelgeDataPath: await promptString(
+            rl,
+            "collectionDefaults.ozelgeDataPath",
+            rawConfig.collectionDefaults.ozelgeDataPath,
+          ),
+          distanceMetric: await promptEnum(
+            rl,
+            "collectionDefaults.distanceMetric",
+            rawConfig.collectionDefaults.distanceMetric,
+            DISTANCE_METRICS,
+          ),
+          indexSampleSize: await promptNumber(
+            rl,
+            "collectionDefaults.indexSampleSize",
+            rawConfig.collectionDefaults.indexSampleSize,
+            nonNegativeInteger,
+          ),
+          chunkSize: await promptNumber(
+            rl,
+            "collectionDefaults.chunkSize",
+            rawConfig.collectionDefaults.chunkSize,
+            positiveInteger,
+          ),
+          chunkOverlap: await promptNumber(
+            rl,
+            "collectionDefaults.chunkOverlap",
+            rawConfig.collectionDefaults.chunkOverlap,
+            nonNegativeInteger,
+          ),
+          retrievalK: await promptNumber(
+            rl,
+            "collectionDefaults.retrievalK",
+            rawConfig.collectionDefaults.retrievalK,
+            positiveInteger,
+          ),
+          retrievalDistanceThreshold: await promptNumber(
+            rl,
+            "collectionDefaults.retrievalDistanceThreshold",
+            rawConfig.collectionDefaults.retrievalDistanceThreshold,
+            nonNegativeNumber,
+          ),
+          timeoutMs: await promptNumber(
+            rl,
+            "collectionDefaults.timeoutMs",
+            rawConfig.collectionDefaults.timeoutMs,
+            positiveInteger,
+          ),
+        },
+        readiness: {
+          timeoutMs: await promptNumber(
+            rl,
+            "readiness.timeoutMs",
+            rawConfig.readiness.timeoutMs,
+            positiveInteger,
+          ),
+          embeddingProbeText: await promptString(
+            rl,
+            "readiness.embeddingProbeText",
+            rawConfig.readiness.embeddingProbeText,
+          ),
+          chatProbeText: await promptString(
+            rl,
+            "readiness.chatProbeText",
+            rawConfig.readiness.chatProbeText,
+          ),
+        },
+        cleanup: {
+          retentionMs: await promptNumber(
+            rl,
+            "cleanup.retentionMs",
+            rawConfig.cleanup?.retentionMs ?? 3600000,
+            nonNegativeInteger,
+          ),
+        },
+        limits: {
+          maxConcurrentEmbeddings: await promptNumber(
+            rl,
+            "limits.maxConcurrentEmbeddings",
+            rawConfig.limits?.maxConcurrentEmbeddings ?? 5,
+            positiveInteger,
+          ),
+          maxConcurrentGenerations: await promptNumber(
+            rl,
+            "limits.maxConcurrentGenerations",
+            rawConfig.limits?.maxConcurrentGenerations ?? 2,
+            positiveInteger,
+          ),
+        },
+        rateLimit: {
+          enabled: await promptBoolean(
+            rl,
+            "rateLimit.enabled",
+            rawConfig.rateLimit?.enabled ?? true,
+          ),
+          windowMs: await promptNumber(
+            rl,
+            "rateLimit.windowMs",
+            rawConfig.rateLimit?.windowMs ?? 60000,
+            positiveInteger,
+          ),
+          maxRequestsPerWindow: await promptNumber(
+            rl,
+            "rateLimit.maxRequestsPerWindow",
+            rawConfig.rateLimit?.maxRequestsPerWindow ?? 60,
+            positiveInteger,
+          ),
+        },
+        adminAuth: adminAuthResult.adminAuth,
+        observability: {
+          includeDebugTimings: await promptBoolean(
+            rl,
+            "observability.includeDebugTimings",
+            rawConfig.observability?.includeDebugTimings ?? false,
+          ),
+        },
       },
-      registry: {
-        path: await promptString(rl, "registry.path", rawConfig.registry.path),
-      },
-      chroma: {
-        url: await promptString(rl, "chroma.url", rawConfig.chroma.url),
-      },
-      ollama: {
-        baseUrl: await promptString(rl, "ollama.baseUrl", rawConfig.ollama.baseUrl),
-        chatModel: await promptString(rl, "ollama.chatModel", rawConfig.ollama.chatModel),
-        embeddingModel: await promptString(rl, "ollama.embeddingModel", rawConfig.ollama.embeddingModel),
-        numCtx: await promptNumber(rl, "ollama.numCtx", rawConfig.ollama.numCtx, positiveInteger),
-        numPredict: await promptNumber(rl, "ollama.numPredict", rawConfig.ollama.numPredict, positiveInteger),
-      },
-      collectionDefaults: {
-        sourcePath: await promptString(rl, "collectionDefaults.sourcePath", rawConfig.collectionDefaults.sourcePath),
-        ozelgeDataPath: await promptString(
-          rl,
-          "collectionDefaults.ozelgeDataPath",
-          rawConfig.collectionDefaults.ozelgeDataPath,
-        ),
-        distanceMetric: await promptEnum(
-          rl,
-          "collectionDefaults.distanceMetric",
-          rawConfig.collectionDefaults.distanceMetric,
-          DISTANCE_METRICS,
-        ),
-        indexSampleSize: await promptNumber(
-          rl,
-          "collectionDefaults.indexSampleSize",
-          rawConfig.collectionDefaults.indexSampleSize,
-          nonNegativeInteger,
-        ),
-        chunkSize: await promptNumber(
-          rl,
-          "collectionDefaults.chunkSize",
-          rawConfig.collectionDefaults.chunkSize,
-          positiveInteger,
-        ),
-        chunkOverlap: await promptNumber(
-          rl,
-          "collectionDefaults.chunkOverlap",
-          rawConfig.collectionDefaults.chunkOverlap,
-          nonNegativeInteger,
-        ),
-        retrievalK: await promptNumber(
-          rl,
-          "collectionDefaults.retrievalK",
-          rawConfig.collectionDefaults.retrievalK,
-          positiveInteger,
-        ),
-        retrievalDistanceThreshold: await promptNumber(
-          rl,
-          "collectionDefaults.retrievalDistanceThreshold",
-          rawConfig.collectionDefaults.retrievalDistanceThreshold,
-          nonNegativeNumber,
-        ),
-        timeoutMs: await promptNumber(
-          rl,
-          "collectionDefaults.timeoutMs",
-          rawConfig.collectionDefaults.timeoutMs,
-          positiveInteger,
-        ),
-      },
-      readiness: {
-        timeoutMs: await promptNumber(
-          rl,
-          "readiness.timeoutMs",
-          rawConfig.readiness.timeoutMs,
-          positiveInteger,
-        ),
-        embeddingProbeText: await promptString(
-          rl,
-          "readiness.embeddingProbeText",
-          rawConfig.readiness.embeddingProbeText,
-        ),
-        chatProbeText: await promptString(
-          rl,
-          "readiness.chatProbeText",
-          rawConfig.readiness.chatProbeText,
-        ),
-      },
-      cleanup: {
-        retentionMs: await promptNumber(
-          rl,
-          "cleanup.retentionMs",
-          rawConfig.cleanup?.retentionMs ?? 3600000,
-          nonNegativeInteger,
-        ),
-      },
-      limits: {
-        maxConcurrentEmbeddings: await promptNumber(
-          rl,
-          "limits.maxConcurrentEmbeddings",
-          rawConfig.limits?.maxConcurrentEmbeddings ?? 5,
-          positiveInteger,
-        ),
-        maxConcurrentGenerations: await promptNumber(
-          rl,
-          "limits.maxConcurrentGenerations",
-          rawConfig.limits?.maxConcurrentGenerations ?? 2,
-          positiveInteger,
-        ),
-      },
-      rateLimit: {
-        enabled: await promptBoolean(
-          rl,
-          "rateLimit.enabled",
-          rawConfig.rateLimit?.enabled ?? true,
-        ),
-        windowMs: await promptNumber(
-          rl,
-          "rateLimit.windowMs",
-          rawConfig.rateLimit?.windowMs ?? 60000,
-          positiveInteger,
-        ),
-        maxRequestsPerWindow: await promptNumber(
-          rl,
-          "rateLimit.maxRequestsPerWindow",
-          rawConfig.rateLimit?.maxRequestsPerWindow ?? 60,
-          positiveInteger,
-        ),
-      },
-      adminAuth: rawConfig.adminAuth,
-      observability: {
-        includeDebugTimings: await promptBoolean(
-          rl,
-          "observability.includeDebugTimings",
-          rawConfig.observability?.includeDebugTimings ?? false,
-        ),
-      },
+      adminSessionSecretValue: adminAuthResult.adminSessionSecretValue,
     };
   } finally {
     rl.close();
   }
+}
+
+async function writeAdminSessionSecretFile(secretValue: string): Promise<void> {
+  const secretFilePath = path.resolve(process.cwd(), defaultAdminSessionSecretFilePath);
+  await fs.mkdir(path.dirname(secretFilePath), { recursive: true });
+  await fs.writeFile(secretFilePath, `${secretValue}\n`, { encoding: "utf8", mode: 0o600 });
 }
 
 function positiveInteger(value: number): string | null {
@@ -322,8 +408,9 @@ async function writeConfigWithBackup(rawConfig: RawConfig, configPath: string): 
   await writeConfigFile(rawConfig, configPath);
 }
 
-function printConfigSummary(runtimeConfig: ResolvedConfig, env: NodeJS.ProcessEnv): void {
-  const sessionSecretConfigured = ((env[runtimeConfig.adminAuth.sessionSecretEnvVar] ?? "").trim().length > 0);
+async function printConfigSummary(runtimeConfig: ResolvedConfig, env: NodeJS.ProcessEnv): Promise<void> {
+  const sessionSecretConfigured = ((env[runtimeConfig.adminAuth.sessionSecretEnvVar] ?? "").trim().length > 0)
+    || await fs.access(path.resolve(process.cwd(), defaultAdminSessionSecretFilePath)).then(() => true).catch(() => false);
 
   console.log("\nConfig summary:");
   console.log(`- configPath: ${runtimeConfig.configPath}`);
@@ -412,14 +499,18 @@ async function runDependencyChecks(runtimeConfig: ResolvedConfig): Promise<boole
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const rawConfig = parseConfig(readConfigFile(options.configPath), options.configPath);
-  const nextRawConfig = options.yes ? rawConfig : await promptConfig(rawConfig);
-  const runtimeConfig = resolveConfig(parseConfig(nextRawConfig, options.configPath), options.configPath);
+  const nextConfig = options.yes ? { rawConfig, adminSessionSecretValue: undefined } : await promptConfig(rawConfig);
+  const runtimeConfig = resolveConfig(parseConfig(nextConfig.rawConfig, options.configPath), options.configPath);
 
-  printConfigSummary(runtimeConfig, process.env);
+  await printConfigSummary(runtimeConfig, process.env);
 
   const shouldWrite = !options.dryRun && !options.noWrite;
   if (shouldWrite && !options.yes) {
-    await writeConfigWithBackup(nextRawConfig, options.configPath);
+    await writeConfigWithBackup(nextConfig.rawConfig, options.configPath);
+    if (nextConfig.adminSessionSecretValue) {
+      await writeAdminSessionSecretFile(nextConfig.adminSessionSecretValue);
+      console.log(`Secret written to ${defaultAdminSessionSecretFilePath}`);
+    }
     console.log(`\nConfig written to ${options.configPath}`);
     console.log(`Backup written to ${options.configPath}.bak`);
   } else if (shouldWrite && options.yes) {

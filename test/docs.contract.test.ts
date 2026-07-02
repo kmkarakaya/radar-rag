@@ -62,6 +62,7 @@ describe('docs static contract', () => {
     ]);
 
     assert.ok(readme.includes('RAG_ADMIN_SESSION_SECRET'), 'README should document the admin session secret env var');
+    assert.ok(readme.includes('.local/rag_admin_session.secret'), 'README should document the local secret file fallback');
     assert.ok(readme.includes('npm run admin:hash-password'), 'README should document password hash generation');
     assert.ok(readme.includes('/admin/login'), 'README should document the admin login redirect');
     assert.ok(readme.includes('Güvenli admin quickstart'), 'README should distinguish secure admin onboarding');

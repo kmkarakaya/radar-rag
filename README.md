@@ -28,6 +28,7 @@ TypeScript Express backend for multi-collection LangChain RAG over documents in 
 - A built-in admin panel at [admin/index.html](admin/index.html) for day-to-day collection management.
 - Optional admin auth with `viewer`, `operator`, and `admin` roles.
 - Login, session hydration, logout, and action-token minting under `/v1/admin/auth/*`.
+- Collection and job management live under `/v1/admin/collections` and `/v1/admin/jobs/`.
 - Collection create, update, validate, reindex, delete, and bulk delete flows.
 - Create-form defaults and model discovery so the panel can show backend defaults and model suggestions.
 - Index job status, stage events, cancel, delete, and recovery visibility.
@@ -96,13 +97,15 @@ How to extend it:
 
 ## What onboarding is for
 
-Onboarding is the local bootstrap step. It prepares the runtime environment so the backend and admin panel can work correctly, but it does not manage collections.
+Onboarding is the local bootstrap step. It prepares the runtime environment so the backend and admin panel can work correctly, and it can also bootstrap admin auth on first setup.
 
-What `npm.cmd run onboard` does:
+What `npm run onboard` does:
 
 - creates or refreshes the runtime config for this machine
 - writes a backup copy of the previous config before changes are saved
 - resolves local defaults such as ports, paths, model names, and registry state
+- optionally prompts whether admin auth is being used
+- if admin auth is enabled, asks for the session secret, asks for the first admin password, hashes that password, and stores the session secret in `.local/rag_admin_session.secret`
 - checks whether Chroma, Ollama, and the configured models are reachable
 - verifies that indexing can run against the current source data
 
@@ -111,18 +114,19 @@ What it does not do:
 - create, edit, validate, reindex, or monitor collections
 - replace the admin panel for daily collection management
 
-Use onboarding again when you change machines, reset the config, add new source data, or switch local models. If the runtime is already healthy and you are only working in the admin panel, you usually do not need to rerun it.
+Use onboarding again when you change machines, reset the config, add new source data, switch local models, or want to re-bootstrap admin auth. If the runtime is already healthy and you are only working in the admin panel, you usually do not need to rerun it.
 
-## Admin auth quickstart
+## Güvenli admin quickstart
 
-Admin auth is opt-in. Turn it on in [config/rag.config.yaml](config/rag.config.yaml) by setting `adminAuth.enabled: true`, then provide a session secret and at least one admin user.
+Admin auth is opt-in. During onboarding, answer yes when asked whether admin auth is used. Onboarding will ask for a session secret and the first admin password, hash the password for you, write the admin user into `adminAuth.users[]`, and store the session secret locally in `.local/rag_admin_session.secret`.
 
-1. Set `RAG_ADMIN_SESSION_SECRET` in your shell.
-2. Run `npm run admin:hash-password -- "your-password"` to generate the stored password hash.
-3. Put that hash into `adminAuth.users[]` with `username`, `role`, and `tenantId`.
-4. Restart the backend.
-5. Log in with `POST /v1/admin/auth/login`.
-6. For mutating admin requests, fetch a token from `POST /v1/admin/auth/action-token` and send it as `x-admin-action-token`.
+1. Run `npm.cmd run onboard`.
+2. Answer yes when the admin auth prompt appears.
+3. Enter the session secret value when prompted.
+4. Enter and confirm the first admin password.
+5. Restart the backend.
+6. Log in with `POST /v1/admin/auth/login`.
+7. For mutating admin requests, fetch a token from `POST /v1/admin/auth/action-token` and send it as `x-admin-action-token`.
 
 Example config:
 
@@ -139,6 +143,31 @@ adminAuth:
       role: admin
       tenantId: "default"
 ```
+
+If `RAG_ADMIN_SESSION_SECRET` is set in the environment, it still overrides the local secret file. That keeps the runtime portable across operating systems without requiring a repo-tracked secrets file.
+
+The admin shell redirects to `/admin/login` when auth is enabled.
+
+### Manual admin setup
+
+If you prefer to configure admin auth by hand instead of using onboarding, keep the same runtime contract and set the pieces yourself:
+
+1. Set `adminAuth.enabled: true` in [config/rag.config.yaml](config/rag.config.yaml).
+2. Provide `adminAuth.sessionSecretEnvVar: RAG_ADMIN_SESSION_SECRET`.
+3. Set the secret in your shell, or write the value to `.local/rag_admin_session.secret` if you want to use the local file fallback.
+4. Run `npm run admin:hash-password -- "your-password"` to generate a scrypt password hash.
+5. Put that hash into `adminAuth.users[]` with `username`, `role`, and `tenantId`.
+6. Restart the backend.
+7. Log in with `POST /v1/admin/auth/login`.
+8. For mutating admin requests, fetch a token from `POST /v1/admin/auth/action-token` and send it as `x-admin-action-token`.
+
+## Collection discovery and cleanup notes
+
+- `GET /v1/admin/collections` is a registry-style discovery endpoint and does not return query/retrieve capability flags.
+- Discovery responses include `readyUrl`, `queryUrl`, and `retrieveUrl`; when a collection has no active index yet, `activeVersion` ve `chunkCount` alanlari `null` stay instead of disappearing from the response shape.
+- Physical collection cleanup uses `cleanup.retentionMs` and the retired lifecycle states `delete_pending`, `cleanup_failed`, and `failed_build`.
+- Storage delete handling is idempotent not-found cleanup behavior, and tenant access errors use `COLLECTION_FORBIDDEN`.
+- The application composition layer lives in [src/app.ts](src/app.ts).
 
 Session flow:
 

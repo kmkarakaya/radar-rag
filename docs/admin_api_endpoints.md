@@ -31,6 +31,7 @@ Operational notes:
 - When admin auth is enabled, `/v1/admin/**` ignores incoming `x-tenant-id` and `x-user-id`; tenant and user are derived from the active session.
 - Mutating admin routes reject missing, expired, replayed, wrong-route, wrong-method, or wrong-tenant action tokens.
 - Use `npm run admin:hash-password` to generate `passwordHash` values safely.
+- Onboarding stores the session secret in `.local/rag_admin_session.secret` when admin auth is enabled, and the runtime falls back to that file when `RAG_ADMIN_SESSION_SECRET` is not present in the environment.
 
 Admin auth config surface:
 
@@ -38,7 +39,7 @@ Admin auth config surface:
 - `adminAuth.cookieName`: session cookie name. The shipped default is `rag_admin_session`.
 - `adminAuth.sessionTtlMs`: session lifetime in milliseconds.
 - `adminAuth.actionTokenTtlMs`: single-use action-token lifetime in milliseconds.
-- `adminAuth.sessionSecretEnvVar`: env var that must contain the HMAC signing secret. The shipped default is `RAG_ADMIN_SESSION_SECRET`.
+- `adminAuth.sessionSecretEnvVar`: env var that can override the HMAC signing secret. The shipped default is `RAG_ADMIN_SESSION_SECRET`, and onboarding also supports a local secret file for portable setup.
 - `adminAuth.users[]`: configured admin principals with `{ username, passwordHash, role, tenantId }`.
 
 Password hash format:

@@ -11,6 +11,9 @@ data/*.sqlite
 .env
 .env.*
 
+# Local onboarding secrets
+.local/
+
 # OS generated files
 .DS_Store
 Thumbs.db

@@ -1,4 +1,6 @@
+import { readFileSync } from "node:fs";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import path from "node:path";
 import type { NextFunction, Request, Response } from "express";
 import { HttpError } from "./errors.js";
 import type { RequestContext } from "./requestContext.js";
@@ -64,6 +66,7 @@ const OPERATOR_CAPABILITIES: AdminCapability[] = [
   "cancelJob",
 ];
 const ADMIN_CAPABILITIES: AdminCapability[] = [...OPERATOR_CAPABILITIES, "deleteCollection", "deleteJob", "bulkDeleteJobs"];
+export const defaultAdminSessionSecretFilePath = ".local/rag_admin_session.secret";
 
 const ADMIN_ROUTE_PATTERNS: Array<{
   method: string;
@@ -138,18 +141,37 @@ function ensureValidPasswordHashes(users: AdminUserConfig[]): void {
   }
 }
 
+function readConfiguredSessionSecret(sessionSecretFilePath: string): string {
+  const resolvedPath = path.resolve(process.cwd(), sessionSecretFilePath);
+
+  try {
+    return readFileSync(resolvedPath, "utf8").trim();
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? String((error as NodeJS.ErrnoException).code ?? "") : "";
+    if (code === "ENOENT") {
+      return "";
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read admin session secret file at ${resolvedPath}: ${message}`);
+  }
+}
+
 export function validateAdminAuthConfig(input: {
   config: AdminAuthConfig;
   env?: NodeJS.ProcessEnv;
 }): { secret: string; sessionSecretConfigured: boolean } {
   const cfg = input.config;
   const configuredSecret = (input.env?.[cfg.sessionSecretEnvVar] ?? "").trim();
-  const sessionSecretConfigured = configuredSecret.length > 0;
-  const secret = cfg.enabled ? configuredSecret : "";
+  const fileSecret = configuredSecret.length > 0 ? "" : readConfiguredSessionSecret(defaultAdminSessionSecretFilePath);
+  const sessionSecretConfigured = configuredSecret.length > 0 || fileSecret.length > 0;
+  const secret = cfg.enabled ? (configuredSecret.length > 0 ? configuredSecret : fileSecret) : "";
 
   if (cfg.enabled) {
     if (!secret) {
-      throw new Error(`Admin auth is enabled but ${cfg.sessionSecretEnvVar} is missing.`);
+      throw new Error(
+        `Admin auth is enabled but ${cfg.sessionSecretEnvVar} is missing and no secret file was found at ${defaultAdminSessionSecretFilePath}.`,
+      );
     }
     if (!Array.isArray(cfg.users) || cfg.users.length === 0) {
       throw new Error("Admin auth is enabled but no admin users are configured.");

@@ -9,21 +9,21 @@ ollama:
   chatModel: gemma3:4b-cloud
   embeddingModel: bge-m3
   numCtx: 4096
-  numPredict: 128
+  numPredict: 512
 collectionDefaults:
-  sourcePath: data
+  sourcePath: C:\Codes\Vanilla Rag Backend\data
   ozelgeDataPath: data/ozelge_veri.json
   distanceMetric: l2
   indexSampleSize: 0
   chunkSize: 500
   chunkOverlap: 200
   retrievalK: 5
-  retrievalDistanceThreshold: 1
-  timeoutMs: 90000
+  retrievalDistanceThreshold: 1.2
+  timeoutMs: 180000
 readiness:
   timeoutMs: 30000
-  embeddingProbeText: readiness probe
-  chatProbeText: hazirlik kontrolu
+  embeddingProbeText: Merhaba
+  chatProbeText: Orda mısın?
 cleanup:
   retentionMs: 3600000
 limits:
@@ -33,5 +33,12 @@ rateLimit:
   enabled: true
   windowMs: 60000
   maxRequestsPerWindow: 60
+adminAuth:
+  enabled: false
+  cookieName: rag_admin_session
+  sessionTtlMs: 28800000
+  actionTokenTtlMs: 300000
+  sessionSecretEnvVar: RAG_ADMIN_SESSION_SECRET
+  users: []
 observability:
   includeDebugTimings: false

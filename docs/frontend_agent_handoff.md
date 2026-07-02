@@ -20,7 +20,7 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 
 1. Use only versioned endpoints under `/v1/rag` and `/v1/admin`.
 2. Never use `/rag/query` or `/rag/retrieve`; they are intentionally gone.
-3. Always send `x-tenant-id`, `x-user-id`, and `x-request-id`.
+3. Always send `x-request-id`. Send `x-tenant-id` and `x-user-id` on public `/v1/rag/**` requests, and use session-derived values for `/v1/admin/**` when admin auth is enabled.
 4. Before enabling a collection's `query` or `retrieve` action, call `GET /v1/rag/collections/:collectionId/ready`.
 5. Use `ready.capabilities.query` and `ready.capabilities.retrieve` as the source of truth. Do not infer capability from `status` alone.
 6. Treat `GET /v1/rag/collections/:collectionId/ready` as a semantic `200`: it can succeed while still reporting blockers and disabled capabilities.
@@ -35,6 +35,9 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 15. Use `GET /v1/admin/jobs/:jobId/events` for stage-aware progress UIs; do not infer detailed progress from job status alone.
 16. Use `GET /v1/admin/collections/:collectionId/physical-collections` when the admin UI needs rebuild, cleanup, or failed-target visibility.
 17. Use `GET /v1/admin/audit-log` for persisted operations history. `collectionId` and `operation` filters can be repeated for multi-select UI state.
+18. Treat admin auth as cookie-based and opt-in. Call `GET /v1/admin/auth/session` on boot, redirect `/admin/` to `/admin/login` when unauthenticated, and do not trust user-editable `x-tenant-id` / `x-user-id` on `/v1/admin/**`.
+19. Use `POST /v1/admin/auth/login` and `POST /v1/admin/auth/logout` for session lifecycle. Fetch `POST /v1/admin/auth/action-token` just in time before any mutating admin request except validation-only flows.
+20. Enforce the role matrix in the UI: `viewer` is read-only, `operator` can create/validate/update/reindex/cancel jobs, and `admin` can additionally delete collections, delete jobs, and bulk delete jobs.
 
 ## Canonical End-User RAG Workflow
 
@@ -50,11 +53,11 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 ## Canonical Admin Workflow
 
 1. For create forms, fetch `GET /v1/admin/config/defaults` and `GET /v1/admin/models` first so the UI can show backend defaults and model suggestions.
-2. Create or load a collection with `/v1/admin/collections`.
+2. Create or load a collection with `/v1/admin/collections` after a valid admin session has been established.
 3. Call `/v1/admin/collections/validate` or `/v1/admin/collections/:collectionId/validate` before saving major configuration changes.
-4. Save changes with `PATCH /v1/admin/collections/:collectionId`.
+4. Save changes with `PATCH /v1/admin/collections/:collectionId` after fetching a fresh action token.
 5. If validation says `impact.reindexRequired === true`, offer a reindex action.
-6. Trigger reindex with `POST /v1/admin/collections/:collectionId/reindex`.
+6. Trigger reindex with `POST /v1/admin/collections/:collectionId/reindex` after fetching a fresh action token.
 7. Poll `GET /v1/admin/jobs/:jobId` or `GET /v1/admin/jobs` while the job is queued or running.
 8. If the screen shows progress detail, poll `GET /v1/admin/jobs/:jobId/events` for the stage timeline.
 9. If the screen shows rebuild lifecycle detail, load `GET /v1/admin/collections/:collectionId/physical-collections`.
@@ -98,6 +101,8 @@ Use the readiness payload to drive the UI:
 | Code | Typical HTTP status | Meaning | Frontend reaction |
 | --- | --- | --- | --- |
 | `INVALID_REQUEST_BODY` | `400` or `413` | Body shape is invalid, JSON is malformed, or the JSON body exceeded the size limit | Fix the client payload or form validation |
+| `UNAUTHORIZED` | `401` | Admin auth is enabled and there is no valid admin session | Redirect to login or refresh admin session state |
+| `FORBIDDEN` | `403` | The admin role cannot perform the action, or the protected mutation is missing a valid action token | Hide the action or fetch a fresh action token |
 | `COLLECTION_FORBIDDEN` | `403` | The collection exists but the current tenant cannot access it | Show authorization or tenant scope error |
 | `COLLECTION_NOT_FOUND` | `404` | The collection does not exist or was soft-deleted | Remove stale UI state |
 | `COLLECTION_NOT_READY` | `404` | The collection exists but has no active indexed version and is not indexing | Show setup or reindex prompt |
@@ -121,6 +126,7 @@ Use the readiness payload to drive the UI:
 | `x-tenant-id` | No | `default` | Defines tenant scope |
 | `x-user-id` | No | `local-dev` | Used by rate limiting and structured logs |
 | `x-request-id` | No | Generated UUID | Useful for tracing and debugging |
+| `x-admin-action-token` | No, but required on protected mutating admin routes | n/a | Short-lived signed token bound to the authenticated admin session |
 
 ## Polling Guidance
 
@@ -130,6 +136,7 @@ Use the readiness payload to drive the UI:
 - Refresh physical collection lifecycle and audit history when the current admin view depends on them.
 - Stop polling once the job becomes terminal or the readiness payload no longer reports an active queued or running job.
 - Honor `Retry-After` when the backend returns `429`.
+- When admin auth is enabled, ignore user-editable tenant/user inputs for admin routes and derive `x-tenant-id` / `x-user-id` from the authenticated session.
 
 ## Minimal Client Pattern
 
@@ -197,4 +204,5 @@ Rules:
 - If ready.modelAvailability.desiredEmbeddingModel exists, treat it as a pending post-reindex model change, not as the current live embedding model.
 - If the UI shows job progress, use GET /v1/admin/jobs/:jobId/events for stage-aware updates.
 - If the UI shows operations history, use GET /v1/admin/audit-log and support repeated collectionId and operation filters.
+- If the UI needs admin login/logout or action-token flow, use the auth endpoints above instead of inventing client-side token logic.
 ```

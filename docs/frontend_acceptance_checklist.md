@@ -42,6 +42,13 @@ Use this checklist to evaluate whether a frontend built against this backend is 
 
 ## Admin UX Checks
 
+- Uses `GET /v1/admin/auth/session` to bootstrap admin auth state when admin auth is enabled.
+- Can log in with `POST /v1/admin/auth/login` and log out with `POST /v1/admin/auth/logout`.
+- Redirects `/admin/` to `/admin/login` or an equivalent login route when unauthenticated.
+- Fetches `POST /v1/admin/auth/action-token` just before protected admin mutations.
+- Sends `x-admin-action-token` only on protected mutating admin routes, not on read-only or validation-only requests.
+- Derives admin tenant and user context from the authenticated session instead of trusting user-editable inputs.
+- Enforces role-aware UI state: `viewer` read-only, `operator` can mutate non-destructive flows, `admin` can delete collections and jobs.
 - Can create collections with `POST /v1/admin/collections`.
 - Shows backend defaults for create forms with `GET /v1/admin/config/defaults`.
 - Shows runtime model suggestions for create forms with `GET /v1/admin/models`.

@@ -32,6 +32,34 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("mergeCollectionIntoState(detail)"));
   });
 
+  it("includes the admin auth shell, session bootstrap, and protected mutation helpers", async () => {
+    const [html, js] = await Promise.all([
+      readAdminFile("index.html"),
+      readAdminFile("admin.js"),
+    ]);
+
+    assert.ok(html.includes('id="authShell"'));
+    assert.ok(html.includes('id="authLoginForm"'));
+    assert.ok(html.includes('id="authUsername"'));
+    assert.ok(html.includes('id="authPassword"'));
+    assert.ok(html.includes('id="authLoginButton"'));
+    assert.ok(html.includes('id="authLogoutButton"'));
+    assert.ok(html.includes('id="authSessionSummary"'));
+    assert.ok(html.includes('id="authSessionRole"'));
+    assert.ok(html.includes('id="authSessionTenant"'));
+    assert.ok(html.includes('id="authSessionExpiry"'));
+    assert.ok(js.includes("function adminAuthSessionUrl()"));
+    assert.ok(js.includes("function adminAuthLoginUrl()"));
+    assert.ok(js.includes("function adminAuthLogoutUrl()"));
+    assert.ok(js.includes("async function loadAdminSession()"));
+    assert.ok(js.includes("async function loginAdmin(event)"));
+    assert.ok(js.includes("async function logoutAdmin()"));
+    assert.ok(js.includes("function syncAuthChrome()"));
+    assert.ok(js.includes("async function requestAdminActionToken(method, path)"));
+    assert.ok(js.includes("async function adminMutationRequest(url, options = {})"));
+    assert.ok(js.includes('headers["x-admin-action-token"] = token;'));
+  });
+
   it("shows clearer indexing language on collection cards while keeping reindex actions in the inspector", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
@@ -97,6 +125,23 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("Backend dependency down"));
     assert.ok(js.includes("function renderCollectionIndexStateBanner()"));
     assert.ok(js.includes("collectionIndexState"));
+    assert.ok(js.includes("return apiRequest(url, {"));
+    assert.ok(!js.includes("return adminMutationRequest(url, {"));
+  });
+
+  it("uses session-derived rag headers and keeps validation requests token-free", async () => {
+    const js = await readAdminFile("admin.js");
+
+    assert.ok(js.includes("function isRagRequest(url)"));
+    assert.ok(js.includes("function getSessionHeadersForRequest(url)"));
+    assert.ok(js.includes('"x-tenant-id": state.auth.session.tenantId'));
+    assert.ok(js.includes('"x-user-id": state.auth.session.username'));
+    assert.ok(js.includes("if (!state.auth.session || !isRagRequest(url))"));
+    assert.ok(js.includes('const url = mode === "create" ? adminCollectionValidateUrl() : adminCollectionValidateUrl(collectionId);'));
+    assert.ok(js.includes("return apiRequest(url, {"));
+    assert.ok(js.includes("await adminMutationRequest(`${API.admin}/collections`, { method: \"POST\", body: JSON.stringify(payload) });"));
+    assert.ok(js.includes("await adminMutationRequest(adminCollectionUrl(id), { method: \"PATCH\", body: JSON.stringify(payload) });"));
+    assert.ok(js.includes("await adminMutationRequest(`${API.admin}/collections/${state.selectedCollection.id}/reindex`, { method: \"POST\" });"));
   });
 
   it("keeps admin DOM id references aligned with index.html", async () => {

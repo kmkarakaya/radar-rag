@@ -9,6 +9,7 @@ $BASE_URL = "http://localhost:3000"
 $TENANT_ID = "default"
 $USER_ID = "frontend-user"
 $REQUEST_ID = [guid]::NewGuid().ToString()
+$COOKIE_JAR = Join-Path $env:TEMP "rag-admin-cookie.txt"
 ```
 
 ## 0. System Readiness Diagnostics
@@ -102,12 +103,58 @@ curl.exe -s `
 
 The response JSON includes the effective `embeddingModel` used for retrieval and the `chatModel` that generated the answer.
 
-## 2. Admin Collection Creation Flow
+## 2. Admin Auth Flow
+
+When `adminAuth.enabled=false`, the legacy header-based admin flow continues to work for local development. When `adminAuth.enabled=true`, the admin shell and `/v1/admin/**` routes require a session cookie, and protected mutations also require `x-admin-action-token`.
+
+The admin examples below keep `x-tenant-id` and `x-user-id` visible because the same snippets also work in local fallback mode. When admin auth is enabled, `/v1/admin/**` ignores caller-supplied tenant/user headers and derives both values from the authenticated session.
+
+### Log in
+
+```powershell
+curl.exe -i `
+  -c "$COOKIE_JAR" `
+  -X POST `
+  -H "content-type: application/json" `
+  -d '{"username":"admin","password":"secret"}' `
+  "$BASE_URL/v1/admin/auth/login"
+```
+
+### Inspect current admin session
+
+```powershell
+curl.exe -s `
+  -b "$COOKIE_JAR" `
+  "$BASE_URL/v1/admin/auth/session"
+```
+
+### Mint a signed action token for one mutating route
+
+```powershell
+$ACTION_TOKEN_RESPONSE = curl.exe -s `
+  -b "$COOKIE_JAR" `
+  -X POST `
+  -H "content-type: application/json" `
+  -d '{"method":"POST","path":"/v1/admin/collections/example/reindex"}' `
+  "$BASE_URL/v1/admin/auth/action-token"
+```
+
+### Log out
+
+```powershell
+curl.exe -i `
+  -b "$COOKIE_JAR" `
+  -X POST `
+  "$BASE_URL/v1/admin/auth/logout"
+```
+
+## 3. Admin Collection Creation Flow
 
 ### Inspect backend defaults for the create form
 
 ```powershell
 curl.exe -s `
+  -b "$COOKIE_JAR" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
@@ -120,6 +167,7 @@ Use this response to show the backend defaults in the create form before the use
 
 ```powershell
 curl.exe -s `
+  -b "$COOKIE_JAR" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
@@ -131,9 +179,18 @@ Use this response to populate embedding/chat autocomplete or datalist suggestion
 ### Create a collection
 
 ```powershell
-curl.exe -s `
+$ACTION_TOKEN = ((curl.exe -s `
+  -b "$COOKIE_JAR" `
   -X POST `
   -H "content-type: application/json" `
+  -d '{"method":"POST","path":"/v1/admin/collections"}' `
+  "$BASE_URL/v1/admin/auth/action-token" | ConvertFrom-Json).actionToken)
+
+curl.exe -s `
+  -b "$COOKIE_JAR" `
+  -X POST `
+  -H "content-type: application/json" `
+  -H "x-admin-action-token: $ACTION_TOKEN" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
@@ -145,6 +202,7 @@ curl.exe -s `
 
 ```powershell
 curl.exe -s `
+  -b "$COOKIE_JAR" `
   -X POST `
   -H "content-type: application/json" `
   -H "x-tenant-id: $TENANT_ID" `
@@ -162,9 +220,18 @@ Interpretation:
 ### Save a patch
 
 ```powershell
+$ACTION_TOKEN = ((curl.exe -s `
+  -b "$COOKIE_JAR" `
+  -X POST `
+  -H "content-type: application/json" `
+  -d "{""method"":""PATCH"",""path"":""/v1/admin/collections/$COLLECTION_ID""}" `
+  "$BASE_URL/v1/admin/auth/action-token" | ConvertFrom-Json).actionToken)
+
 curl.exe -s `
+  -b "$COOKIE_JAR" `
   -X PATCH `
   -H "content-type: application/json" `
+  -H "x-admin-action-token: $ACTION_TOKEN" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
@@ -176,6 +243,7 @@ curl.exe -s `
 
 ```powershell
 curl.exe -s `
+  -b "$COOKIE_JAR" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
@@ -184,13 +252,22 @@ curl.exe -s `
 
 Use this response to inspect which physical collection is currently active, which older rebuilds are waiting for cleanup, and whether any target build failed before activation.
 
-## 3. Reindex Flow
+## 4. Reindex Flow
 
 ### Trigger reindex
 
 ```powershell
-curl.exe -i `
+$ACTION_TOKEN = ((curl.exe -s `
+  -b "$COOKIE_JAR" `
   -X POST `
+  -H "content-type: application/json" `
+  -d "{""method"":""POST"",""path"":""/v1/admin/collections/$COLLECTION_ID/reindex""}" `
+  "$BASE_URL/v1/admin/auth/action-token" | ConvertFrom-Json).actionToken)
+
+curl.exe -i `
+  -b "$COOKIE_JAR" `
+  -X POST `
+  -H "x-admin-action-token: $ACTION_TOKEN" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
@@ -210,6 +287,7 @@ Notes:
 $JOB_ID = "your-job-id"
 
 curl.exe -s `
+  -b "$COOKIE_JAR" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
@@ -220,6 +298,7 @@ curl.exe -s `
 
 ```powershell
 curl.exe -s `
+  -b "$COOKIE_JAR" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
@@ -232,6 +311,7 @@ Use this response for stage-aware progress UIs. `status` stays coarse; `stage`, 
 
 ```powershell
 curl.exe -s `
+  -b "$COOKIE_JAR" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
@@ -253,7 +333,7 @@ curl.exe -s `
   "$BASE_URL/v1/rag/collections/$COLLECTION_ID/ready"
 ```
 
-## 4. Audit History Flow
+## 5. Audit History Flow
 
 ### List newest-first history for one collection
 

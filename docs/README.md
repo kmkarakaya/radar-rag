@@ -18,12 +18,14 @@ This documentation set is written for both humans and coding agents that need to
 - Legacy `/rag/query` and `/rag/retrieve` routes intentionally return `404`.
 - Treat `GET /v1/rag/collections/:collectionId/ready` as the capability gate for collection-specific UI state.
 - `GET /v1/rag/collections/:collectionId/ready` may still return `200` while query is blocked; read `capabilities`, `blockers`, and `warnings`.
-- Send `x-tenant-id`, `x-user-id`, and `x-request-id` on all requests.
+- Send `x-request-id` on all requests. Send `x-tenant-id` and `x-user-id` on public `/v1/rag/**` requests, and derive those values from the active session for `/v1/admin/**` when admin auth is enabled.
 - Use `GET /v1/admin/config/defaults` to show create-form backend defaults, and `GET /v1/admin/models` to show model discovery.
 - `POST /v1/rag/collections/:collectionId/query` returns an answer, effective model metadata, and sources. `POST /v1/rag/collections/:collectionId/retrieve` returns effective model metadata and sources.
 - `POST /v1/rag/collections/:collectionId/query` may return only the source subset actually used for answer generation. Use `POST /v1/rag/collections/:collectionId/retrieve` for the broader evidence set.
 - Raw query/retrieve JSON also includes the effective model names used for that request.
 - `POST /v1/admin/collections/:collectionId/reindex` is asynchronous and returns `202 Accepted`.
+- Admin auth is cookie-based and opt-in. Use `GET /v1/admin/auth/session` on boot, `POST /v1/admin/auth/login` / `POST /v1/admin/auth/logout` for session lifecycle, and `POST /v1/admin/auth/action-token` for mutating admin requests.
+- When admin auth is enabled, the admin UI should derive `x-tenant-id` and `x-user-id` from the active session rather than user-editable form fields.
 - `GET /v1/admin/jobs/:jobId/events` is the stage-aware progress timeline for admin job monitoring.
 - `GET /v1/admin/collections/:collectionId/physical-collections` shows physical collection lifecycle visibility for rebuild, cleanup, and failed target states.
 - `GET /v1/admin/audit-log` is the persisted newest-first operations history; `collectionId` and `operation` can be repeated for multi-select filters.

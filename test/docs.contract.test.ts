@@ -51,4 +51,24 @@ describe('docs static contract', () => {
     assert.ok(content.includes('hasActivePhysicalCollection'), 'Should document hasActivePhysicalCollection boolean in readiness');
     assert.ok(!content.includes('activePhysicalCollection'), 'Should not expose internal activePhysicalCollection name in public documentation');
   });
+
+  it('keeps admin auth hardening visible across onboarding and integration docs', async () => {
+    const [readme, docsReadme, handoff, promptTemplate, workflows] = await Promise.all([
+      fs.readFile(path.resolve(process.cwd(), 'README.md'), 'utf8'),
+      fs.readFile(path.resolve(process.cwd(), 'docs/README.md'), 'utf8'),
+      fs.readFile(path.resolve(process.cwd(), 'docs/frontend_agent_handoff.md'), 'utf8'),
+      fs.readFile(path.resolve(process.cwd(), 'docs/coding_agent_prompt_template.md'), 'utf8'),
+      fs.readFile(path.resolve(process.cwd(), 'docs/http_workflows.md'), 'utf8'),
+    ]);
+
+    assert.ok(readme.includes('RAG_ADMIN_SESSION_SECRET'), 'README should document the admin session secret env var');
+    assert.ok(readme.includes('npm run admin:hash-password'), 'README should document password hash generation');
+    assert.ok(readme.includes('/admin/login'), 'README should document the admin login redirect');
+    assert.ok(readme.includes('Güvenli admin quickstart'), 'README should distinguish secure admin onboarding');
+    assert.ok(docsReadme.includes('derive those values from the active session'), 'docs/README should explain session-derived admin tenant/user headers');
+    assert.ok(handoff.includes('session-derived values for `/v1/admin/**`'), 'Frontend handoff should explain the admin header boundary');
+    assert.ok(promptTemplate.includes('session-derived tenant/user context'), 'Prompt template should explain the admin header boundary');
+    assert.ok(workflows.includes('ignores caller-supplied tenant/user headers'), 'HTTP workflows should explain ignored admin tenant/user headers');
+    assert.ok(workflows.includes('/v1/admin/auth/action-token'), 'HTTP workflows should document the action-token endpoint');
+  });
 });

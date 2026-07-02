@@ -6,6 +6,7 @@ import { config, type ResolvedConfig } from "./config.js";
 import { errorHandler, notFoundHandler, sendErrorResponse } from "./http/errors.js";
 import { createRequestContext } from "./http/requestContext.js";
 import { createRateLimitMiddleware, createInMemoryRequestRateLimiter, type RequestRateLimiter } from "./http/rateLimit.js";
+import { createAdminAuthService } from "./http/adminAuth.js";
 import { checkIndexingSourceHealth, type IndexingSourceHealthDetails } from "./index.js";
 import { createAdminRouter } from "./http/adminRouter.js";
 import { createRagRouter } from "./http/ragRouter.js";
@@ -36,6 +37,7 @@ export type AppDependencies = {
   jobRunner?: IndexJobRunner;
   logEvent?: OperationalLogSink;
   rateLimiter?: RequestRateLimiter;
+  adminAuth?: ReturnType<typeof createAdminAuthService>;
   ragHandlers?: {
     retrieveSources?: typeof retrieveSources;
     answerQuestion?: typeof answerQuestion;
@@ -103,11 +105,16 @@ export function createApp(deps: AppDependencies = {}): Express {
     windowMs: runtimeConfig.rateLimitWindowMs,
     maxRequestsPerWindow: runtimeConfig.rateLimitMaxRequestsPerWindow,
   });
+  const adminAuth = deps.adminAuth ?? createAdminAuthService({
+    config: runtimeConfig.adminAuth,
+    env: process.env,
+  });
   app.locals.dependencies = {
     ...deps,
     runtimeConfig,
     logEvent,
     rateLimiter,
+    adminAuth,
   } satisfies AppDependencies;
   configureApp(app);
   return app;
@@ -239,6 +246,8 @@ function configureApp(app: Express): void {
   const deps = app.locals.dependencies as AppDependencies;
   const runtimeConfig = deps.runtimeConfig ?? config;
   const logEvent = deps.logEvent ?? createConsoleLogSink();
+  const adminAuth = deps.adminAuth;
+  const adminShellPath = path.resolve(process.cwd(), "admin", "index.html");
 
   app.use((req, res, next) => {
     res.locals.requestContext = createRequestContext(req);
@@ -315,6 +324,18 @@ function configureApp(app: Express): void {
 
   app.use("/v1/admin", createAdminRouter(app.locals.dependencies, runtimeConfig));
   app.use("/v1/rag", createRagRouter(app.locals.dependencies, runtimeConfig));
+
+  app.get(/^\/admin\/?$/, (req, res) => {
+    if (adminAuth?.isEnabled() && !adminAuth.getSessionSummaryFromRequest(req)) {
+      res.redirect(302, "/admin/login");
+      return;
+    }
+    res.sendFile(adminShellPath);
+  });
+
+  app.get(/^\/admin\/login\/?$/, (_req, res) => {
+    res.sendFile(adminShellPath);
+  });
 
   app.use("/admin", express.static(path.resolve(process.cwd(), "admin")));
   app.use("/test-frontend", express.static(path.resolve(process.cwd(), "test_frontend")));

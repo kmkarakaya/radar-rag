@@ -51,6 +51,9 @@ describe("runtime static contract", () => {
     assert.match(configContent, /rateLimit:\s*[\r\n]+\s+enabled:\s*true/);
     assert.match(configContent, /windowMs:\s*60000/);
     assert.match(configContent, /maxRequestsPerWindow:\s*60/);
+    assert.match(configContent, /adminAuth:\s*[\r\n]+\s+enabled:\s*false/);
+    assert.match(configContent, /sessionSecretEnvVar:\s*RAG_ADMIN_SESSION_SECRET/);
+    assert.match(configContent, /users:\s*\[\]/);
     assert.match(configContent, /observability:\s*[\r\n]+\s+includeDebugTimings:\s*false/);
   });
 
@@ -74,6 +77,9 @@ describe("runtime static contract", () => {
     assert.match(onboard, /rateLimit\.windowMs/);
     assert.match(onboard, /rateLimit\.maxRequestsPerWindow/);
     assert.match(onboard, /observability\.includeDebugTimings/);
+    assert.match(onboard, /adminAuth\.enabled/);
+    assert.match(onboard, /adminAuth\.users/);
+    assert.match(onboard, /admin:hash-password/);
     assert.doesNotMatch(onboard, /request rate limiting: not enabled yet/i);
   });
 });

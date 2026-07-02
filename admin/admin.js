@@ -5,6 +5,7 @@
 const API = {
     rag: "/v1/rag",
     admin: "/v1/admin",
+    adminAuth: "/v1/admin/auth",
     health: "/health",
     ready: "/ready",
 };
@@ -47,6 +48,13 @@ const EDIT_FIELD_IDS = {
 let state = {
     currentView: "collections",
     activeTab: "ready",
+    auth: {
+        enabled: false,
+        authenticated: false,
+        session: null,
+        loading: false,
+        error: null,
+    },
     collections: [],
     selectedCollection: null,
     selectedReadiness: null,
@@ -108,6 +116,22 @@ const loadTokens = {
 };
 
 const elements = {
+    authShell: document.getElementById("authShell"),
+    authPanel: document.getElementById("authPanel"),
+    authStatus: document.getElementById("authStatus"),
+    authError: document.getElementById("authError"),
+    authUsername: document.getElementById("authUsername"),
+    authPassword: document.getElementById("authPassword"),
+    authLoginForm: document.getElementById("authLoginForm"),
+    authLoginButton: document.getElementById("authLoginButton"),
+    authLogoutButton: document.getElementById("authLogoutButton"),
+    authSessionSummary: document.getElementById("authSessionSummary"),
+    authSessionRole: document.getElementById("authSessionRole"),
+    authSessionTenant: document.getElementById("authSessionTenant"),
+    authSessionExpiry: document.getElementById("authSessionExpiry"),
+    dashboardShell: document.getElementById("dashboardShell"),
+    authBar: document.getElementById("authBar"),
+    authBadge: document.getElementById("authBadge"),
     navItems: document.querySelectorAll(".nav-item"),
     viewContainers: document.querySelectorAll(".view-container"),
     viewTitle: document.getElementById("viewTitle"),
@@ -259,6 +283,22 @@ function adminJobDeleteUrl(id) {
 
 function adminJobsBulkDeleteUrl() {
     return `${API.admin}/jobs/bulk-delete`;
+}
+
+function adminAuthSessionUrl() {
+    return `${API.adminAuth}/session`;
+}
+
+function adminAuthLoginUrl() {
+    return `${API.adminAuth}/login`;
+}
+
+function adminAuthLogoutUrl() {
+    return `${API.adminAuth}/logout`;
+}
+
+function adminAuthActionTokenUrl() {
+    return `${API.adminAuth}/action-token`;
 }
 
 function adminJobsListUrl(options = {}) {
@@ -1051,16 +1091,39 @@ function normalizeError(input, fallback = {}) {
     };
 }
 
+function normalizeRequestPath(url) {
+    try {
+        return new URL(url, window.location.origin).pathname;
+    } catch {
+        return String(url || "");
+    }
+}
+
+function isRagRequest(url) {
+    return normalizeRequestPath(url).startsWith(`${API.rag}/`);
+}
+
+function getSessionHeadersForRequest(url) {
+    if (!state.auth.session || !isRagRequest(url)) {
+        return {};
+    }
+    return {
+        "x-tenant-id": state.auth.session.tenantId,
+        "x-user-id": state.auth.session.username,
+    };
+}
+
 async function apiRequest(url, options = {}) {
     const body = options.body;
     const headers = {
         Accept: "application/json",
         ...(body && !(body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
         ...(options.headers || {}),
+        ...getSessionHeadersForRequest(url),
     };
 
     try {
-        const fetchOptions = { ...options, headers };
+        const fetchOptions = { credentials: options.credentials || "same-origin", ...options, headers };
         if (!fetchOptions.method || fetchOptions.method === "GET") {
             fetchOptions.cache = fetchOptions.cache || "no-store";
         }
@@ -1108,6 +1171,329 @@ async function apiRequest(url, options = {}) {
             message: error?.message || "Network request failed",
         });
     }
+}
+
+function getAdminSessionSummary() {
+    return state.auth.session;
+}
+
+function setAdminSession(session, enabled = state.auth.enabled) {
+    state.auth.enabled = Boolean(enabled);
+    state.auth.authenticated = Boolean(session);
+    state.auth.session = session || null;
+    state.auth.error = null;
+    syncAuthChrome();
+}
+
+function clearAdminSession() {
+    state.auth.authenticated = false;
+    state.auth.session = null;
+    syncAuthChrome();
+}
+
+function syncAuthChrome() {
+    const session = state.auth.session;
+    if (elements.authStatus) {
+        elements.authStatus.textContent = state.auth.loading
+            ? "Checking session..."
+            : state.auth.enabled
+                ? (state.auth.authenticated ? "Authenticated" : "Authentication required")
+                : "Auth disabled";
+    }
+    if (elements.authError) {
+        if (state.auth.error) {
+            elements.authError.textContent = state.auth.error;
+            elements.authError.classList.remove("hidden");
+        } else {
+            elements.authError.textContent = "";
+            elements.authError.classList.add("hidden");
+        }
+    }
+    if (elements.authSessionSummary) {
+        elements.authSessionSummary.textContent = session
+            ? `${session.username} on ${session.tenantId}`
+            : state.auth.enabled
+                ? "No active admin session"
+                : "Admin auth is disabled";
+    }
+    if (elements.authSessionRole) {
+        elements.authSessionRole.textContent = session?.role || "-";
+    }
+    if (elements.authSessionTenant) {
+        elements.authSessionTenant.textContent = session?.tenantId || "-";
+    }
+    if (elements.authSessionExpiry) {
+        elements.authSessionExpiry.textContent = session?.expiresAt ? formatDateTime(session.expiresAt) : "-";
+    }
+    if (elements.authBadge) {
+        elements.authBadge.textContent = state.auth.authenticated && session
+            ? `${session.role} - ${session.username}`
+            : state.auth.enabled
+                ? "Signed out"
+                : "Auth off";
+    }
+    if (elements.authLogoutButton) {
+        elements.authLogoutButton.disabled = !state.auth.authenticated;
+    }
+    if (elements.btnCreateCollection) {
+        const allowed = canAdminAction("createCollection");
+        elements.btnCreateCollection.disabled = !allowed;
+        if (!allowed) {
+            elements.btnCreateCollection.title = state.auth.enabled
+                ? "Create collection requires operator access."
+                : "Create collection";
+        } else {
+            elements.btnCreateCollection.removeAttribute("title");
+        }
+    }
+    syncSaveButtonAccess();
+}
+
+function shouldPromptForLogin() {
+    return state.auth.enabled && !state.auth.authenticated;
+}
+
+function setDashboardVisible(visible) {
+    if (elements.dashboardShell) {
+        elements.dashboardShell.classList.toggle("hidden", !visible);
+    }
+    if (elements.authShell) {
+        elements.authShell.classList.toggle("hidden", visible);
+    }
+}
+
+function resetAuthForm() {
+    if (elements.authPassword) elements.authPassword.value = "";
+}
+
+function normalizeAdminActionPath(url) {
+    return normalizeRequestPath(url);
+}
+
+function canAdminAction(capability) {
+    if (!state.auth.enabled) {
+        return true;
+    }
+    const role = state.auth.session?.role;
+    if (!role) {
+        return false;
+    }
+    const permissions = {
+        viewer: ["read"],
+        operator: ["read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob"],
+        admin: ["read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob", "deleteCollection", "deleteJob", "bulkDeleteJobs"],
+    };
+    return (permissions[role] || []).includes(capability);
+}
+
+async function requestAdminActionToken(method, path) {
+    if (!state.auth.enabled || !state.auth.authenticated) {
+        return null;
+    }
+    const data = await apiRequest(adminAuthActionTokenUrl(), {
+        method: "POST",
+        body: JSON.stringify({ method, path }),
+    });
+    return data?.actionToken || null;
+}
+
+async function adminMutationRequest(url, options = {}) {
+    const method = (options.method || "POST").toUpperCase();
+    const token = await requestAdminActionToken(method, normalizeAdminActionPath(url));
+    const headers = { ...(options.headers || {}) };
+    if (token) {
+        headers["x-admin-action-token"] = token;
+    }
+    return apiRequest(url, {
+        ...options,
+        method,
+        headers,
+    });
+}
+
+async function loadAdminSession() {
+    state.auth.loading = true;
+    state.auth.error = null;
+    syncAuthChrome();
+    try {
+        const data = await apiRequest(adminAuthSessionUrl());
+        state.auth.enabled = Boolean(data?.enabled);
+        if (data?.authenticated && data?.session) {
+            setAdminSession(data.session, data.enabled);
+            return true;
+        }
+        setAdminSession(null, data?.enabled);
+        return !data?.enabled;
+    } catch (error) {
+        const normalized = normalizeError(error);
+        if (normalized.status === 401 || normalized.code === "UNAUTHORIZED") {
+            state.auth.enabled = true;
+            clearAdminSession();
+            return false;
+        }
+        state.auth.error = normalized.message;
+        syncAuthChrome();
+        throw error;
+    } finally {
+        state.auth.loading = false;
+        syncAuthChrome();
+    }
+}
+
+async function loginAdmin(event) {
+    event?.preventDefault?.();
+    const username = elements.authUsername?.value.trim();
+    const password = elements.authPassword?.value || "";
+    if (!username || !password) {
+        state.auth.error = "Username and password are required.";
+        syncAuthChrome();
+        return;
+    }
+
+    try {
+        setButtonLoading(elements.authLoginButton, true, "Signing in...");
+        const data = await apiRequest(adminAuthLoginUrl(), {
+            method: "POST",
+            body: JSON.stringify({ username, password }),
+        });
+        if (!data?.session) {
+            throw normalizeError(null, { status: 0, code: "INVALID_AUTH_RESPONSE", message: "Admin login response did not include session." });
+        }
+        state.auth.enabled = true;
+        setAdminSession(data.session, true);
+        resetAuthForm();
+        resetDashboardState();
+        setDashboardVisible(true);
+        await initializeDashboard();
+    } catch (error) {
+        const normalized = normalizeError(error);
+        state.auth.error = normalized.status === 401 ? "Invalid username or password." : normalized.message;
+        syncAuthChrome();
+    } finally {
+        setButtonLoading(elements.authLoginButton, false, "Sign in");
+    }
+}
+
+async function logoutAdmin() {
+    try {
+        setButtonLoading(elements.authLogoutButton, true, "Signing out...");
+        await apiRequest(adminAuthLogoutUrl(), { method: "POST" });
+    } catch (error) {
+        console.warn("Logout failed", error);
+    } finally {
+        clearAdminSession();
+        resetAuthForm();
+        stopDashboardPolling();
+        resetDashboardState();
+        setDashboardVisible(false);
+        syncAuthChrome();
+        if (!state.auth.enabled) {
+            setDashboardVisible(true);
+            await initializeDashboard();
+        }
+        setButtonLoading(elements.authLogoutButton, false, "Sign out");
+    }
+}
+
+let dashboardPollingHandles = [];
+
+function stopDashboardPolling() {
+    for (const handle of dashboardPollingHandles) {
+        clearInterval(handle);
+    }
+    dashboardPollingHandles = [];
+}
+
+function startDashboardPolling() {
+    if (dashboardPollingHandles.length > 0) {
+        return;
+    }
+
+    dashboardPollingHandles.push(setInterval(() => {
+        if (!document.hidden) loadJobs();
+    }, 10000));
+
+    dashboardPollingHandles.push(setInterval(() => {
+        if (!document.hidden) loadCollections();
+    }, 10000));
+
+    dashboardPollingHandles.push(setInterval(() => {
+        if (!document.hidden && state.selectedCollection) updateReadinessTab();
+    }, 10000));
+
+    dashboardPollingHandles.push(setInterval(() => {
+        if (!document.hidden) loadHealth();
+    }, 30000));
+}
+
+function resetDashboardState() {
+    state.currentView = "collections";
+    state.activeTab = "ready";
+    state.collections = [];
+    state.selectedCollection = null;
+    state.selectedReadiness = null;
+    state.selectedPhysicalCollections = null;
+    state.selectedPhysicalCollectionsError = null;
+    state.jobList = [];
+    state.jobListSource = "local";
+    state.jobListNextCursor = null;
+    state.jobListCursor = null;
+    state.jobListCursorStack = [];
+    state.jobListError = null;
+    state.auditLog = [];
+    state.auditLogError = null;
+    state.auditLogCollectionFilter = [];
+    state.auditLogOperationFilter = [];
+    state.auditLogNextCursor = null;
+    state.auditLogCursor = null;
+    state.auditLogCursorStack = [];
+    state.selectedJobIds = new Set();
+    state.editorInitialSnapshot = null;
+    state.collectionError = null;
+    state.healthStatus = null;
+    state.readiness = null;
+    state.readinessDetails = null;
+    state.healthLastUpdatedAt = null;
+    state.isLoading = {
+        collections: false,
+        collectionDetail: false,
+        jobs: false,
+        health: false,
+        readiness: false,
+        physicalCollections: false,
+        auditLog: false,
+    };
+    clearNode(elements.collectionsGrid);
+    clearNode(elements.jobsTableBody);
+    clearNode(elements.auditLogTableBody);
+    clearNode(elements.healthGrid);
+    clearNode(elements.readinessDetail);
+    clearNode(elements.readinessStatusGrid);
+    clearNode(elements.blockerList);
+    clearNode(elements.warningList);
+    clearNode(elements.physicalCollectionsSummary);
+    clearNode(elements.physicalCollectionsActions);
+    clearNode(elements.physicalCollectionsList);
+    clearNode(elements.pgResult);
+    clearNode(elements.configDefaultsSummary);
+    clearNode(elements.modelDiscoverySummary);
+    clearNode(elements.collectionIndexStateContent);
+    clearNode(elements.collectionValidationContent);
+}
+
+async function initializeDashboard() {
+    resetDashboardState();
+    renderAuditFilterControls();
+    switchView("collections");
+    setPlaygroundMode("retrieve");
+    resetReadinessAndPlayground("Select a collection to inspect readiness.");
+    renderJobs();
+    loadConfigDefaults();
+    loadModelDiscovery();
+    loadCollections();
+    loadJobs();
+    loadHealth();
+    startDashboardPolling();
 }
 
 function renderIssuesList(parent, issues) {
@@ -1608,6 +1994,7 @@ async function openInspector(id) {
         setCollectionTabsEnabled(false);
         switchTab("editor");
         await Promise.all([loadConfigDefaults(), loadModelDiscovery()]);
+        syncSaveButtonAccess();
         openPanel();
         return;
     }
@@ -1650,6 +2037,7 @@ async function openInspector(id) {
     } finally {
         state.isLoading.collectionDetail = false;
         setButtonLoading(elements.btnSave, false);
+        syncSaveButtonAccess();
     }
     await updateReadinessTab();
 }
@@ -1695,14 +2083,36 @@ function setCollectionTabsEnabled(enabled) {
 }
 
 function setInspectorActionsEnabled(enabled, reason = "") {
-    [elements.btnReindex, elements.btnDeleteCol, elements.btnViewHistory].forEach((button) => {
+    const actionStates = [
+        [elements.btnReindex, enabled && canAdminAction("reindexCollection"), "Re-index requires operator access."],
+        [elements.btnDeleteCol, enabled && canAdminAction("deleteCollection"), "Delete requires admin access."],
+        [elements.btnViewHistory, enabled, reason],
+    ];
+    actionStates.forEach(([button, isEnabled, fallbackReason]) => {
         if (!button) return;
-        button.disabled = !enabled;
-        button.classList.toggle("opacity-50", !enabled);
-        button.classList.toggle("cursor-not-allowed", !enabled);
-        if (!enabled && reason) button.title = reason;
-        if (enabled) button.removeAttribute("title");
+        button.disabled = !isEnabled;
+        button.classList.toggle("opacity-50", !isEnabled);
+        button.classList.toggle("cursor-not-allowed", !isEnabled);
+        if (!isEnabled && (fallbackReason || reason)) button.title = fallbackReason || reason;
+        if (isEnabled) button.removeAttribute("title");
     });
+}
+
+function syncSaveButtonAccess() {
+    if (!elements.btnSave || state.isLoading.collectionDetail) {
+        return;
+    }
+    const mode = elements.editId?.value ? "update" : "create";
+    const capability = mode === "create" ? "createCollection" : "updateCollection";
+    const allowed = canAdminAction(capability);
+    elements.btnSave.disabled = !allowed;
+    if (!allowed) {
+        elements.btnSave.title = state.auth.enabled
+            ? `${mode === "create" ? "Create" : "Update"} collection requires operator access.`
+            : "";
+    } else {
+        elements.btnSave.removeAttribute("title");
+    }
 }
 
 function resetPlaygroundResult(message = "Results will appear here...") {
@@ -2322,6 +2732,7 @@ function setupEditorTab(collection) {
     state.editorInitialSnapshot = readEditorValues();
     syncModelDiscoveryPanel();
     syncConfigDefaultsPanel();
+    syncSaveButtonAccess();
 }
 
 function readTrimmed(id) {
@@ -2453,6 +2864,14 @@ function validateCollectionOnServer(mode, collectionId, payload = buildCollectio
 async function saveCollection() {
     const id = elements.editId.value;
     const mode = id ? "update" : "create";
+    if (mode === "create" && !canAdminAction("createCollection")) {
+        showToast("Create collection requires operator access.", "error");
+        return;
+    }
+    if (mode === "update" && !canAdminAction("updateCollection")) {
+        showToast("Update collection requires operator access.", "error");
+        return;
+    }
     const errors = validateCollectionForm(mode);
     if (errors.length > 0) {
         showToast(errors.join(" "), "error", { durationMs: 7000 });
@@ -2481,7 +2900,7 @@ async function saveCollection() {
             (Array.isArray(validation?.impact?.reindexFields) && validation.impact.reindexFields.length > 0);
         const shouldKeepOpen = hasWarnings || hasImpact;
         if (mode === "create") {
-            const data = await apiRequest(`${API.admin}/collections`, { method: "POST", body: JSON.stringify(payload) });
+            const data = await adminMutationRequest(`${API.admin}/collections`, { method: "POST", body: JSON.stringify(payload) });
             showToast(`Collection created: ${data?.collection?.id || payload.displayName}`, "success");
             await loadCollections();
             if (shouldKeepOpen) {
@@ -2507,7 +2926,7 @@ async function saveCollection() {
                 return;
             }
         } else {
-            await apiRequest(adminCollectionUrl(id), { method: "PATCH", body: JSON.stringify(payload) });
+            await adminMutationRequest(adminCollectionUrl(id), { method: "PATCH", body: JSON.stringify(payload) });
             showToast("Collection updated.", "success");
             await loadCollections();
             if (shouldKeepOpen) {
@@ -2532,6 +2951,7 @@ async function saveCollection() {
         showErrorToast(error, "Save failed");
     } finally {
         setButtonLoading(elements.btnSave, false);
+        syncSaveButtonAccess();
     }
 }
 
@@ -2718,6 +3138,10 @@ async function runPlayground() {
 
 async function reindexCollection() {
     if (!state.selectedCollection) return;
+    if (!canAdminAction("reindexCollection")) {
+        showToast("Re-index requires operator access.", "error");
+        return;
+    }
     if (hasUnsavedCollectionChanges()) {
         showToast("Save the collection changes before re-indexing.", "error");
         return;
@@ -2738,7 +3162,7 @@ async function reindexCollection() {
             clearCollectionValidation();
         }
 
-        const data = await apiRequest(`${API.admin}/collections/${state.selectedCollection.id}/reindex`, { method: "POST" });
+        const data = await adminMutationRequest(`${API.admin}/collections/${state.selectedCollection.id}/reindex`, { method: "POST" });
         if (data?.job) rememberJob(data.job, state.selectedCollection);
         showToast(`Re-indexing started: ${shortId(data?.job?.id || "")}`, "success");
         await Promise.all([loadCollections(), loadJobs(), updateReadinessTab()]);
@@ -2757,11 +3181,15 @@ async function reindexCollection() {
 
 async function deleteCollection() {
     if (!state.selectedCollection) return;
+    if (!canAdminAction("deleteCollection")) {
+        showToast("Delete collection requires admin access.", "error");
+        return;
+    }
     if (!confirm(`Delete collection "${state.selectedCollection.displayName || state.selectedCollection.id}"? This is a soft delete.`)) return;
 
     try {
         setButtonLoading(elements.btnDeleteCol, true, "Deleting...");
-        await apiRequest(adminCollectionUrl(state.selectedCollection.id), { method: "DELETE" });
+        await adminMutationRequest(adminCollectionUrl(state.selectedCollection.id), { method: "DELETE" });
         showToast("Collection deleted.", "success");
         closeInspector();
         await loadCollections();
@@ -2872,6 +3300,10 @@ async function refreshJob(jobId) {
 }
 
 async function deleteJob(jobId) {
+    if (!canAdminAction("deleteJob")) {
+        showToast("Delete job requires admin access.", "error");
+        return;
+    }
     if (state.jobListSource !== "server") {
         removeJobFromMonitor(jobId);
         showToast("Job removed from local monitor.", "success");
@@ -2884,7 +3316,7 @@ async function deleteJob(jobId) {
     }
 
     try {
-        await apiRequest(adminJobDeleteUrl(jobId), { method: "DELETE" });
+        await adminMutationRequest(adminJobDeleteUrl(jobId), { method: "DELETE" });
         removeJobFromMonitor(jobId);
         showToast("Job removed.", "success");
         resetJobPagination();
@@ -2935,7 +3367,7 @@ function updateJobSelectionControls(jobs = getJobViewRows()) {
     const allSelected = hasSelectableJobs && selectedCount === selectableJobIds.length;
 
     if (elements.jobsBulkActionBar) {
-        elements.jobsBulkActionBar.classList.toggle("hidden", state.jobListSource !== "server" || !hasSelectableJobs);
+        elements.jobsBulkActionBar.classList.toggle("hidden", state.jobListSource !== "server" || !hasSelectableJobs || !canAdminAction("bulkDeleteJobs"));
     }
     if (elements.jobsBulkSelectionCount) {
         elements.jobsBulkSelectionCount.textContent = selectedCount === 0
@@ -2945,8 +3377,13 @@ function updateJobSelectionControls(jobs = getJobViewRows()) {
                 : `${selectedCount} jobs selected`;
     }
     if (elements.jobsBulkRemove) {
-        elements.jobsBulkRemove.disabled = selectedCount === 0 || state.isLoading.jobs || state.jobListSource !== "server";
+        elements.jobsBulkRemove.disabled = selectedCount === 0 || state.isLoading.jobs || state.jobListSource !== "server" || !canAdminAction("bulkDeleteJobs");
         elements.jobsBulkRemove.textContent = selectedCount === 0 ? "Select jobs to remove" : "Remove selected";
+        if (!canAdminAction("bulkDeleteJobs")) {
+            elements.jobsBulkRemove.title = state.auth.enabled ? "Bulk delete requires admin access." : "";
+        } else {
+            elements.jobsBulkRemove.removeAttribute("title");
+        }
     }
     if (elements.jobsSelectAll) {
         elements.jobsSelectAll.disabled = !hasSelectableJobs || state.isLoading.jobs || state.jobListSource !== "server";
@@ -2966,6 +3403,10 @@ async function removeSelectedJobs() {
         showToast("Bulk remove is only available for the server job list.", "error");
         return;
     }
+    if (!canAdminAction("bulkDeleteJobs")) {
+        showToast("Bulk delete requires admin access.", "error");
+        return;
+    }
 
     const jobIds = getVisibleSelectableJobIds().filter((jobId) => state.selectedJobIds.has(jobId));
     if (jobIds.length === 0) {
@@ -2974,7 +3415,7 @@ async function removeSelectedJobs() {
     }
 
     try {
-        await apiRequest(adminJobsBulkDeleteUrl(), {
+        await adminMutationRequest(adminJobsBulkDeleteUrl(), {
             method: "POST",
             body: JSON.stringify({ jobIds }),
         });
@@ -3139,8 +3580,12 @@ async function changeJobsStatusFilter(value) {
 }
 
 async function cancelJob(jobId) {
+    if (!canAdminAction("cancelJob")) {
+        showToast("Cancel requires operator access.", "error");
+        return;
+    }
     try {
-        await apiRequest(`${API.admin}/jobs/${jobId}/cancel`, { method: "POST" });
+        await adminMutationRequest(`${API.admin}/jobs/${jobId}/cancel`, { method: "POST" });
         showToast("Job cancellation requested.", "success");
         await loadJobs();
         await loadCollections();
@@ -3199,6 +3644,8 @@ function renderJobs() {
     jobs.forEach((job) => {
         const isSelectable = state.jobListSource === "server" && !job.notFound && isTerminalJobStatus(job.status);
         const isSelected = state.selectedJobIds.has(job.id) && isSelectable;
+        const canCancelJob = canAdminAction("cancelJob");
+        const canDeleteJob = canAdminAction("deleteJob");
         const row = createEl("tr", isSelected ? "bg-indigo-50/50 hover:bg-slate-50" : "hover:bg-slate-50");
 
         const selectionCell = createEl("td", "px-4 py-4 align-top");
@@ -3260,11 +3707,14 @@ function renderJobs() {
             showErrorToast(error, "Refresh failed");
             renderJobs();
         }), { title: "Refresh this job" }));
-        if (job.status === "queued" || job.status === "running") {
+        if ((job.status === "queued" || job.status === "running") && canCancelJob) {
             actions.appendChild(createButton("Cancel", "text-xs font-medium text-rose-600 hover:text-rose-800", () => cancelJob(job.id), { title: "Cancel this job" }));
         }
-        if (job.notFound || ["succeeded", "failed", "cancelled"].includes(job.status)) {
+        if ((job.notFound || ["succeeded", "failed", "cancelled"].includes(job.status)) && canDeleteJob) {
             actions.appendChild(createButton("Remove", "text-xs font-medium text-slate-500 hover:text-slate-700", () => deleteJob(job.id), { title: "Delete terminal job from the server" }));
+        }
+        if (state.auth.enabled && !canCancelJob && !canDeleteJob) {
+            actions.appendChild(createEl("span", "text-xs text-slate-400", "Read-only role"));
         }
         appendCell(row, "text-right", actions);
         tbody.appendChild(row);
@@ -3687,6 +4137,12 @@ function renderReadinessDetail(ready, details, detailsError, options = {}) {
 }
 
 function bindEvents() {
+    elements.authLoginForm?.addEventListener("submit", (event) => {
+        void loginAdmin(event);
+    });
+    elements.authLogoutButton?.addEventListener("click", () => {
+        void logoutAdmin();
+    });
     elements.navItems.forEach((item) => {
         item.addEventListener("click", (event) => {
             event.preventDefault();
@@ -3898,32 +4354,21 @@ function bindEvents() {
     });
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
     bindEvents();
-    renderAuditFilterControls();
-    switchView("collections");
-    setPlaygroundMode("retrieve");
-    resetReadinessAndPlayground("Select a collection to inspect readiness.");
-    renderJobs();
-    loadConfigDefaults();
-    loadModelDiscovery();
-    loadCollections();
-    loadJobs();
-    loadHealth();
-
-    setInterval(() => {
-        if (!document.hidden) loadJobs();
-    }, 10000);
-
-    setInterval(() => {
-        if (!document.hidden) loadCollections();
-    }, 10000);
-
-    setInterval(() => {
-        if (!document.hidden && state.selectedCollection) updateReadinessTab();
-    }, 10000);
-
-    setInterval(() => {
-        if (!document.hidden) loadHealth();
-    }, 30000);
+    syncAuthChrome();
+    try {
+        const canOpenDashboard = await loadAdminSession();
+        if (canOpenDashboard || state.auth.authenticated) {
+            setDashboardVisible(true);
+            await initializeDashboard();
+        } else {
+            setDashboardVisible(false);
+            elements.authUsername?.focus();
+        }
+    } catch (error) {
+        console.error("Failed to bootstrap admin auth", error);
+        setDashboardVisible(false);
+        elements.authUsername?.focus();
+    }
 });

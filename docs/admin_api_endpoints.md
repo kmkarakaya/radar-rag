@@ -4,6 +4,50 @@ This file documents the collection-management, job-management, and audit-log end
 
 If the frontend only needs end-user question answering, this file is optional. For admin consoles, provisioning tools, and operational dashboards, it is required.
 
+## Admin Authentication
+
+Admin auth is opt-in. When `adminAuth.enabled=true`, the admin shell and every `/v1/admin/**` route use a cookie-backed session instead of trusting user-editable request headers.
+
+Session flow:
+
+1. `POST /v1/admin/auth/login` with `{ username, password }`.
+2. The backend verifies the stored `passwordHash` with `node:crypto` scrypt checks.
+3. The backend returns a session summary and sets an `HttpOnly` `SameSite=Lax` cookie.
+4. The frontend calls `GET /v1/admin/auth/session` on boot to hydrate the dashboard.
+5. Mutating admin requests fetch a short-lived token from `POST /v1/admin/auth/action-token` and send it as `x-admin-action-token`.
+6. `POST /v1/admin/auth/logout` clears the cookie and invalidates the in-memory session.
+
+Role matrix:
+
+| Role | Allowed admin surface |
+| --- | --- |
+| `viewer` | Read-only `GET /v1/admin/**` plus auth session endpoints |
+| `operator` | Viewer access plus create, validate, update, reindex, and job cancel |
+| `admin` | Operator access plus collection delete, job delete, and bulk delete |
+
+Operational notes:
+
+- Session cookies are in-memory and die on server restart.
+- When admin auth is enabled, `/v1/admin/**` ignores incoming `x-tenant-id` and `x-user-id`; tenant and user are derived from the active session.
+- Mutating admin routes reject missing, expired, replayed, wrong-route, wrong-method, or wrong-tenant action tokens.
+- Use `npm run admin:hash-password` to generate `passwordHash` values safely.
+
+Admin auth config surface:
+
+- `adminAuth.enabled`: turns cookie auth and RBAC on for `/admin` and `/v1/admin`.
+- `adminAuth.cookieName`: session cookie name. The shipped default is `rag_admin_session`.
+- `adminAuth.sessionTtlMs`: session lifetime in milliseconds.
+- `adminAuth.actionTokenTtlMs`: single-use action-token lifetime in milliseconds.
+- `adminAuth.sessionSecretEnvVar`: env var that must contain the HMAC signing secret. The shipped default is `RAG_ADMIN_SESSION_SECRET`.
+- `adminAuth.users[]`: configured admin principals with `{ username, passwordHash, role, tenantId }`.
+
+Password hash format:
+
+- Passwords are never stored in plaintext.
+- `passwordHash` must use the built-in scrypt format:
+  `scrypt$<cost>$<blockSize>$<parallelization>$<keyLength>$<saltBase64url>$<derivedKeyBase64url>`
+- Generate hashes with `npm run admin:hash-password`.
+
 ## Request Headers
 
 | Header | Required | Default if omitted | Purpose |
@@ -11,6 +55,13 @@ If the frontend only needs end-user question answering, this file is optional. F
 | `x-tenant-id` | No | `default` | Tenant scoping |
 | `x-user-id` | No | `local-dev` | Per-user tracking and rate limiting |
 | `x-request-id` | No | Generated UUID | Traceability in logs and errors |
+| `x-admin-action-token` | No, but required on protected mutating admin routes | n/a | Short-lived signed token bound to session, tenant, route, and method |
+
+Notes:
+
+- When admin auth is disabled, the legacy header/default behavior above is still used.
+- When admin auth is enabled, `/v1/admin/**` derives tenant and user from the authenticated session and ignores incoming `x-tenant-id` and `x-user-id`.
+- Validation endpoints stay exempt from action-token checks because they do not mutate persistent state.
 
 ## Collection Configuration Fields
 
@@ -96,6 +147,40 @@ Notes:
 - `embeddingModels` and `chatModels` are role-specific subsets of that inventory for the two admin form fields.
 - The inventory depends on the local Ollama runtime, so the visible list can change without a code deploy.
 - Use this together with `GET /v1/admin/config/defaults` so the create form can show both autocomplete suggestions and backend defaults.
+
+### `GET /v1/admin/auth/session`
+
+Returns the active admin session summary, or `401` when auth is enabled but no valid session cookie is present.
+
+### `POST /v1/admin/auth/login`
+
+Authenticates a configured admin user and sets the session cookie.
+
+Request body:
+
+```json
+{
+  "username": "admin",
+  "password": "secret"
+}
+```
+
+### `POST /v1/admin/auth/action-token`
+
+Mints a short-lived signed token for a specific mutating admin route. The frontend should call this just in time before `POST`, `PATCH`, or `DELETE` admin mutations.
+
+Request body:
+
+```json
+{
+  "method": "POST",
+  "path": "/v1/admin/collections/demo/reindex"
+}
+```
+
+### `POST /v1/admin/auth/logout`
+
+Clears the session cookie and invalidates the in-memory session.
 
 ### Create request
 
@@ -693,6 +778,8 @@ Rules:
 | Code | HTTP status | Meaning |
 | --- | --- | --- |
 | `INVALID_REQUEST_BODY` | `400` or `413` | Invalid create, update, validate, cursor, or bulk-delete payload, or JSON body too large |
+| `UNAUTHORIZED` | `401` | Admin auth is enabled and the request has no valid session |
+| `FORBIDDEN` | `403` | The current admin role cannot perform this action, or the action token is missing/invalid for a protected mutation |
 | `COLLECTION_FORBIDDEN` | `403` | Another tenant owns the collection |
 | `COLLECTION_NOT_FOUND` | `404` | Collection does not exist |
 | `COLLECTION_INDEX_ALREADY_RUNNING` | `409` | A reindex job is already active |

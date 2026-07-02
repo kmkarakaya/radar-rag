@@ -1,5 +1,6 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
+import { z } from "zod";
 import type { AppDependencies } from "../app.js";
 import { HttpError } from "./errors.js";
 import { config, type ResolvedConfig } from "../config.js";
@@ -13,12 +14,25 @@ import {
   buildUpdateValidationDraft,
   validateCollectionDraft,
 } from "./collectionValidation.js";
+import { createAdminAuthService, type AdminAuthService } from "./adminAuth.js";
 import { getOllamaModelDiscovery } from "../rag.js";
 
 const JOB_STATUS_VALUES = ["queued", "running", "succeeded", "failed", "cancelled"] as const satisfies readonly IndexJobStatus[];
 
 export function createAdminRouter(deps: AppDependencies, runtimeConfig: ResolvedConfig = deps.runtimeConfig ?? config) {
   const router = express.Router();
+  const adminAuth: AdminAuthService = deps.adminAuth ?? createAdminAuthService({
+    config: runtimeConfig.adminAuth,
+    env: process.env,
+  });
+  const adminLoginSchema = z.object({
+    username: z.string().trim().min(1),
+    password: z.string().min(1),
+  }).strict();
+  const adminActionTokenSchema = z.object({
+    method: z.string().trim().min(1),
+    path: z.string().trim().min(1),
+  }).strict();
 
   const requireRegistry = (req: Request, _res: Response, next: NextFunction) => {
     if (!deps.registry) {
@@ -35,6 +49,16 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     }
     next();
   };
+
+  const requireRead = adminAuth.requireCapability("read");
+  const requireCreateCollection = adminAuth.requireCapability("createCollection");
+  const requireValidateCollection = adminAuth.requireCapability("validateCollection");
+  const requireUpdateCollection = adminAuth.requireCapability("updateCollection");
+  const requireReindexCollection = adminAuth.requireCapability("reindexCollection");
+  const requireCancelJob = adminAuth.requireCapability("cancelJob");
+  const requireDeleteCollection = adminAuth.requireCapability("deleteCollection");
+  const requireDeleteJob = adminAuth.requireCapability("deleteJob");
+  const requireBulkDeleteJobs = adminAuth.requireCapability("bulkDeleteJobs");
 
   async function requireVisibleCollection(context: RequestContext, collectionId: string) {
     const collection = await deps.registry!.getVisibleCollection(context, collectionId);
@@ -152,6 +176,154 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
 
     return uniqueJobIds;
   }
+
+  router.post("/auth/login", async (req, res, next) => {
+    try {
+      if (!adminAuth.isEnabled()) {
+        throw new HttpError(404, "ROUTE_NOT_FOUND", "Admin auth is disabled.");
+      }
+
+      const parsed = adminLoginSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid admin login payload.", {
+          issues: parsed.error.issues,
+        });
+      }
+
+      const session = adminAuth.login(parsed.data.username, parsed.data.password);
+      if (!session) {
+        throw new HttpError(401, "UNAUTHORIZED", "Invalid admin credentials.");
+      }
+
+      adminAuth.setSessionCookie(res, session.sessionId);
+      res.setHeader("Cache-Control", "no-store");
+      res.json({
+        session: {
+          username: session.username,
+          role: session.role,
+          tenantId: session.tenantId,
+          expiresAt: session.expiresAt,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/auth/logout", async (req, res, next) => {
+    try {
+      adminAuth.logout(req, res);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/auth/session", async (req, res, next) => {
+    try {
+      if (!adminAuth.isEnabled()) {
+        res.json({
+          enabled: false,
+          authenticated: false,
+          session: null,
+        });
+        return;
+      }
+
+      const session = adminAuth.getSessionSummaryFromRequest(req);
+      if (!session) {
+        throw new HttpError(401, "UNAUTHORIZED", "Admin session required.");
+      }
+
+      res.setHeader("Cache-Control", "no-store");
+      res.json({
+        enabled: true,
+        authenticated: true,
+        session,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/auth/action-token", requireSessionIfEnabled, async (req, res, next) => {
+    try {
+      if (!adminAuth.isEnabled()) {
+        throw new HttpError(404, "ROUTE_NOT_FOUND", "Admin auth is disabled.");
+      }
+
+      const parsed = adminActionTokenSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid admin action token payload.", {
+          issues: parsed.error.issues,
+        });
+      }
+
+      const session = res.locals.adminSessionRecord;
+      if (!session) {
+        throw new HttpError(401, "UNAUTHORIZED", "Admin session required.");
+      }
+
+      const token = adminAuth.createActionToken(session, parsed.data);
+      res.setHeader("Cache-Control", "no-store");
+      res.json(token);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  function requireSessionIfEnabled(req: Request, res: Response, next: NextFunction): void {
+    adminAuth.requireSession(req, res, next);
+  }
+
+  router.use(requireSessionIfEnabled);
+  router.use((req, res, next) => {
+    if (!adminAuth.isEnabled()) {
+      next();
+      return;
+    }
+
+    const requestPath = req.originalUrl.split("?")[0] || req.path;
+    const match = adminAuth.matchAdminRoute(req.method, requestPath);
+    if (!match) {
+      next();
+      return;
+    }
+
+    const session = (res.locals.adminSessionRecord as ReturnType<AdminAuthService["getSessionRecordFromRequest"]> | undefined)
+      ?? adminAuth.getSessionRecordFromRequest(req);
+    if (!session) {
+      next(new HttpError(401, "UNAUTHORIZED", "Admin session required."));
+      return;
+    }
+    if (!adminAuth.hasAdminCapability(session.role, match.capability)) {
+      next(new HttpError(403, "FORBIDDEN", "Admin role does not allow this operation."));
+      return;
+    }
+
+    const requestContext = res.locals.requestContext as RequestContext | undefined;
+    if (requestContext) {
+      res.locals.requestContext = {
+        ...requestContext,
+        tenantId: session.tenantId,
+        userId: session.username,
+      };
+    }
+    res.locals.adminSessionRecord = session;
+    res.locals.adminSession = {
+      username: session.username,
+      role: session.role,
+      tenantId: session.tenantId,
+      expiresAt: session.expiresAt,
+    };
+
+    if (match.actionTokenRequired) {
+      adminAuth.requireActionTokenFor(requestPath)(req, res, next);
+      return;
+    }
+
+    next();
+  });
 
   function getConfigDefaults() {
     return {

@@ -7,6 +7,31 @@ import { z } from "zod";
 export const defaultConfigPath = path.resolve(process.cwd(), "config/rag.config.yaml");
 
 const distanceMetricSchema = z.enum(["l2", "cosine", "ip"]);
+const adminRoleSchema = z.enum(["viewer", "operator", "admin"]);
+const adminAuthUserSchema = z.object({
+  username: z.string().trim().min(1),
+  passwordHash: z.string().trim().min(1),
+  role: adminRoleSchema,
+  tenantId: z.string().trim().min(1),
+}).strict();
+
+const defaultAdminAuthConfig = {
+  enabled: false,
+  cookieName: "rag_admin_session",
+  sessionTtlMs: 8 * 60 * 60 * 1000,
+  actionTokenTtlMs: 5 * 60 * 1000,
+  sessionSecretEnvVar: "RAG_ADMIN_SESSION_SECRET",
+  users: [],
+};
+
+const adminAuthSchema = z.object({
+  enabled: z.boolean().default(defaultAdminAuthConfig.enabled),
+  cookieName: z.string().trim().min(1).default(defaultAdminAuthConfig.cookieName),
+  sessionTtlMs: z.number().int().positive().default(defaultAdminAuthConfig.sessionTtlMs),
+  actionTokenTtlMs: z.number().int().positive().default(defaultAdminAuthConfig.actionTokenTtlMs),
+  sessionSecretEnvVar: z.string().trim().min(1).default(defaultAdminAuthConfig.sessionSecretEnvVar),
+  users: z.array(adminAuthUserSchema).default(defaultAdminAuthConfig.users),
+}).strict();
 
 export const configSchema = z.object({
   server: z.object({
@@ -53,6 +78,7 @@ export const configSchema = z.object({
     windowMs: z.number().int().positive().default(60000),
     maxRequestsPerWindow: z.number().int().positive().default(60),
   }).strict().optional(),
+  adminAuth: adminAuthSchema.default(defaultAdminAuthConfig),
   observability: z.object({
     includeDebugTimings: z.boolean().default(false),
   }).strict().optional(),
@@ -138,6 +164,7 @@ export function resolveConfig(
     rateLimitEnabled: rawConfig.rateLimit?.enabled ?? true,
     rateLimitWindowMs: rawConfig.rateLimit?.windowMs ?? 60000,
     rateLimitMaxRequestsPerWindow: rawConfig.rateLimit?.maxRequestsPerWindow ?? 60,
+    adminAuth: rawConfig.adminAuth ?? defaultAdminAuthConfig,
     includeDebugTimings: rawConfig.observability?.includeDebugTimings ?? false,
   };
 }

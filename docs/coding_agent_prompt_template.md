@@ -47,7 +47,8 @@ Frontend requirements:
 
 Non-negotiable backend rules:
 - Use GET /v1/rag/collections/:collectionId/ready as the source of truth for enabling query and retrieve actions.
-- Preserve x-tenant-id, x-user-id, and x-request-id headers.
+- Preserve `x-request-id` everywhere. Preserve `x-tenant-id` and `x-user-id` on public `/v1/rag/**` requests, and switch admin calls to session-derived tenant/user context when admin auth is enabled.
+- If the UI includes admin flows and admin auth is enabled, bootstrap with `GET /v1/admin/auth/session`, use the login/logout endpoints, and fetch `POST /v1/admin/auth/action-token` just in time before protected admin mutations.
 - Handle 202, 204, 409, 413, 422, 429, 502, and 503 correctly.
 - If the UI includes a create form, load `GET /v1/admin/config/defaults` and `GET /v1/admin/models` so backend defaults and model suggestions stay visible.
 - Do not assume query.sources is the same full source set that retrieve would return.
@@ -99,6 +100,7 @@ Non-negotiable backend rules:
 - Use GET /v1/rag/collections/:collectionId/ready as the capability gate for query and retrieve.
 - If the UI includes a create form, load `GET /v1/admin/config/defaults` and `GET /v1/admin/models` before rendering backend defaults or autocomplete suggestions.
 - Reindex is asynchronous and returns 202.
+- If admin auth is enabled, use cookie-backed admin sessions and short-lived action tokens for protected admin mutations.
 - Delete and cancel endpoints return 204 with no JSON body.
 - Job list cursor is opaque.
 - Handle collection visibility and tenant scoping correctly.

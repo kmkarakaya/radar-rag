@@ -1238,9 +1238,3 @@ Aşağıdaki sıra, bu eksikleri hangi hızda ele almak gerektiğini gösterir. 
 - Production-benzeri kullanım için güvenlik katmanı eksik.
 - Öneri: auth middleware, role-based izinler, destructive aksiyonlar için CSRF veya signed action token.
 
-### Kısa karar kuralı
-
-- Önce P1.
-- P1 bitmeden P2'ye geçme.
-- P2 tamamlanmadan P3, yalnızca bakım veya güvenlik işi olarak ele alınsın.
-

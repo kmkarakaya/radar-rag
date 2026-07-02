@@ -290,6 +290,7 @@ async function promptConfig(rawConfig: RawConfig): Promise<RawConfig> {
           positiveInteger,
         ),
       },
+      adminAuth: rawConfig.adminAuth,
       observability: {
         includeDebugTimings: await promptBoolean(
           rl,
@@ -340,6 +341,8 @@ function printConfigSummary(runtimeConfig: ResolvedConfig): void {
   console.log(`- limits.maxConcurrentGenerations: ${runtimeConfig.maxConcurrentGenerations}`);
   console.log(`- rateLimit.enabled: ${runtimeConfig.rateLimitEnabled}`);
   console.log(`- rateLimit.windowMs/maxRequestsPerWindow: ${runtimeConfig.rateLimitWindowMs}/${runtimeConfig.rateLimitMaxRequestsPerWindow}`);
+  console.log(`- adminAuth.enabled: ${runtimeConfig.adminAuth.enabled}`);
+  console.log(`- adminAuth.users: ${runtimeConfig.adminAuth.users.length}`);
   console.log(`- observability.includeDebugTimings: ${runtimeConfig.includeDebugTimings}`);
 }
 
@@ -434,6 +437,7 @@ async function main(): Promise<void> {
   console.log("Use `npm run index -- --collection-id <id>` to reindex an existing collection.");
   console.log("\nNext step:");
   console.log("npm run dev");
+  console.log("Use `npm run admin:hash-password` to generate admin password hashes.");
 }
 
 main().catch((error) => {

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "onboard": "tsx src/admin/onboard.ts",
+    "admin:hash-password": "tsx src/admin/passwordHash.ts",
     "index": "tsx src/index.ts",
     "build": "tsc",
     "test": "node --import tsx --test test/*.test.ts test/acceptance/*.test.ts",

@@ -5,13 +5,15 @@ info:
   description: >
     Machine-readable contract for the current Vanilla RAG Backend implementation.
     This spec covers the versioned public RAG API, admin API, job API, and the
-    system health/readiness endpoints.
+    system health/readiness endpoints. Admin auth is opt-in and uses a signed
+    session cookie plus short-lived action tokens for protected mutations.
 servers:
   - url: http://localhost:3000
     description: Local development
 tags:
   - name: System
   - name: Public RAG
+  - name: Admin Auth
   - name: Admin Collections
   - name: Admin Jobs
   - name: Admin Audit
@@ -241,15 +243,158 @@ paths:
           $ref: "#/components/responses/ApiError"
         "503":
           $ref: "#/components/responses/ApiError"
+  /v1/admin/auth/login:
+    post:
+      tags: [Admin Auth]
+      operationId: adminLogin
+      summary: Create an admin session cookie with username and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              additionalProperties: false
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Authenticated admin session summary
+          headers:
+            Set-Cookie:
+              description: HttpOnly session cookie scoped to the admin browser session
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session]
+                properties:
+                  session:
+                    type: object
+                    required: [username, role, tenantId, expiresAt]
+                    properties:
+                      username:
+                        type: string
+                      role:
+                        type: string
+                        enum: [viewer, operator, admin]
+                      tenantId:
+                        type: string
+                      expiresAt:
+                        type: string
+                        format: date-time
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/auth/logout:
+    post:
+      tags: [Admin Auth]
+      operationId: adminLogout
+      summary: Clear the admin session cookie
+      security:
+        - AdminSessionCookie: []
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+        "401":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/auth/session:
+    get:
+      tags: [Admin Auth]
+      operationId: adminSession
+      summary: Return the current admin session summary
+      security:
+        - AdminSessionCookie: []
+      responses:
+        "200":
+          description: Current session summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled, authenticated, session]
+                properties:
+                  enabled:
+                    type: boolean
+                  authenticated:
+                    type: boolean
+                  session:
+                    anyOf:
+                      - type: "null"
+                      - type: object
+                        required: [username, role, tenantId, expiresAt]
+                        properties:
+                          username:
+                            type: string
+                          role:
+                            type: string
+                            enum: [viewer, operator, admin]
+                          tenantId:
+                            type: string
+                          expiresAt:
+                            type: string
+                            format: date-time
+        "401":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/auth/action-token:
+    post:
+      tags: [Admin Auth]
+      operationId: adminActionToken
+      summary: Mint a short-lived signed token for a mutating admin route
+      security:
+        - AdminSessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method, path]
+              additionalProperties: false
+              properties:
+                method:
+                  type: string
+                path:
+                  type: string
+      responses:
+        "200":
+          description: Signed action token and expiry timestamp
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [actionToken, expiresAt]
+                properties:
+                  actionToken:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
   /v1/admin/collections:
     post:
       tags: [Admin Collections]
       operationId: createCollection
       summary: Create a collection
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
         - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XAdminActionToken"
       requestBody:
         required: true
         content:
@@ -263,6 +408,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminCreateCollectionResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
         "400":
           $ref: "#/components/responses/ApiError"
         "413":
@@ -274,6 +423,8 @@ paths:
       tags: [Admin Collections]
       operationId: validateCreateCollection
       summary: Validate a create draft without mutating state
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
@@ -291,6 +442,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CollectionValidationResult"
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
         "400":
           $ref: "#/components/responses/ApiError"
         "413":
@@ -302,6 +457,8 @@ paths:
       tags: [Admin Collections]
       operationId: getAdminConfigDefaults
       summary: Get create-form runtime defaults
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
@@ -313,11 +470,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminConfigDefaultsResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
   /v1/admin/models:
     get:
       tags: [Admin Collections]
       operationId: listAdminModels
       summary: Discover Ollama models for admin autocomplete with soft-fail behavior
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
@@ -329,11 +490,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminModelDiscoveryResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
   /v1/admin/collections/{collectionId}:
     get:
       tags: [Admin Collections]
       operationId: getAdminCollection
       summary: Get the full editable collection DTO
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
@@ -346,6 +511,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminCollectionResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
         "403":
           $ref: "#/components/responses/ApiError"
         "404":
@@ -356,11 +523,14 @@ paths:
       tags: [Admin Collections]
       operationId: patchCollection
       summary: Update a collection
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
         - $ref: "#/components/parameters/XRequestId"
         - $ref: "#/components/parameters/CollectionId"
+        - $ref: "#/components/parameters/XAdminActionToken"
       requestBody:
         required: true
         content:
@@ -374,6 +544,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminCollectionResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
         "400":
           $ref: "#/components/responses/ApiError"
         "413":
@@ -388,14 +560,19 @@ paths:
       tags: [Admin Collections]
       operationId: deleteCollection
       summary: Soft-delete a collection
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
         - $ref: "#/components/parameters/XRequestId"
         - $ref: "#/components/parameters/CollectionId"
+        - $ref: "#/components/parameters/XAdminActionToken"
       responses:
         "204":
           $ref: "#/components/responses/NoContent"
+        "401":
+          $ref: "#/components/responses/ApiError"
         "403":
           $ref: "#/components/responses/ApiError"
         "404":
@@ -407,6 +584,8 @@ paths:
       tags: [Admin Collections]
       operationId: listAdminPhysicalCollections
       summary: List physical collection lifecycle records for one logical collection
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
@@ -422,6 +601,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminPhysicalCollectionsResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
         "403":
           $ref: "#/components/responses/ApiError"
         "404":
@@ -433,6 +614,8 @@ paths:
       tags: [Admin Collections]
       operationId: validateUpdateCollection
       summary: Validate an update draft against a persisted collection
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
@@ -451,6 +634,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CollectionValidationResult"
+        "401":
+          $ref: "#/components/responses/ApiError"
         "400":
           $ref: "#/components/responses/ApiError"
         "413":
@@ -466,11 +651,14 @@ paths:
       tags: [Admin Collections]
       operationId: reindexCollection
       summary: Start an asynchronous reindex job
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
         - $ref: "#/components/parameters/XRequestId"
         - $ref: "#/components/parameters/CollectionId"
+        - $ref: "#/components/parameters/XAdminActionToken"
       responses:
         "202":
           description: Reindex accepted
@@ -485,6 +673,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReindexAcceptedResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
         "403":
           $ref: "#/components/responses/ApiError"
         "404":
@@ -513,6 +703,8 @@ paths:
       tags: [Admin Jobs]
       operationId: listJobs
       summary: List tenant-visible jobs
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
@@ -531,6 +723,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IndexJobListResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
         "400":
           $ref: "#/components/responses/ApiError"
         "500":
@@ -540,6 +734,8 @@ paths:
       tags: [Admin Audit]
       operationId: listAuditLog
       summary: List persisted operational audit log entries
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
@@ -586,6 +782,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuditLogListResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
         "400":
           $ref: "#/components/responses/ApiError"
         "403":
@@ -599,10 +797,13 @@ paths:
       tags: [Admin Jobs]
       operationId: bulkDeleteJobs
       summary: Delete multiple terminal jobs
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
         - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XAdminActionToken"
       requestBody:
         required: true
         content:
@@ -612,6 +813,10 @@ paths:
       responses:
         "204":
           $ref: "#/components/responses/NoContent"
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
         "400":
           $ref: "#/components/responses/ApiError"
         "413":
@@ -625,6 +830,8 @@ paths:
       tags: [Admin Jobs]
       operationId: getJob
       summary: Get one job
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
@@ -640,6 +847,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SingleJobResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
         "404":
           $ref: "#/components/responses/ApiError"
         "500":
@@ -648,14 +857,21 @@ paths:
       tags: [Admin Jobs]
       operationId: deleteJob
       summary: Delete one terminal job
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
         - $ref: "#/components/parameters/XRequestId"
         - $ref: "#/components/parameters/JobId"
+        - $ref: "#/components/parameters/XAdminActionToken"
       responses:
         "204":
           $ref: "#/components/responses/NoContent"
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
         "400":
           $ref: "#/components/responses/ApiError"
         "404":
@@ -667,6 +883,8 @@ paths:
       tags: [Admin Jobs]
       operationId: listJobEvents
       summary: Get the persisted event timeline for one job
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
@@ -682,6 +900,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/JobEventsResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
         "404":
           $ref: "#/components/responses/ApiError"
         "500":
@@ -691,14 +911,21 @@ paths:
       tags: [Admin Jobs]
       operationId: cancelJob
       summary: Cancel a queued or running job
+      security:
+        - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
         - $ref: "#/components/parameters/XRequestId"
         - $ref: "#/components/parameters/JobId"
+        - $ref: "#/components/parameters/XAdminActionToken"
       responses:
         "204":
           $ref: "#/components/responses/NoContent"
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
         "400":
           $ref: "#/components/responses/ApiError"
         "404":
@@ -733,14 +960,14 @@ components:
       name: x-tenant-id
       in: header
       required: false
-      description: Tenant scope. Defaults to default when omitted.
+      description: Tenant scope. Defaults to default when omitted. When admin auth is enabled on /v1/admin routes, the backend derives tenant scope from the authenticated session and ignores this header.
       schema:
         type: string
     XUserId:
       name: x-user-id
       in: header
       required: false
-      description: User identity for rate limiting and logs. Defaults to local-dev when omitted.
+      description: User identity for rate limiting and logs. Defaults to local-dev when omitted. When admin auth is enabled on /v1/admin routes, the backend derives user identity from the authenticated session and ignores this header.
       schema:
         type: string
     XRequestId:
@@ -748,6 +975,13 @@ components:
       in: header
       required: false
       description: Optional request correlation ID. Generated automatically when omitted.
+      schema:
+        type: string
+    XAdminActionToken:
+      name: x-admin-action-token
+      in: header
+      required: false
+      description: Required on POST/PATCH/DELETE admin mutations when admin auth is enabled, except login, logout, and validation-only endpoints.
       schema:
         type: string
     ReadyDetails:
@@ -820,6 +1054,11 @@ components:
             $ref: "#/components/schemas/ApiErrorResponse"
     NoContent:
       description: No content
+  securitySchemes:
+    AdminSessionCookie:
+      type: apiKey
+      in: cookie
+      name: rag_admin_session
   schemas:
     ApiErrorResponse:
       type: object
@@ -843,6 +1082,8 @@ components:
             - MODEL_BACKPRESSURE
             - INVALID_JOB_STATUS
             - RATE_LIMIT_EXCEEDED
+            - UNAUTHORIZED
+            - FORBIDDEN
             - EMPTY_MODEL_RESPONSE
             - ROUTE_NOT_FOUND
             - INTERNAL_ERROR

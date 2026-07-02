@@ -29,6 +29,8 @@ Detaylı mimari ve endpoint sözleşmeleri için [vanilla_rag_backend_mimarisi.m
 
 ## Hızlı Kullanım Kılavuzu
 
+Varsayılan örnek config `adminAuth.enabled=false` ile gelir; aşağıdaki kısa akış lokal geliştirme kolaylığı içindir. Production-benzeri admin kullanımı için alttaki güvenli admin quickstart bölümünü izleyin.
+
 0. **Kurulum** (sadece ilk kez): 'docker + install + run dev' -> backend kur
 1. **Onboarding** (sadece ilk kez): `npm run onboard` → config oluşturur
 2. **Collection oluştur**: `POST /v1/admin/collections` → collection ID al
@@ -64,7 +66,7 @@ Public frontend tarafinda korunmasi gereken ana kurallar:
 
 - sadece versioned `/v1` endpoint'lerini kullanin
 - `GET /v1/rag/collections/:collectionId/ready` sonucunu query ve retrieve butonlari icin capability gate olarak kullanin
-- her request'te `x-tenant-id`, `x-user-id` ve `x-request-id` gonderin
+- public `/v1/rag/**` request'lerinde `x-tenant-id`, `x-user-id` ve `x-request-id` gonderin; admin auth aciksa `/v1/admin/**` tarafinda tenant/user kaynagi aktif session olmali
 - `POST /query` ile `POST /retrieve` akislarini ayri dusunun
 - `429 RATE_LIMIT_EXCEEDED` durumunda `Retry-After` degerini dikkate alin
 - `query.sources` alanini her zaman tam retrieval sonucu sanmayin; generation-context subset olabilir
@@ -163,6 +165,96 @@ Bu test arayüzü üzerinden sistemdeki koleksiyonların listesini görebilir, d
 
 Sistemin RAG sorgularına yanıt verebilmesi için önce bir koleksiyonun yaratılması ve arka planda endekslenmesi gerekir. Tüm bu adımlar Admin API üzerinden yürütülür.
 
+Admin surface opt-in auth supports local session cookies for `/admin` and `/v1/admin`. When `adminAuth.enabled=true`, the backend reads admin users from config, requires the `RAG_ADMIN_SESSION_SECRET` env var, and uses short-lived signed action tokens for mutating admin requests. Generate safe `passwordHash` values with `npm run admin:hash-password`.
+
+### Admin Auth Quickstart
+
+Admin auth, `config/rag.config.yaml` içindeki `adminAuth.enabled` ile açılır. Bu modda backend iki ayrı güvenlik katmanı kullanır: kullanıcı girişi için `username + password`, mutating admin işlemler için de session cookie + kısa ömürlü signed action token.
+
+Burada iki farklı gizli değer vardır ve birbirine eşit olmaları gerekmez:
+
+- `RAG_ADMIN_SESSION_SECRET`: Sunucunun kendi gizli anahtarıdır. Session cookie ve action token imzalamak için kullanılır.
+- `passwordHash`: Admin kullanıcısının gerçek şifresinden üretilmiş hash değeridir. Login doğrulaması için kullanılır.
+
+#### Lokal quickstart (`adminAuth.enabled=false`)
+
+Varsayılan örnek `config/rag.config.yaml` bu modda gelir.
+
+- `/v1/admin/**` çağrıları auth olmadan çalışır.
+- Geliştirme ortamında tenant görünürlüğünü test etmek için `x-tenant-id` ve `x-user-id` header'larını manuel gönderebilirsiniz.
+- Bu mod hızlı deneme içindir; production kullanımı için uygun değildir.
+
+Örnek:
+
+```yaml
+adminAuth:
+  enabled: false
+```
+
+#### Güvenli admin quickstart (`adminAuth.enabled=true`)
+
+1. Güçlü bir secret üretin ve `RAG_ADMIN_SESSION_SECRET` env var'ını set edin.
+2. `npm run admin:hash-password -- "..."` çalıştırıp admin kullanıcınız için bir `passwordHash` üretin.
+3. `config/rag.config.yaml` içinde `adminAuth.enabled: true` yapın ve `users[]` altına en az bir kullanıcı ekleyin.
+4. Backend'i yeniden başlatın. Secret eksikse, `users[]` boşsa, `passwordHash` formatı bozuksa veya `role` / `tenantId` eksikse servis fail-fast olarak açılmaz.
+5. Tarayıcıda `/admin/` açın. Session yoksa backend login ekranına yönlendirir.
+6. `POST /v1/admin/auth/login` ile giriş yapın. Bu adım yalnızca session cookie üretir.
+7. `POST`, `PATCH` ve `DELETE` yapan admin çağrılarında önce `POST /v1/admin/auth/action-token` ile token alın, sonra isteği `x-admin-action-token` header'ı ile gönderin.
+
+Örnek config:
+
+```yaml
+adminAuth:
+  enabled: true
+  cookieName: rag_admin_session
+  sessionTtlMs: 28800000
+  actionTokenTtlMs: 300000
+  sessionSecretEnvVar: RAG_ADMIN_SESSION_SECRET
+  users:
+    - username: kmkarakaya
+      passwordHash: "scrypt$16384$8$1$64$..."
+      role: admin
+      tenantId: "default"
+```
+
+Login örneği:
+
+```powershell
+$body = @{
+  username = "kmkarakaya"
+  password = "Sifre1991"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:3010/v1/admin/auth/login" -Method Post -ContentType "application/json" -Body $body
+```
+
+Action token örneği:
+
+```powershell
+$tokenBody = @{
+  method = "POST"
+  path = "/v1/admin/collections"
+} | ConvertTo-Json
+
+$token = Invoke-RestMethod -Uri "http://localhost:3010/v1/admin/auth/action-token" -Method Post -ContentType "application/json" -Body $tokenBody
+```
+
+Bu token yalnızca ilgili method/path için geçerlidir, tek kullanımlıktır ve süresi dolunca yenisi alınmalıdır. Mutating isteklerde header adı `x-admin-action-token`'dır.
+
+Role matrisi:
+
+- `viewer`: read-only admin görünümü
+- `operator`: create, validate, update, reindex ve job cancel
+- `admin`: operator yetkileri + collection/job delete ve bulk job delete
+
+Kısa özet:
+
+- Önce secret set edilir.
+- Sonra kullanıcı şifresi hash'lenip config'e yazılır.
+- Login session cookie üretir.
+- Action token mutating istekleri korur.
+- `RAG_ADMIN_SESSION_SECRET` ile kullanıcı şifresi aynı şey değildir.
+
 ### Sistem Onboarding (İlk Kurulum)
 
 Sistemi ilk kez ayağa kaldırırken `config/rag.config.yaml` dosyasını terminal üzerinden interaktif bir şekilde oluşturup doğrulamak için onboarding CLI aracı mevcuttur:
@@ -225,6 +317,8 @@ Structured operational logs share the same event shape across HTTP, RAG, indexin
 ### 1. Collection Yaratma (Admin API)
 
 Koleksiyonun mantıksal (logical) konfigürasyonunu tanımlayın. Burada belirlediğiniz mesafe metriği (distanceMetric), embedding modeli, chat modeli, retrieval eşiği ve parçalama boyutları o koleksiyonun build/query akışında gerçekten kullanılır:
+
+`adminAuth.enabled=true` ise bu çağrıdan önce giriş yapmanız ve request için geçerli bir action token almanız gerekir. Auth kapalı lokal modda aşağıdaki örnek doğrudan çalışır.
 
 ```powershell
 $collection = @{
@@ -383,3 +477,4 @@ Bu backend bilincli olarak kullaniciya placeholder veya fallback answer dondurme
 - `MODEL_BACKPRESSURE` (`503`): Sistem eşzamanlı limitleri (`maxConcurrentEmbeddings` / `maxConcurrentGenerations`) aştı, vector search/generation zaman aşımına uğradı veya client tarafından iptal (abort) edildi.
 - `EMPTY_MODEL_RESPONSE` (`502`): Chat modeli boş cevap döndü.
 - `DISALLOWED_FALLBACK_ANSWER` (`502`): Model yasakli fallback (ezbere) metni döndü; backend bunu bir RAG ihlali/hatası sayar.
+

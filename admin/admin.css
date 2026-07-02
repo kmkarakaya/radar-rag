@@ -31,6 +31,92 @@
     scrollbar-width: thin;
 }
 
+.auth-shell {
+    position: relative;
+    display: flex;
+    min-height: 100vh;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at top left, rgba(79, 70, 229, 0.2), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(15, 23, 42, 0.12), transparent 28%),
+        linear-gradient(135deg, #f8fafc 0%, #eef2ff 48%, #e2e8f0 100%);
+    padding: 1.5rem;
+}
+
+.auth-shell__backdrop {
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(120deg, rgba(15, 23, 42, 0.04), transparent 35%),
+        radial-gradient(circle at 70% 20%, rgba(99, 102, 241, 0.18), transparent 22%);
+    pointer-events: none;
+}
+
+.auth-shell__content {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    width: min(1120px, 100%);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+    gap: 1.5rem;
+    align-items: center;
+}
+
+.auth-shell__intro {
+    max-width: 36rem;
+}
+
+.auth-shell__eyebrow {
+    margin-bottom: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #4f46e5;
+}
+
+.auth-shell__title {
+    font-size: clamp(2.5rem, 5vw, 4.5rem);
+    line-height: 0.95;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: #0f172a;
+}
+
+.auth-shell__copy {
+    margin-top: 1rem;
+    max-width: 34rem;
+    font-size: 1rem;
+    line-height: 1.7;
+    color: #475569;
+}
+
+.auth-panel {
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 1.5rem;
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 30px 80px rgba(15, 23, 42, 0.12);
+    backdrop-filter: blur(14px);
+    padding: 1.5rem;
+}
+
+.auth-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: #0f172a;
+    color: #f8fafc;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.4rem 0.7rem;
+    white-space: nowrap;
+}
+
 /* =====================================================
    Prompt 8 - UX Polish, Accessibility, Responsive
    ===================================================== */
@@ -72,6 +158,14 @@
     /* Form single column on mobile */
     #colEditForm {
         grid-template-columns: 1fr !important;
+    }
+
+    .auth-shell {
+        align-items: flex-start;
+    }
+
+    .auth-shell__content {
+        grid-template-columns: 1fr;
     }
 
     /* Reduce padding on mobile */

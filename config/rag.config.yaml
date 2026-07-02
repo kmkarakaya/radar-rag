@@ -33,5 +33,16 @@ rateLimit:
   enabled: true
   windowMs: 60000
   maxRequestsPerWindow: 60
+adminAuth:
+  enabled: true
+  cookieName: rag_admin_session
+  sessionTtlMs: 28800000
+  actionTokenTtlMs: 300000
+  sessionSecretEnvVar: RAG_ADMIN_SESSION_SECRET
+  users: 
+    - username: kmkarakaya
+      passwordHash: "scrypt$16384$8$1$64$e9dMZPkykrCghdLFGeM2CQ$3IloY9_KgWdFMUUevsWh45p4g7JItScDYC8OeJT8pqAAtd1Yh1wrbMsr7TAlSXGDCagDYbGAMuqDAjKLrxAqQg"
+      role: admin
+      tenantId: "default"
 observability:
   includeDebugTimings: false

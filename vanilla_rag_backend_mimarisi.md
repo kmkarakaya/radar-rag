@@ -143,6 +143,17 @@ Repodaki HTTP yüzeyi şu başlıca endpointlerden oluşur:
 
 Bu yüzey, query/retrieve akışını, collection discovery'yi, admin lifecycle'ı ve operasyonel sağlık bilgisini aynı backend sınırı içinde toplar. CLI akışı (`npm run onboard`, `npm run index`) operatör kolaylığı için vardır; HTTP admin yüzeyiyle aynı registry kurallarını izler.
 
+#### 5.1.2 Admin Auth, RBAC ve Signed Action Token
+
+Admin yüzeyi bu repoda opsiyonel bir güvenlik katmanı ile sertleştirilmiştir:
+
+1. `adminAuth.enabled=true` olduğunda `/admin` ve `/v1/admin/**` session cookie ile korunur.
+2. Session cookie `HttpOnly`, `SameSite=Lax`, path `/` ve production'da `Secure` olarak ayarlanır.
+3. Kullanıcılar config içindeki `adminAuth.users[]` listesinden gelir; plaintext password tutulmaz, scrypt hash zorunludur.
+4. `viewer`, `operator` ve `admin` rolleri admin route capability matrix'i ile eşlenir.
+5. Mutating admin route'lar kısa ömürlü, tek kullanımlık ve route/method/tenant bağlı `x-admin-action-token` ister.
+6. Public `/v1/rag` contract'ı bu fazda değişmez; admin UI tenant ve user bilgisini session'dan türetip bu header'ları kendi RAG çağrılarına ekler.
+
 #### `GET /v1/rag/collections`
 
 Maksat:
@@ -950,4 +961,3 @@ Eksik kalan kısımlar ise çekirdek mimariden çok sistem olgunluğu ile ilgili
 - API hardening
 
 Bu ayrım önemlidir: proje "yoktan başlangıç" seviyesinde değil, "çalışan baseline backend" seviyesindedir.
-

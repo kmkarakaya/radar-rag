@@ -12,6 +12,7 @@ import {
   type RawConfig,
   type ResolvedConfig,
 } from "../config.js";
+import { validateAdminAuthConfig } from "../http/adminAuth.js";
 import { analyzeIndexingSource } from "../index.js";
 import {
   checkChatGenerationHealth,
@@ -321,7 +322,9 @@ async function writeConfigWithBackup(rawConfig: RawConfig, configPath: string): 
   await writeConfigFile(rawConfig, configPath);
 }
 
-function printConfigSummary(runtimeConfig: ResolvedConfig): void {
+function printConfigSummary(runtimeConfig: ResolvedConfig, env: NodeJS.ProcessEnv): void {
+  const sessionSecretConfigured = ((env[runtimeConfig.adminAuth.sessionSecretEnvVar] ?? "").trim().length > 0);
+
   console.log("\nConfig summary:");
   console.log(`- configPath: ${runtimeConfig.configPath}`);
   console.log(`- server.port: ${runtimeConfig.port}`);
@@ -342,6 +345,8 @@ function printConfigSummary(runtimeConfig: ResolvedConfig): void {
   console.log(`- rateLimit.enabled: ${runtimeConfig.rateLimitEnabled}`);
   console.log(`- rateLimit.windowMs/maxRequestsPerWindow: ${runtimeConfig.rateLimitWindowMs}/${runtimeConfig.rateLimitMaxRequestsPerWindow}`);
   console.log(`- adminAuth.enabled: ${runtimeConfig.adminAuth.enabled}`);
+  console.log(`- adminAuth.sessionSecretEnvVar: ${runtimeConfig.adminAuth.sessionSecretEnvVar}`);
+  console.log(`- adminAuth.sessionSecretConfigured: ${sessionSecretConfigured}`);
   console.log(`- adminAuth.users: ${runtimeConfig.adminAuth.users.length}`);
   console.log(`- observability.includeDebugTimings: ${runtimeConfig.includeDebugTimings}`);
 }
@@ -386,6 +391,7 @@ async function runDependencyChecks(runtimeConfig: ResolvedConfig): Promise<boole
 
   if (!canCheckEmbedding) {
     console.log(`- Embedding model: missing (${runtimeConfig.ollamaEmbeddingModel})`);
+    console.log(`  Run: ollama pull ${runtimeConfig.ollamaEmbeddingModel}`);
     return false;
   }
 
@@ -394,6 +400,7 @@ async function runDependencyChecks(runtimeConfig: ResolvedConfig): Promise<boole
 
   if (!canCheckChat) {
     console.log(`- Chat model: missing (${runtimeConfig.ollamaChatModel}); indexing can still run.`);
+    console.log(`  Run: ollama pull ${runtimeConfig.ollamaChatModel}`);
   } else {
     const chat = await checkChatGenerationHealth(runtimeConfig);
     console.log(`- Chat smoke: ${chat.ok ? "ok" : "warn"}${chat.error ? ` - ${chat.error}` : ""}`);
@@ -408,7 +415,7 @@ async function main(): Promise<void> {
   const nextRawConfig = options.yes ? rawConfig : await promptConfig(rawConfig);
   const runtimeConfig = resolveConfig(parseConfig(nextRawConfig, options.configPath), options.configPath);
 
-  printConfigSummary(runtimeConfig);
+  printConfigSummary(runtimeConfig, process.env);
 
   const shouldWrite = !options.dryRun && !options.noWrite;
   if (shouldWrite && !options.yes) {
@@ -420,6 +427,11 @@ async function main(): Promise<void> {
   } else {
     console.log("\nConfig not written.");
   }
+
+  validateAdminAuthConfig({
+    config: runtimeConfig.adminAuth,
+    env: process.env,
+  });
 
   const documentCount = await printSourceAnalysis(runtimeConfig);
   if (documentCount === 0) {
@@ -433,11 +445,21 @@ async function main(): Promise<void> {
     throw new Error("Dependencies are not ready for indexing.");
   }
 
-  console.log("\nIndex skipped. Multi-collection indexing must use the registry-backed collection job flow.");
-  console.log("Use `npm run index -- --collection-id <id>` to reindex an existing collection.");
-  console.log("\nNext step:");
-  console.log("npm run dev");
-  console.log("Use `npm run admin:hash-password` to generate admin password hashes.");
+  const adminUrl = runtimeConfig.adminAuth.enabled
+    ? `http://localhost:${runtimeConfig.port}/admin/login`
+    : `http://localhost:${runtimeConfig.port}/admin`;
+
+  console.log("\nCollection creation and indexing are not performed by onboarding.");
+  console.log("Use the admin panel or the admin API/job flow for multi-collection creation and reindexing.");
+  console.log("Automation note: use `npm run index -- --collection-id <id>` only to reindex an existing collection.");
+  console.log("\nNext steps:");
+  console.log("- npm run dev");
+  console.log(`- http://localhost:${runtimeConfig.port}/ready`);
+  console.log(`- ${adminUrl}`);
+  console.log(`- http://localhost:${runtimeConfig.port}/test-frontend/`);
+  if (runtimeConfig.adminAuth.enabled) {
+    console.log("- npm run admin:hash-password");
+  }
 }
 
 main().catch((error) => {

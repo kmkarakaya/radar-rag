@@ -138,6 +138,31 @@ function ensureValidPasswordHashes(users: AdminUserConfig[]): void {
   }
 }
 
+export function validateAdminAuthConfig(input: {
+  config: AdminAuthConfig;
+  env?: NodeJS.ProcessEnv;
+}): { secret: string; sessionSecretConfigured: boolean } {
+  const cfg = input.config;
+  const configuredSecret = (input.env?.[cfg.sessionSecretEnvVar] ?? "").trim();
+  const sessionSecretConfigured = configuredSecret.length > 0;
+  const secret = cfg.enabled ? configuredSecret : "";
+
+  if (cfg.enabled) {
+    if (!secret) {
+      throw new Error(`Admin auth is enabled but ${cfg.sessionSecretEnvVar} is missing.`);
+    }
+    if (!Array.isArray(cfg.users) || cfg.users.length === 0) {
+      throw new Error("Admin auth is enabled but no admin users are configured.");
+    }
+    ensureValidPasswordHashes(cfg.users);
+  }
+
+  return {
+    secret,
+    sessionSecretConfigured,
+  };
+}
+
 function pickCapabilities(role: AdminRole): AdminCapability[] {
   if (role === "admin") {
     return ADMIN_CAPABILITIES;
@@ -177,16 +202,10 @@ export function createAdminAuthService(input: {
 }) {
   const cfg = input.config;
   const now = input.now ?? (() => Date.now());
-  const secret = cfg.enabled ? (input.env?.[cfg.sessionSecretEnvVar] ?? "").trim() : "";
-  if (cfg.enabled) {
-    if (!secret) {
-      throw new Error(`Admin auth is enabled but ${cfg.sessionSecretEnvVar} is missing.`);
-    }
-    if (!Array.isArray(cfg.users) || cfg.users.length === 0) {
-      throw new Error("Admin auth is enabled but no admin users are configured.");
-    }
-    ensureValidPasswordHashes(cfg.users);
-  }
+  const { secret } = validateAdminAuthConfig({
+    config: cfg,
+    env: input.env,
+  });
 
   const userMap = new Map(cfg.users.map((user) => [user.username, user]));
   const sessions = new Map<string, AdminSessionRecord>();

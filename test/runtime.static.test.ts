@@ -72,14 +72,24 @@ describe("runtime static contract", () => {
 
   it("keeps the onboarding config flow aligned with rate-limit and observability settings", async () => {
     const onboard = await fs.readFile(path.resolve(process.cwd(), "src/admin/onboard.ts"), "utf8");
+    const adminAuth = await fs.readFile(path.resolve(process.cwd(), "src/http/adminAuth.ts"), "utf8");
 
     assert.match(onboard, /rateLimit\.enabled/);
     assert.match(onboard, /rateLimit\.windowMs/);
     assert.match(onboard, /rateLimit\.maxRequestsPerWindow/);
     assert.match(onboard, /observability\.includeDebugTimings/);
     assert.match(onboard, /adminAuth\.enabled/);
+    assert.match(onboard, /adminAuth\.sessionSecretEnvVar/);
+    assert.match(onboard, /adminAuth\.sessionSecretConfigured/);
     assert.match(onboard, /adminAuth\.users/);
+    assert.match(onboard, /validateAdminAuthConfig/);
+    assert.match(onboard, /Run: ollama pull \$\{runtimeConfig\.ollamaEmbeddingModel\}/);
+    assert.match(onboard, /Run: ollama pull \$\{runtimeConfig\.ollamaChatModel\}/);
+    assert.match(onboard, /\/admin\/login/);
+    assert.match(onboard, /\/test-frontend\//);
+    assert.match(onboard, /admin panel or the admin API\/job flow/i);
     assert.match(onboard, /admin:hash-password/);
+    assert.match(adminAuth, /export function validateAdminAuthConfig/);
     assert.doesNotMatch(onboard, /request rate limiting: not enabled yet/i);
   });
 });

@@ -1232,13 +1232,7 @@ Aşağıdaki sıra, bu eksikleri hangi hızda ele almak gerektiğini gösterir. 
 
 ### P3 - Operasyon şeffaflığı ve bakım
 
-8. 
-9. **Operasyon geçmişi kaydı yok**
-
-- Re-index, delete, query/retrieve ve hata geçmişi panelden sonradan okunamıyor.
-- Öneri: `GET /v1/admin/audit-log?collectionId=&operation=&limit=&cursor=`
-
-10. **Auth/RBAC ve CSRF sertleştirmesi yok**
+8. **Auth/RBAC ve CSRF sertleştirmesi yok**
 
 - Panel şu an lokal/statik kullanım mantığıyla çalışıyor.
 - Production-benzeri kullanım için güvenlik katmanı eksik.

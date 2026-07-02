@@ -24,6 +24,9 @@ This documentation set is written for both humans and coding agents that need to
 - `POST /v1/rag/collections/:collectionId/query` may return only the source subset actually used for answer generation. Use `POST /v1/rag/collections/:collectionId/retrieve` for the broader evidence set.
 - Raw query/retrieve JSON also includes the effective model names used for that request.
 - `POST /v1/admin/collections/:collectionId/reindex` is asynchronous and returns `202 Accepted`.
+- `GET /v1/admin/jobs/:jobId/events` is the stage-aware progress timeline for admin job monitoring.
+- `GET /v1/admin/collections/:collectionId/physical-collections` shows physical collection lifecycle visibility for rebuild, cleanup, and failed target states.
+- `GET /v1/admin/audit-log` is the persisted newest-first operations history; `collectionId` and `operation` can be repeated for multi-select filters.
 - Some write endpoints return `204 No Content`; do not call `response.json()` on them.
 - Query, retrieve, and reindex operations are rate-limited and return `429 RATE_LIMIT_EXCEEDED` with `Retry-After`.
 - JSON request bodies are limited to `1mb`.
@@ -41,10 +44,11 @@ If someone wants an end-user RAG frontend, the minimum useful set is:
 If they also want collection-management or operations UI, include:
 
 6. `docs/admin_api_endpoints.md`
+7. `docs/http_workflows.md`
 
 If they want to review whether the generated frontend actually respects the backend contract, also include:
 
-7. `docs/frontend_acceptance_checklist.md`
+8. `docs/frontend_acceptance_checklist.md`
 
 ## Example Frontend In This Repo
 
@@ -59,7 +63,7 @@ If they want to review whether the generated frontend actually respects the back
 Paste this together with the docs above:
 
 ```text
-Read docs/frontend_agent_handoff.md first, then docs/user_api_endpoints.md, then docs/http_workflows.md, and then docs/openapi.yaml. If the UI also needs collection management or job monitoring, read docs/admin_api_endpoints.md too.
+Read docs/frontend_agent_handoff.md first, then docs/user_api_endpoints.md, then docs/http_workflows.md, and then docs/openapi.yaml. If the UI also needs collection management, job monitoring, physical collection visibility, or audit history, read docs/admin_api_endpoints.md too.
 
 Build the frontend against only the versioned /v1 endpoints. Do not invent endpoints. Use GET /v1/rag/collections/:collectionId/ready as the source of truth for whether query and retrieve actions should be enabled. Preserve x-tenant-id, x-user-id, and x-request-id headers in the client. Handle 202, 204, 409, 413, 422, 429, 502, and 503 responses correctly.
 ```

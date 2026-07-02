@@ -13,6 +13,7 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 - `query` and `retrieve` are collection-specific operations, not global operations.
 - `ready` is the backend's explicit answer to "what can the frontend do right now for this collection?"
 - Reindexing is asynchronous and produces jobs.
+- Jobs have both a coarse status view and a stage-aware event timeline.
 - Public RAG endpoints and admin endpoints intentionally expose different DTOs.
 
 ## Non-Negotiable Integration Rules
@@ -31,6 +32,9 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 12. Public collection DTOs are sanitized compared to admin collection DTOs. Do not expect admin-only fields from public endpoints.
 13. `POST /v1/rag/collections/:collectionId/query` may return only the subset of sources actually passed into generation. Use `POST /v1/rag/collections/:collectionId/retrieve` when the UI needs the fuller evidence set.
 14. Query, retrieve, and reindex responses include rate-limit headers; a `429` also includes `Retry-After`.
+15. Use `GET /v1/admin/jobs/:jobId/events` for stage-aware progress UIs; do not infer detailed progress from job status alone.
+16. Use `GET /v1/admin/collections/:collectionId/physical-collections` when the admin UI needs rebuild, cleanup, or failed-target visibility.
+17. Use `GET /v1/admin/audit-log` for persisted operations history. `collectionId` and `operation` filters can be repeated for multi-select UI state.
 
 ## Canonical End-User RAG Workflow
 
@@ -52,7 +56,10 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 5. If validation says `impact.reindexRequired === true`, offer a reindex action.
 6. Trigger reindex with `POST /v1/admin/collections/:collectionId/reindex`.
 7. Poll `GET /v1/admin/jobs/:jobId` or `GET /v1/admin/jobs` while the job is queued or running.
-8. Re-check `GET /v1/rag/collections/:collectionId/ready` once indexing finishes.
+8. If the screen shows progress detail, poll `GET /v1/admin/jobs/:jobId/events` for the stage timeline.
+9. If the screen shows rebuild lifecycle detail, load `GET /v1/admin/collections/:collectionId/physical-collections`.
+10. If the screen shows persisted operations history, load `GET /v1/admin/audit-log` and filter it by repeated `collectionId` or `operation` params as needed.
+11. Re-check `GET /v1/rag/collections/:collectionId/ready` once indexing finishes.
 
 ## Query vs Retrieve
 
@@ -119,6 +126,8 @@ Use the readiness payload to drive the UI:
 
 - Poll collection readiness every `2-5s` while a collection has an active queued or running job.
 - Poll job detail or job list every `2-5s` while the user is on an operations screen.
+- Poll job events every `2-5s` while the UI is showing stage-level progress for a queued or running job.
+- Refresh physical collection lifecycle and audit history when the current admin view depends on them.
 - Stop polling once the job becomes terminal or the readiness payload no longer reports an active queued or running job.
 - Honor `Retry-After` when the backend returns `429`.
 
@@ -163,6 +172,9 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T | void> {
 - Do not assume a public collection DTO contains admin-only configuration.
 - Do not assume every successful response contains `debug`.
 - Do not assume delete endpoints return JSON.
+- Do not assume job detail alone contains a usable progress timeline; use job events when the UI needs stages or milestones.
+- Do not assume audit history is collection-singleton; admin filters can target all visible collections or several collections at once.
+- Do not assume physical collection lifecycle is the same thing as logical collection status; render it as an operational detail view.
 
 ## Recommended Prompt For A Coding Agent
 
@@ -183,4 +195,6 @@ Rules:
 - Do not invent endpoints or response fields.
 - If a response contains blockers, warnings, or recommendedActions, surface them in the UI instead of replacing them with guessed text.
 - If ready.modelAvailability.desiredEmbeddingModel exists, treat it as a pending post-reindex model change, not as the current live embedding model.
+- If the UI shows job progress, use GET /v1/admin/jobs/:jobId/events for stage-aware updates.
+- If the UI shows operations history, use GET /v1/admin/audit-log and support repeated collectionId and operation filters.
 ```

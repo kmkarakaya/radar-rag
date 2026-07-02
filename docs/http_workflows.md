@@ -253,7 +253,50 @@ curl.exe -s `
   "$BASE_URL/v1/rag/collections/$COLLECTION_ID/ready"
 ```
 
-## 4. Job Cancel And Delete Flow
+## 4. Audit History Flow
+
+### List newest-first history for one collection
+
+```powershell
+curl.exe -s `
+  -H "x-tenant-id: $TENANT_ID" `
+  -H "x-user-id: $USER_ID" `
+  -H "x-request-id: $REQUEST_ID" `
+  "$BASE_URL/v1/admin/audit-log?collectionId=$COLLECTION_ID&limit=25"
+```
+
+### Filter audit history across multiple collections
+
+```powershell
+$COLLECTION_ID_2 = "another-collection-id"
+
+curl.exe -s `
+  -H "x-tenant-id: $TENANT_ID" `
+  -H "x-user-id: $USER_ID" `
+  -H "x-request-id: $REQUEST_ID" `
+  "$BASE_URL/v1/admin/audit-log?collectionId=$COLLECTION_ID&collectionId=$COLLECTION_ID_2&limit=25"
+```
+
+### Filter audit history across multiple operations
+
+```powershell
+curl.exe -s `
+  -H "x-tenant-id: $TENANT_ID" `
+  -H "x-user-id: $USER_ID" `
+  -H "x-request-id: $REQUEST_ID" `
+  "$BASE_URL/v1/admin/audit-log?collectionId=$COLLECTION_ID&operation=query&operation=retrieve&limit=25"
+```
+
+Notes:
+
+- `collectionId` and `operation` are repeatable query params for multi-select filters.
+- Results are newest-first.
+- `nextCursor` is opaque; pass it back unchanged if you paginate.
+- If any selected collection is outside the current tenant, expect `403 COLLECTION_FORBIDDEN`.
+- If any selected collection does not exist, expect `404 COLLECTION_NOT_FOUND`.
+- Use this endpoint for persisted operator history such as reindex, delete, query, retrieve, and related failures.
+
+## 5. Job Cancel And Delete Flow
 
 ### Cancel a queued or running job
 
@@ -298,7 +341,7 @@ curl.exe -i `
   "$BASE_URL/v1/admin/jobs/bulk-delete"
 ```
 
-## 5. Rate Limit Failure Example
+## 6. Rate Limit Failure Example
 
 ```powershell
 curl.exe -i `
@@ -319,7 +362,7 @@ If rate-limited, expect:
 - `X-RateLimit-Remaining`
 - `X-RateLimit-Reset`
 
-## 6. Invalid Request Example
+## 7. Invalid Request Example
 
 ```powershell
 curl.exe -s `
@@ -337,9 +380,11 @@ Expect:
 - `400 INVALID_REQUEST_BODY`
 - often `details.issues`
 
-## 7. Recommended Frontend Polling Strategy
+## 8. Recommended Frontend Polling Strategy
 
 - Poll `/v1/admin/jobs/:jobId` or `/v1/admin/jobs` every `2-5s` while reindex is queued or running.
+- Poll `/v1/admin/jobs/:jobId/events` every `2-5s` when the current UI needs stage-level progress detail.
 - Poll `/v1/rag/collections/:collectionId/ready` every `2-5s` while the selected collection has an active job.
+- Refresh `/v1/admin/collections/:collectionId/physical-collections` and `/v1/admin/audit-log` when the current admin view depends on lifecycle or persisted history.
 - Stop polling once the job is terminal or readiness no longer reports an active queued/running job.
 - On `429`, wait for `Retry-After` before polling again.

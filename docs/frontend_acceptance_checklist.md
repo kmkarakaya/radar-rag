@@ -51,6 +51,14 @@ Use this checklist to evaluate whether a frontend built against this backend is 
 - Does not hardcode the create-form distance metric default when the backend provides one.
 - Can trigger reindex with `POST /v1/admin/collections/:collectionId/reindex`.
 - Can poll job state with `GET /v1/admin/jobs` or `GET /v1/admin/jobs/:jobId`.
+- Can load `GET /v1/admin/jobs/:jobId/events` for stage-aware progress.
+- Can load `GET /v1/admin/collections/:collectionId/physical-collections` for rebuild and cleanup visibility.
+- Can load `GET /v1/admin/audit-log` for persisted operations history.
+- Supports repeated `collectionId` and repeated `operation` query params for audit log filtering.
+- Can show all visible collections, one collection, or several collections in audit filters.
+- Can show all operations, one operation, or several operations in audit filters.
+- Uses compact multi-select controls for admin history filters instead of free-text collection IDs or long always-open checkbox stacks.
+- Can deep-link or prefill history for the currently selected collection.
 - Treats `nextCursor` as opaque.
 - Can cancel only queued or running jobs.
 - Can delete only terminal jobs.

@@ -12,6 +12,7 @@ function createHealthyRegistryStub(): CollectionRegistry {
   return {
     listVisibleCollections: async () => [],
     getVisibleCollection: async () => null,
+    listPhysicalCollectionsForCollection: async () => [],
     listJobs: async () => ({ jobs: [], nextCursor: null }),
     getSystemOperationsSummary: async (nowIso) => ({
       observedAt: nowIso,
@@ -49,6 +50,10 @@ function createHealthyRegistryStub(): CollectionRegistry {
       },
     }),
     getJob: async () => null,
+    listJobEvents: async () => [],
+    appendJobEvent: async () => {
+      throw new Error("Not implemented in foundation test");
+    },
     deleteJob: async () => {},
     deleteJobs: async () => {},
     getActiveJobForCollection: async () => null,

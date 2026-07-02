@@ -267,6 +267,75 @@ Notes:
 - This DTO is richer than the public RAG collection DTO.
 - Collection detail is tenant-scoped; another tenant receives `403 COLLECTION_FORBIDDEN`.
 
+### `GET /v1/admin/collections/:collectionId/physical-collections`
+
+Returns the physical collection lifecycle records behind one logical collection.
+
+Example response:
+
+```json
+{
+  "collectionId": "col_123",
+  "physicalCollections": [
+    {
+      "name": "rag_default_col-123_20260701t112000_000z",
+      "tenantId": "default",
+      "collectionId": "col_123",
+      "version": "20260701t112000_000z",
+      "status": "failed_build",
+      "chromaConfiguration": {
+        "hnsw": {
+          "space": "cosine"
+        }
+      },
+      "createdAt": "2026-07-01T11:20:00.000Z",
+      "cleanupError": "Injected failed build"
+    },
+    {
+      "name": "rag_default_col-123_20260701t111000_000z",
+      "tenantId": "default",
+      "collectionId": "col_123",
+      "version": "20260701t111000_000z",
+      "status": "active",
+      "chromaConfiguration": {
+        "hnsw": {
+          "space": "cosine"
+        }
+      },
+      "documentCount": 12,
+      "chunkCount": 48,
+      "createdAt": "2026-07-01T11:10:00.000Z",
+      "activatedAt": "2026-07-01T11:12:00.000Z"
+    },
+    {
+      "name": "rag_default_col-123_20260701t110000_000z",
+      "tenantId": "default",
+      "collectionId": "col_123",
+      "version": "20260701t110000_000z",
+      "status": "delete_pending",
+      "chromaConfiguration": {
+        "hnsw": {
+          "space": "cosine"
+        }
+      },
+      "createdAt": "2026-07-01T11:00:00.000Z",
+      "activatedAt": "2026-07-01T11:03:00.000Z",
+      "retiredAt": "2026-07-01T11:12:00.000Z",
+      "deleteAfter": "2026-07-01T11:12:00.000Z"
+    }
+  ]
+}
+```
+
+Notes:
+
+- Records are returned newest-first by creation time.
+- This endpoint is intended for operator visibility into zero-downtime rebuilds and retention cleanup, not for public clients.
+- The response can include `building`, `active`, `failed_build`, `delete_pending`, `cleanup_failed`, and `deleted` records.
+- `delete_pending` and `cleanup_failed` indicate retention/cleanup work that is still pending or needs retry.
+- `failed_build` indicates a target physical collection that never became active.
+- Response includes `Cache-Control: no-store`.
+
 ### `POST /v1/admin/collections/validate`
 
 Validates a create draft without mutating state.

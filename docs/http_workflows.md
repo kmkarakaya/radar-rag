@@ -172,6 +172,18 @@ curl.exe -s `
   "$BASE_URL/v1/admin/collections/$COLLECTION_ID"
 ```
 
+### Inspect physical collection lifecycle visibility
+
+```powershell
+curl.exe -s `
+  -H "x-tenant-id: $TENANT_ID" `
+  -H "x-user-id: $USER_ID" `
+  -H "x-request-id: $REQUEST_ID" `
+  "$BASE_URL/v1/admin/collections/$COLLECTION_ID/physical-collections"
+```
+
+Use this response to inspect which physical collection is currently active, which older rebuilds are waiting for cleanup, and whether any target build failed before activation.
+
 ## 3. Reindex Flow
 
 ### Trigger reindex

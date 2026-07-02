@@ -790,6 +790,121 @@ describe("sqlite collection registry", () => {
     );
   });
 
+  it("lists physical collections for one collection in newest-first order and tenant scope", async () => {
+    const firstCollection = await registry.createCollection(context, {
+      ...collectionInput,
+      displayName: "First Physical Visibility",
+    });
+    const secondCollection = await registry.createCollection(context, {
+      ...collectionInput,
+      displayName: "Second Physical Visibility",
+    });
+
+    const firstName = createPhysicalCollectionName({
+      tenantId: context.tenantId,
+      collectionId: firstCollection.id,
+      version: "20260701t100000_000z",
+    });
+    const secondName = createPhysicalCollectionName({
+      tenantId: context.tenantId,
+      collectionId: firstCollection.id,
+      version: "20260701t101000_000z",
+    });
+    const otherCollectionName = createPhysicalCollectionName({
+      tenantId: context.tenantId,
+      collectionId: secondCollection.id,
+      version: "20260701t102000_000z",
+    });
+
+    await registry.createPhysicalCollectionRecord({
+      name: firstName,
+      tenantId: context.tenantId,
+      collectionId: firstCollection.id,
+      version: "20260701t100000_000z",
+      chromaConfiguration: { hnsw: { space: "l2" } },
+    });
+    await registry.createPhysicalCollectionRecord({
+      name: secondName,
+      tenantId: context.tenantId,
+      collectionId: firstCollection.id,
+      version: "20260701t101000_000z",
+      chromaConfiguration: { hnsw: { space: "cosine" } },
+    });
+    await registry.createPhysicalCollectionRecord({
+      name: otherCollectionName,
+      tenantId: context.tenantId,
+      collectionId: secondCollection.id,
+      version: "20260701t102000_000z",
+      chromaConfiguration: { hnsw: { space: "ip" } },
+    });
+
+    rawDb.prepare(`
+      UPDATE physical_collections
+      SET
+        status = @status,
+        activated_at = @activatedAt,
+        retired_at = @retiredAt,
+        delete_after = @deleteAfter,
+        cleanup_error = @cleanupError
+      WHERE name = @name
+    `).run({
+      name: firstName,
+      status: "delete_pending",
+      activatedAt: "2026-07-01T10:00:01.000Z",
+      retiredAt: "2026-07-01T10:10:00.000Z",
+      deleteAfter: "2026-07-01T10:40:00.000Z",
+      cleanupError: null,
+    });
+    rawDb.prepare(`
+      UPDATE physical_collections
+      SET
+        status = @status,
+        activated_at = @activatedAt,
+        document_count = @documentCount,
+        chunk_count = @chunkCount
+      WHERE name = @name
+    `).run({
+      name: secondName,
+      status: "active",
+      activatedAt: "2026-07-01T10:15:00.000Z",
+      documentCount: 12,
+      chunkCount: 48,
+    });
+    rawDb.prepare(`
+      UPDATE physical_collections
+      SET
+        status = @status,
+        cleanup_error = @cleanupError
+      WHERE name = @name
+    `).run({
+      name: otherCollectionName,
+      status: "failed_build",
+      cleanupError: "simulated build failure",
+    });
+
+    const result = await registry.listPhysicalCollectionsForCollection(context, firstCollection.id);
+
+    assert.deepEqual(
+      result.map((record) => ({
+        name: record.name,
+        status: record.status,
+        version: record.version,
+      })),
+      [
+        { name: secondName, status: "active", version: "20260701t101000_000z" },
+        { name: firstName, status: "delete_pending", version: "20260701t100000_000z" },
+      ],
+    );
+    assert.equal(result[0]?.chunkCount, 48);
+    assert.equal(result[1]?.deleteAfter, "2026-07-01T10:40:00.000Z");
+
+    const otherTenantResult = await registry.listPhysicalCollectionsForCollection(
+      { ...context, tenantId: "other-tenant" },
+      firstCollection.id,
+    );
+    assert.deepEqual(otherTenantResult, []);
+  });
+
   it("builds a tenant-safe aggregate operations summary", async () => {
     const observedAt = "2026-06-30T12:00:00.000Z";
     const creatingCollection = await registry.createCollection(context, {

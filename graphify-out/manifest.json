@@ -10,8 +10,8 @@
     "semantic_hash": "990e827940a6196eb3aea4c6e23a605c"
   },
   "admin/admin.js": {
-    "mtime": 1782840353.8504937,
-    "ast_hash": "406ac565a4a81310ceef6cc0e3d8b0a4",
+    "mtime": 1782889148.2554297,
+    "ast_hash": "96705131ca74b7663512642191f5664e",
     "semantic_hash": ""
   },
   "benchmark/benchmark.json": {
@@ -65,13 +65,13 @@
     "semantic_hash": "5d387d81974b0e879a7f11b9e085f984"
   },
   "src/collections/sqliteRegistry.ts": {
-    "mtime": 1782841057.1958244,
-    "ast_hash": "0ae3200fbe6d9e84ebf3f22d37cabcd4",
+    "mtime": 1782888569.812049,
+    "ast_hash": "af31ff3356ed0189b98e69ebb67fa3c4",
     "semantic_hash": ""
   },
   "src/collections/types.ts": {
-    "mtime": 1782840771.3490696,
-    "ast_hash": "5b53a5d7f2987b932a5fb7cb835cb691",
+    "mtime": 1782888565.4423463,
+    "ast_hash": "70fc55072e307663d224229faa51a996",
     "semantic_hash": ""
   },
   "src/config.ts": {
@@ -80,8 +80,8 @@
     "semantic_hash": "337cec9c03bab806564d84cf4776f2d3"
   },
   "src/http/adminRouter.ts": {
-    "mtime": 1782840885.5589652,
-    "ast_hash": "3d96d71eb38dcf0edab76093c1780346",
+    "mtime": 1782888575.588023,
+    "ast_hash": "4d2f936ff7e5d046c0ef3022a6da3872",
     "semantic_hash": ""
   },
   "src/http/errors.ts": {
@@ -170,18 +170,18 @@
     "semantic_hash": "4a890806f32be9a5ad6c8f7358b7e82b"
   },
   "test/acceptance/api.endpoints.test.ts": {
-    "mtime": 1782840958.7612634,
-    "ast_hash": "f308d4a357a74ac10fc94b88eb0bbd2d",
+    "mtime": 1782888613.0379508,
+    "ast_hash": "9127cc1179240079f2c40eced1289a01",
     "semantic_hash": ""
   },
   "test/admin.static.test.ts": {
-    "mtime": 1782840359.840954,
-    "ast_hash": "144ba3c40940167db083b0a17a75208e",
+    "mtime": 1782889168.9925313,
+    "ast_hash": "6ee9e1492424bcb5072d7561e3f75d3c",
     "semantic_hash": ""
   },
   "test/app.foundation.test.ts": {
-    "mtime": 1782839741.429645,
-    "ast_hash": "6e641949e4b474365ae936e25b92452e",
+    "mtime": 1782888662.9951777,
+    "ast_hash": "8ee2942a7da51c15acef0f4ed2b5b79d",
     "semantic_hash": ""
   },
   "test/buildPhysicalCollection.test.ts": {
@@ -200,8 +200,8 @@
     "semantic_hash": "0999561f3b36b3f703b412a8bd0b6942"
   },
   "test/collections.registry.test.ts": {
-    "mtime": 1782839602.387599,
-    "ast_hash": "82af6322134342738604e79c07f99fc5",
+    "mtime": 1782888596.5855763,
+    "ast_hash": "822cdda7c73ea283c1f213c9d23a0dbb",
     "semantic_hash": ""
   },
   "test/docs.contract.test.ts": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "admin/index.html": {
-    "mtime": 1782819428.4636035,
-    "ast_hash": "ef31e30dcf92c4b47a3383a66758419d",
+    "mtime": 1782889096.628861,
+    "ast_hash": "ef41640c31fa2bf5f710e423b26c6767",
     "semantic_hash": ""
   },
   "config/rag.config.yaml": {
@@ -340,8 +340,8 @@
     "semantic_hash": "9cb5892dbc1e6f6c3a5ac23c4438de8b"
   },
   "notes/adminpanel_plan.md": {
-    "mtime": 1782840172.099693,
-    "ast_hash": "7a069c3904714677ac3ed101a7dade47",
+    "mtime": 1782888623.3491,
+    "ast_hash": "8e49284f741340d6893f3d4f6410e28d",
     "semantic_hash": ""
   },
   "notes/adminpanel_prompts.md": {
@@ -500,8 +500,8 @@
     "semantic_hash": ""
   },
   "docs/admin_api_endpoints.md": {
-    "mtime": 1782840981.9390874,
-    "ast_hash": "08a2937152ac75e4047c6f70f910ee0a",
+    "mtime": 1782888647.7310586,
+    "ast_hash": "29e0a6638423d19384a69e62a22f146a",
     "semantic_hash": ""
   },
   "docs/user_api_endpoints.md": {
@@ -520,8 +520,8 @@
     "semantic_hash": ""
   },
   "docs/openapi.yaml": {
-    "mtime": 1782841008.3621433,
-    "ast_hash": "4db964cbd88eff7e612f1e320306a6e6",
+    "mtime": 1782888636.0841765,
+    "ast_hash": "75a039a23e02abb90a630e6ed8b43a9d",
     "semantic_hash": ""
   },
   "docs/coding_agent_prompt_template.md": {
@@ -535,8 +535,8 @@
     "semantic_hash": ""
   },
   "docs/http_workflows.md": {
-    "mtime": 1782840988.0968566,
-    "ast_hash": "47af3fcf21432f76bd8725b12cb02b10",
+    "mtime": 1782888669.3929112,
+    "ast_hash": "3e894edc8f5d5669d165ed9c5b6cad61",
     "semantic_hash": ""
   },
   "test/frontend.example.docs.test.ts": {

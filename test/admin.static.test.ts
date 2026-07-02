@@ -117,7 +117,10 @@ describe("admin panel static contract", () => {
   });
 
   it("keeps job, readiness and health contracts aligned with backend response shapes", async () => {
-    const js = await readAdminFile("admin.js");
+    const [html, js] = await Promise.all([
+      readAdminFile("index.html"),
+      readAdminFile("admin.js"),
+    ]);
 
     assert.ok(js.includes("data?.job"), "Job polling should read the data.job wrapper");
     assert.ok(!js.includes("data.status"), "Job polling should not read bare data.status");
@@ -140,6 +143,12 @@ describe("admin panel static contract", () => {
     assert.ok(!js.includes("if (state.isLoading.readiness) return { enabled: false, reason: \"Readiness is loading.\" };"), "Playground capability should not be disabled just because readiness is refreshing");
     assert.ok(!js.includes("strict=true"), "Health dashboard should not use ready?strict=true");
     assert.ok(js.includes("Promise.allSettled"), "Health dashboard should preserve summaries if details fail");
+    assert.ok(html.includes('id="physicalCollectionsSection"'));
+    assert.ok(html.includes('id="physicalCollectionsSummary"'));
+    assert.ok(html.includes('id="physicalCollectionsList"'));
+    assert.ok(js.includes("function adminCollectionPhysicalCollectionsUrl(id)"));
+    assert.ok(js.includes("data?.physicalCollections"), "Physical collection lifecycle should read the data.physicalCollections wrapper");
+    assert.ok(js.includes("Failed to load physical collection lifecycle"));
   });
 
   it("contains the planned playground and job monitor controls", async () => {

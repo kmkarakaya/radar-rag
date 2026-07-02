@@ -1153,6 +1153,106 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(body.code, "COLLECTION_FORBIDDEN");
   });
 
+  it("GET /v1/admin/collections/:collectionId/physical-collections exposes lifecycle visibility for active, failed_build and cleanup-bound records", async () => {
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "physical-visibility" };
+    const collection = await registry.createCollection(ctx, {
+      displayName: "Physical Visibility",
+      sourcePath: "data",
+      ozelgeDataPath: "data/ozelge.json",
+      embeddingModel: "embed",
+      chatModel: "chat",
+      distanceMetric: "l2",
+      chunkSize: 500,
+      chunkOverlap: 50,
+      retrievalK: 5,
+      retrievalDistanceThreshold: 1,
+    });
+
+    const firstQueued = await registry.beginIndexJob(ctx, collection.id, {
+      targetVersion: "20260701t110000_000z",
+    });
+    const firstRunning = await registry.markIndexJobRunning(firstQueued.id);
+    await registry.createPhysicalCollectionRecord({
+      name: firstRunning.targetPhysicalCollection,
+      tenantId: ctx.tenantId,
+      collectionId: collection.id,
+      version: firstRunning.targetVersion,
+      chromaConfiguration: firstRunning.targetChromaConfiguration,
+    });
+    await registry.completeIndexJob(firstRunning.id, {
+      activePhysicalCollection: firstRunning.targetPhysicalCollection,
+      activeVersion: firstRunning.targetVersion,
+      documentCount: 10,
+      chunkCount: 40,
+      retentionMs: 0,
+    });
+
+    const secondQueued = await registry.beginIndexJob(ctx, collection.id, {
+      targetVersion: "20260701t111000_000z",
+    });
+    const secondRunning = await registry.markIndexJobRunning(secondQueued.id);
+    await registry.createPhysicalCollectionRecord({
+      name: secondRunning.targetPhysicalCollection,
+      tenantId: ctx.tenantId,
+      collectionId: collection.id,
+      version: secondRunning.targetVersion,
+      chromaConfiguration: secondRunning.targetChromaConfiguration,
+    });
+    await registry.completeIndexJob(secondRunning.id, {
+      activePhysicalCollection: secondRunning.targetPhysicalCollection,
+      activeVersion: secondRunning.targetVersion,
+      documentCount: 12,
+      chunkCount: 48,
+      retentionMs: 0,
+    });
+
+    const failedQueued = await registry.beginIndexJob(ctx, collection.id, {
+      targetVersion: "20260701t112000_000z",
+    });
+    const failedRunning = await registry.markIndexJobRunning(failedQueued.id);
+    await registry.createPhysicalCollectionRecord({
+      name: failedRunning.targetPhysicalCollection,
+      tenantId: ctx.tenantId,
+      collectionId: collection.id,
+      version: failedRunning.targetVersion,
+      chromaConfiguration: failedRunning.targetChromaConfiguration,
+    });
+    await registry.failIndexJob(failedRunning.id, "Injected failed build");
+
+    const response = await request(`/v1/admin/collections/${collection.id}/physical-collections`, {
+      headers: { "x-tenant-id": "default" },
+    });
+    const body = await response.json() as any;
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(body.collectionId, collection.id);
+    assert.deepEqual(
+      body.physicalCollections.map((record: any) => ({
+        status: record.status,
+        version: record.version,
+      })),
+      [
+        { status: "failed_build", version: "20260701t112000_000z" },
+        { status: "active", version: "20260701t111000_000z" },
+        { status: "delete_pending", version: "20260701t110000_000z" },
+      ],
+    );
+    assert.equal(body.physicalCollections[0].cleanupError, "Injected failed build");
+    assert.equal(body.physicalCollections[1].chunkCount, 48);
+    assert.equal(typeof body.physicalCollections[2].deleteAfter, "string");
+  });
+
+  it("admin physical collection visibility is tenant-scoped and returns 403 for another tenant", async () => {
+    const response = await request(`/v1/admin/collections/${createdCollection.id}/physical-collections`, {
+      headers: { "x-tenant-id": "other-tenant" },
+    });
+
+    const body = await response.json() as any;
+    assert.equal(response.status, 403);
+    assert.equal(body.code, "COLLECTION_FORBIDDEN");
+  });
+
   it("admin job lookup is tenant-scoped", async () => {
     const response = await request(`/v1/admin/jobs/${activeJobId}`, {
       headers: { "x-tenant-id": "other-tenant" },

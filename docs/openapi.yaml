@@ -401,6 +401,32 @@ paths:
           $ref: "#/components/responses/ApiError"
         "500":
           $ref: "#/components/responses/ApiError"
+  /v1/admin/collections/{collectionId}/physical-collections:
+    get:
+      tags: [Admin Collections]
+      operationId: listAdminPhysicalCollections
+      summary: List physical collection lifecycle records for one logical collection
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/CollectionId"
+      responses:
+        "200":
+          description: Physical collection lifecycle list
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControlNoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPhysicalCollectionsResponse"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
   /v1/admin/collections/{collectionId}/validate:
     post:
       tags: [Admin Collections]
@@ -1250,6 +1276,9 @@ components:
     IndexJobStatus:
       type: string
       enum: [queued, running, succeeded, failed, cancelled]
+    PhysicalCollectionStatus:
+      type: string
+      enum: [building, failed_build, active, retired, delete_pending, deleted, cleanup_failed]
     CollectionIndexSnapshot:
       type: object
       required: [sourcePath, ozelgeDataPath, distanceMetric, chunkSize, chunkOverlap, embeddingModel]
@@ -1743,12 +1772,67 @@ components:
           format: date-time
         indexState:
           $ref: "#/components/schemas/CollectionIndexState"
+    PhysicalCollectionRecord:
+      type: object
+      required:
+        - name
+        - tenantId
+        - collectionId
+        - version
+        - status
+        - chromaConfiguration
+        - createdAt
+      properties:
+        name:
+          type: string
+        tenantId:
+          type: string
+        collectionId:
+          type: string
+        version:
+          type: string
+        status:
+          $ref: "#/components/schemas/PhysicalCollectionStatus"
+        chromaConfiguration:
+          type: object
+          additionalProperties: true
+        documentCount:
+          type: integer
+        chunkCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        activatedAt:
+          type: string
+          format: date-time
+        retiredAt:
+          type: string
+          format: date-time
+        deleteAfter:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+        cleanupError:
+          type: string
     AdminCollectionResponse:
       type: object
       required: [collection]
       properties:
         collection:
           $ref: "#/components/schemas/RagCollection"
+    AdminPhysicalCollectionsResponse:
+      type: object
+      required: [collectionId, physicalCollections]
+      properties:
+        collectionId:
+          type: string
+        physicalCollections:
+          type: array
+          items:
+            $ref: "#/components/schemas/PhysicalCollectionRecord"
     AdminConfigDefaultsResponse:
       type: object
       required: [collectionDefaults, modelDefaults]

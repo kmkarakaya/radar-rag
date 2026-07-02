@@ -311,6 +311,19 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     return row ? mapCollectionRow(row) : null;
   }
 
+  async listPhysicalCollectionsForCollection(
+    context: RequestContext,
+    collectionId: string,
+  ): Promise<PhysicalCollectionRecord[]> {
+    const rows = this.db.prepare(`
+      SELECT * FROM physical_collections
+      WHERE tenant_id = ? AND collection_id = ?
+      ORDER BY created_at DESC, name DESC
+    `).all(context.tenantId, collectionId) as PhysicalCollectionRow[];
+
+    return rows.map(mapPhysicalCollectionRow);
+  }
+
   async listJobs(context: RequestContext, filters: ListJobsInput = {}): Promise<ListJobsResult> {
     const limit = clampInteger(filters.limit ?? 25, 1, 100);
     const where: string[] = ["j.tenant_id = @tenantId"];

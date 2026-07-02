@@ -199,6 +199,23 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     }
   });
 
+  router.get("/collections/:collectionId/physical-collections", requireRegistry, async (req, res, next) => {
+    try {
+      const collectionId = req.params.collectionId as string;
+      const context = res.locals.requestContext as RequestContext;
+      await requireVisibleCollection(context, collectionId);
+      const physicalCollections = await deps.registry!.listPhysicalCollectionsForCollection(context, collectionId);
+      res.setHeader("Cache-Control", "no-store");
+      res.locals.collectionId = collectionId;
+      res.json({
+        collectionId,
+        physicalCollections,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/collections/validate", requireRegistry, async (req, res, next) => {
     try {
       const parsed = collectionCreateSchema.safeParse(req.body);

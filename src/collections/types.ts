@@ -266,6 +266,10 @@ export type PhysicalCollectionRecord = {
 export interface CollectionRegistry {
   listVisibleCollections(context: RequestContext): Promise<RagCollection[]>;
   getVisibleCollection(context: RequestContext, collectionId: string): Promise<RagCollection | null>;
+  listPhysicalCollectionsForCollection(
+    context: RequestContext,
+    collectionId: string,
+  ): Promise<PhysicalCollectionRecord[]>;
   listJobs(context: RequestContext, filters?: ListJobsInput): Promise<ListJobsResult>;
   getSystemOperationsSummary(nowIso: string): Promise<SystemOperationsAggregateSummary>;
   getJob(jobId: string): Promise<IndexJob | null>;

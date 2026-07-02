@@ -32,6 +32,8 @@ let state = {
     collections: [],
     selectedCollection: null,
     selectedReadiness: null,
+    selectedPhysicalCollections: null,
+    selectedPhysicalCollectionsError: null,
     modelDiscovery: {
         reachable: false,
         models: [],
@@ -64,6 +66,7 @@ let state = {
         jobs: false,
         health: false,
         readiness: false,
+        physicalCollections: false,
     },
     collectionError: null,
     healthStatus: null,
@@ -124,6 +127,9 @@ const elements = {
     readinessRefreshNotice: document.getElementById("readinessRefreshNotice"),
     readinessBlockers: document.getElementById("readinessBlockers"),
     blockerList: document.getElementById("blockerList"),
+    physicalCollectionsSection: document.getElementById("physicalCollectionsSection"),
+    physicalCollectionsSummary: document.getElementById("physicalCollectionsSummary"),
+    physicalCollectionsList: document.getElementById("physicalCollectionsList"),
 
     pgModeBtns: document.querySelectorAll(".mode-btn"),
     pgQuestion: document.getElementById("pgQuestion"),
@@ -182,6 +188,10 @@ function adminCollectionUrl(id) {
 
 function adminCollectionValidateUrl(id) {
     return id ? `${API.admin}/collections/${id}/validate` : `${API.admin}/collections/validate`;
+}
+
+function adminCollectionPhysicalCollectionsUrl(id) {
+    return `${API.admin}/collections/${id}/physical-collections`;
 }
 
 function adminJobUrl(id) {
@@ -586,6 +596,13 @@ function getStatusColor(status) {
         degraded: "bg-amber-100 text-amber-700",
         inaccessible: "bg-slate-100 text-slate-600",
         muted: "bg-slate-100 text-slate-600",
+        active: "bg-emerald-100 text-emerald-700",
+        building: "bg-blue-100 text-blue-700",
+        delete_pending: "bg-amber-100 text-amber-700",
+        cleanup_failed: "bg-rose-100 text-rose-700",
+        failed_build: "bg-rose-100 text-rose-700",
+        retired: "bg-slate-100 text-slate-600",
+        deleted: "bg-slate-100 text-slate-600",
     };
     return colors[status] || "bg-slate-100 text-slate-600";
 }
@@ -1260,6 +1277,7 @@ async function openInspector(id) {
         state.selectedCollection = null;
         state.editorInitialSnapshot = null;
         resetReadinessAndPlayground("Save the collection before checking readiness.");
+        resetPhysicalCollectionsSection({ hide: true });
         clearCollectionIndexStateBanner();
         clearCollectionValidation();
         clearEditorForm();
@@ -1283,6 +1301,7 @@ async function openInspector(id) {
     state.selectedCollection = collection;
     state.editorInitialSnapshot = null;
     resetReadinessAndPlayground("Readiness has not been loaded yet.");
+    resetPhysicalCollectionsSection({ message: "Loading physical collection lifecycle..." });
     renderCollectionIndexStateBanner();
     clearCollectionValidation();
     elements.inspectorTitle.textContent = collection.displayName || collection.id;
@@ -1319,6 +1338,7 @@ function closeInspector() {
     elements.inspectorOverlay.classList.remove("opacity-100");
     clearCollectionIndexStateBanner();
     clearCollectionValidation();
+    resetPhysicalCollectionsSection({ hide: true });
     setTimeout(() => elements.inspectorOverlay.classList.add("hidden"), 200);
 }
 
@@ -1385,6 +1405,26 @@ function setReadinessRefreshNotice(message, tone = "warning") {
     elements.readinessRefreshNotice.classList.remove("hidden");
 }
 
+function renderPhysicalCollectionsPlaceholder(message) {
+    if (!elements.physicalCollectionsSection || !elements.physicalCollectionsList) return;
+    elements.physicalCollectionsSection.classList.remove("hidden");
+    clearNode(elements.physicalCollectionsList);
+    elements.physicalCollectionsList.appendChild(createEl("div", "rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500", message));
+}
+
+function resetPhysicalCollectionsSection({ hide = false, message = "Physical collection lifecycle has not been loaded yet." } = {}) {
+    state.selectedPhysicalCollections = null;
+    state.selectedPhysicalCollectionsError = null;
+    clearNode(elements.physicalCollectionsSummary);
+    clearNode(elements.physicalCollectionsList);
+    if (elements.physicalCollectionsSection) {
+        elements.physicalCollectionsSection.classList.toggle("hidden", hide);
+    }
+    if (!hide) {
+        renderPhysicalCollectionsPlaceholder(message);
+    }
+}
+
 function resetReadinessAndPlayground(message) {
     state.selectedReadiness = null;
     clearReadinessRefreshNotice();
@@ -1396,6 +1436,93 @@ function resetReadinessAndPlayground(message) {
     elements.readinessWarnings.classList.add("hidden");
     resetPlaygroundResult();
     updatePlaygroundCapabilityState(message || "Readiness has not been loaded yet.");
+}
+
+function getPhysicalCollectionsSummary(records) {
+    return {
+        active: records.filter((item) => item?.status === "active").length,
+        cleanupPending: records.filter((item) => item?.status === "delete_pending").length,
+        failed: records.filter((item) => item?.status === "failed_build" || item?.status === "cleanup_failed").length,
+    };
+}
+
+function createSummaryChip(label, value, tone = "muted") {
+    const chip = createEl("div", "inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs");
+    chip.appendChild(createBadge(label, getStatusColor(tone)));
+    chip.appendChild(createEl("span", "font-semibold text-slate-700", formatCount(value)));
+    return chip;
+}
+
+function getPhysicalCollectionStatusTone(status) {
+    const tones = {
+        active: "active",
+        building: "building",
+        delete_pending: "delete_pending",
+        cleanup_failed: "cleanup_failed",
+        failed_build: "failed_build",
+        retired: "retired",
+        deleted: "deleted",
+    };
+    return tones[status] || "muted";
+}
+
+function createPhysicalCollectionCard(record) {
+    const card = createEl("article", "rounded-xl border border-slate-200 bg-white p-4 shadow-sm");
+    const header = createEl("div", "flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between");
+    const titleGroup = createEl("div", "space-y-1");
+    titleGroup.appendChild(createEl("div", "text-sm font-semibold text-slate-800", record.version || "Unknown version"));
+    titleGroup.appendChild(createEl("div", "break-all font-mono text-xs text-slate-500", record.name || "-"));
+    header.appendChild(titleGroup);
+    header.appendChild(createBadge(record.status || "unknown", getStatusColor(getPhysicalCollectionStatusTone(record.status))));
+    card.appendChild(header);
+
+    const meta = createEl("div", "mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3");
+    meta.appendChild(createMetaItem("Documents", formatCount(record.documentCount)));
+    meta.appendChild(createMetaItem("Chunks", formatCount(record.chunkCount)));
+    meta.appendChild(createMetaItem("Created", formatDateTime(record.createdAt)));
+    meta.appendChild(createMetaItem("Activated", formatDateTime(record.activatedAt)));
+    meta.appendChild(createMetaItem("Retired", formatDateTime(record.retiredAt)));
+    meta.appendChild(createMetaItem("Delete After", formatDateTime(record.deleteAfter)));
+    meta.appendChild(createMetaItem("Deleted", formatDateTime(record.deletedAt)));
+
+    const hnswSpace = record?.chromaConfiguration?.hnsw?.space;
+    if (hnswSpace !== undefined) {
+        meta.appendChild(createMetaItem("HNSW Space", hnswSpace));
+    }
+
+    card.appendChild(meta);
+
+    if (record.cleanupError) {
+        const errorBox = createEl("div", "mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800");
+        errorBox.appendChild(createEl("div", "font-semibold", "Cleanup Error"));
+        errorBox.appendChild(createEl("div", "mt-1 break-all-words", record.cleanupError));
+        card.appendChild(errorBox);
+    }
+
+    return card;
+}
+
+function renderPhysicalCollectionsData(records) {
+    if (!elements.physicalCollectionsSection || !elements.physicalCollectionsSummary || !elements.physicalCollectionsList) return;
+    elements.physicalCollectionsSection.classList.remove("hidden");
+    clearNode(elements.physicalCollectionsSummary);
+    clearNode(elements.physicalCollectionsList);
+
+    const summary = getPhysicalCollectionsSummary(records);
+    appendChildren(elements.physicalCollectionsSummary, [
+        createSummaryChip("Active", summary.active, "active"),
+        createSummaryChip("Cleanup Pending", summary.cleanupPending, "delete_pending"),
+        createSummaryChip("Failed", summary.failed, summary.failed > 0 ? "failed_build" : "muted"),
+    ]);
+
+    if (records.length === 0) {
+        renderPhysicalCollectionsPlaceholder("No physical collection lifecycle records found for this collection.");
+        return;
+    }
+
+    records.forEach((record) => {
+        elements.physicalCollectionsList.appendChild(createPhysicalCollectionCard(record));
+    });
 }
 
 function renderReadinessIssueList(listElement, items) {
@@ -1415,10 +1542,25 @@ function renderReadinessIssueList(listElement, items) {
     });
 }
 
+async function loadPhysicalCollections(collectionId) {
+    const data = await apiRequest(adminCollectionPhysicalCollectionsUrl(collectionId));
+    if (!Array.isArray(data?.physicalCollections)) {
+        throw normalizeError(null, {
+            status: 0,
+            code: "INVALID_PHYSICAL_COLLECTIONS_RESPONSE",
+            message: "Physical collection lifecycle response did not include data.physicalCollections.",
+        });
+    }
+    return data.physicalCollections;
+}
+
 async function updateReadinessTab() {
-    if (!state.selectedCollection || state.isLoading.readiness) return;
+    if (!state.selectedCollection || state.isLoading.readiness || state.isLoading.physicalCollections) return;
+    const collectionId = state.selectedCollection.id;
     const hasSnapshot = Boolean(state.selectedReadiness);
+    const hasPhysicalSnapshot = Array.isArray(state.selectedPhysicalCollections);
     state.isLoading.readiness = true;
+    state.isLoading.physicalCollections = true;
     if (hasSnapshot) {
         setReadinessRefreshNotice("Refreshing readiness snapshot...", "warning");
     } else {
@@ -1426,30 +1568,59 @@ async function updateReadinessTab() {
         clearNode(elements.readinessStatusGrid);
         elements.readinessStatusGrid.appendChild(createEl("div", "rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500", "Loading readiness..."));
     }
+    if (!hasPhysicalSnapshot) {
+        renderPhysicalCollectionsPlaceholder("Loading physical collection lifecycle...");
+    }
     updatePlaygroundCapabilityState(hasSnapshot ? "Refreshing readiness snapshot..." : "Readiness is loading.");
 
     try {
-        const readiness = await apiRequest(collectionReadyUrl(state.selectedCollection));
-        state.selectedReadiness = readiness;
-        renderReadinessData(readiness);
-        clearReadinessRefreshNotice();
-        mergeActiveJobFromReadiness(readiness);
-    } catch (error) {
-        if (!hasSnapshot) {
-            state.selectedReadiness = null;
-            renderApiErrorContent(elements.readinessStatusGrid, error, "Failed to load readiness");
-            clearNode(elements.blockerList);
-            elements.readinessBlockers.classList.add("hidden");
-            clearNode(elements.warningList);
-            elements.readinessWarnings.classList.add("hidden");
+        const results = await Promise.allSettled([
+            apiRequest(collectionReadyUrl(state.selectedCollection)),
+            loadPhysicalCollections(collectionId),
+        ]);
+
+        if (state.selectedCollection?.id !== collectionId) return;
+
+        const [readinessResult, physicalCollectionsResult] = results;
+
+        if (readinessResult.status === "fulfilled") {
+            state.selectedReadiness = readinessResult.value;
+            renderReadinessData(readinessResult.value);
             clearReadinessRefreshNotice();
-            updatePlaygroundCapabilityState("Readiness failed to load.");
+            mergeActiveJobFromReadiness(readinessResult.value);
         } else {
-            setReadinessRefreshNotice("Readiness refresh failed. Showing the last known snapshot.", "error");
-            updatePlaygroundCapabilityState("Refresh failed. Showing the last known readiness.");
+            const error = readinessResult.reason;
+            if (!hasSnapshot) {
+                state.selectedReadiness = null;
+                renderApiErrorContent(elements.readinessStatusGrid, error, "Failed to load readiness");
+                clearNode(elements.blockerList);
+                elements.readinessBlockers.classList.add("hidden");
+                clearNode(elements.warningList);
+                elements.readinessWarnings.classList.add("hidden");
+                clearReadinessRefreshNotice();
+                updatePlaygroundCapabilityState("Readiness failed to load.");
+            } else {
+                setReadinessRefreshNotice("Readiness refresh failed. Showing the last known snapshot.", "error");
+                updatePlaygroundCapabilityState("Refresh failed. Showing the last known readiness.");
+            }
+        }
+
+        if (physicalCollectionsResult.status === "fulfilled") {
+            state.selectedPhysicalCollections = physicalCollectionsResult.value;
+            state.selectedPhysicalCollectionsError = null;
+            renderPhysicalCollectionsData(physicalCollectionsResult.value);
+        } else {
+            state.selectedPhysicalCollections = hasPhysicalSnapshot ? state.selectedPhysicalCollections : null;
+            state.selectedPhysicalCollectionsError = normalizeError(physicalCollectionsResult.reason);
+            if (elements.physicalCollectionsSection) {
+                elements.physicalCollectionsSection.classList.remove("hidden");
+            }
+            clearNode(elements.physicalCollectionsSummary);
+            renderApiErrorContent(elements.physicalCollectionsList, physicalCollectionsResult.reason, "Failed to load physical collection lifecycle");
         }
     } finally {
         state.isLoading.readiness = false;
+        state.isLoading.physicalCollections = false;
         renderCollectionIndexStateBanner();
     }
 }

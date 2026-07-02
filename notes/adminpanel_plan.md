@@ -1230,14 +1230,6 @@ Bu maddeler planın ana admin panel kapsamından ayrı tutuldu. Başka bir deyi�
 
 Aşağıdaki sıra, bu eksikleri hangi hızda ele almak gerektiğini gösterir. En üsttekiler panelin günlük kullanımını en çok etkileyen maddelerdir.
 
-### P2 - Kullanıcı deneyimini güçlendiren eksikler
-
-3. **Job ilerleme verisi yok**
-
-   - Job yalnızca terminal/ara durumlarla izlenebiliyor.
-   - Gerçek aşama/event bilgisi yok.
-   - Öneri: `GET /v1/admin/jobs/:jobId/events` veya SSE stream.
-
 ### P3 - Operasyon şeffaflığı ve bakım
 
 8. **Physical collection görünürlüğü eksik**

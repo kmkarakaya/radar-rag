@@ -3647,7 +3647,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "package_dependencies_langchain",
-      "community": 20,
+      "community": 101,
       "norm_label": "langchain"
     },
     {
@@ -3774,17 +3774,27 @@
       "label": "CliOptions",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L24",
+      "source_location": "L26",
       "_origin": "ast",
       "id": "admin_onboard_clioptions",
       "community": 91,
       "norm_label": "clioptions"
     },
     {
+      "label": "PromptedConfig",
+      "file_type": "code",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L34",
+      "_origin": "ast",
+      "id": "admin_onboard_promptedconfig",
+      "community": 91,
+      "norm_label": "promptedconfig"
+    },
+    {
       "label": "DISTANCE_METRICS",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L32",
+      "source_location": "L39",
       "_origin": "ast",
       "id": "admin_onboard_distance_metrics",
       "community": 91,
@@ -3794,7 +3804,7 @@
       "label": "parseArgs()",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L34",
+      "source_location": "L41",
       "_origin": "ast",
       "id": "admin_onboard_parseargs",
       "community": 91,
@@ -3804,57 +3814,97 @@
       "label": "promptString()",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L74",
+      "source_location": "L81",
       "_origin": "ast",
       "id": "admin_onboard_promptstring",
-      "community": 91,
+      "community": 76,
       "norm_label": "promptstring()"
     },
     {
       "label": "promptNumber()",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L83",
+      "source_location": "L90",
       "_origin": "ast",
       "id": "admin_onboard_promptnumber",
-      "community": 91,
+      "community": 76,
       "norm_label": "promptnumber()"
     },
     {
       "label": "promptBoolean()",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L112",
+      "source_location": "L119",
       "_origin": "ast",
       "id": "admin_onboard_promptboolean",
-      "community": 91,
+      "community": 76,
       "norm_label": "promptboolean()"
+    },
+    {
+      "label": "promptRequiredString()",
+      "file_type": "code",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L144",
+      "_origin": "ast",
+      "id": "admin_onboard_promptrequiredstring",
+      "community": 76,
+      "norm_label": "promptrequiredstring()"
+    },
+    {
+      "label": "promptSecretConfirmation()",
+      "file_type": "code",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L156",
+      "_origin": "ast",
+      "id": "admin_onboard_promptsecretconfirmation",
+      "community": 76,
+      "norm_label": "promptsecretconfirmation()"
     },
     {
       "label": "promptEnum()",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L137",
+      "source_location": "L169",
       "_origin": "ast",
       "id": "admin_onboard_promptenum",
-      "community": 91,
+      "community": 76,
       "norm_label": "promptenum()"
+    },
+    {
+      "label": "promptAdminAuth()",
+      "file_type": "code",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L190",
+      "_origin": "ast",
+      "id": "admin_onboard_promptadminauth",
+      "community": 76,
+      "norm_label": "promptadminauth()"
     },
     {
       "label": "promptConfig()",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L158",
+      "source_location": "L234",
       "_origin": "ast",
       "id": "admin_onboard_promptconfig",
-      "community": 91,
+      "community": 76,
       "norm_label": "promptconfig()"
+    },
+    {
+      "label": "writeAdminSessionSecretFile()",
+      "file_type": "code",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L388",
+      "_origin": "ast",
+      "id": "admin_onboard_writeadminsessionsecretfile",
+      "community": 91,
+      "norm_label": "writeadminsessionsecretfile()"
     },
     {
       "label": "positiveInteger()",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L307",
+      "source_location": "L394",
       "_origin": "ast",
       "id": "admin_onboard_positiveinteger",
       "community": 91,
@@ -3864,7 +3914,7 @@
       "label": "nonNegativeInteger()",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L311",
+      "source_location": "L398",
       "_origin": "ast",
       "id": "admin_onboard_nonnegativeinteger",
       "community": 91,
@@ -3874,7 +3924,7 @@
       "label": "nonNegativeNumber()",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L315",
+      "source_location": "L402",
       "_origin": "ast",
       "id": "admin_onboard_nonnegativenumber",
       "community": 91,
@@ -3884,7 +3934,7 @@
       "label": "writeConfigWithBackup()",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L319",
+      "source_location": "L406",
       "_origin": "ast",
       "id": "admin_onboard_writeconfigwithbackup",
       "community": 91,
@@ -3894,7 +3944,7 @@
       "label": "printConfigSummary()",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L324",
+      "source_location": "L411",
       "_origin": "ast",
       "id": "admin_onboard_printconfigsummary",
       "community": 91,
@@ -3904,7 +3954,7 @@
       "label": "printSourceAnalysis()",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L349",
+      "source_location": "L441",
       "_origin": "ast",
       "id": "admin_onboard_printsourceanalysis",
       "community": 91,
@@ -3914,17 +3964,17 @@
       "label": "runDependencyChecks()",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L370",
+      "source_location": "L462",
       "_origin": "ast",
       "id": "admin_onboard_rundependencychecks",
-      "community": 85,
+      "community": 105,
       "norm_label": "rundependencychecks()"
     },
     {
       "label": "main()",
       "file_type": "code",
       "source_file": "src/admin/onboard.ts",
-      "source_location": "L405",
+      "source_location": "L499",
       "_origin": "ast",
       "id": "admin_onboard_main",
       "community": 91,
@@ -3937,7 +3987,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "admin_passwordhash",
-      "community": 33,
+      "community": 20,
       "norm_label": "passwordhash.ts"
     },
     {
@@ -3947,7 +3997,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "admin_passwordhash_passwordhashparts",
-      "community": 33,
+      "community": 20,
       "norm_label": "passwordhashparts"
     },
     {
@@ -3967,7 +4017,7 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "admin_passwordhash_hashpassword",
-      "community": 33,
+      "community": 20,
       "norm_label": "hashpassword()"
     },
     {
@@ -3987,7 +4037,7 @@
       "source_location": "L87",
       "_origin": "ast",
       "id": "admin_passwordhash_promptpassword",
-      "community": 33,
+      "community": 20,
       "norm_label": "promptpassword()"
     },
     {
@@ -3997,7 +4047,7 @@
       "source_location": "L97",
       "_origin": "ast",
       "id": "admin_passwordhash_main",
-      "community": 33,
+      "community": 20,
       "norm_label": "main()"
     },
     {
@@ -4017,7 +4067,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "src_app_appdependencies",
-      "community": 90,
+      "community": 92,
       "norm_label": "appdependencies"
     },
     {
@@ -4077,7 +4127,7 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "src_app_createapp",
-      "community": 93,
+      "community": 92,
       "norm_label": "createapp()"
     },
     {
@@ -4187,7 +4237,7 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "collections_chromacollections_assertchromacollectionreadable",
-      "community": 70,
+      "community": 105,
       "norm_label": "assertchromacollectionreadable()"
     },
     {
@@ -4337,7 +4387,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "collections_indexstate",
-      "community": 89,
+      "community": 98,
       "norm_label": "indexstate.ts"
     },
     {
@@ -4347,7 +4397,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "collections_indexstate_buildcollectionindexsnapshot",
-      "community": 89,
+      "community": 98,
       "norm_label": "buildcollectionindexsnapshot()"
     },
     {
@@ -4357,7 +4407,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "collections_indexstate_parsecollectionindexsnapshot",
-      "community": 89,
+      "community": 98,
       "norm_label": "parsecollectionindexsnapshot()"
     },
     {
@@ -4367,7 +4417,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "collections_indexstate_buildcollectionindexstate",
-      "community": 89,
+      "community": 98,
       "norm_label": "buildcollectionindexstate()"
     },
     {
@@ -4377,7 +4427,7 @@
       "source_location": "L106",
       "_origin": "ast",
       "id": "collections_indexstate_iscollectionindexstate",
-      "community": 89,
+      "community": 98,
       "norm_label": "iscollectionindexstate()"
     },
     {
@@ -4387,7 +4437,7 @@
       "source_location": "L112",
       "_origin": "ast",
       "id": "collections_indexstate_isdistancemetric",
-      "community": 89,
+      "community": 98,
       "norm_label": "isdistancemetric()"
     },
     {
@@ -4397,7 +4447,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "collections_resolvereadablecollection",
-      "community": 97,
+      "community": 54,
       "norm_label": "resolvereadablecollection.ts"
     },
     {
@@ -4407,7 +4457,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "collections_resolvereadablecollection_resolvereadablecollection",
-      "community": 97,
+      "community": 54,
       "norm_label": "resolvereadablecollection()"
     },
     {
@@ -4577,7 +4627,7 @@
       "source_location": "L340",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_listvisiblecollections",
-      "community": 17,
+      "community": 12,
       "norm_label": ".listvisiblecollections()"
     },
     {
@@ -4587,7 +4637,7 @@
       "source_location": "L348",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_getvisiblecollection",
-      "community": 98,
+      "community": 56,
       "norm_label": ".getvisiblecollection()"
     },
     {
@@ -4607,7 +4657,7 @@
       "source_location": "L369",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_listjobs",
-      "community": 67,
+      "community": 12,
       "norm_label": ".listjobs()"
     },
     {
@@ -4647,7 +4697,7 @@
       "source_location": "L541",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_appendjobevent",
-      "community": 17,
+      "community": 89,
       "norm_label": ".appendjobevent()"
     },
     {
@@ -4667,7 +4717,7 @@
       "source_location": "L608",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_listauditlog",
-      "community": 67,
+      "community": 12,
       "norm_label": ".listauditlog()"
     },
     {
@@ -4677,7 +4727,7 @@
       "source_location": "L663",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_deletejob",
-      "community": 17,
+      "community": 12,
       "norm_label": ".deletejob()"
     },
     {
@@ -4687,7 +4737,7 @@
       "source_location": "L667",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_deletejobs",
-      "community": 17,
+      "community": 12,
       "norm_label": ".deletejobs()"
     },
     {
@@ -4707,7 +4757,7 @@
       "source_location": "L718",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_createcollection",
-      "community": 98,
+      "community": 56,
       "norm_label": ".createcollection()"
     },
     {
@@ -4717,7 +4767,7 @@
       "source_location": "L794",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_updatecollection",
-      "community": 98,
+      "community": 67,
       "norm_label": ".updatecollection()"
     },
     {
@@ -4837,7 +4887,7 @@
       "source_location": "L1585",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_deletecollection",
-      "community": 17,
+      "community": 12,
       "norm_label": ".deletecollection()"
     },
     {
@@ -4867,7 +4917,7 @@
       "source_location": "L1659",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_insertjobevent",
-      "community": 17,
+      "community": 89,
       "norm_label": ".insertjobevent()"
     },
     {
@@ -4877,7 +4927,7 @@
       "source_location": "L1726",
       "_origin": "ast",
       "id": "collections_sqliteregistry_sqlitecollectionregistry_createuniquecollectionid",
-      "community": 98,
+      "community": 17,
       "norm_label": ".createuniquecollectionid()"
     },
     {
@@ -4927,7 +4977,7 @@
       "source_location": "L1791",
       "_origin": "ast",
       "id": "collections_sqliteregistry_addpatch",
-      "community": 98,
+      "community": 67,
       "norm_label": "addpatch()"
     },
     {
@@ -4937,7 +4987,7 @@
       "source_location": "L1806",
       "_origin": "ast",
       "id": "collections_sqliteregistry_addnullablepatch",
-      "community": 98,
+      "community": 67,
       "norm_label": "addnullablepatch()"
     },
     {
@@ -4957,7 +5007,7 @@
       "source_location": "L1856",
       "_origin": "ast",
       "id": "collections_sqliteregistry_parsecollectionindexsnapshotjson",
-      "community": 89,
+      "community": 98,
       "norm_label": "parsecollectionindexsnapshotjson()"
     },
     {
@@ -5027,7 +5077,7 @@
       "source_location": "L1961",
       "_origin": "ast",
       "id": "collections_sqliteregistry_clampinteger",
-      "community": 67,
+      "community": 12,
       "norm_label": "clampinteger()"
     },
     {
@@ -5077,7 +5127,7 @@
       "source_location": "L2015",
       "_origin": "ast",
       "id": "collections_sqliteregistry_encodejobcursor",
-      "community": 67,
+      "community": 12,
       "norm_label": "encodejobcursor()"
     },
     {
@@ -5087,7 +5137,7 @@
       "source_location": "L2022",
       "_origin": "ast",
       "id": "collections_sqliteregistry_encodeoperationallogcursor",
-      "community": 67,
+      "community": 12,
       "norm_label": "encodeoperationallogcursor()"
     },
     {
@@ -5097,7 +5147,7 @@
       "source_location": "L2028",
       "_origin": "ast",
       "id": "collections_sqliteregistry_decodejobcursor",
-      "community": 67,
+      "community": 12,
       "norm_label": "decodejobcursor()"
     },
     {
@@ -5107,7 +5157,7 @@
       "source_location": "L2045",
       "_origin": "ast",
       "id": "collections_sqliteregistry_decodeoperationallogcursor",
-      "community": 67,
+      "community": 12,
       "norm_label": "decodeoperationallogcursor()"
     },
     {
@@ -5117,7 +5167,7 @@
       "source_location": "L2061",
       "_origin": "ast",
       "id": "collections_sqliteregistry_normalizechromacollectionconfiguration",
-      "community": 98,
+      "community": 67,
       "norm_label": "normalizechromacollectionconfiguration()"
     },
     {
@@ -5127,7 +5177,7 @@
       "source_location": "L2077",
       "_origin": "ast",
       "id": "collections_sqliteregistry_isrecord",
-      "community": 98,
+      "community": 67,
       "norm_label": "isrecord()"
     },
     {
@@ -5147,7 +5197,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "collections_types_requestcontext",
-      "community": 17,
+      "community": 12,
       "norm_label": "requestcontext"
     },
     {
@@ -5237,7 +5287,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "collections_types_collectionindexsnapshot",
-      "community": 89,
+      "community": 98,
       "norm_label": "collectionindexsnapshot"
     },
     {
@@ -5247,7 +5297,7 @@
       "source_location": "L60",
       "_origin": "ast",
       "id": "collections_types_collectionindexstate",
-      "community": 89,
+      "community": 98,
       "norm_label": "collectionindexstate"
     },
     {
@@ -5257,7 +5307,7 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "collections_types_ragcollection",
-      "community": 32,
+      "community": 56,
       "norm_label": "ragcollection"
     },
     {
@@ -5277,7 +5327,7 @@
       "source_location": "L116",
       "_origin": "ast",
       "id": "collections_types_indexjobevent",
-      "community": 17,
+      "community": 89,
       "norm_label": "indexjobevent"
     },
     {
@@ -5287,7 +5337,7 @@
       "source_location": "L132",
       "_origin": "ast",
       "id": "collections_types_createindexjobeventinput",
-      "community": 32,
+      "community": 89,
       "norm_label": "createindexjobeventinput"
     },
     {
@@ -5317,7 +5367,7 @@
       "source_location": "L150",
       "_origin": "ast",
       "id": "collections_types_listjobsinput",
-      "community": 67,
+      "community": 12,
       "norm_label": "listjobsinput"
     },
     {
@@ -5327,7 +5377,7 @@
       "source_location": "L157",
       "_origin": "ast",
       "id": "collections_types_listjobsresult",
-      "community": 67,
+      "community": 12,
       "norm_label": "listjobsresult"
     },
     {
@@ -5347,7 +5397,7 @@
       "source_location": "L198",
       "_origin": "ast",
       "id": "collections_types_createcollectioninput",
-      "community": 98,
+      "community": 56,
       "norm_label": "createcollectioninput"
     },
     {
@@ -5357,7 +5407,7 @@
       "source_location": "L213",
       "_origin": "ast",
       "id": "collections_types_updatecollectionpatch",
-      "community": 98,
+      "community": 67,
       "norm_label": "updatecollectionpatch"
     },
     {
@@ -5407,7 +5457,7 @@
       "source_location": "L282",
       "_origin": "ast",
       "id": "collections_types_listauditloginput",
-      "community": 67,
+      "community": 12,
       "norm_label": "listauditloginput"
     },
     {
@@ -5417,7 +5467,7 @@
       "source_location": "L289",
       "_origin": "ast",
       "id": "collections_types_listauditlogresult",
-      "community": 67,
+      "community": 12,
       "norm_label": "listauditlogresult"
     },
     {
@@ -5427,7 +5477,7 @@
       "source_location": "L294",
       "_origin": "ast",
       "id": "collections_types_collectionregistry",
-      "community": 93,
+      "community": 32,
       "norm_label": "collectionregistry"
     },
     {
@@ -5437,7 +5487,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_config",
-      "community": 91,
+      "community": 32,
       "norm_label": "config.ts"
     },
     {
@@ -5447,7 +5497,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "src_config_defaultconfigpath",
-      "community": 91,
+      "community": 32,
       "norm_label": "defaultconfigpath"
     },
     {
@@ -5457,7 +5507,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "src_config_distancemetricschema",
-      "community": 91,
+      "community": 32,
       "norm_label": "distancemetricschema"
     },
     {
@@ -5467,7 +5517,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "src_config_adminroleschema",
-      "community": 91,
+      "community": 32,
       "norm_label": "adminroleschema"
     },
     {
@@ -5477,7 +5527,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "src_config_adminauthuserschema",
-      "community": 91,
+      "community": 32,
       "norm_label": "adminauthuserschema"
     },
     {
@@ -5487,7 +5537,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "src_config_defaultadminauthconfig",
-      "community": 91,
+      "community": 32,
       "norm_label": "defaultadminauthconfig"
     },
     {
@@ -5497,7 +5547,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "src_config_adminauthschema",
-      "community": 91,
+      "community": 32,
       "norm_label": "adminauthschema"
     },
     {
@@ -5507,7 +5557,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "src_config_configschema",
-      "community": 91,
+      "community": 32,
       "norm_label": "configschema"
     },
     {
@@ -5527,7 +5577,7 @@
       "source_location": "L96",
       "_origin": "ast",
       "id": "src_config_distancemetric",
-      "community": 89,
+      "community": 98,
       "norm_label": "distancemetric"
     },
     {
@@ -5567,7 +5617,7 @@
       "source_location": "L172",
       "_origin": "ast",
       "id": "src_config_resolvedconfig",
-      "community": 56,
+      "community": 32,
       "norm_label": "resolvedconfig"
     },
     {
@@ -5614,7 +5664,7 @@
       "label": "AdminRole",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L8",
+      "source_location": "L10",
       "_origin": "ast",
       "id": "http_adminauth_adminrole",
       "community": 33,
@@ -5624,7 +5674,7 @@
       "label": "AdminCapability",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L9",
+      "source_location": "L11",
       "_origin": "ast",
       "id": "http_adminauth_admincapability",
       "community": 33,
@@ -5634,7 +5684,7 @@
       "label": "AdminSessionSummary",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L20",
+      "source_location": "L22",
       "_origin": "ast",
       "id": "http_adminauth_adminsessionsummary",
       "community": 33,
@@ -5644,7 +5694,7 @@
       "label": "AdminSessionRecord",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L27",
+      "source_location": "L29",
       "_origin": "ast",
       "id": "http_adminauth_adminsessionrecord",
       "community": 33,
@@ -5654,7 +5704,7 @@
       "label": "AdminActionTokenPayload",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L32",
+      "source_location": "L34",
       "_origin": "ast",
       "id": "http_adminauth_adminactiontokenpayload",
       "community": 33,
@@ -5664,7 +5714,7 @@
       "label": "AdminActionTokenRecord",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L44",
+      "source_location": "L46",
       "_origin": "ast",
       "id": "http_adminauth_adminactiontokenrecord",
       "community": 33,
@@ -5674,7 +5724,7 @@
       "label": "AdminRouteMatch",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L48",
+      "source_location": "L50",
       "_origin": "ast",
       "id": "http_adminauth_adminroutematch",
       "community": 33,
@@ -5684,7 +5734,7 @@
       "label": "AdminUserConfig",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L53",
+      "source_location": "L55",
       "_origin": "ast",
       "id": "http_adminauth_adminuserconfig",
       "community": 33,
@@ -5694,7 +5744,7 @@
       "label": "AdminAuthConfig",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L55",
+      "source_location": "L57",
       "_origin": "ast",
       "id": "http_adminauth_adminauthconfig",
       "community": 33,
@@ -5704,7 +5754,7 @@
       "label": "READ_ONLY_CAPABILITIES",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L57",
+      "source_location": "L59",
       "_origin": "ast",
       "id": "http_adminauth_read_only_capabilities",
       "community": 33,
@@ -5714,7 +5764,7 @@
       "label": "OPERATOR_CAPABILITIES",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L58",
+      "source_location": "L60",
       "_origin": "ast",
       "id": "http_adminauth_operator_capabilities",
       "community": 33,
@@ -5724,7 +5774,7 @@
       "label": "ADMIN_CAPABILITIES",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L66",
+      "source_location": "L68",
       "_origin": "ast",
       "id": "http_adminauth_admin_capabilities",
       "community": 33,
@@ -5734,7 +5784,7 @@
       "label": "ADMIN_ROUTE_PATTERNS",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L68",
+      "source_location": "L71",
       "_origin": "ast",
       "id": "http_adminauth_admin_route_patterns",
       "community": 33,
@@ -5744,7 +5794,7 @@
       "label": "normalizePath()",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L94",
+      "source_location": "L97",
       "_origin": "ast",
       "id": "http_adminauth_normalizepath",
       "community": 33,
@@ -5754,7 +5804,7 @@
       "label": "createSignature()",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L105",
+      "source_location": "L108",
       "_origin": "ast",
       "id": "http_adminauth_createsignature",
       "community": 33,
@@ -5764,7 +5814,7 @@
       "label": "safeEqual()",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L109",
+      "source_location": "L112",
       "_origin": "ast",
       "id": "http_adminauth_safeequal",
       "community": 33,
@@ -5774,7 +5824,7 @@
       "label": "createSessionId()",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L118",
+      "source_location": "L121",
       "_origin": "ast",
       "id": "http_adminauth_createsessionid",
       "community": 33,
@@ -5784,7 +5834,7 @@
       "label": "createNonce()",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L122",
+      "source_location": "L125",
       "_origin": "ast",
       "id": "http_adminauth_createnonce",
       "community": 33,
@@ -5794,7 +5844,7 @@
       "label": "toSummary()",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L126",
+      "source_location": "L129",
       "_origin": "ast",
       "id": "http_adminauth_tosummary",
       "community": 33,
@@ -5804,17 +5854,37 @@
       "label": "ensureValidPasswordHashes()",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L135",
+      "source_location": "L138",
       "_origin": "ast",
       "id": "http_adminauth_ensurevalidpasswordhashes",
-      "community": 92,
+      "community": 33,
       "norm_label": "ensurevalidpasswordhashes()"
+    },
+    {
+      "label": "readConfiguredSessionSecret()",
+      "file_type": "code",
+      "source_file": "src/http/adminAuth.ts",
+      "source_location": "L144",
+      "_origin": "ast",
+      "id": "http_adminauth_readconfiguredsessionsecret",
+      "community": 33,
+      "norm_label": "readconfiguredsessionsecret()"
+    },
+    {
+      "label": "validateAdminAuthConfig()",
+      "file_type": "code",
+      "source_file": "src/http/adminAuth.ts",
+      "source_location": "L160",
+      "_origin": "ast",
+      "id": "http_adminauth_validateadminauthconfig",
+      "community": 33,
+      "norm_label": "validateadminauthconfig()"
     },
     {
       "label": "pickCapabilities()",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L141",
+      "source_location": "L188",
       "_origin": "ast",
       "id": "http_adminauth_pickcapabilities",
       "community": 33,
@@ -5824,7 +5894,7 @@
       "label": "hasAdminCapability()",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L151",
+      "source_location": "L198",
       "_origin": "ast",
       "id": "http_adminauth_hasadmincapability",
       "community": 33,
@@ -5834,7 +5904,7 @@
       "label": "matchAdminRoute()",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L155",
+      "source_location": "L202",
       "_origin": "ast",
       "id": "http_adminauth_matchadminroute",
       "community": 33,
@@ -5844,7 +5914,7 @@
       "label": "isAdminActionTokenRequired()",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L169",
+      "source_location": "L216",
       "_origin": "ast",
       "id": "http_adminauth_isadminactiontokenrequired",
       "community": 33,
@@ -5854,7 +5924,7 @@
       "label": "createAdminAuthService()",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L173",
+      "source_location": "L220",
       "_origin": "ast",
       "id": "http_adminauth_createadminauthservice",
       "community": 92,
@@ -5864,10 +5934,10 @@
       "label": "AdminAuthService",
       "file_type": "code",
       "source_file": "src/http/adminAuth.ts",
-      "source_location": "L599",
+      "source_location": "L640",
       "_origin": "ast",
       "id": "http_adminauth_adminauthservice",
-      "community": 33,
+      "community": 20,
       "norm_label": "adminauthservice"
     },
     {
@@ -5877,7 +5947,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "http_adminrouter",
-      "community": 97,
+      "community": 56,
       "norm_label": "adminrouter.ts"
     },
     {
@@ -5957,7 +6027,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "http_collectionschemas",
-      "community": 97,
+      "community": 56,
       "norm_label": "collectionschemas.ts"
     },
     {
@@ -5967,7 +6037,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "http_collectionschemas_collectioncreateschema",
-      "community": 97,
+      "community": 56,
       "norm_label": "collectioncreateschema"
     },
     {
@@ -5977,7 +6047,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "http_collectionschemas_collectionupdateschema",
-      "community": 97,
+      "community": 56,
       "norm_label": "collectionupdateschema"
     },
     {
@@ -6127,7 +6197,7 @@
       "source_location": "L148",
       "_origin": "ast",
       "id": "http_collectionvalidation_buildcreatecollectioninput",
-      "community": 97,
+      "community": 56,
       "norm_label": "buildcreatecollectioninput()"
     },
     {
@@ -6137,7 +6207,7 @@
       "source_location": "L168",
       "_origin": "ast",
       "id": "http_collectionvalidation_buildcreatevalidationdraft",
-      "community": 97,
+      "community": 56,
       "norm_label": "buildcreatevalidationdraft()"
     },
     {
@@ -6187,7 +6257,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "http_errors",
-      "community": 97,
+      "community": 54,
       "norm_label": "errors.ts"
     },
     {
@@ -6197,7 +6267,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "http_errors_apierrorcode",
-      "community": 97,
+      "community": 54,
       "norm_label": "apierrorcode"
     },
     {
@@ -6207,7 +6277,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "http_errors_apierrorresponse",
-      "community": 97,
+      "community": 54,
       "norm_label": "apierrorresponse"
     },
     {
@@ -6217,7 +6287,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "http_errors_httperror",
-      "community": 97,
+      "community": 54,
       "norm_label": "httperror"
     },
     {
@@ -6227,7 +6297,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "http_errors_httperror_constructor",
-      "community": 97,
+      "community": 54,
       "norm_label": ".constructor()"
     },
     {
@@ -6267,7 +6337,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "http_ragrouter",
-      "community": 97,
+      "community": 54,
       "norm_label": "ragrouter.ts"
     },
     {
@@ -6277,7 +6347,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "http_ragrouter_maptopubliccollectiondto",
-      "community": 97,
+      "community": 54,
       "norm_label": "maptopubliccollectiondto()"
     },
     {
@@ -6287,7 +6357,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "http_ragrouter_createrequestabortsignal",
-      "community": 97,
+      "community": 54,
       "norm_label": "createrequestabortsignal()"
     },
     {
@@ -6367,7 +6437,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "http_ratelimit_createinmemoryrequestratelimiter",
-      "community": 54,
+      "community": 92,
       "norm_label": "createinmemoryrequestratelimiter()"
     },
     {
@@ -6407,7 +6477,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "http_requestcontext",
-      "community": 97,
+      "community": 54,
       "norm_label": "requestcontext.ts"
     },
     {
@@ -6417,7 +6487,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "http_requestcontext_requestcontext",
-      "community": 97,
+      "community": 54,
       "norm_label": "requestcontext"
     },
     {
@@ -6427,7 +6497,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "http_requestcontext_readheadervalue",
-      "community": 92,
+      "community": 54,
       "norm_label": "readheadervalue()"
     },
     {
@@ -6437,7 +6507,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "http_requestcontext_createrequestcontext",
-      "community": 92,
+      "community": 54,
       "norm_label": "createrequestcontext()"
     },
     {
@@ -6557,7 +6627,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "src_index_analyzeindexingsource",
-      "community": 32,
+      "community": 91,
       "norm_label": "analyzeindexingsource()"
     },
     {
@@ -6567,7 +6637,7 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "src_index_checkindexingsourcehealth",
-      "community": 32,
+      "community": 91,
       "norm_label": "checkindexingsourcehealth()"
     },
     {
@@ -6637,7 +6707,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "indexing_cleanup",
-      "community": 93,
+      "community": 32,
       "norm_label": "cleanup.ts"
     },
     {
@@ -6647,7 +6717,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "indexing_cleanup_deletephysicalcollectionfn",
-      "community": 93,
+      "community": 32,
       "norm_label": "deletephysicalcollectionfn"
     },
     {
@@ -6657,7 +6727,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "indexing_cleanup_cleanupretiredphysicalcollections",
-      "community": 93,
+      "community": 32,
       "norm_label": "cleanupretiredphysicalcollections()"
     },
     {
@@ -6667,7 +6737,7 @@
       "source_location": "L98",
       "_origin": "ast",
       "id": "indexing_cleanup_isphysicalcollectionmissingerror",
-      "community": 93,
+      "community": 32,
       "norm_label": "isphysicalcollectionmissingerror()"
     },
     {
@@ -6677,7 +6747,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "indexing_jobrunner",
-      "community": 93,
+      "community": 32,
       "norm_label": "jobrunner.ts"
     },
     {
@@ -6687,7 +6757,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "indexing_jobrunner_indexjobrunner",
-      "community": 93,
+      "community": 32,
       "norm_label": "indexjobrunner"
     },
     {
@@ -6697,7 +6767,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "indexing_jobrunner_createindexjobrunner",
-      "community": 93,
+      "community": 32,
       "norm_label": "createindexjobrunner()"
     },
     {
@@ -6997,7 +7067,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "observability_logger",
-      "community": 93,
+      "community": 54,
       "norm_label": "logger.ts"
     },
     {
@@ -7017,7 +7087,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "observability_logger_operationallogevent",
-      "community": 32,
+      "community": 54,
       "norm_label": "operationallogevent"
     },
     {
@@ -7027,7 +7097,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "observability_logger_operationallogsink",
-      "community": 93,
+      "community": 32,
       "norm_label": "operationallogsink"
     },
     {
@@ -7037,7 +7107,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "observability_logger_operationallogpersistence",
-      "community": 93,
+      "community": 54,
       "norm_label": "operationallogpersistence"
     },
     {
@@ -7047,7 +7117,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "observability_logger_nooplogsink",
-      "community": 93,
+      "community": 54,
       "norm_label": "nooplogsink()"
     },
     {
@@ -7057,7 +7127,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "observability_logger_createconsolelogsink",
-      "community": 93,
+      "community": 92,
       "norm_label": "createconsolelogsink()"
     },
     {
@@ -7067,7 +7137,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "observability_logger_createpersistentoperationallogsink",
-      "community": 93,
+      "community": 32,
       "norm_label": "createpersistentoperationallogsink()"
     },
     {
@@ -7077,7 +7147,7 @@
       "source_location": "L67",
       "_origin": "ast",
       "id": "observability_logger_emitoperationallog",
-      "community": 93,
+      "community": 32,
       "norm_label": "emitoperationallog()"
     },
     {
@@ -7087,7 +7157,7 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "observability_logger_normalizelogevent",
-      "community": 93,
+      "community": 70,
       "norm_label": "normalizelogevent()"
     },
     {
@@ -7117,7 +7187,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "observability_timeout",
-      "community": 110,
+      "community": 70,
       "norm_label": "timeout.ts"
     },
     {
@@ -7127,7 +7197,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "observability_timeout_operationtimeouterror",
-      "community": 110,
+      "community": 70,
       "norm_label": "operationtimeouterror"
     },
     {
@@ -7137,7 +7207,7 @@
       "source_location": "L2",
       "_origin": "ast",
       "id": "observability_timeout_operationtimeouterror_constructor",
-      "community": 110,
+      "community": 70,
       "norm_label": ".constructor()"
     },
     {
@@ -7147,7 +7217,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "observability_timeout_operationaborterror",
-      "community": 110,
+      "community": 70,
       "norm_label": "operationaborterror"
     },
     {
@@ -7157,7 +7227,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "observability_timeout_operationaborterror_constructor",
-      "community": 110,
+      "community": 70,
       "norm_label": ".constructor()"
     },
     {
@@ -7167,7 +7237,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "observability_timeout_withtimeoutandabort",
-      "community": 110,
+      "community": 70,
       "norm_label": "withtimeoutandabort()"
     },
     {
@@ -7177,7 +7247,7 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "observability_timeout_istimeoutoraborterror",
-      "community": 70,
+      "community": 105,
       "norm_label": "istimeoutoraborterror()"
     },
     {
@@ -7237,7 +7307,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "src_rag_ollamahealthdetails",
-      "community": 92,
+      "community": 91,
       "norm_label": "ollamahealthdetails"
     },
     {
@@ -7357,7 +7427,7 @@
       "source_location": "L134",
       "_origin": "ast",
       "id": "src_rag_createchatmodel",
-      "community": 85,
+      "community": 105,
       "norm_label": "createchatmodel()"
     },
     {
@@ -7387,7 +7457,7 @@
       "source_location": "L153",
       "_origin": "ast",
       "id": "src_rag_getollamamodeldiscovery",
-      "community": 85,
+      "community": 105,
       "norm_label": "getollamamodeldiscovery()"
     },
     {
@@ -7407,7 +7477,7 @@
       "source_location": "L217",
       "_origin": "ast",
       "id": "src_rag_errormessage",
-      "community": 85,
+      "community": 105,
       "norm_label": "errormessage()"
     },
     {
@@ -7437,7 +7507,7 @@
       "source_location": "L242",
       "_origin": "ast",
       "id": "src_rag_withtimeout",
-      "community": 85,
+      "community": 105,
       "norm_label": "withtimeout()"
     },
     {
@@ -7507,7 +7577,7 @@
       "source_location": "L278",
       "_origin": "ast",
       "id": "src_rag_checkchromahealth",
-      "community": 85,
+      "community": 105,
       "norm_label": "checkchromahealth()"
     },
     {
@@ -7517,7 +7587,7 @@
       "source_location": "L326",
       "_origin": "ast",
       "id": "src_rag_checkollamahealth",
-      "community": 85,
+      "community": 105,
       "norm_label": "checkollamahealth()"
     },
     {
@@ -7527,7 +7597,7 @@
       "source_location": "L372",
       "_origin": "ast",
       "id": "src_rag_checkembeddinghealth",
-      "community": 85,
+      "community": 105,
       "norm_label": "checkembeddinghealth()"
     },
     {
@@ -7537,7 +7607,7 @@
       "source_location": "L406",
       "_origin": "ast",
       "id": "src_rag_checkchatgenerationhealth",
-      "community": 85,
+      "community": 105,
       "norm_label": "checkchatgenerationhealth()"
     },
     {
@@ -7617,7 +7687,7 @@
       "source_location": "L547",
       "_origin": "ast",
       "id": "src_rag_contenttostring",
-      "community": 85,
+      "community": 105,
       "norm_label": "contenttostring()"
     },
     {
@@ -7747,7 +7817,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_server",
-      "community": 93,
+      "community": 32,
       "norm_label": "server.ts"
     },
     {
@@ -7757,7 +7827,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "src_server_startuplogger",
-      "community": 93,
+      "community": 32,
       "norm_label": "startuplogger"
     },
     {
@@ -7767,7 +7837,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "src_server_runstartupmaintenance",
-      "community": 93,
+      "community": 32,
       "norm_label": "runstartupmaintenance()"
     },
     {
@@ -7777,7 +7847,7 @@
       "source_location": "L55",
       "_origin": "ast",
       "id": "src_server_startserver",
-      "community": 93,
+      "community": 32,
       "norm_label": "startserver()"
     },
     {
@@ -7787,7 +7857,7 @@
       "source_location": "L93",
       "_origin": "ast",
       "id": "src_server_main",
-      "community": 93,
+      "community": 32,
       "norm_label": "main()"
     },
     {
@@ -7937,7 +8007,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_admin_auth_test",
-      "community": 33,
+      "community": 20,
       "norm_label": "admin.auth.test.ts"
     },
     {
@@ -7947,7 +8017,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "test_admin_auth_test_createsessioncookieheader",
-      "community": 33,
+      "community": 20,
       "norm_label": "createsessioncookieheader()"
     },
     {
@@ -7957,7 +8027,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "test_admin_auth_test_createcookiepair",
-      "community": 33,
+      "community": 20,
       "norm_label": "createcookiepair()"
     },
     {
@@ -7967,7 +8037,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "test_admin_auth_test_invokemiddleware",
-      "community": 33,
+      "community": 20,
       "norm_label": "invokemiddleware()"
     },
     {
@@ -7977,7 +8047,7 @@
       "source_location": "L97",
       "_origin": "ast",
       "id": "test_admin_auth_test_setheader",
-      "community": 33,
+      "community": 20,
       "norm_label": "setheader()"
     },
     {
@@ -8007,7 +8077,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_app_foundation_test",
-      "community": 90,
+      "community": 92,
       "norm_label": "app.foundation.test.ts"
     },
     {
@@ -8017,7 +8087,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "test_app_foundation_test_healthchecks",
-      "community": 90,
+      "community": 92,
       "norm_label": "healthchecks"
     },
     {
@@ -8027,7 +8097,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "test_app_foundation_test_createhealthyregistrystub",
-      "community": 90,
+      "community": 92,
       "norm_label": "createhealthyregistrystub()"
     },
     {
@@ -8037,7 +8107,7 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "test_app_foundation_test_startserver",
-      "community": 90,
+      "community": 92,
       "norm_label": "startserver()"
     },
     {
@@ -8047,7 +8117,7 @@
       "source_location": "L113",
       "_origin": "ast",
       "id": "test_app_foundation_test_createhealthyhealthchecks",
-      "community": 90,
+      "community": 92,
       "norm_label": "createhealthyhealthchecks()"
     },
     {
@@ -8057,7 +8127,7 @@
       "source_location": "L168",
       "_origin": "ast",
       "id": "test_app_foundation_test_stopserver",
-      "community": 90,
+      "community": 92,
       "norm_label": "stopserver()"
     },
     {
@@ -8067,7 +8137,7 @@
       "source_location": "L194",
       "_origin": "ast",
       "id": "test_app_foundation_test_request",
-      "community": 90,
+      "community": 92,
       "norm_label": "request()"
     },
     {
@@ -8197,7 +8267,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test",
-      "community": 93,
+      "community": 32,
       "norm_label": "indexing.cleanup.test.ts"
     },
     {
@@ -8207,7 +8277,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_context",
-      "community": 93,
+      "community": 32,
       "norm_label": "context"
     },
     {
@@ -8217,7 +8287,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_collectioninput",
-      "community": 93,
+      "community": 32,
       "norm_label": "collectioninput"
     },
     {
@@ -8227,7 +8297,7 @@
       "source_location": "L62",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_createruntimeconfig",
-      "community": 93,
+      "community": 32,
       "norm_label": "createruntimeconfig()"
     },
     {
@@ -8237,7 +8307,7 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_createlogger",
-      "community": 93,
+      "community": 32,
       "norm_label": "createlogger()"
     },
     {
@@ -8247,7 +8317,7 @@
       "source_location": "L88",
       "_origin": "ast",
       "id": "test_indexing_cleanup_test_seedphysicalrecord",
-      "community": 93,
+      "community": 32,
       "norm_label": "seedphysicalrecord()"
     },
     {
@@ -8307,7 +8377,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_ingestion_fault_tolerance_test",
-      "community": 63,
+      "community": 54,
       "norm_label": "ingestion.fault-tolerance.test.ts"
     },
     {
@@ -8337,7 +8407,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_observability_test",
-      "community": 110,
+      "community": 70,
       "norm_label": "observability.test.ts"
     },
     {
@@ -8347,7 +8417,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_rag_core_test",
-      "community": 69,
+      "community": 105,
       "norm_label": "rag.core.test.ts"
     },
     {
@@ -8527,7 +8597,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "agents",
-      "community": 76,
+      "community": 75,
       "norm_label": "agents.md"
     },
     {
@@ -8537,8 +8607,108 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "agents_graphify",
-      "community": 76,
+      "community": 75,
       "norm_label": "graphify"
+    },
+    {
+      "label": "CLAUDE.md",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "claude",
+      "community": 75,
+      "norm_label": "claude.md"
+    },
+    {
+      "label": "CLAUDE.md",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "claude_claude_md",
+      "community": 55,
+      "norm_label": "claude.md"
+    },
+    {
+      "label": "What this is",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": "L5",
+      "_origin": "ast",
+      "id": "claude_what_this_is",
+      "community": 55,
+      "norm_label": "what this is"
+    },
+    {
+      "label": "Run / build / test",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": "L15",
+      "_origin": "ast",
+      "id": "claude_run_build_test",
+      "community": 55,
+      "norm_label": "run / build / test"
+    },
+    {
+      "label": "Architecture map",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": "L26",
+      "_origin": "ast",
+      "id": "claude_architecture_map",
+      "community": 55,
+      "norm_label": "architecture map"
+    },
+    {
+      "label": "Auth / RBAC / CSRF",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": "L34",
+      "_origin": "ast",
+      "id": "claude_auth_rbac_csrf",
+      "community": 55,
+      "norm_label": "auth / rbac / csrf"
+    },
+    {
+      "label": "Conventions (the gotchas)",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": "L43",
+      "_origin": "ast",
+      "id": "claude_conventions_the_gotchas",
+      "community": 55,
+      "norm_label": "conventions (the gotchas)"
+    },
+    {
+      "label": "Config & secrets",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": "L54",
+      "_origin": "ast",
+      "id": "claude_config_secrets",
+      "community": 55,
+      "norm_label": "config & secrets"
+    },
+    {
+      "label": "Docs & knowledge graph",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": "L61",
+      "_origin": "ast",
+      "id": "claude_docs_knowledge_graph",
+      "community": 55,
+      "norm_label": "docs & knowledge graph"
+    },
+    {
+      "label": "After changing code",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": "L67",
+      "_origin": "ast",
+      "id": "claude_after_changing_code",
+      "community": 55,
+      "norm_label": "after changing code"
     },
     {
       "label": "README.md",
@@ -8547,7 +8717,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "readme",
-      "community": 101,
+      "community": 75,
       "norm_label": "readme.md"
     },
     {
@@ -8557,248 +8727,228 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "readme_vanilla_rag_backend",
-      "community": 20,
+      "community": 101,
       "norm_label": "vanilla rag backend"
     },
     {
-      "label": "\u00d6ne \u00c7\u0131kan \u00d6zellikler",
+      "label": "What it ships",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L9",
+      "source_location": "L5",
       "_origin": "ast",
-      "id": "readme_\u00f6ne_\u00e7\u0131kan_\u00f6zellikler",
-      "community": 20,
-      "norm_label": "one c\u0131kan ozellikler"
+      "id": "readme_what_it_ships",
+      "community": 101,
+      "norm_label": "what it ships"
     },
     {
-      "label": "Nerede Ne Var?",
+      "label": "Feature Map",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L18",
+      "source_location": "L15",
       "_origin": "ast",
-      "id": "readme_nerede_ne_var",
-      "community": 20,
-      "norm_label": "nerede ne var?"
+      "id": "readme_feature_map",
+      "community": 80,
+      "norm_label": "feature map"
     },
     {
-      "label": "H\u0131zl\u0131 Kullan\u0131m K\u0131lavuzu",
+      "label": "Public RAG",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L30",
+      "source_location": "L17",
       "_origin": "ast",
-      "id": "readme_h\u0131zl\u0131_kullan\u0131m_k\u0131lavuzu",
-      "community": 20,
-      "norm_label": "h\u0131zl\u0131 kullan\u0131m k\u0131lavuzu"
+      "id": "readme_public_rag",
+      "community": 80,
+      "norm_label": "public rag"
     },
     {
-      "label": "Frontend Integration Paketi",
+      "label": "Admin and Operations",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L41",
+      "source_location": "L26",
       "_origin": "ast",
-      "id": "readme_frontend_integration_paketi",
-      "community": 20,
-      "norm_label": "frontend integration paketi"
+      "id": "readme_admin_and_operations",
+      "community": 80,
+      "norm_label": "admin and operations"
     },
     {
-      "label": "Son Kullanici Icin Kisa Kullanim",
+      "label": "Reliability and Safety",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L74",
+      "source_location": "L38",
       "_origin": "ast",
-      "id": "readme_son_kullanici_icin_kisa_kullanim",
-      "community": 20,
-      "norm_label": "son kullanici icin kisa kullanim"
+      "id": "readme_reliability_and_safety",
+      "community": 80,
+      "norm_label": "reliability and safety"
     },
     {
-      "label": "Kurulum",
+      "label": "Frontend and Integration Assets",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L91",
+      "source_location": "L48",
       "_origin": "ast",
-      "id": "readme_kurulum",
-      "community": 20,
-      "norm_label": "kurulum"
+      "id": "readme_frontend_and_integration_assets",
+      "community": 80,
+      "norm_label": "frontend and integration assets"
     },
     {
-      "label": "On boarding",
+      "label": "Data and Indexing",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L104",
+      "source_location": "L54",
       "_origin": "ast",
-      "id": "readme_on_boarding",
-      "community": 20,
-      "norm_label": "on boarding"
+      "id": "readme_data_and_indexing",
+      "community": 80,
+      "norm_label": "data and indexing"
     },
     {
-      "label": "Kolleksiyon olu\u015fturma",
+      "label": "Start here",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L111",
+      "source_location": "L60",
       "_origin": "ast",
-      "id": "readme_kolleksiyon_olu\u015fturma",
-      "community": 20,
-      "norm_label": "kolleksiyon olusturma"
+      "id": "readme_start_here",
+      "community": 101,
+      "norm_label": "start here"
     },
     {
-      "label": "Test aray\u00fcz\u00fcn\u00fc a\u00e7mak i\u00e7in taray\u0131c\u0131n\u0131zda \u015fu adrese gidin:",
+      "label": "Quick start",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L156",
+      "source_location": "L68",
       "_origin": "ast",
-      "id": "readme_test_aray\u00fcz\u00fcn\u00fc_a\u00e7mak_i\u00e7in_taray\u0131c\u0131n\u0131zda_\u015fu_adrese_gidin",
-      "community": 20,
-      "norm_label": "test arayuzunu acmak icin taray\u0131c\u0131n\u0131zda su adrese gidin:"
+      "id": "readme_quick_start",
+      "community": 101,
+      "norm_label": "quick start"
     },
     {
-      "label": "Backend Y\u00f6netimi ve Admin Workflow",
+      "label": "What onboarding is for",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L98",
+      "_origin": "ast",
+      "id": "readme_what_onboarding_is_for",
+      "community": 101,
+      "norm_label": "what onboarding is for"
+    },
+    {
+      "label": "G\u00fcvenli admin quickstart",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L119",
+      "_origin": "ast",
+      "id": "readme_g\u00fcvenli_admin_quickstart",
+      "community": 101,
+      "norm_label": "guvenli admin quickstart"
+    },
+    {
+      "label": "Manual admin setup",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L151",
+      "_origin": "ast",
+      "id": "readme_manual_admin_setup",
+      "community": 101,
+      "norm_label": "manual admin setup"
+    },
+    {
+      "label": "Collection discovery and cleanup notes",
       "file_type": "document",
       "source_file": "README.md",
       "source_location": "L164",
       "_origin": "ast",
-      "id": "readme_backend_y\u00f6netimi_ve_admin_workflow",
-      "community": 55,
-      "norm_label": "backend yonetimi ve admin workflow"
+      "id": "readme_collection_discovery_and_cleanup_notes",
+      "community": 101,
+      "norm_label": "collection discovery and cleanup notes"
     },
     {
-      "label": "Admin Auth Quickstart",
+      "label": "Admin panel workflow",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L170",
+      "source_location": "L181",
       "_origin": "ast",
-      "id": "readme_admin_auth_quickstart",
-      "community": 55,
-      "norm_label": "admin auth quickstart"
+      "id": "readme_admin_panel_workflow",
+      "community": 101,
+      "norm_label": "admin panel workflow"
     },
     {
-      "label": "Lokal quickstart (`adminAuth.enabled=false`)",
+      "label": "Typical workflows",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L172",
+      "source_location": "L191",
       "_origin": "ast",
-      "id": "readme_lokal_quickstart_adminauth_enabled_false",
-      "community": 55,
-      "norm_label": "lokal quickstart (`adminauth.enabled=false`)"
+      "id": "readme_typical_workflows",
+      "community": 101,
+      "norm_label": "typical workflows"
     },
     {
-      "label": "G\u00fcvenli admin quickstart (`adminAuth.enabled=true`)",
+      "label": "Public question answering",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L178",
+      "source_location": "L193",
       "_origin": "ast",
-      "id": "readme_g\u00fcvenli_admin_quickstart_adminauth_enabled_true",
-      "community": 55,
-      "norm_label": "guvenli admin quickstart (`adminauth.enabled=true`)"
+      "id": "readme_public_question_answering",
+      "community": 101,
+      "norm_label": "public question answering"
     },
     {
-      "label": "Sistem Onboarding (\u0130lk Kurulum)",
+      "label": "Admin collection setup",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L194",
+      "source_location": "L200",
       "_origin": "ast",
-      "id": "readme_sistem_onboarding_i\u0307lk_kurulum",
-      "community": 55,
-      "norm_label": "sistem onboarding (ilk kurulum)"
+      "id": "readme_admin_collection_setup",
+      "community": 101,
+      "norm_label": "admin collection setup"
     },
     {
-      "label": "Operasyonel Config Y\u00fczeyi",
+      "label": "Docs map",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L216",
+      "source_location": "L208",
       "_origin": "ast",
-      "id": "readme_operasyonel_config_y\u00fczeyi",
-      "community": 55,
-      "norm_label": "operasyonel config yuzeyi"
+      "id": "readme_docs_map",
+      "community": 101,
+      "norm_label": "docs map"
     },
     {
-      "label": "1. Collection Yaratma (Admin API)",
+      "label": "Key scripts",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L253",
+      "source_location": "L220",
       "_origin": "ast",
-      "id": "readme_1_collection_yaratma_admin_api",
-      "community": 55,
-      "norm_label": "1. collection yaratma (admin api)"
+      "id": "readme_key_scripts",
+      "community": 101,
+      "norm_label": "key scripts"
     },
     {
-      "label": "2. Re-Index / Job Ba\u015flatma",
+      "label": "Public API reminders",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L280",
+      "source_location": "L231",
       "_origin": "ast",
-      "id": "readme_2_re_index_job_ba\u015flatma",
-      "community": 55,
-      "norm_label": "2. re-index / job baslatma"
+      "id": "readme_public_api_reminders",
+      "community": 101,
+      "norm_label": "public api reminders"
     },
     {
-      "label": "3. Job Durumunu G\u00f6r\u00fcnt\u00fcleme",
+      "label": "Stack",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L301",
+      "source_location": "L241",
       "_origin": "ast",
-      "id": "readme_3_job_durumunu_g\u00f6r\u00fcnt\u00fcleme",
-      "community": 55,
-      "norm_label": "3. job durumunu goruntuleme"
+      "id": "readme_stack",
+      "community": 101,
+      "norm_label": "stack"
     },
     {
-      "label": "RAG Kullan\u0131m\u0131 (Frontend / API)",
+      "label": "Notes",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L309",
+      "source_location": "L248",
       "_origin": "ast",
-      "id": "readme_rag_kullan\u0131m\u0131_frontend_api",
-      "community": 20,
-      "norm_label": "rag kullan\u0131m\u0131 (frontend / api)"
-    },
-    {
-      "label": "Health ve Readiness",
-      "file_type": "document",
-      "source_file": "README.md",
-      "source_location": "L333",
-      "_origin": "ast",
-      "id": "readme_health_ve_readiness",
-      "community": 20,
-      "norm_label": "health ve readiness"
-    },
-    {
-      "label": "RAG Sorgular\u0131: Retrieve ve Query",
-      "file_type": "document",
-      "source_file": "README.md",
-      "source_location": "L343",
-      "_origin": "ast",
-      "id": "readme_rag_sorgular\u0131_retrieve_ve_query",
-      "community": 20,
-      "norm_label": "rag sorgular\u0131: retrieve ve query"
-    },
-    {
-      "label": "Veri Kaynaklar\u0131 ve Ingestion (\u0130ndeksleme Altyap\u0131s\u0131)",
-      "file_type": "document",
-      "source_file": "README.md",
-      "source_location": "L357",
-      "_origin": "ast",
-      "id": "readme_veri_kaynaklar\u0131_ve_ingestion_i\u0307ndeksleme_altyap\u0131s\u0131",
-      "community": 20,
-      "norm_label": "veri kaynaklar\u0131 ve ingestion (indeksleme altyap\u0131s\u0131)"
-    },
-    {
-      "label": "Response ve Hata Semantigi",
-      "file_type": "document",
-      "source_file": "README.md",
-      "source_location": "L375",
-      "_origin": "ast",
-      "id": "readme_response_ve_hata_semantigi",
-      "community": 20,
-      "norm_label": "response ve hata semantigi"
-    },
-    {
-      "label": "Ba\u015fl\u0131ca Hata Kodlar\u0131:",
-      "file_type": "document",
-      "source_file": "README.md",
-      "source_location": "L402",
-      "_origin": "ast",
-      "id": "readme_ba\u015fl\u0131ca_hata_kodlar\u0131",
-      "community": 20,
-      "norm_label": "basl\u0131ca hata kodlar\u0131:"
+      "id": "readme_notes",
+      "community": 101,
+      "norm_label": "notes"
     },
     {
       "label": "README.md",
@@ -8907,7 +9057,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints",
-      "community": 95,
+      "community": 75,
       "norm_label": "admin_api_endpoints.md"
     },
     {
@@ -8934,7 +9084,7 @@
       "label": "Request Headers",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L51",
+      "source_location": "L52",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_request_headers",
       "community": 95,
@@ -8944,7 +9094,7 @@
       "label": "Collection Configuration Fields",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L66",
+      "source_location": "L67",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_collection_configuration_fields",
       "community": 95,
@@ -8954,7 +9104,7 @@
       "label": "`GET /v1/admin/config/defaults`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L68",
+      "source_location": "L69",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_get_v1_admin_config_defaults",
       "community": 95,
@@ -8964,7 +9114,7 @@
       "label": "`GET /v1/admin/models`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L99",
+      "source_location": "L100",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_get_v1_admin_models",
       "community": 95,
@@ -8974,7 +9124,7 @@
       "label": "`GET /v1/admin/auth/session`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L151",
+      "source_location": "L152",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_get_v1_admin_auth_session",
       "community": 95,
@@ -8984,7 +9134,7 @@
       "label": "`POST /v1/admin/auth/login`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L155",
+      "source_location": "L156",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_post_v1_admin_auth_login",
       "community": 95,
@@ -8994,7 +9144,7 @@
       "label": "`POST /v1/admin/auth/action-token`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L168",
+      "source_location": "L169",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_post_v1_admin_auth_action_token",
       "community": 95,
@@ -9004,7 +9154,7 @@
       "label": "`POST /v1/admin/auth/logout`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L181",
+      "source_location": "L182",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_post_v1_admin_auth_logout",
       "community": 95,
@@ -9014,7 +9164,7 @@
       "label": "Create request",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L185",
+      "source_location": "L186",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_create_request",
       "community": 95,
@@ -9024,7 +9174,7 @@
       "label": "Update request",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L213",
+      "source_location": "L214",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_update_request",
       "community": 95,
@@ -9034,7 +9184,7 @@
       "label": "Immediate vs Reindex-Bound Fields",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L225",
+      "source_location": "L226",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_immediate_vs_reindex_bound_fields",
       "community": 95,
@@ -9044,7 +9194,7 @@
       "label": "Live Read Model vs Desired Model",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L248",
+      "source_location": "L249",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_live_read_model_vs_desired_model",
       "community": 95,
@@ -9054,7 +9204,7 @@
       "label": "Collection Endpoints",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L255",
+      "source_location": "L256",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_collection_endpoints",
       "community": 95,
@@ -9064,7 +9214,7 @@
       "label": "`POST /v1/admin/collections`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L257",
+      "source_location": "L258",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_post_v1_admin_collections",
       "community": 95,
@@ -9074,7 +9224,7 @@
       "label": "`GET /v1/admin/collections/:collectionId`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L285",
+      "source_location": "L286",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_get_v1_admin_collections_collectionid",
       "community": 95,
@@ -9084,7 +9234,7 @@
       "label": "`GET /v1/admin/collections/:collectionId/physical-collections`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L355",
+      "source_location": "L356",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_get_v1_admin_collections_collectionid_physical_collections",
       "community": 95,
@@ -9094,7 +9244,7 @@
       "label": "`GET /v1/admin/audit-log`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L424",
+      "source_location": "L425",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_get_v1_admin_audit_log",
       "community": 95,
@@ -9104,7 +9254,7 @@
       "label": "`POST /v1/admin/collections/validate`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L471",
+      "source_location": "L472",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_post_v1_admin_collections_validate",
       "community": 95,
@@ -9114,7 +9264,7 @@
       "label": "`POST /v1/admin/collections/:collectionId/validate`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L528",
+      "source_location": "L529",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_post_v1_admin_collections_collectionid_validate",
       "community": 95,
@@ -9124,7 +9274,7 @@
       "label": "`PATCH /v1/admin/collections/:collectionId`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L539",
+      "source_location": "L540",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_patch_v1_admin_collections_collectionid",
       "community": 95,
@@ -9134,7 +9284,7 @@
       "label": "`DELETE /v1/admin/collections/:collectionId`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L567",
+      "source_location": "L568",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_delete_v1_admin_collections_collectionid",
       "community": 95,
@@ -9144,7 +9294,7 @@
       "label": "`POST /v1/admin/collections/:collectionId/reindex`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L576",
+      "source_location": "L577",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_post_v1_admin_collections_collectionid_reindex",
       "community": 95,
@@ -9154,7 +9304,7 @@
       "label": "Job Endpoints",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L599",
+      "source_location": "L600",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_job_endpoints",
       "community": 95,
@@ -9164,7 +9314,7 @@
       "label": "`GET /v1/admin/jobs`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L609",
+      "source_location": "L610",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_get_v1_admin_jobs",
       "community": 95,
@@ -9174,7 +9324,7 @@
       "label": "`GET /v1/admin/jobs/:jobId`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L661",
+      "source_location": "L662",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_get_v1_admin_jobs_jobid",
       "community": 95,
@@ -9184,7 +9334,7 @@
       "label": "`GET /v1/admin/jobs/:jobId/events`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L671",
+      "source_location": "L672",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_get_v1_admin_jobs_jobid_events",
       "community": 95,
@@ -9194,7 +9344,7 @@
       "label": "`DELETE /v1/admin/jobs/:jobId`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L735",
+      "source_location": "L736",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_delete_v1_admin_jobs_jobid",
       "community": 95,
@@ -9204,7 +9354,7 @@
       "label": "`POST /v1/admin/jobs/bulk-delete`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L744",
+      "source_location": "L745",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_post_v1_admin_jobs_bulk_delete",
       "community": 95,
@@ -9214,7 +9364,7 @@
       "label": "`POST /v1/admin/jobs/:jobId/cancel`",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L766",
+      "source_location": "L767",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_post_v1_admin_jobs_jobid_cancel",
       "community": 95,
@@ -9224,7 +9374,7 @@
       "label": "Admin Error Codes",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L776",
+      "source_location": "L777",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_admin_error_codes",
       "community": 95,
@@ -9234,7 +9384,7 @@
       "label": "Structured Validation Errors",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L791",
+      "source_location": "L792",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_structured_validation_errors",
       "community": 95,
@@ -9244,7 +9394,7 @@
       "label": "Practical Frontend Rules",
       "file_type": "document",
       "source_file": "docs/admin_api_endpoints.md",
-      "source_location": "L796",
+      "source_location": "L797",
       "_origin": "ast",
       "id": "docs_admin_api_endpoints_practical_frontend_rules",
       "community": 95,
@@ -9257,7 +9407,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "docs_coding_agent_prompt_template",
-      "community": 50,
+      "community": 75,
       "norm_label": "coding_agent_prompt_template.md"
     },
     {
@@ -10077,7 +10227,7 @@
       "source_location": "L215",
       "_origin": "ast",
       "id": "docs_user_api_endpoints_public_endpoints",
-      "community": 12,
+      "community": 87,
       "norm_label": "public endpoints"
     },
     {
@@ -10087,7 +10237,7 @@
       "source_location": "L217",
       "_origin": "ast",
       "id": "docs_user_api_endpoints_get_v1_rag_collections",
-      "community": 12,
+      "community": 87,
       "norm_label": "`get /v1/rag/collections`"
     },
     {
@@ -10097,7 +10247,7 @@
       "source_location": "L264",
       "_origin": "ast",
       "id": "docs_user_api_endpoints_get_v1_rag_collections_collectionid",
-      "community": 12,
+      "community": 87,
       "norm_label": "`get /v1/rag/collections/:collectionid`"
     },
     {
@@ -10107,7 +10257,7 @@
       "source_location": "L270",
       "_origin": "ast",
       "id": "docs_user_api_endpoints_get_v1_rag_collections_collectionid_ready",
-      "community": 12,
+      "community": 87,
       "norm_label": "`get /v1/rag/collections/:collectionid/ready`"
     },
     {
@@ -10117,7 +10267,7 @@
       "source_location": "L381",
       "_origin": "ast",
       "id": "docs_user_api_endpoints_post_v1_rag_collections_collectionid_retrieve",
-      "community": 12,
+      "community": 87,
       "norm_label": "`post /v1/rag/collections/:collectionid/retrieve`"
     },
     {
@@ -10127,7 +10277,7 @@
       "source_location": "L431",
       "_origin": "ast",
       "id": "docs_user_api_endpoints_post_v1_rag_collections_collectionid_query",
-      "community": 12,
+      "community": 87,
       "norm_label": "`post /v1/rag/collections/:collectionid/query`"
     },
     {
@@ -10689,16 +10839,6 @@
       "id": "egitim_egitim_icerigi_20_son_s\u00f6z",
       "community": 19,
       "norm_label": "20. son soz"
-    },
-    {
-      "label": "Istiklal_Marsi_ad54f9f4.md",
-      "file_type": "document",
-      "source_file": "graphify-out/converted/Istiklal_Marsi_ad54f9f4.md",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "converted_istiklal_marsi_ad54f9f4",
-      "community": 80,
-      "norm_label": "istiklal_marsi_ad54f9f4.md"
     },
     {
       "label": "adminpanel_done.md",
@@ -12297,7 +12437,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "notes_multicollection_done",
-      "community": 3,
+      "community": 23,
       "norm_label": "multicollection_done.md"
     },
     {
@@ -12907,7 +13047,7 @@
       "source_location": "L359",
       "_origin": "ast",
       "id": "notes_multicollection_plan_do\u011frudan_hedef_mimariyi_uygulama_stratejisi",
-      "community": 102,
+      "community": 3,
       "norm_label": "dogrudan hedef mimariyi uygulama stratejisi"
     },
     {
@@ -12917,7 +13057,7 @@
       "source_location": "L363",
       "_origin": "ast",
       "id": "notes_multicollection_plan_ad\u0131m_a_registry_interface_ve_kal\u0131c\u0131_registry_eklenir",
-      "community": 102,
+      "community": 3,
       "norm_label": "ad\u0131m a: registry interface ve kal\u0131c\u0131 registry eklenir"
     },
     {
@@ -12927,7 +13067,7 @@
       "source_location": "L380",
       "_origin": "ast",
       "id": "notes_multicollection_plan_ad\u0131m_b_lock_ve_job_state_eklenir",
-      "community": 102,
+      "community": 3,
       "norm_label": "ad\u0131m b: lock ve job state eklenir"
     },
     {
@@ -12937,7 +13077,7 @@
       "source_location": "L389",
       "_origin": "ast",
       "id": "notes_multicollection_plan_ad\u0131m_c_rag_core_ve_indexing_versioned_physical_collection_modeline_ge\u00e7irilir",
-      "community": 102,
+      "community": 3,
       "norm_label": "ad\u0131m c: rag core ve indexing versioned physical collection modeline gecirilir"
     },
     {
@@ -12947,7 +13087,7 @@
       "source_location": "L400",
       "_origin": "ast",
       "id": "notes_multicollection_plan_ad\u0131m_d_yeni_api_ve_test_frontend_eski_endpointleri_silerek_eklenir",
-      "community": 102,
+      "community": 3,
       "norm_label": "ad\u0131m d: yeni api ve test frontend eski endpointleri silerek eklenir"
     },
     {
@@ -13117,7 +13257,7 @@
       "source_location": "L915",
       "_origin": "ast",
       "id": "notes_multicollection_plan_concurrency_stratejisi",
-      "community": 112,
+      "community": 3,
       "norm_label": "concurrency stratejisi"
     },
     {
@@ -13127,7 +13267,7 @@
       "source_location": "L917",
       "_origin": "ast",
       "id": "notes_multicollection_plan_query_retrieve_path",
-      "community": 112,
+      "community": 3,
       "norm_label": "query/retrieve path"
     },
     {
@@ -13137,7 +13277,7 @@
       "source_location": "L941",
       "_origin": "ast",
       "id": "notes_multicollection_plan_index_rebuild_path",
-      "community": 112,
+      "community": 3,
       "norm_label": "index/rebuild path"
     },
     {
@@ -13147,7 +13287,7 @@
       "source_location": "L961",
       "_origin": "ast",
       "id": "notes_multicollection_plan_ollama_ve_chroma_backpressure",
-      "community": 112,
+      "community": 3,
       "norm_label": "ollama ve chroma backpressure"
     },
     {
@@ -13717,7 +13857,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "notes_onboardin_plan",
-      "community": 101,
+      "community": 75,
       "norm_label": "onboardin_plan.md"
     },
     {
@@ -13807,7 +13947,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "notes_plan_parity_audit",
-      "community": 3,
+      "community": 23,
       "norm_label": "plan-parity-audit.md"
     },
     {
@@ -14067,7 +14207,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "todos",
-      "community": 99,
+      "community": 69,
       "norm_label": "todos.md"
     },
     {
@@ -14437,7 +14577,7 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_5_temel_bile\u015fenler",
-      "community": 28,
+      "community": 85,
       "norm_label": "5. temel bilesenler"
     },
     {
@@ -14557,7 +14697,7 @@
       "source_location": "L408",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_5_2_rag_orchestrator_katman\u0131",
-      "community": 28,
+      "community": 85,
       "norm_label": "5.2 rag orchestrator katman\u0131"
     },
     {
@@ -14567,7 +14707,7 @@
       "source_location": "L440",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_5_3_retrieval_katman\u0131",
-      "community": 28,
+      "community": 85,
       "norm_label": "5.3 retrieval katman\u0131"
     },
     {
@@ -14577,7 +14717,7 @@
       "source_location": "L471",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_5_4_generation_katman\u0131",
-      "community": 28,
+      "community": 85,
       "norm_label": "5.4 generation katman\u0131"
     },
     {
@@ -14587,7 +14727,7 @@
       "source_location": "L499",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_5_5_i\u0307ndeksleme_katman\u0131",
-      "community": 28,
+      "community": 85,
       "norm_label": "5.5 indeksleme katman\u0131"
     },
     {
@@ -14597,7 +14737,7 @@
       "source_location": "L517",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_5_6_konfig\u00fcrasyon_katman\u0131",
-      "community": 28,
+      "community": 85,
       "norm_label": "5.6 konfigurasyon katman\u0131"
     },
     {
@@ -14707,7 +14847,7 @@
       "source_location": "L688",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_9_\u00e7al\u0131\u015fma_modeli_ve_operasyonel_modlar",
-      "community": 25,
+      "community": 90,
       "norm_label": "9. cal\u0131sma modeli ve operasyonel modlar"
     },
     {
@@ -14717,7 +14857,7 @@
       "source_location": "L692",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_9_1_development_server",
-      "community": 25,
+      "community": 90,
       "norm_label": "9.1 development server"
     },
     {
@@ -14727,7 +14867,7 @@
       "source_location": "L706",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_9_2_offline_index_build",
-      "community": 25,
+      "community": 90,
       "norm_label": "9.2 offline index build"
     },
     {
@@ -14737,7 +14877,7 @@
       "source_location": "L720",
       "_origin": "ast",
       "id": "vanilla_rag_backend_mimarisi_9_3_production_like_start",
-      "community": 25,
+      "community": 90,
       "norm_label": "9.3 production-like start"
     },
     {
@@ -14958,7 +15098,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 101,
+      "community": 3,
       "norm_label": "multi-collection support",
       "id": "multi_collection_support"
     },
@@ -15023,7 +15163,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 101,
+      "community": 75,
       "norm_label": "stale job recovery",
       "id": "stale_job_recovery"
     },
@@ -15036,7 +15176,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 69,
+      "community": 3,
       "norm_label": "sqlite registry",
       "id": "sqlite_registry"
     },
@@ -15075,7 +15215,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 20,
+      "community": 101,
       "norm_label": "langchain framework",
       "id": "langchain"
     },
@@ -15088,7 +15228,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 97,
+      "community": 54,
       "norm_label": "express http framework",
       "id": "express"
     },
@@ -15127,7 +15267,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 20,
+      "community": 101,
       "norm_label": "index job",
       "id": "readme_index_job"
     },
@@ -15153,7 +15293,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 101,
+      "community": 75,
       "norm_label": "onboarding cli",
       "id": "readme_onboarding_cli"
     },
@@ -15166,7 +15306,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 99,
+      "community": 69,
       "norm_label": "admin api",
       "id": "readme_admin_api"
     },
@@ -15179,7 +15319,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 99,
+      "community": 69,
       "norm_label": "rag api",
       "id": "readme_rag_api"
     },
@@ -15192,7 +15332,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 99,
+      "community": 69,
       "norm_label": "readiness system",
       "id": "readme_readiness"
     },
@@ -15231,7 +15371,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 69,
+      "community": 3,
       "norm_label": "registry model",
       "id": "notes_multicollection_plan_registry_model"
     },
@@ -15309,7 +15449,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 99,
+      "community": 69,
       "norm_label": "ollama model validation gap",
       "id": "todos_ollama_model_validation"
     },
@@ -15322,7 +15462,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 99,
+      "community": 69,
       "norm_label": "benchmark runner gap",
       "id": "todos_benchmark_gap"
     },
@@ -15335,7 +15475,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 99,
+      "community": 69,
       "norm_label": "test coverage gap",
       "id": "todos_test_coverage_gap"
     },
@@ -25549,6 +25689,16 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/admin/onboard.ts",
+      "source_location": "L190",
+      "weight": 1.0,
+      "source": "admin_onboard",
+      "target": "admin_onboard_promptadminauth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
       "source_location": "L112",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -25564,6 +25714,16 @@
       "confidence_score": 1.0,
       "source": "admin_onboard",
       "target": "admin_onboard_promptconfig"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L34",
+      "weight": 1.0,
+      "source": "admin_onboard",
+      "target": "admin_onboard_promptedconfig",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -25589,6 +25749,26 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/admin/onboard.ts",
+      "source_location": "L144",
+      "weight": 1.0,
+      "source": "admin_onboard",
+      "target": "admin_onboard_promptrequiredstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L156",
+      "weight": 1.0,
+      "source": "admin_onboard",
+      "target": "admin_onboard_promptsecretconfirmation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
       "source_location": "L74",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -25609,11 +25789,65 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/admin/onboard.ts",
+      "source_location": "L388",
+      "weight": 1.0,
+      "source": "admin_onboard",
+      "target": "admin_onboard_writeadminsessionsecretfile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
       "source_location": "L318",
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "admin_onboard",
       "target": "admin_onboard_writeconfigwithbackup"
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "admin_onboard",
+      "target": "admin_passwordhash",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "admin_onboard",
+      "target": "admin_passwordhash_hashpassword",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "admin_onboard",
+      "target": "http_adminauth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "admin_onboard",
+      "target": "http_adminauth_validateadminauthconfig",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -25818,6 +26052,17 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "src/admin/onboard.ts",
+      "source_location": "L213",
+      "weight": 1.0,
+      "source": "admin_onboard_promptadminauth",
+      "target": "admin_onboard_promptstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
       "source_location": "L172",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -25840,11 +26085,44 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "src/admin/onboard.ts",
+      "source_location": "L201",
+      "weight": 1.0,
+      "source": "admin_onboard_promptadminauth",
+      "target": "admin_onboard_promptboolean",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
       "source_location": "L275",
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "admin_onboard_promptconfig",
       "target": "admin_onboard_promptboolean"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L158",
+      "weight": 1.0,
+      "source": "admin_onboard_promptsecretconfirmation",
+      "target": "admin_onboard_promptrequiredstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L212",
+      "weight": 1.0,
+      "source": "admin_onboard_promptadminauth",
+      "target": "admin_onboard_promptsecretconfirmation",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -25862,11 +26140,44 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "src/admin/onboard.ts",
+      "source_location": "L224",
+      "weight": 1.0,
+      "source": "admin_onboard_promptadminauth",
+      "target": "admin_passwordhash_hashpassword",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L243",
+      "weight": 1.0,
+      "source": "admin_onboard_promptconfig",
+      "target": "admin_onboard_promptadminauth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
       "source_location": "L405",
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "admin_onboard_main",
       "target": "admin_onboard_promptconfig"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L511",
+      "weight": 1.0,
+      "source": "admin_onboard_main",
+      "target": "admin_onboard_writeadminsessionsecretfile",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -25977,6 +26288,17 @@
       "confidence_score": 1.0,
       "source": "admin_onboard_rundependencychecks",
       "target": "src_rag_checkollamahealth"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/admin/onboard.ts",
+      "source_location": "L522",
+      "weight": 1.0,
+      "source": "admin_onboard_main",
+      "target": "http_adminauth_validateadminauthconfig",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -32543,6 +32865,16 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/http/adminAuth.ts",
+      "source_location": "L144",
+      "weight": 1.0,
+      "source": "http_adminauth",
+      "target": "http_adminauth_readconfiguredsessionsecret",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/http/adminAuth.ts",
       "source_location": "L109",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -32558,6 +32890,16 @@
       "confidence_score": 1.0,
       "source": "http_adminauth",
       "target": "http_adminauth_tosummary"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/http/adminAuth.ts",
+      "source_location": "L160",
+      "weight": 1.0,
+      "source": "http_adminauth",
+      "target": "http_adminauth_validateadminauthconfig",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -32646,6 +32988,39 @@
       "confidence_score": 1.0,
       "source": "http_adminauth_createadminauthservice",
       "target": "http_adminauth_ensurevalidpasswordhashes"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/http/adminAuth.ts",
+      "source_location": "L179",
+      "weight": 1.0,
+      "source": "http_adminauth_validateadminauthconfig",
+      "target": "http_adminauth_ensurevalidpasswordhashes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/http/adminAuth.ts",
+      "source_location": "L166",
+      "weight": 1.0,
+      "source": "http_adminauth_validateadminauthconfig",
+      "target": "http_adminauth_readconfiguredsessionsecret",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/http/adminAuth.ts",
+      "source_location": "L227",
+      "weight": 1.0,
+      "source": "http_adminauth_createadminauthservice",
+      "target": "http_adminauth_validateadminauthconfig",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -37739,9 +38114,9 @@
       "source_file": "test/admin.auth.test.ts",
       "source_location": "L22",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "test_admin_auth_test",
-      "target": "test_admin_auth_test_createcookiepair",
-      "confidence_score": 1.0
+      "target": "test_admin_auth_test_createcookiepair"
     },
     {
       "relation": "contains",
@@ -37759,9 +38134,9 @@
       "source_file": "test/admin.auth.test.ts",
       "source_location": "L26",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "test_admin_auth_test",
-      "target": "test_admin_auth_test_invokemiddleware",
-      "confidence_score": 1.0
+      "target": "test_admin_auth_test_invokemiddleware"
     },
     {
       "relation": "contains",
@@ -38127,6 +38502,156 @@
     {
       "relation": "references",
       "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "claude",
+      "target": "agents",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "claude",
+      "target": "claude_claude_md",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "claude",
+      "target": "docs_admin_api_endpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "claude",
+      "target": "docs_http_workflows",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "claude",
+      "target": "docs_readme",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "claude",
+      "target": "docs_user_api_endpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L64",
+      "weight": 1.0,
+      "source": "claude",
+      "target": "vanilla_rag_backend_mimarisi",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L67",
+      "weight": 1.0,
+      "source": "claude_claude_md",
+      "target": "claude_after_changing_code",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "claude_claude_md",
+      "target": "claude_architecture_map",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L34",
+      "weight": 1.0,
+      "source": "claude_claude_md",
+      "target": "claude_auth_rbac_csrf",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L54",
+      "weight": 1.0,
+      "source": "claude_claude_md",
+      "target": "claude_config_secrets",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L43",
+      "weight": 1.0,
+      "source": "claude_claude_md",
+      "target": "claude_conventions_the_gotchas",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L61",
+      "weight": 1.0,
+      "source": "claude_claude_md",
+      "target": "claude_docs_knowledge_graph",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "claude_claude_md",
+      "target": "claude_run_build_test",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "claude_claude_md",
+      "target": "claude_what_this_is",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
       "source_file": "notes/onboardin_plan.md",
       "source_location": "L3",
       "weight": 1.0,
@@ -38153,6 +38678,76 @@
       "weight": 1.0,
       "source": "readme",
       "target": "config_rag_config_yaml"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "readme",
+      "target": "docs_admin_api_endpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L216",
+      "weight": 1.0,
+      "source": "readme",
+      "target": "docs_coding_agent_prompt_template",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L215",
+      "weight": 1.0,
+      "source": "readme",
+      "target": "docs_frontend_acceptance_checklist",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L214",
+      "weight": 1.0,
+      "source": "readme",
+      "target": "docs_frontend_agent_handoff",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L64",
+      "weight": 1.0,
+      "source": "readme",
+      "target": "docs_http_workflows",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L51",
+      "weight": 1.0,
+      "source": "readme",
+      "target": "docs_readme",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L210",
+      "weight": 1.0,
+      "source": "readme",
+      "target": "docs_user_api_endpoints",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -38327,6 +38922,16 @@
     {
       "relation": "references",
       "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L50",
+      "weight": 1.0,
+      "source": "readme",
+      "target": "test_frontend_readme",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "README.md",
       "source_location": null,
@@ -38428,11 +39033,11 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L112",
+      "source_location": "L181",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "readme_vanilla_rag_backend",
-      "target": "readme_backend_y\u00f6netimi_ve_admin_workflow"
+      "target": "readme_admin_panel_workflow",
+      "confidence_score": 1.0
     },
     {
       "relation": "implements",
@@ -38448,31 +39053,41 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L39",
+      "source_location": "L164",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "readme_vanilla_rag_backend",
-      "target": "readme_frontend_integration_paketi"
+      "target": "readme_collection_discovery_and_cleanup_notes",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L253",
+      "source_location": "L208",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "readme_vanilla_rag_backend",
-      "target": "readme_health_ve_readiness"
+      "target": "readme_docs_map",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L30",
+      "source_location": "L15",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "readme_vanilla_rag_backend",
-      "target": "readme_h\u0131zl\u0131_kullan\u0131m_k\u0131lavuzu"
+      "target": "readme_feature_map",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L119",
+      "weight": 1.0,
+      "source": "readme_vanilla_rag_backend",
+      "target": "readme_g\u00fcvenli_admin_quickstart",
+      "confidence_score": 1.0
     },
     {
       "relation": "implements",
@@ -38488,41 +39103,21 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L59",
+      "source_location": "L220",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "readme_vanilla_rag_backend",
-      "target": "readme_kolleksiyon_olu\u015fturma"
+      "target": "readme_key_scripts",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L39",
+      "source_location": "L248",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "readme_vanilla_rag_backend",
-      "target": "readme_kurulum"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "README.md",
-      "source_location": "L18",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "readme_vanilla_rag_backend",
-      "target": "readme_nerede_ne_var"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "README.md",
-      "source_location": "L52",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "readme_vanilla_rag_backend",
-      "target": "readme_on_boarding"
+      "target": "readme_notes",
+      "confidence_score": 1.0
     },
     {
       "relation": "implements",
@@ -38538,11 +39133,21 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L229",
+      "source_location": "L231",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "readme_vanilla_rag_backend",
-      "target": "readme_rag_kullan\u0131m\u0131_frontend_api"
+      "target": "readme_public_api_reminders",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L68",
+      "weight": 1.0,
+      "source": "readme_vanilla_rag_backend",
+      "target": "readme_quick_start",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -38558,51 +39163,51 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L295",
+      "source_location": "L241",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "readme_vanilla_rag_backend",
-      "target": "readme_response_ve_hata_semantigi"
+      "target": "readme_stack",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L72",
+      "source_location": "L60",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "readme_vanilla_rag_backend",
-      "target": "readme_son_kullanici_icin_kisa_kullanim"
+      "target": "readme_start_here",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L104",
+      "source_location": "L191",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "readme_vanilla_rag_backend",
-      "target": "readme_test_aray\u00fcz\u00fcn\u00fc_a\u00e7mak_i\u00e7in_taray\u0131c\u0131n\u0131zda_\u015fu_adrese_gidin"
+      "target": "readme_typical_workflows",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L277",
+      "source_location": "L5",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "readme_vanilla_rag_backend",
-      "target": "readme_veri_kaynaklar\u0131_ve_ingestion_i\u0307ndeksleme_altyap\u0131s\u0131"
+      "target": "readme_what_it_ships",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L9",
+      "source_location": "L98",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "readme_vanilla_rag_backend",
-      "target": "readme_\u00f6ne_\u00e7\u0131kan_\u00f6zellikler"
+      "target": "readme_what_onboarding_is_for",
+      "confidence_score": 1.0
     },
     {
       "relation": "implements",
@@ -38658,11 +39263,61 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L175",
+      "source_location": "L26",
       "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "readme_backend_y\u00f6netimi_ve_admin_workflow",
-      "target": "readme_1_collection_yaratma_admin_api"
+      "source": "readme_feature_map",
+      "target": "readme_admin_and_operations",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L54",
+      "weight": 1.0,
+      "source": "readme_feature_map",
+      "target": "readme_data_and_indexing",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L48",
+      "weight": 1.0,
+      "source": "readme_feature_map",
+      "target": "readme_frontend_and_integration_assets",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "readme_feature_map",
+      "target": "readme_public_rag",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L38",
+      "weight": 1.0,
+      "source": "readme_feature_map",
+      "target": "readme_reliability_and_safety",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L151",
+      "weight": 1.0,
+      "source": "readme_g\u00fcvenli_admin_quickstart",
+      "target": "readme_manual_admin_setup",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -38670,89 +39325,19 @@
       "source_file": "README.md",
       "source_location": "L200",
       "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "readme_backend_y\u00f6netimi_ve_admin_workflow",
-      "target": "readme_2_re_index_job_ba\u015flatma"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "README.md",
-      "source_location": "L221",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "readme_backend_y\u00f6netimi_ve_admin_workflow",
-      "target": "readme_3_job_durumunu_g\u00f6r\u00fcnt\u00fcleme"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "README.md",
-      "source_location": "L170",
-      "weight": 1.0,
-      "source": "readme_backend_y\u00f6netimi_ve_admin_workflow",
-      "target": "readme_admin_auth_quickstart",
+      "source": "readme_typical_workflows",
+      "target": "readme_admin_collection_setup",
       "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L138",
+      "source_location": "L193",
       "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "readme_backend_y\u00f6netimi_ve_admin_workflow",
-      "target": "readme_operasyonel_config_y\u00fczeyi"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "README.md",
-      "source_location": "L116",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "readme_backend_y\u00f6netimi_ve_admin_workflow",
-      "target": "readme_sistem_onboarding_i\u0307lk_kurulum"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "README.md",
-      "source_location": "L178",
-      "weight": 1.0,
-      "source": "readme_admin_auth_quickstart",
-      "target": "readme_g\u00fcvenli_admin_quickstart_adminauth_enabled_true",
+      "source": "readme_typical_workflows",
+      "target": "readme_public_question_answering",
       "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "README.md",
-      "source_location": "L172",
-      "weight": 1.0,
-      "source": "readme_admin_auth_quickstart",
-      "target": "readme_lokal_quickstart_adminauth_enabled_false",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "README.md",
-      "source_location": "L263",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "readme_health_ve_readiness",
-      "target": "readme_rag_sorgular\u0131_retrieve_ve_query"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "README.md",
-      "source_location": "L319",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "readme_response_ve_hata_semantigi",
-      "target": "readme_ba\u015fl\u0131ca_hata_kodlar\u0131"
     },
     {
       "relation": "contains",
@@ -45761,5 +46346,5 @@
       "source_file": "data/dataset2/README.md"
     }
   ],
-  "built_at_commit": "0170ea9884929117f3fa3bb6566fe6f89a2fcc7d"
+  "built_at_commit": "683e7bb6c1f09911191d3270f44ec3a4727cb7e6"
 }

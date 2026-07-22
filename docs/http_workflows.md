@@ -339,6 +339,7 @@ curl.exe -s `
 
 ```powershell
 curl.exe -s `
+  -b "$COOKIE_JAR" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
@@ -351,6 +352,7 @@ curl.exe -s `
 $COLLECTION_ID_2 = "another-collection-id"
 
 curl.exe -s `
+  -b "$COOKIE_JAR" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
@@ -361,6 +363,7 @@ curl.exe -s `
 
 ```powershell
 curl.exe -s `
+  -b "$COOKIE_JAR" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
@@ -376,13 +379,24 @@ Notes:
 - If any selected collection does not exist, expect `404 COLLECTION_NOT_FOUND`.
 - Use this endpoint for persisted operator history such as reindex, delete, query, retrieve, and related failures.
 
-## 5. Job Cancel And Delete Flow
+## 6. Job Cancel And Delete Flow
+
+When `adminAuth.enabled=true`, these mutations require the session cookie **and** a freshly minted `x-admin-action-token` (bound to the exact method + path), exactly like the reindex flow. The snippets below mint the token just in time.
 
 ### Cancel a queued or running job
 
 ```powershell
-curl.exe -i `
+$ACTION_TOKEN = ((curl.exe -s `
+  -b "$COOKIE_JAR" `
   -X POST `
+  -H "content-type: application/json" `
+  -d "{""method"":""POST"",""path"":""/v1/admin/jobs/$JOB_ID/cancel""}" `
+  "$BASE_URL/v1/admin/auth/action-token" | ConvertFrom-Json).actionToken)
+
+curl.exe -i `
+  -b "$COOKIE_JAR" `
+  -X POST `
+  -H "x-admin-action-token: $ACTION_TOKEN" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
@@ -396,8 +410,17 @@ Expected result:
 ### Delete a terminal job
 
 ```powershell
+$ACTION_TOKEN = ((curl.exe -s `
+  -b "$COOKIE_JAR" `
+  -X POST `
+  -H "content-type: application/json" `
+  -d "{""method"":""DELETE"",""path"":""/v1/admin/jobs/$JOB_ID""}" `
+  "$BASE_URL/v1/admin/auth/action-token" | ConvertFrom-Json).actionToken)
+
 curl.exe -i `
+  -b "$COOKIE_JAR" `
   -X DELETE `
+  -H "x-admin-action-token: $ACTION_TOKEN" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
@@ -411,8 +434,17 @@ Expected result:
 ### Bulk-delete terminal jobs
 
 ```powershell
-curl.exe -i `
+$ACTION_TOKEN = ((curl.exe -s `
+  -b "$COOKIE_JAR" `
   -X POST `
+  -H "content-type: application/json" `
+  -d "{""method"":""POST"",""path"":""/v1/admin/jobs/bulk-delete""}" `
+  "$BASE_URL/v1/admin/auth/action-token" | ConvertFrom-Json).actionToken)
+
+curl.exe -i `
+  -b "$COOKIE_JAR" `
+  -X POST `
+  -H "x-admin-action-token: $ACTION_TOKEN" `
   -H "content-type: application/json" `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
@@ -421,7 +453,7 @@ curl.exe -i `
   "$BASE_URL/v1/admin/jobs/bulk-delete"
 ```
 
-## 6. Rate Limit Failure Example
+## 7. Rate Limit Failure Example
 
 ```powershell
 curl.exe -i `
@@ -442,7 +474,7 @@ If rate-limited, expect:
 - `X-RateLimit-Remaining`
 - `X-RateLimit-Reset`
 
-## 7. Invalid Request Example
+## 8. Invalid Request Example
 
 ```powershell
 curl.exe -s `
@@ -460,7 +492,7 @@ Expect:
 - `400 INVALID_REQUEST_BODY`
 - often `details.issues`
 
-## 8. Recommended Frontend Polling Strategy
+## 9. Recommended Frontend Polling Strategy
 
 - Poll `/v1/admin/jobs/:jobId` or `/v1/admin/jobs` every `2-5s` while reindex is queued or running.
 - Poll `/v1/admin/jobs/:jobId/events` every `2-5s` when the current UI needs stage-level progress detail.

@@ -8,7 +8,7 @@ info:
     system health/readiness endpoints. Admin auth is opt-in and uses a signed
     session cookie plus short-lived action tokens for protected mutations.
 servers:
-  - url: http://localhost:3000
+  - url: http://localhost:3010
     description: Local development
 tags:
   - name: System
@@ -289,6 +289,8 @@ paths:
                       expiresAt:
                         type: string
                         format: date-time
+        "400":
+          $ref: "#/components/responses/ApiError"
         "401":
           $ref: "#/components/responses/ApiError"
         "404":
@@ -298,13 +300,12 @@ paths:
       tags: [Admin Auth]
       operationId: adminLogout
       summary: Clear the admin session cookie
-      security:
-        - AdminSessionCookie: []
+      description: >
+        Idempotent. Always clears the cookie and returns 204, whether or not a
+        valid session is present, so it requires no authentication.
       responses:
         "204":
           $ref: "#/components/responses/NoContent"
-        "401":
-          $ref: "#/components/responses/ApiError"
   /v1/admin/auth/session:
     get:
       tags: [Admin Auth]
@@ -380,6 +381,8 @@ paths:
         "400":
           $ref: "#/components/responses/ApiError"
         "401":
+          $ref: "#/components/responses/ApiError"
+        "403":
           $ref: "#/components/responses/ApiError"
         "404":
           $ref: "#/components/responses/ApiError"

@@ -151,7 +151,11 @@ Notes:
 
 ### `GET /v1/admin/auth/session`
 
-Returns the active admin session summary, or `401` when auth is enabled but no valid session cookie is present.
+Always returns `{ enabled, authenticated, session }`:
+
+- Auth disabled: `200` with `{ "enabled": false, "authenticated": false, "session": null }`.
+- Auth enabled with a valid cookie: `200` with `{ "enabled": true, "authenticated": true, "session": { "username", "role", "tenantId", "expiresAt" } }`.
+- Auth enabled with no/invalid cookie: `401 UNAUTHORIZED`.
 
 ### `POST /v1/admin/auth/login`
 
@@ -178,6 +182,17 @@ Request body:
   "path": "/v1/admin/collections/demo/reindex"
 }
 ```
+
+Response:
+
+```json
+{
+  "actionToken": "...",
+  "expiresAt": "2026-01-01T00:05:00.000Z"
+}
+```
+
+Send the returned `actionToken` as the `x-admin-action-token` header on the matching mutation. Returns `403 FORBIDDEN` when the session's role lacks the capability for the requested route.
 
 ### `POST /v1/admin/auth/logout`
 
@@ -206,6 +221,7 @@ Optional:
 
 Behavior:
 
+- Returns `201 Created` on success.
 - Omitted create fields are filled from runtime configuration defaults and model defaults.
 - A newly created collection starts as a logical record; it is not queryable until indexing produces an active version.
 - Use `GET /v1/admin/config/defaults` to show backend defaults in the create form before save.
@@ -245,6 +261,8 @@ Reindex-bound fields:
 - `embeddingModel`
 
 If any reindex-bound field changes, the backend persists the configuration but expects a reindex before the indexed snapshot fully matches the desired settings.
+
+This classification applies to `PATCH` (update). On **create**, only `displayName` and `description` are treated as immediate; every other field (including `chatModel`, `retrievalK`, `retrievalDistanceThreshold`, and `distanceMetric`) is reported under `impact.reindexFields`, because a new collection must be indexed before any indexed setting takes effect.
 
 ## Live Read Model vs Desired Model
 
@@ -417,7 +435,8 @@ Notes:
 
 - Records are returned newest-first by creation time.
 - This endpoint is intended for operator visibility into zero-downtime rebuilds and retention cleanup, not for public clients.
-- The response can include `building`, `active`, `failed_build`, `delete_pending`, `cleanup_failed`, and `deleted` records.
+- The response can include `building`, `active`, `retired`, `failed_build`, `delete_pending`, `cleanup_failed`, and `deleted` records.
+- `retired` is a previously active physical collection that has been superseded by a newer active version and is awaiting the retention window before it moves to `delete_pending`.
 - `delete_pending` and `cleanup_failed` indicate retention/cleanup work that is still pending or needs retry.
 - `failed_build` indicates a target physical collection that never became active.
 - Response includes `Cache-Control: no-store`.

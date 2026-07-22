@@ -59,6 +59,7 @@ TypeScript Express backend for multi-collection LangChain RAG over documents in 
 
 ## Start here
 
+- [CLAUDE.md](CLAUDE.md) for the agent/contributor brief: stack, commands, architecture map, and conventions.
 - [docs/README.md](docs/README.md) for the documentation index and reading order.
 - [docs/admin_api_endpoints.md](docs/admin_api_endpoints.md) for admin auth, roles, and collection management.
 - [docs/http_workflows.md](docs/http_workflows.md) for end-to-end curl examples.

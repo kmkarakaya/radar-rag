@@ -6,7 +6,7 @@ import { HttpError } from "./errors.js";
 import { config, type ResolvedConfig } from "../config.js";
 import { startReindexJob } from "../indexing/jobs.js";
 import type { RequestContext } from "./requestContext.js";
-import type { CreateCollectionInput, IndexJobStatus, ListAuditLogInput, ListJobsInput } from "../collections/types.js";
+import type { CreateCollectionInput, IndexJob, IndexJobStatus, ListAuditLogInput, ListJobsInput } from "../collections/types.js";
 import { collectionCreateSchema, collectionUpdateSchema } from "./collectionSchemas.js";
 import {
   buildCreateCollectionInput,
@@ -18,6 +18,11 @@ import { createAdminAuthService, type AdminAuthService } from "./adminAuth.js";
 import { getOllamaModelDiscovery } from "../rag.js";
 
 const JOB_STATUS_VALUES = ["queued", "running", "succeeded", "failed", "cancelled"] as const satisfies readonly IndexJobStatus[];
+
+// Strip the internal concurrency lock token before serializing a job to any API response.
+function serializeJob({ lockToken, ...job }: IndexJob): Omit<IndexJob, "lockToken"> {
+  return job;
+}
 
 export function createAdminRouter(deps: AppDependencies, runtimeConfig: ResolvedConfig = deps.runtimeConfig ?? config) {
   const router = express.Router();
@@ -575,7 +580,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       const result = await deps.registry!.listJobs(context, filters);
       res.setHeader("Cache-Control", "no-store");
       res.json({
-        jobs: result.jobs,
+        jobs: result.jobs.map((item) => ({ ...item, job: serializeJob(item.job) })),
         nextCursor: result.nextCursor,
       });
     } catch (error) {
@@ -598,7 +603,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       res.locals.collectionId = job.collectionId;
       res.locals.jobId = job.id;
       res.locals.physicalCollection = job.targetPhysicalCollection;
-      res.json({ job });
+      res.json({ job: serializeJob(job) });
     } catch (error) {
       next(error);
     }

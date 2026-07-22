@@ -76,7 +76,6 @@ const ADMIN_ROUTE_PATTERNS: Array<{
 }> = [
   { method: "GET", pattern: /^\/v1\/admin\/config\/defaults\/?$/, capability: "read", actionTokenRequired: false },
   { method: "GET", pattern: /^\/v1\/admin\/models\/?$/, capability: "read", actionTokenRequired: false },
-  { method: "GET", pattern: /^\/v1\/admin\/collections\/?$/, capability: "read", actionTokenRequired: false },
   { method: "POST", pattern: /^\/v1\/admin\/collections\/?$/, capability: "createCollection", actionTokenRequired: true },
   { method: "GET", pattern: /^\/v1\/admin\/collections\/[^/]+\/?$/, capability: "read", actionTokenRequired: false },
   { method: "GET", pattern: /^\/v1\/admin\/collections\/[^/]+\/physical-collections\/?$/, capability: "read", actionTokenRequired: false },

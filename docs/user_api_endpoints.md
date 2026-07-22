@@ -263,7 +263,18 @@ Example response:
 
 ### `GET /v1/rag/collections/:collectionId`
 
-Returns the same public DTO for a single collection.
+Returns the same public DTO for a single collection, wrapped in a `collection` field:
+
+```json
+{
+  "collection": {
+    "id": "col_123",
+    "displayName": "..."
+  }
+}
+```
+
+Read the DTO from `body.collection`, not the top level. (The list endpoint uses `body.collections[]`.)
 
 Use this when you already know the collection ID and want a point lookup.
 
@@ -371,6 +382,11 @@ Embedding model nuance:
 - `modelAvailability.embeddingModel` is the model used by live reads right now.
 - If `modelAvailability.desiredEmbeddingModel` appears, the admin configuration was changed and a reindex is still needed before live reads switch to that future embedding model.
 - This matters after an admin updates `embeddingModel` but before reindex completes.
+
+Possible readiness codes (inside the `200 OK` payload — these are distinct from the HTTP error codes below):
+
+- Blockers: `COLLECTION_NO_ACTIVE_PHYSICAL_COLLECTION`, `COLLECTION_ACTIVE_PHYSICAL_UNREADABLE`, `OLLAMA_UNREACHABLE`, `EMBED_MODEL_MISSING`, `CHAT_MODEL_MISSING`.
+- Warnings: `COLLECTION_INDEX_JOB_ACTIVE`.
 
 Frontend rule:
 
@@ -490,7 +506,7 @@ Notes:
 | `ANSWER_NOT_IN_RETRIEVED_CONTEXT` | `422` | Chunks were retrieved but cannot support a grounded answer |
 | `EMPTY_MODEL_RESPONSE` | `502` | Model returned an empty answer |
 | `DISALLOWED_FALLBACK_ANSWER` | `502` | Model returned a blocked fallback string |
-| `MODEL_BACKPRESSURE` | `503` | Timeout, overload, or aborted backend work |
+| `MODEL_BACKPRESSURE` | `503` | Timeout, overload, aborted work, or a network/connection error reaching Chroma or Ollama |
 | `COLLECTION_STORAGE_INCONSISTENT` | `503` | Metadata and physical storage disagree |
 | `RATE_LIMIT_EXCEEDED` | `429` | Operation-specific rate limit hit |
 | `ROUTE_NOT_FOUND` | `404` | Wrong URL or legacy endpoint |

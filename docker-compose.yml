@@ -5,12 +5,16 @@
 #
 # Put your documents under ./data, then open http://localhost:3010/admin.
 # Model names can be changed with RAG_OLLAMA_CHAT_MODEL / RAG_OLLAMA_EMBEDDING_MODEL (e.g. in a .env file).
+# Host ports can be changed with BACKEND_HOST_PORT (default 3010) and CHROMA_HOST_PORT (default 8000).
+# To use an Ollama already running on the host instead of the bundled one:
+#   RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434 in .env, then
+#   docker compose up -d --no-deps chroma backend
 
 services:
   chroma:
     image: chromadb/chroma:1.5.9
     ports:
-      - "8000:8000"
+      - "${CHROMA_HOST_PORT:-8000}:8000"
     volumes:
       - ./chroma_data:/data
     restart: unless-stopped
@@ -52,10 +56,10 @@ services:
   backend:
     build: .
     ports:
-      - "3010:3010"
+      - "${BACKEND_HOST_PORT:-3010}:3010"
     environment:
       RAG_CHROMA_URL: http://chroma:8000
-      # Set RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434 to use an Ollama running on the host.
+      # http://host.docker.internal:11434 = Ollama on the host (start with --no-deps, see the top of this file).
       RAG_OLLAMA_BASE_URL: ${RAG_OLLAMA_BASE_URL:-http://ollama:11434}
       RAG_OLLAMA_CHAT_MODEL: ${RAG_OLLAMA_CHAT_MODEL:-gemma3:4b}
       RAG_OLLAMA_EMBEDDING_MODEL: ${RAG_OLLAMA_EMBEDDING_MODEL:-embeddinggemma-2:270m}

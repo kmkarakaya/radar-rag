@@ -9,18 +9,25 @@ import { createApp, type AppDependencies } from "../../src/app.js";
 import { createSqliteCollectionRegistry } from "../../src/collections/sqliteRegistry.js";
 import { resolveReadableCollection as actualResolveReadableCollection } from "../../src/collections/resolveReadableCollection.js";
 import type { CollectionRegistry, RagCollection } from "../../src/collections/types.js";
-import { config } from "../../src/config.js";
+import { config as loadedConfig } from "../../src/config.js";
 import type { IndexJobRunner } from "../../src/indexing/jobRunner.js";
 import type { RateLimitInput, RequestRateLimiter } from "../../src/http/rateLimit.js";
 import type { OperationalLogEvent } from "../../src/observability/logger.js";
 import { RagQueryError } from "../../src/rag.js";
 
-// These tests exercise the API contract, not admin auth (covered in test/admin.auth.test.ts),
-// so they must not depend on whether the shipped YAML has adminAuth enabled.
-const testRuntimeConfig = {
-  ...config,
-  adminAuth: { ...config.adminAuth, enabled: false },
+// These tests exercise the API contract, so they must not depend on operator choices that
+// `npm run onboard` writes to config/rag.config.yaml (models, rate limit, debug timings, admin auth).
+// Admin auth itself is covered in test/admin.auth.test.ts. Every `config.*` reference below uses
+// this pinned copy, which the Ollama stub (availableOllamaModels) is built to match.
+const config = {
+  ...loadedConfig,
+  ollamaEmbeddingModel: "bge-m3",
+  ollamaChatModel: "gemma3:4b-cloud",
+  rateLimitEnabled: true,
+  includeDebugTimings: false,
+  adminAuth: { ...loadedConfig.adminAuth, enabled: false },
 };
+const testRuntimeConfig = config;
 
 let server: Server;
 let baseUrl: string;

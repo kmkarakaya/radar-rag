@@ -48,7 +48,8 @@ describe("runtime static contract", () => {
     assert.match(configContent, /cleanup:\s*[\r\n]+\s+retentionMs:\s*3600000/);
     assert.match(configContent, /limits:\s*[\r\n]+\s+maxConcurrentEmbeddings:\s*5/);
     assert.match(configContent, /maxConcurrentGenerations:\s*2/);
-    assert.match(configContent, /rateLimit:\s*[\r\n]+\s+enabled:\s*true/);
+    // Toggles below are operator choices written by `npm run onboard`; lock presence, not value.
+    assert.match(configContent, /rateLimit:\s*[\r\n]+\s+enabled:\s*(true|false)/);
     assert.match(configContent, /windowMs:\s*60000/);
     assert.match(configContent, /maxRequestsPerWindow:\s*60/);
     // adminAuth.enabled / users are operator choices written by `npm run onboard`;
@@ -56,7 +57,7 @@ describe("runtime static contract", () => {
     assert.match(configContent, /adminAuth:\s*[\r\n]+\s+enabled:\s*(true|false)/);
     assert.match(configContent, /sessionSecretEnvVar:\s*RAG_ADMIN_SESSION_SECRET/);
     assert.match(configContent, /\n\s+users:/);
-    assert.match(configContent, /observability:\s*[\r\n]+\s+includeDebugTimings:\s*false/);
+    assert.match(configContent, /observability:\s*[\r\n]+\s+includeDebugTimings:\s*(true|false)/);
   });
 
   it("documents request rate limiting and debug latency contracts", async () => {

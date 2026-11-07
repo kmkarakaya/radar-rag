@@ -27,6 +27,7 @@ type CliOptions = {
   configPath: string;
   dryRun: boolean;
   yes: boolean;
+  /** @deprecated Onboarding no longer runs indexing; the flag only prints a notice. */
   skipIndex: boolean;
   noWrite: boolean;
 };
@@ -65,6 +66,7 @@ function parseArgs(argv: string[]): CliOptions {
         options.yes = true;
         break;
       case "--skip-index":
+        // Deprecated: onboarding no longer runs indexing. Accepted so existing scripts keep working.
         options.skipIndex = true;
         break;
       case "--no-write":
@@ -459,41 +461,89 @@ async function printSourceAnalysis(runtimeConfig: ResolvedConfig): Promise<numbe
   return analysis.documents.length;
 }
 
-async function runDependencyChecks(runtimeConfig: ResolvedConfig): Promise<boolean> {
+type SetupIssue = {
+  problem: string;
+  fix: string;
+};
+
+/** Runs dependency checks and returns what must be fixed before indexing. Never throws for an unhealthy dependency. */
+async function runDependencyChecks(runtimeConfig: ResolvedConfig): Promise<SetupIssue[]> {
   console.log("\nDependency checks:");
+  const issues: SetupIssue[] = [];
 
   const chroma = await checkChromaHealth(runtimeConfig);
   console.log(`- Chroma: ${chroma.ok ? "ok" : "fail"}${chroma.error ? ` - ${chroma.error}` : ""}`);
+  if (!chroma.ok) {
+    issues.push({
+      problem: `Chroma is not reachable at ${runtimeConfig.chromaUrl}.`,
+      fix: "Start Docker Desktop, wait for \"Engine running\", then run: docker compose up -d chroma",
+    });
+  }
 
   const ollama = await checkOllamaHealth(runtimeConfig);
   console.log(`- Ollama: ${ollama.ok ? "ok" : "fail"}${ollama.error ? ` - ${ollama.error}` : ""}`);
+  if (!ollama.ok) {
+    issues.push({
+      problem: `Ollama is not reachable at ${runtimeConfig.ollamaBaseUrl}.`,
+      fix: "Start Ollama (desktop app or: ollama serve), or fix ollama.baseUrl in the config.",
+    });
+    return issues;
+  }
 
   const ollamaDetails = (ollama.details ?? {}) as Partial<OllamaHealthDetails>;
-  const canCheckEmbedding = ollama.ok && ollamaDetails.embeddingModelAvailable === true;
-  const canCheckChat = ollama.ok && ollamaDetails.chatModelAvailable === true;
 
-  if (!ollama.ok) {
-    return false;
-  }
-
-  if (!canCheckEmbedding) {
+  if (ollamaDetails.embeddingModelAvailable !== true) {
     console.log(`- Embedding model: missing (${runtimeConfig.ollamaEmbeddingModel})`);
     console.log(`  Run: ollama pull ${runtimeConfig.ollamaEmbeddingModel}`);
-    return false;
+    issues.push({
+      problem: `Embedding model ${runtimeConfig.ollamaEmbeddingModel} is not pulled in Ollama.`,
+      fix: `ollama pull ${runtimeConfig.ollamaEmbeddingModel}`,
+    });
+  } else {
+    const embedding = await checkEmbeddingHealth(runtimeConfig);
+    console.log(`- Embedding smoke: ${embedding.ok ? "ok" : "fail"}${embedding.error ? ` - ${embedding.error}` : ""}`);
+    if (!embedding.ok) {
+      issues.push({
+        problem: `Embedding model ${runtimeConfig.ollamaEmbeddingModel} did not return a usable vector.`,
+        fix: `Check the Ollama logs, re-pull with: ollama pull ${runtimeConfig.ollamaEmbeddingModel}, or choose another embedding model.`,
+      });
+    }
   }
 
-  const embedding = await checkEmbeddingHealth(runtimeConfig);
-  console.log(`- Embedding smoke: ${embedding.ok ? "ok" : "fail"}${embedding.error ? ` - ${embedding.error}` : ""}`);
-
-  if (!canCheckChat) {
+  if (ollamaDetails.chatModelAvailable !== true) {
     console.log(`- Chat model: missing (${runtimeConfig.ollamaChatModel}); indexing can still run.`);
     console.log(`  Run: ollama pull ${runtimeConfig.ollamaChatModel}`);
+    issues.push({
+      problem: `Chat model ${runtimeConfig.ollamaChatModel} is not pulled in Ollama (needed for queries, not for indexing).`,
+      fix: `ollama pull ${runtimeConfig.ollamaChatModel}`,
+    });
   } else {
     const chat = await checkChatGenerationHealth(runtimeConfig);
     console.log(`- Chat smoke: ${chat.ok ? "ok" : "warn"}${chat.error ? ` - ${chat.error}` : ""}`);
+    if (!chat.ok) {
+      issues.push({
+        problem: `Chat model ${runtimeConfig.ollamaChatModel} did not answer the smoke prompt.`,
+        fix: "Check the Ollama logs or choose another chat model.",
+      });
+    }
   }
 
-  return chroma.ok && embedding.ok;
+  return issues;
+}
+
+function printSetupIssues(issues: SetupIssue[], configWritten: boolean): void {
+  if (issues.length === 0) {
+    console.log("\nAll dependency checks passed.");
+    return;
+  }
+
+  console.log(configWritten
+    ? "\nConfig saved; fix these before indexing:"
+    : "\nFix these before indexing:");
+  for (const issue of issues) {
+    console.log(`- ${issue.problem}`);
+    console.log(`  Fix: ${issue.fix}`);
+  }
 }
 
 async function main(): Promise<void> {
@@ -504,7 +554,12 @@ async function main(): Promise<void> {
 
   await printConfigSummary(runtimeConfig, process.env);
 
+  if (options.skipIndex) {
+    console.log("\nNote: --skip-index is deprecated and has no effect; onboarding no longer runs indexing.");
+  }
+
   const shouldWrite = !options.dryRun && !options.noWrite;
+  const configWritten = shouldWrite && !options.yes;
   if (shouldWrite && !options.yes) {
     await writeConfigWithBackup(nextConfig.rawConfig, options.configPath);
     if (nextConfig.adminSessionSecretValue) {
@@ -524,17 +579,27 @@ async function main(): Promise<void> {
     env: process.env,
   });
 
-  const documentCount = await printSourceAnalysis(runtimeConfig);
-  if (documentCount === 0) {
-    throw new Error("No indexable documents found. Indexing will not run.");
+  // Onboarding's job is the config; source and dependency problems are reported with a fix, not fatal.
+  const issues: SetupIssue[] = [];
+  try {
+    const documentCount = await printSourceAnalysis(runtimeConfig);
+    if (documentCount === 0) {
+      issues.push({
+        problem: `No indexable documents found under ${runtimeConfig.sourcePath}.`,
+        fix: "Add .txt, .md, .pdf, .doc or .docx files there, or set collectionDefaults.sourcePath to a folder that has them.",
+      });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`\nSource analysis: fail - ${message}`);
+    issues.push({
+      problem: `Default source path ${runtimeConfig.sourcePath} cannot be read.`,
+      fix: "Create the folder or set collectionDefaults.sourcePath to an existing folder.",
+    });
   }
 
-  const dependenciesReadyForIndex = await runDependencyChecks(runtimeConfig);
-  if (!dependenciesReadyForIndex && (options.dryRun || options.skipIndex)) {
-    console.log("\nDependencies are not ready for indexing, but index is skipped in this mode.");
-  } else if (!dependenciesReadyForIndex) {
-    throw new Error("Dependencies are not ready for indexing.");
-  }
+  issues.push(...await runDependencyChecks(runtimeConfig));
+  printSetupIssues(issues, configWritten);
 
   const adminUrl = runtimeConfig.adminAuth.enabled
     ? `http://localhost:${runtimeConfig.port}/admin/login`

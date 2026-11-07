@@ -42,7 +42,19 @@ export type AnalyzeIndexingSourceOptions = {
   ozelgeDataPath: string;
   indexSampleSize: number;
   logEvent?: OperationalLogSink;
+  /** Files to skip entirely (not counted, not reported as unsupported), e.g. the SQLite registry. */
+  excludePaths?: string[];
 };
+
+/** The SQLite registry file and its sidecar files; they can live inside a source folder (default `data/`). */
+export function registryExcludePaths(registryPath: string): string[] {
+  return ["", "-wal", "-shm", "-journal"].map((suffix) => `${registryPath}${suffix}`);
+}
+
+function normalizeComparablePath(filePath: string): string {
+  const resolved = path.resolve(filePath);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
 
 export function toDocuments(records: OzelgeRecord[], sourceHash: string): Document[] {
   const documents = records
@@ -113,7 +125,9 @@ export async function analyzeIndexingSource(
 ): Promise<IndexingSourceAnalysis> {
   const sourcePath = path.resolve(options.sourcePath);
   const ozelgeDataPath = path.resolve(options.ozelgeDataPath);
-  const sourceFilePaths = await collectSourceFiles(sourcePath);
+  const excluded = new Set((options.excludePaths ?? []).map(normalizeComparablePath));
+  const sourceFilePaths = (await collectSourceFiles(sourcePath))
+    .filter((filePath) => !excluded.has(normalizeComparablePath(filePath)));
   const sourceFiles: SourceFileSummary[] = [];
   const unsupportedFiles: UnsupportedSourceFile[] = [];
   const loadedDocuments: Document[] = [];

@@ -5,6 +5,7 @@ import { startReindexJob, runIndexJob } from "./indexing/jobs.js";
 import { createSqliteCollectionRegistry } from "./collections/sqliteRegistry.js";
 import {
   analyzeIndexingSource as analyzeMixedIndexingSource,
+  registryExcludePaths,
   toDocuments as mapOzelgeRecordsToDocuments,
   type UnsupportedSourceFile,
 } from "./ingestion/pipeline.js";
@@ -50,6 +51,7 @@ export async function analyzeIndexingSource(runtimeConfig = config) {
     sourcePath: runtimeConfig.sourcePath,
     ozelgeDataPath: runtimeConfig.ozelgeDataPath,
     indexSampleSize: runtimeConfig.indexSampleSize,
+    excludePaths: registryExcludePaths(runtimeConfig.registryPath),
   });
 }
 

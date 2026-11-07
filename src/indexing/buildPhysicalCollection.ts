@@ -1,5 +1,5 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { analyzeIndexingSource } from "../ingestion/pipeline.js";
+import { analyzeIndexingSource, registryExcludePaths } from "../ingestion/pipeline.js";
 import { createPhysicalChromaCollection, assertChromaCollectionReadable, deletePhysicalChromaCollection } from "../collections/chromaCollections.js";
 import { createVectorStore } from "../rag.js";
 import type { CreateIndexJobEventInput, RagCollection } from "../collections/types.js";
@@ -128,6 +128,7 @@ export async function buildPhysicalCollection(input: {
       ozelgeDataPath: collection.ozelgeDataPath,
       indexSampleSize: runtimeConfig.indexSampleSize,
       logEvent: input.logEvent,
+      excludePaths: registryExcludePaths(runtimeConfig.registryPath),
     });
     await onEvent?.({
       status: "running",

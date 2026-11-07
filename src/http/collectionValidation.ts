@@ -1,6 +1,6 @@
 import type { CollectionRegistry, CreateCollectionInput, RagCollection, RequestContext, UpdateCollectionPatch } from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
-import { analyzeIndexingSource } from "../ingestion/pipeline.js";
+import { analyzeIndexingSource, registryExcludePaths } from "../ingestion/pipeline.js";
 import { checkChromaHealth, checkOllamaHealth, hasConfiguredModel } from "../rag.js";
 import { recommendedActionFor, unique } from "../readiness.js";
 
@@ -248,6 +248,7 @@ async function analyzeSourcePath(
       sourcePath: draft.sourcePath,
       ozelgeDataPath: draft.ozelgeDataPath,
       indexSampleSize: runtimeConfig.collectionDefaults.indexSampleSize,
+      excludePaths: registryExcludePaths(runtimeConfig.registryPath),
     });
 
     const blockers: CollectionValidationIssue[] = [];

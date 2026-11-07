@@ -81,7 +81,7 @@ npm.cmd run dev
 What each command does:
 
 - `cd "C:\Codes\Vanilla Rag Backend"` changes the shell into the project root so the rest of the commands resolve the right files and config.
-- `docker compose up -d chroma` starts the Chroma vector database in the background. You need this before indexing or querying collections.
+- `docker compose up -d chroma` starts the Chroma vector database in the background. You need this before indexing or querying collections. Docker Desktop must be running first; see [Troubleshooting](#troubleshooting) if this command fails.
 - `npm.cmd install` installs the Node.js dependencies listed in `package.json`.
 - `ollama pull gemma3:4b-cloud` downloads the default chat model used by the backend.
 - `ollama pull bge-m3` downloads the default embedding model used for chunk indexing and retrieval.
@@ -116,6 +116,17 @@ What it does not do:
 - replace the admin panel for daily collection management
 
 Use onboarding again when you change machines, reset the config, add new source data, switch local models, or want to re-bootstrap admin auth. If the runtime is already healthy and you are only working in the admin panel, you usually do not need to rerun it.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `docker compose up -d chroma` fails with `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified` | Docker Desktop is not running | Start Docker Desktop, wait until it shows "Engine running", then run `docker compose up -d chroma` again |
+| Onboarding prints `Chroma: fail - Failed to connect to chromadb` under "Config saved; fix these before indexing" | The Chroma container is not running | Start Chroma as above. Onboarding already saved the config and still prints the next steps, so you do not need to rerun it; start the server with `npm.cmd run dev` and check `GET /ready` |
+| Creating a collection or starting a reindex returns `422 UNAVAILABLE_MODEL` | The embedding or chat model is not pulled in Ollama | Run the `ollama pull …` command listed in `details.recommendedActions`, or pick a model from `details.availableModels` |
+| Creating a collection or starting a reindex returns `503 OLLAMA_UNREACHABLE` | Ollama is not running or `ollama.baseUrl` is wrong | Start Ollama (`ollama serve` or the desktop app) and check `ollama.baseUrl` in [config/rag.config.yaml](config/rag.config.yaml) |
+
+Quick health check: `GET http://localhost:3010/ready?details=true` reports Chroma, Ollama, model, and data source status with blockers and recommended actions.
 
 ## Güvenli admin quickstart
 

@@ -52,6 +52,20 @@ export async function runStartupMaintenance(input: {
   }
 }
 
+/**
+ * Clickable entry points printed at startup, so `npm run dev` shows where to go next.
+ * `/admin` redirects to the login page by itself when admin auth is enabled.
+ */
+export function formatStartupLinks(runtimeConfig: Pick<ResolvedConfig, "port">): string {
+  const baseUrl = `http://localhost:${runtimeConfig.port}`;
+  return [
+    "Open:",
+    `  Admin panel:   ${baseUrl}/admin`,
+    `  Readiness:     ${baseUrl}/ready`,
+    `  Test frontend: ${baseUrl}/test-frontend/`,
+  ].join("\n");
+}
+
 export async function startServer(input: {
   runtimeConfig?: ResolvedConfig;
   registry?: CollectionRegistry;
@@ -77,6 +91,7 @@ export async function startServer(input: {
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
     const startedServer = app.listen(runtimeConfig.port, () => {
       log.log(`RAG backend listening on http://localhost:${runtimeConfig.port}`);
+      log.log(formatStartupLinks(runtimeConfig));
       resolve(startedServer);
     });
   });

@@ -14,7 +14,7 @@ The server listens on **port 3010** in the shipped config. APIs are strictly ver
 
 ## Run / build / test
 
-Prereqs: `docker compose up -d chroma`, then Ollama (0.40.4+) running with `gemma3:4b` and `embeddinggemma-2:270m` pulled.
+All-in-one: `docker compose up -d` (backend + Chroma 1.5.9 + Ollama 0.40.12; `ollama-init` pulls the models; `./data` is mounted; see [Dockerfile](Dockerfile)). Local dev prereqs: `docker compose up -d chroma`, then Ollama (0.40.4+) running with `gemma3:4b` and `embeddinggemma-2:270m` pulled.
 
 - `npm run dev` — start in watch mode (`tsx watch src/server.ts`).
 - `npm run build` — compile TypeScript to `dist/` (`tsc`); `npm start` — run compiled server.

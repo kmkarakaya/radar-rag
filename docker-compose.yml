@@ -1,7 +1,77 @@
+# All-in-one stack: backend + Chroma + Ollama.
+#
+#   docker compose up -d          # everything; first run downloads the models (several GB)
+#   docker compose up -d chroma   # only Chroma, for running the backend with `npm run dev`
+#
+# Put your documents under ./data, then open http://localhost:3010/admin.
+# Model names can be changed with RAG_OLLAMA_CHAT_MODEL / RAG_OLLAMA_EMBEDDING_MODEL (e.g. in a .env file).
+
 services:
   chroma:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:1.5.9
     ports:
       - "8000:8000"
     volumes:
       - ./chroma_data:/data
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:0.40.12
+    # Not published on the host, so it does not clash with an Ollama you already run locally.
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    # NVIDIA GPU (optional, needs the NVIDIA Container Toolkit): uncomment below.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # One-shot job: pulls the configured models into the ollama volume, then exits.
+  ollama-init:
+    image: ollama/ollama:0.40.12
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      CHAT_MODEL: ${RAG_OLLAMA_CHAT_MODEL:-gemma3:4b}
+      EMBEDDING_MODEL: ${RAG_OLLAMA_EMBEDDING_MODEL:-embeddinggemma-2:270m}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ['ollama pull "$$EMBEDDING_MODEL" && ollama pull "$$CHAT_MODEL"']
+    restart: "no"
+
+  backend:
+    build: .
+    ports:
+      - "3010:3010"
+    environment:
+      RAG_CHROMA_URL: http://chroma:8000
+      # Set RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434 to use an Ollama running on the host.
+      RAG_OLLAMA_BASE_URL: ${RAG_OLLAMA_BASE_URL:-http://ollama:11434}
+      RAG_OLLAMA_CHAT_MODEL: ${RAG_OLLAMA_CHAT_MODEL:-gemma3:4b}
+      RAG_OLLAMA_EMBEDDING_MODEL: ${RAG_OLLAMA_EMBEDDING_MODEL:-embeddinggemma-2:270m}
+      # Only needed if you enable admin auth in config/rag.config.yaml.
+      RAG_ADMIN_SESSION_SECRET: ${RAG_ADMIN_SESSION_SECRET:-}
+    volumes:
+      # Your documents and the SQLite registry. Create collections with source paths like data/<folder>.
+      - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      chroma:
+        condition: service_started
+      ollama-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  ollama_models:

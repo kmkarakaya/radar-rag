@@ -29,30 +29,14 @@ Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigi
 - **Recursive directory ingestion (eski #6'dan)** - `sourcePath` alt klasorleriyle taraniyor (gizli dosyalar ve `node_modules` atlaniyor); `test/recursive.ingestion.test.ts`.
 - **Ozelge JSON desteginin kaldirilmasi** - 2026-11-08. `ozelgeDataPath` / `indexSampleSize` config ve API alanlari, ozelge loader'i, `ozelgeId`/`sayi`/`tarih`/`konu` kaynak metadata'si, admin panel alanlari ve `data/dataset2/ozelge_veri.json` kaldirildi. Eski config dosyalarindaki bu anahtarlar sessizce yok sayiliyor; eski registry'lerdeki `ozelge_data_path` kolonu startup migration'i ile siliniyor. API'ye `ozelgeDataPath` gonderen istemciler artik `400 INVALID_REQUEST_BODY` aliyor.
 - **Tasinabilir config ve registry** - 2026-11-08. Proje icindeki yollar goreli saklaniyor (`src/paths.ts`): config'te `collectionDefaults.sourcePath: data`, onboarding goreli yaziyor, registry koleksiyon `sourcePath`'lerini goreli kaydediyor ve eski mutlak kayitlari (index snapshot'lari dahil) acilista bir defalik donusturuyor. `RAG_PORT`, `RAG_REGISTRY_PATH`, `RAG_CHROMA_URL`, `RAG_OLLAMA_BASE_URL`, `RAG_OLLAMA_CHAT_MODEL`, `RAG_OLLAMA_EMBEDDING_MODEL`, `RAG_SOURCE_PATH`, `RAG_CONFIG_PATH` YAML'i calisma aninda eziyor. Kalan: Chroma chunk metadata'sindaki `sourcePath` hala mutlak (sadece gosterim; reindex'te yeniden yazilir).
+- **All-in-one Docker** - 2026-11-08. `Dockerfile` (multi-stage, node:22-bookworm-slim) + `docker-compose.yml`: backend + Chroma `1.5.9` + Ollama `0.40.12` (host'a acilmiyor, yerel Ollama ile cakismaz) + `ollama-init` (modelleri cekip cikar; backend onu bekler). `./data` mount, modeller `.env` ile degistirilebilir, host Ollama icin `RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434`, GPU blogu yorumda. Imaj host Chroma/Ollama'ya karsi denendi (`/ready` ok, admin 200); bundled Ollama + model indirme ile tam yigin henuz uctan uca kosulmadi. `NODE_ENV=production` bilerek set edilmiyor (Secure cookie HTTP'de admin login'i bozar).
 - **Onboarding hata akisi** - 2026-11-08. Bagimlilik/kaynak eksiklerinde durmuyor; "Config saved; fix these before indexing" altinda her eksik icin tek satir cozum yaziyor, "Next steps"i her zaman gosteriyor, exit code 0. `--skip-index` deprecated.
 
 ## P0 - Urun hedefi icin kritik eksikler
 
 Hedef: baskalarinin repoyu GitHub'dan indirip kendi verisiyle kolayca kullanabilmesi. Olcut: yeni bir kullanicinin ilk cevabini almasi ne kadar zahmetsiz?
 
-### 1. All-in-one deployment (Docker) eksik
-
-Sorun:
-
-- `docker-compose.yml` sadece Chroma'yi calistiriyor; backend icin `Dockerfile` yok.
-- Kullanici Node.js'i, Docker Desktop'i ve Ollama'yi ayrica kurup modelleri manuel indirmek, sonra onboarding calistirmak zorunda. Bu, yeni kullanici icin en buyuk engel.
-
-Hazir olanlar (2026-11-08): goreli yollar ve `RAG_*` env override'lari (asagida "Tamamlananlar"), yani container icinde YAML duzenlemeden `RAG_CHROMA_URL=http://chroma:8000`, `RAG_OLLAMA_BASE_URL=http://ollama:11434` verilebilir.
-
-Yapilacaklar:
-
-- Multi-stage `Dockerfile` (build + runtime).
-- `docker-compose.yml`'i Chroma + Ollama + backend olarak genislet; servisler env override'lar ile birbirini bulsun.
-- Ollama ayaga kalkinca gerekli modelleri otomatik pull eden entrypoint (model adlari env ile).
-- `./data:/app/data` ve registry/chroma icin volume'lar; README'de "tek komutla kurulum" adimi.
-- Admin auth acik kurulum icin `RAG_ADMIN_SESSION_SECRET` ve kullanici olusturma akisini dokumante et.
-
-### 2. Dosya formati destegi dar
+### 1. Dosya formati destegi dar
 
 Sorun:
 
@@ -66,7 +50,7 @@ Yapilacaklar:
 - Generic JSON mapping: `contentField`, `idField`, `metadataFields` benzeri koleksiyon ayarlari; nested alanlar icin JSON pointer/path; yanlis mapping'de anlasilir hata.
 - Desteklenen formatlari README'de ve admin panelde net goster.
 
-### 3. CI pipeline yok
+### 2. CI pipeline yok
 
 Sorun:
 
@@ -83,6 +67,7 @@ Yapilacaklar:
   - `npm test`
 - Integration testleri (Ollama + Chroma) ayri, opsiyonel/manuel bir job olarak dusun.
 - Lint eklenince (P2 #1) zincire ekle.
+- Docker imajinin build'ini de zincire ekle.
 - Urun baskalarinin elindeyken kirik bir surum yayinlamamak icin gerekli.
 
 ## P1 - Kalite ve dayaniklilik eksikleri
@@ -118,7 +103,7 @@ Yapildi (ozet): `txt`/`md`/`pdf`/`doc`/`docx` loader'lari, ortak metadata contra
 
 Kalanlar:
 
-- Yeni formatlar (HTML, CSV, JSONL, generic JSON) P0 #2'de.
+- Yeni formatlar (HTML, CSV, JSONL, generic JSON) P0 #1'de.
 - Recursive tarama her zaman acik; config ile kapatma/derinlik siniri yok.
 - Loader options config yuzeyi yok.
 - OCR artigi, header/footer ayiklama, tekrarli metin ve asiri kisa chunk filtreleme temel seviyede.
@@ -240,9 +225,9 @@ Kalanlar:
 
 ## Sonraki oncelikli uygulama sirasi
 
-1. All-in-one Docker (backend + Chroma + Ollama, otomatik model pull).
-2. Yeni dosya formatlari: HTML, CSV, JSONL, generic JSON mapping.
-3. CI pipeline (typecheck + typecheck:test + build + test).
+1. Yeni dosya formatlari: HTML, CSV, JSONL, generic JSON mapping.
+2. CI pipeline (typecheck + typecheck:test + build + test + Docker build).
+3. Docker yiginini temiz bir makinede uctan uca dene (bundled Ollama + model indirme).
 4. README bilinen sinirlar + ilk kurulum deneyimi cilasi.
 5. Readiness icin gercek RAG smoke probe.
 6. Incremental / upsert indexing.
@@ -251,4 +236,4 @@ Kalanlar:
 ## Kapanis notu
 
 Repo artik "calisan bir baseline vanilla RAG backend" seviyesini gecti: multi-collection, multi-tenant, auth'lu admin API, guvenli blue/green reindex ve genis test kapsami var.
-Baskalarinin kolayca kurup kendi verisiyle kullanabilecegi bir urun olmasi icin oncelik tek komutla kurulum (Docker) ve daha genis dosya formati desteginde.
+Tek komutla kurulum (Docker) artik var; baskalarinin kendi verisiyle kullanabilmesi icin siradaki oncelik daha genis dosya formati destegi ve CI.

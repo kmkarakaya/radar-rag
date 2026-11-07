@@ -1,0 +1,36 @@
+# Vanilla RAG backend image. Used by docker-compose.yml together with Chroma and Ollama.
+
+# ---- build: compile TypeScript and install production dependencies ----
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+
+# better-sqlite3 is a native module; build tools are only needed if no prebuilt binary matches.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build && npm prune --omit=dev
+
+# ---- runtime ----
+FROM node:22-bookworm-slim AS runtime
+WORKDIR /app
+
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY package.json ./
+COPY config/rag.config.yaml ./config/rag.config.yaml
+COPY admin ./admin
+COPY test_frontend ./test_frontend
+
+# data/ (your documents + the SQLite registry) is mounted at runtime; see docker-compose.yml.
+RUN mkdir -p data .local
+
+# NODE_ENV is intentionally not set to "production": that marks the admin session cookie as
+# Secure, which breaks admin login over plain HTTP. Set NODE_ENV=production behind HTTPS.
+EXPOSE 3010
+CMD ["node", "dist/server.js"]

@@ -1,3 +1,6 @@
+istersen chromayı güncelleyelim
+
+
 # Vanilla RAG Backend
 
 TypeScript Express backend for multi-collection LangChain RAG over documents in `data/`, with optional admin auth, background indexing, a browser-ready public API, and a built-in admin panel for collection management.
@@ -55,7 +58,7 @@ TypeScript Express backend for multi-collection LangChain RAG over documents in 
 
 - Document ingestion for TXT, MD, PDF, DOC, and DOCX files, scanning the source folder recursively.
 - Chunking controls, retrieval thresholds, and distance-metric selection per collection.
-- Configurable source path and auxiliary data path for collection provisioning.
+- Configurable source folder per collection (TXT, MD, PDF, DOC, DOCX, scanned recursively).
 
 ## Start here
 
@@ -66,10 +69,32 @@ TypeScript Express backend for multi-collection LangChain RAG over documents in 
 - [test_frontend/README.md](test_frontend/README.md) for the runnable public RAG example.
 - [vanilla_rag_backend_mimarisi.md](vanilla_rag_backend_mimarisi.md) for architecture and design rationale.
 
-## Quick start
+## Quick start with Docker (recommended)
+
+Everything (backend, Chroma, Ollama and the models) runs in containers. You only need Docker (Docker Desktop on Windows/macOS) and Git.
+
+```bash
+git clone https://github.com/kmkarakaya/vanilla_rag_backend.git
+cd vanilla_rag_backend
+docker compose up -d
+```
+
+- The first start downloads the Ollama models (`gemma3:4b` and `embeddinggemma-2:270m`, a few GB) before the backend starts; follow it with `docker compose logs -f ollama-init`.
+- Put your documents in a folder under `./data` (for example `./data/my-docs`). The repo ships two sample folders, `data/dataset1` and `data/dataset2`.
+- Open `http://localhost:3010/admin` and follow [First collection and first question](#first-collection-and-first-question), using a source path such as `data/my-docs`.
+- Other models: create a `.env` file next to `docker-compose.yml` with `RAG_OLLAMA_CHAT_MODEL=...` and/or `RAG_OLLAMA_EMBEDDING_MODEL=...`, then `docker compose up -d` again.
+- Already running Ollama on the host? Set `RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434` in `.env` to use it instead of the bundled one (the bundled Ollama still starts, but it is not exposed on the host, so there is no port clash).
+- GPU: uncomment the `deploy` block of the `ollama` service in [docker-compose.yml](docker-compose.yml) (needs the NVIDIA Container Toolkit). Without it, models run on the CPU.
+- Stop with `docker compose down`. Your documents, the registry (`data/registry.sqlite`), the vectors (`chroma_data/`) and the downloaded models (Docker volume `ollama_models`) are kept.
+- Admin auth is off by default. To turn it on in Docker, set `adminAuth` in [config/rag.config.yaml](config/rag.config.yaml) (see [Güvenli admin quickstart](#güvenli-admin-quickstart)) and put `RAG_ADMIN_SESSION_SECRET=...` in `.env`. Behind HTTPS, also set `NODE_ENV=production` so the session cookie is marked Secure.
+
+Do not run the Docker backend and `npm run dev` at the same time: both use port 3010 and the same `data/registry.sqlite`.
+
+## Quick start (local development)
 
 ```powershell
-cd "C:\Codes\Vanilla Rag Backend"
+git clone https://github.com/kmkarakaya/vanilla_rag_backend.git
+cd vanilla_rag_backend
 docker compose up -d chroma
 npm.cmd install
 ollama pull gemma3:4b
@@ -80,7 +105,7 @@ npm.cmd run dev
 
 What each command does:
 
-- `cd "C:\Codes\Vanilla Rag Backend"` changes the shell into the project root so the rest of the commands resolve the right files and config.
+- `cd vanilla_rag_backend` changes the shell into the project root; run every command from there, because relative paths such as `data/...` resolve against it.
 - `docker compose up -d chroma` starts the Chroma vector database in the background. You need this before indexing or querying collections. Docker Desktop must be running first; see [Troubleshooting](#troubleshooting) if this command fails.
 - `npm.cmd install` installs the Node.js dependencies listed in `package.json`.
 - `ollama pull gemma3:4b` downloads the default chat model used by the backend (runs locally).
@@ -138,17 +163,17 @@ Paths inside the project are kept relative (for example `collectionDefaults.sour
 
 These environment variables override [config/rag.config.yaml](config/rag.config.yaml) at runtime without editing it (useful for Docker, CI, or a second machine):
 
-| Variable | Overrides |
-| --- | --- |
-| `RAG_CONFIG_PATH` | Config file location (default `config/rag.config.yaml`) |
-| `RAG_PORT` | `server.port` |
-| `RAG_REGISTRY_PATH` | `registry.path` |
-| `RAG_CHROMA_URL` | `chroma.url` (e.g. `http://chroma:8000` in Docker) |
-| `RAG_OLLAMA_BASE_URL` | `ollama.baseUrl` (e.g. `http://ollama:11434` in Docker) |
-| `RAG_OLLAMA_CHAT_MODEL` | `ollama.chatModel` |
-| `RAG_OLLAMA_EMBEDDING_MODEL` | `ollama.embeddingModel` |
-| `RAG_SOURCE_PATH` | `collectionDefaults.sourcePath` |
-| `RAG_ADMIN_SESSION_SECRET` | Admin session secret (instead of `.local/rag_admin_session.secret`) |
+| Variable                       | Overrides                                                             |
+| ------------------------------ | --------------------------------------------------------------------- |
+| `RAG_CONFIG_PATH`            | Config file location (default `config/rag.config.yaml`)             |
+| `RAG_PORT`                   | `server.port`                                                       |
+| `RAG_REGISTRY_PATH`          | `registry.path`                                                     |
+| `RAG_CHROMA_URL`             | `chroma.url` (e.g. `http://chroma:8000` in Docker)                |
+| `RAG_OLLAMA_BASE_URL`        | `ollama.baseUrl` (e.g. `http://ollama:11434` in Docker)           |
+| `RAG_OLLAMA_CHAT_MODEL`      | `ollama.chatModel`                                                  |
+| `RAG_OLLAMA_EMBEDDING_MODEL` | `ollama.embeddingModel`                                             |
+| `RAG_SOURCE_PATH`            | `collectionDefaults.sourcePath`                                     |
+| `RAG_ADMIN_SESSION_SECRET`   | Admin session secret (instead of `.local/rag_admin_session.secret`) |
 
 Onboarding edits the YAML file itself; these variables are only applied when the server or the CLI loads its config, and are never written back.
 

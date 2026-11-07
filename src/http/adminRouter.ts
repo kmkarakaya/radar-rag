@@ -16,6 +16,7 @@ import {
 } from "./collectionValidation.js";
 import { createAdminAuthService, type AdminAuthService } from "./adminAuth.js";
 import { getOllamaModelDiscovery } from "../rag.js";
+import { assertOllamaModelsAvailable } from "./modelAvailability.js";
 
 const JOB_STATUS_VALUES = ["queued", "running", "succeeded", "failed", "cancelled"] as const satisfies readonly IndexJobStatus[];
 
@@ -362,6 +363,16 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
 
       const input: CreateCollectionInput = buildCreateCollectionInput(parsed.data, runtimeConfig);
 
+      await assertOllamaModelsAvailable({
+        runtimeConfig,
+        required: [
+          { role: "embedding", name: input.embeddingModel },
+          { role: "chat", name: input.chatModel },
+        ],
+        action: "Collection cannot be created.",
+        discover: deps.healthChecks?.checkOllamaModelDiscovery,
+      });
+
       const collection = await deps.registry!.createCollection(context, input);
       res.status(201).json({
         collection: {
@@ -546,8 +557,28 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     try {
       const collectionId = req.params.collectionId as string;
       const context = res.locals.requestContext as RequestContext;
-      await requireVisibleCollection(context, collectionId);
-      
+      const collection = await requireVisibleCollection(context, collectionId);
+
+      // Report an in-flight job before probing Ollama. beginIndexJob still enforces this atomically.
+      const activeJob = await deps.registry!.getActiveJobForCollection(context, collectionId);
+      if (activeJob && (activeJob.status === "queued" || activeJob.status === "running")) {
+        throw new HttpError(
+          409,
+          "COLLECTION_INDEX_ALREADY_RUNNING",
+          `Collection ${collectionId} already has a ${activeJob.status} index job (${activeJob.id}).`,
+          { jobId: activeJob.id, status: activeJob.status },
+        );
+      }
+
+      // Indexing only needs the embedding model; a missing chat model still allows
+      // building the index for retrieve-only use, so it is not checked here.
+      await assertOllamaModelsAvailable({
+        runtimeConfig,
+        required: [{ role: "embedding", name: collection.embeddingModel }],
+        action: "Re-index cannot start.",
+        discover: deps.healthChecks?.checkOllamaModelDiscovery,
+      });
+
       const job = await startReindexJob({
         registry: deps.registry!,
         collectionId,

@@ -419,6 +419,20 @@ paths:
           $ref: "#/components/responses/ApiError"
         "413":
           $ref: "#/components/responses/ApiError"
+        "422":
+          description: >-
+            UNAVAILABLE_MODEL. The embedding or chat model is not pulled in Ollama; nothing is created.
+            details.missingModels, details.availableModels and details.recommendedActions explain the fix.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          description: OLLAMA_UNREACHABLE. Ollama could not be reached to verify the models; nothing is created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
         "500":
           $ref: "#/components/responses/ApiError"
   /v1/admin/collections/validate:
@@ -684,6 +698,20 @@ paths:
           $ref: "#/components/responses/ApiError"
         "409":
           $ref: "#/components/responses/ApiError"
+        "422":
+          description: >-
+            UNAVAILABLE_MODEL. The collection's embedding model is not pulled in Ollama; no job is started.
+            The chat model is not required to reindex.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "503":
+          description: OLLAMA_UNREACHABLE. Ollama could not be reached to verify the embedding model; no job is started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
         "429":
           description: Rate-limited
           headers:
@@ -1084,6 +1112,8 @@ components:
             - COLLECTION_STORAGE_INCONSISTENT
             - MODEL_BACKPRESSURE
             - INVALID_JOB_STATUS
+            - UNAVAILABLE_MODEL
+            - OLLAMA_UNREACHABLE
             - RATE_LIMIT_EXCEEDED
             - UNAUTHORIZED
             - FORBIDDEN

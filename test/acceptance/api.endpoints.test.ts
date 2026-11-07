@@ -53,6 +53,23 @@ type AppRagHandlers = NonNullable<AppDependencies["ragHandlers"]>;
 type AppRagRetrieveHandler = NonNullable<AppRagHandlers["retrieveSources"]>;
 type AppRagAnswerHandler = NonNullable<AppRagHandlers["answerQuestion"]>;
 
+async function stubOllamaModelDiscovery() {
+  return {
+    reachable: ollamaModelDiscoveryReachable,
+    models: ollamaModelDiscoveryReachable ? availableOllamaModels : [],
+    embeddingModels: ollamaModelDiscoveryReachable
+      ? availableOllamaModels.filter((model) => (ollamaModelCapabilities[model] ?? []).includes("embedding"))
+      : [],
+    chatModels: ollamaModelDiscoveryReachable
+      ? availableOllamaModels.filter((model) => (ollamaModelCapabilities[model] ?? []).includes("completion"))
+      : [],
+    defaults: {
+      embeddingModel: config.ollamaEmbeddingModel,
+      chatModel: config.ollamaChatModel,
+    },
+  };
+}
+
 before(async () => {
   registry = createSqliteCollectionRegistry({ dbPath: ":memory:" });
   jobRunner = {
@@ -114,20 +131,7 @@ before(async () => {
           },
         };
       },
-      checkOllamaModelDiscovery: async () => ({
-        reachable: ollamaModelDiscoveryReachable,
-        models: ollamaModelDiscoveryReachable ? availableOllamaModels : [],
-        embeddingModels: ollamaModelDiscoveryReachable
-          ? availableOllamaModels.filter((model) => (ollamaModelCapabilities[model] ?? []).includes("embedding"))
-          : [],
-        chatModels: ollamaModelDiscoveryReachable
-          ? availableOllamaModels.filter((model) => (ollamaModelCapabilities[model] ?? []).includes("completion"))
-          : [],
-        defaults: {
-          embeddingModel: config.ollamaEmbeddingModel,
-          chatModel: config.ollamaChatModel,
-        },
-      }),
+      checkOllamaModelDiscovery: stubOllamaModelDiscovery,
       checkChromaHealth: async (_runtimeConfig, options) => {
         chromaHealthCalls += 1;
         if (!options?.collectionName) {
@@ -197,7 +201,12 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 }
 
 async function startEphemeralApp(deps: AppDependencies): Promise<{ server: Server; baseUrl: string }> {
-  const app = createApp({ runtimeConfig: testRuntimeConfig, ...deps });
+  const app = createApp({
+    runtimeConfig: testRuntimeConfig,
+    ...deps,
+    // Never let admin model preflight reach a real Ollama instance from tests.
+    healthChecks: { checkOllamaModelDiscovery: stubOllamaModelDiscovery, ...deps.healthChecks },
+  });
   let ephemeralServer!: Server;
   await new Promise<void>((resolve) => {
     ephemeralServer = app.listen(0, () => resolve());
@@ -757,6 +766,16 @@ describe("v1 admin and rag api endpoints", () => {
             sources: [],
           }),
           resolveReadableCollection: async () => auditCollection,
+        },
+        // Keep the reindex model preflight off the real Ollama instance.
+        healthChecks: {
+          checkOllamaModelDiscovery: async () => ({
+            reachable: true,
+            models: ["embed-audit", "embed-peer", "embed-other"],
+            embeddingModels: ["embed-audit", "embed-peer", "embed-other"],
+            chatModels: [],
+            defaults: { embeddingModel: config.ollamaEmbeddingModel, chatModel: config.ollamaChatModel },
+          }),
         },
         logEvent: () => {},
       });
@@ -1497,6 +1516,160 @@ describe("v1 admin and rag api endpoints", () => {
     } finally {
       ollamaModelDiscoveryReachable = previousReachable;
     }
+  });
+
+  describe("Ollama model preflight", () => {
+    const preflightCtx = { tenantId: "default", userId: "local-dev", requestId: "model-preflight" };
+
+    async function createRegistryCollection(displayName: string, embeddingModel: string, chatModel: string) {
+      return registry.createCollection(preflightCtx, {
+        displayName,
+        sourcePath: "data",
+        ozelgeDataPath: "data/ozelge.json",
+        embeddingModel,
+        chatModel,
+        distanceMetric: "l2",
+        chunkSize: 500,
+        chunkOverlap: 50,
+        retrievalK: 5,
+        retrievalDistanceThreshold: 1,
+      });
+    }
+
+    async function countVisibleCollections(): Promise<number> {
+      return (await registry.listVisibleCollections(preflightCtx)).length;
+    }
+
+    it("POST /v1/admin/collections rejects a missing embedding model with 422 UNAVAILABLE_MODEL and creates nothing", async () => {
+      const before = await countVisibleCollections();
+      const response = await request("/v1/admin/collections", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayName: "Preflight Missing Embed", embeddingModel: "not-pulled-embed" }),
+      });
+      const body = await response.json() as any;
+
+      assert.equal(response.status, 422);
+      assert.equal(body.code, "UNAVAILABLE_MODEL");
+      assert.match(body.message, /Collection cannot be created\./);
+      assert.match(body.message, /Embedding model 'not-pulled-embed' is not available in Ollama/);
+      assert.deepEqual(body.details.missingModels, [{ role: "embedding", name: "not-pulled-embed" }]);
+      assert.deepEqual(body.details.availableModels, availableOllamaModels);
+      assert.deepEqual(body.details.recommendedActions, ["ollama pull not-pulled-embed"]);
+      assert.equal(await countVisibleCollections(), before);
+    });
+
+    it("POST /v1/admin/collections reports both missing models", async () => {
+      const response = await request("/v1/admin/collections", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          displayName: "Preflight Missing Both",
+          embeddingModel: "not-pulled-embed",
+          chatModel: "not-pulled-chat",
+        }),
+      });
+      const body = await response.json() as any;
+
+      assert.equal(response.status, 422);
+      assert.deepEqual(body.details.missingModels, [
+        { role: "embedding", name: "not-pulled-embed" },
+        { role: "chat", name: "not-pulled-chat" },
+      ]);
+    });
+
+    it("POST /v1/admin/collections accepts ':latest'-tagged models for untagged names", async () => {
+      // availableOllamaModels contains "bge-m3:latest"; the request uses "bge-m3".
+      const response = await request("/v1/admin/collections", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayName: "Preflight Latest Tag", embeddingModel: "bge-m3", chatModel: "gemma3:4b-cloud" }),
+      });
+
+      assert.equal(response.status, 201);
+    });
+
+    it("POST /v1/admin/collections returns 503 OLLAMA_UNREACHABLE when Ollama is down and creates nothing", async () => {
+      const previousReachable = ollamaModelDiscoveryReachable;
+      ollamaModelDiscoveryReachable = false;
+      const before = await countVisibleCollections();
+
+      try {
+        const response = await request("/v1/admin/collections", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ displayName: "Preflight Ollama Down" }),
+        });
+        const body = await response.json() as any;
+
+        assert.equal(response.status, 503);
+        assert.equal(body.code, "OLLAMA_UNREACHABLE");
+        assert.equal(body.details.ollamaBaseUrl, config.ollamaBaseUrl);
+        assert.equal(await countVisibleCollections(), before);
+      } finally {
+        ollamaModelDiscoveryReachable = previousReachable;
+      }
+    });
+
+    it("POST /v1/admin/collections/:id/reindex rejects a missing embedding model with 422 and does not start a job", async () => {
+      const collection = await createRegistryCollection("Preflight Reindex Missing Embed", "not-pulled-embed", config.ollamaChatModel);
+
+      const response = await request(`/v1/admin/collections/${collection.id}/reindex`, { method: "POST" });
+      const body = await response.json() as any;
+
+      assert.equal(response.status, 422);
+      assert.equal(body.code, "UNAVAILABLE_MODEL");
+      assert.match(body.message, /^Re-index cannot start\. Embedding model 'not-pulled-embed' is not available in Ollama\./);
+      assert.deepEqual(body.details.recommendedActions, ["ollama pull not-pulled-embed"]);
+      assert.equal(await registry.getActiveJobForCollection(preflightCtx, collection.id), null);
+      const unchanged = await registry.getVisibleCollection(preflightCtx, collection.id);
+      assert.notEqual(unchanged?.status, "indexing");
+    });
+
+    it("POST /v1/admin/collections/:id/reindex does not require the chat model (retrieve-only indexing)", async () => {
+      const collection = await createRegistryCollection("Preflight Reindex Missing Chat", config.ollamaEmbeddingModel, "not-pulled-chat");
+
+      const response = await request(`/v1/admin/collections/${collection.id}/reindex`, { method: "POST" });
+      const body = await response.json() as any;
+
+      assert.equal(response.status, 202);
+      assert.equal(body.job.status, "queued");
+      await registry.cancelIndexJob(body.job.id);
+    });
+
+    it("POST /v1/admin/collections/:id/reindex returns 503 OLLAMA_UNREACHABLE when Ollama is down", async () => {
+      const collection = await createRegistryCollection("Preflight Reindex Ollama Down", config.ollamaEmbeddingModel, config.ollamaChatModel);
+      const previousReachable = ollamaModelDiscoveryReachable;
+      ollamaModelDiscoveryReachable = false;
+
+      try {
+        const response = await request(`/v1/admin/collections/${collection.id}/reindex`, { method: "POST" });
+        const body = await response.json() as any;
+
+        assert.equal(response.status, 503);
+        assert.equal(body.code, "OLLAMA_UNREACHABLE");
+        assert.equal(await registry.getActiveJobForCollection(preflightCtx, collection.id), null);
+      } finally {
+        ollamaModelDiscoveryReachable = previousReachable;
+      }
+    });
+
+    it("POST /v1/admin/collections/:id/reindex reports an active job (409) before probing models", async () => {
+      const collection = await createRegistryCollection("Preflight Reindex Conflict", config.ollamaEmbeddingModel, config.ollamaChatModel);
+      const first = await request(`/v1/admin/collections/${collection.id}/reindex`, { method: "POST" });
+      assert.equal(first.status, 202);
+      const firstBody = await first.json() as any;
+
+      // Even with the embedding model now missing, the in-flight job is the more useful answer.
+      await registry.updateCollection(preflightCtx, collection.id, { embeddingModel: "not-pulled-embed" });
+      const second = await request(`/v1/admin/collections/${collection.id}/reindex`, { method: "POST" });
+      const secondBody = await second.json() as any;
+
+      assert.equal(second.status, 409);
+      assert.equal(secondBody.code, "COLLECTION_INDEX_ALREADY_RUNNING");
+      assert.equal(secondBody.details.jobId, firstBody.job.id);
+      await registry.cancelIndexJob(firstBody.job.id);
+    });
   });
 
   it("admin collection update is tenant-scoped and returns 403 for another tenant", async () => {
@@ -2488,7 +2661,7 @@ describe("v1 admin and rag api endpoints", () => {
       displayName: 'API Cancel Test',
       sourcePath: 'data',
       ozelgeDataPath: 'data/ozelge.json',
-      embeddingModel: 'embed',
+      embeddingModel: config.ollamaEmbeddingModel,
       chatModel: 'chat',
       distanceMetric: 'l2',
       chunkSize: 500,

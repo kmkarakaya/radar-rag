@@ -301,6 +301,27 @@ Example response:
 }
 ```
 
+Notes:
+
+- Before saving, the backend asks Ollama (`/api/tags`) whether the resolved `embeddingModel` and `chatModel` are pulled. A `:latest` tag matches an untagged name.
+- If a model is missing it returns `422 UNAVAILABLE_MODEL` and creates nothing. If Ollama cannot be reached it returns `503 OLLAMA_UNREACHABLE`.
+
+Example `422` response:
+
+```json
+{
+  "error": "Request failed",
+  "code": "UNAVAILABLE_MODEL",
+  "message": "Collection cannot be created. Embedding model 'bge-m3' is not available in Ollama. Run: ollama pull bge-m3",
+  "requestId": "req_123",
+  "details": {
+    "missingModels": [{ "role": "embedding", "name": "bge-m3" }],
+    "availableModels": ["gemma3:4b-cloud"],
+    "recommendedActions": ["ollama pull bge-m3"]
+  }
+}
+```
+
 ### `GET /v1/admin/collections/:collectionId`
 
 Returns the full editable collection DTO.
@@ -613,7 +634,8 @@ Example response:
 Notes:
 
 - Returns `202 Accepted`.
-- If a reindex is already active, the backend returns `409 COLLECTION_INDEX_ALREADY_RUNNING`.
+- If a reindex is already active, the backend returns `409 COLLECTION_INDEX_ALREADY_RUNNING` (`details.jobId`, `details.status`). This is checked before the model preflight.
+- Before queueing, the backend checks that the collection's `embeddingModel` is pulled in Ollama. If it is missing it returns `422 UNAVAILABLE_MODEL` and starts no job. If Ollama cannot be reached it returns `503 OLLAMA_UNREACHABLE`. The chat model is not required to reindex, so a retrieve-only collection can still be indexed.
 - Reindex is one of the rate-limited operations.
 
 ## Job Endpoints
@@ -804,6 +826,8 @@ Rules:
 | `COLLECTION_NOT_FOUND` | `404` | Collection does not exist |
 | `COLLECTION_INDEX_ALREADY_RUNNING` | `409` | A reindex job is already active |
 | `INVALID_JOB_STATUS` | `400` | Job action was attempted in the wrong job state |
+| `UNAVAILABLE_MODEL` | `422` | Create or reindex needs an Ollama model that is not pulled; see `details.missingModels` and `details.recommendedActions` |
+| `OLLAMA_UNREACHABLE` | `503` | Create or reindex could not reach Ollama to check its models |
 | `ROUTE_NOT_FOUND` | `404` | Job lookup failed tenant scoping or the route is wrong |
 | `RATE_LIMIT_EXCEEDED` | `429` | Reindex limit was hit |
 | `INTERNAL_ERROR` | `500` | Required backend dependency is missing or another internal failure occurred |

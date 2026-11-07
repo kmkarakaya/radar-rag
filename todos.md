@@ -73,12 +73,12 @@ Veri akisi:
 - `GET /ready`: System readiness kontrol edilir, model eksikligi `blockers` array'inde gosterilir.
 
 Kabul kriterleri:
-- [ ] `POST /v1/admin/collections` endpoint'inde config'deki `embeddingModel` ve `chatModel` degerleri alinir ve Ollama'ya bagli olarak kontrol edilir. Eger model yoksa `422 UNAVAILABLE_MODEL` hatasi dondur ve response'ta acikca yaz.
-- [ ] `POST /v1/admin/collections/:id/reindex` endpoint'inde collection'daki `embeddingModel` ve `chatModel` degerleri alinir ve Ollama'ya bagli olarak kontrol edilir. Eger model yoksa `422 UNAVAILABLE_MODEL` hatasi dondur ve job baslatma.
-- [ ] `GET /v1/admin/jobs/:jobId` response'unda `job.error` field'i UI tarafindan gosterilir.
-- [ ] Admin panel `loadJobs()` ve `renderJobs()` fonksiyonlarinda `job.error` field'ini goster.
-- [ ] `GET /ready` response'unda model eksikligi `blockers` array'inde gosterilir. (Zaten bu yapiliyor.)
-- [ ] `POST /v1/admin/collections/:id/reindex` response'unda eger job fail olmusta (overlapped jobs), o job'un `error` mesajini da response'a ekle.
+- [x] `POST /v1/admin/collections` endpoint'inde config'deki `embeddingModel` ve `chatModel` degerleri alinir ve Ollama'ya bagli olarak kontrol edilir. Eger model yoksa `422 UNAVAILABLE_MODEL` hatasi dondur ve response'ta acikca yaz. (`src/http/modelAvailability.ts`; Ollama'ya ulasilamazsa `503 OLLAMA_UNREACHABLE`.)
+- [x] `POST /v1/admin/collections/:id/reindex` endpoint'inde collection'daki `embeddingModel` Ollama'ya bagli olarak kontrol edilir. Eger model yoksa `422 UNAVAILABLE_MODEL` hatasi dondur ve job baslatma. Karar: reindex `chatModel` istemez (indexing sadece embedding kullanir, `/retrieve` chat modelsiz calisir); aktif job varsa once `409` doner.
+- [x] `GET /v1/admin/jobs/:jobId` response'unda `job.error` field'i UI tarafindan gosterilir. (Zaten yapiliyordu.)
+- [x] Admin panel `loadJobs()` ve `renderJobs()` fonksiyonlarinda `job.error` field'ini goster. (Zaten yapiliyordu: `admin/admin.js` `renderJobs()` Error kolonu.)
+- [x] `GET /ready` response'unda model eksikligi `blockers` array'inde gosterilir. (Zaten bu yapiliyor.)
+- [ ] `POST /v1/admin/collections/:id/reindex` response'unda eger job fail olmusta (overlapped jobs), o job'un `error` mesajini da response'a ekle. (Belirsiz: `failed` job aktif sayilmadigi icin overlap olusturmaz. `409` artik `details.jobId` / `details.status` donuyor. Netlestirilmeli.)
 
 ### 1. Benchmark verisi var, benchmark kosusu yok
 

@@ -4,7 +4,7 @@ import { writeFile } from "node:fs/promises";
 import { parse, stringify } from "yaml";
 import { z } from "zod";
 
-export const defaultConfigPath = path.resolve(process.cwd(), "config/rag.config.yaml");
+export const defaultConfigPath = path.resolve(process.cwd(), process.env.RAG_CONFIG_PATH?.trim() || "config/rag.config.yaml");
 
 const distanceMetricSchema = z.enum(["l2", "cosine", "ip"]);
 const adminRoleSchema = z.enum(["viewer", "operator", "admin"]);
@@ -146,6 +146,8 @@ export function resolveConfig(
 
   return {
     configPath,
+    /** Folder that relative paths resolve against and that stored paths are made relative to. */
+    projectRoot: cwd,
     port: rawConfig.server.port,
     registryPath: path.resolve(cwd, rawConfig.registry.path),
     chromaUrl: rawConfig.chroma.url,
@@ -178,8 +180,53 @@ export function resolveConfig(
 
 export type ResolvedConfig = ReturnType<typeof resolveConfig>;
 
-export function loadConfig(configPath = defaultConfigPath): ResolvedConfig {
-  return resolveConfig(parseConfig(readConfigFile(configPath), configPath), path.resolve(configPath));
+/**
+ * Environment variables that override config file values at runtime (Docker, CI, other machines).
+ * They are applied only when the server/CLI loads its config, never written back by onboarding.
+ */
+export const CONFIG_ENV_OVERRIDES = [
+  { env: "RAG_PORT", path: ["server", "port"], type: "integer" },
+  { env: "RAG_REGISTRY_PATH", path: ["registry", "path"], type: "string" },
+  { env: "RAG_CHROMA_URL", path: ["chroma", "url"], type: "string" },
+  { env: "RAG_OLLAMA_BASE_URL", path: ["ollama", "baseUrl"], type: "string" },
+  { env: "RAG_OLLAMA_CHAT_MODEL", path: ["ollama", "chatModel"], type: "string" },
+  { env: "RAG_OLLAMA_EMBEDDING_MODEL", path: ["ollama", "embeddingModel"], type: "string" },
+  { env: "RAG_SOURCE_PATH", path: ["collectionDefaults", "sourcePath"], type: "string" },
+] as const;
+
+export function applyConfigEnvOverrides(rawConfig: unknown, env: NodeJS.ProcessEnv = process.env): unknown {
+  if (!rawConfig || typeof rawConfig !== "object" || Array.isArray(rawConfig)) return rawConfig;
+  const result = structuredClone(rawConfig) as Record<string, unknown>;
+
+  for (const override of CONFIG_ENV_OVERRIDES) {
+    const rawValue = env[override.env]?.trim();
+    if (!rawValue) continue;
+
+    let value: unknown = rawValue;
+    if (override.type === "integer") {
+      value = Number(rawValue);
+      if (!Number.isInteger(value)) {
+        throw new Error(`Invalid ${override.env}: expected an integer, got "${rawValue}".`);
+      }
+    }
+
+    const [section, key] = override.path;
+    const current = result[section];
+    const sectionValue = current && typeof current === "object" && !Array.isArray(current)
+      ? { ...(current as Record<string, unknown>) }
+      : {};
+    sectionValue[key] = value;
+    result[section] = sectionValue;
+  }
+
+  return result;
+}
+
+export function loadConfig(configPath = defaultConfigPath, env: NodeJS.ProcessEnv = process.env): ResolvedConfig {
+  return resolveConfig(
+    parseConfig(applyConfigEnvOverrides(readConfigFile(configPath), env), configPath),
+    path.resolve(configPath),
+  );
 }
 
 export async function writeConfigFile(

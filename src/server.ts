@@ -75,7 +75,7 @@ export async function startServer(input: {
   startupMaintenance?: typeof runStartupMaintenance;
 } = {}) {
   const runtimeConfig = input.runtimeConfig ?? config;
-  const registry = input.registry ?? createSqliteCollectionRegistry({ dbPath: runtimeConfig.registryPath });
+  const registry = input.registry ?? createSqliteCollectionRegistry({ dbPath: runtimeConfig.registryPath, projectRoot: runtimeConfig.projectRoot });
   const log = input.log ?? console;
   const rawLogEvent = input.logEvent ?? createConsoleLogSink();
   const logEvent = createPersistentOperationalLogSink(rawLogEvent, registry);

@@ -3,6 +3,7 @@ import path from "node:path";
 import { createInterface, type Interface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { hashPassword } from "./passwordHash.js";
+import { toPortablePath } from "../paths.js";
 import {
   defaultConfigPath,
   loadConfig,
@@ -391,9 +392,21 @@ function nonNegativeNumber(value: number): string | null {
   return value >= 0 ? null : "Please enter a non-negative number.";
 }
 
+/** Paths inside the project are written relative (e.g. `data`), so the config works on other machines. */
+function withPortablePaths(rawConfig: RawConfig): RawConfig {
+  return {
+    ...rawConfig,
+    registry: { ...rawConfig.registry, path: toPortablePath(rawConfig.registry.path) },
+    collectionDefaults: {
+      ...rawConfig.collectionDefaults,
+      sourcePath: toPortablePath(rawConfig.collectionDefaults.sourcePath),
+    },
+  };
+}
+
 async function writeConfigWithBackup(rawConfig: RawConfig, configPath: string): Promise<void> {
   await fs.copyFile(configPath, `${configPath}.bak`);
-  await writeConfigFile(rawConfig, configPath);
+  await writeConfigFile(withPortablePaths(rawConfig), configPath);
 }
 
 async function printConfigSummary(runtimeConfig: ResolvedConfig, env: NodeJS.ProcessEnv): Promise<void> {

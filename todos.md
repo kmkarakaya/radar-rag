@@ -1,6 +1,6 @@
 # Repo Eksikleri ve TODO Listesi
 
-Son guncelleme: 2026-11-08. Maddeler `52507e2` commit'indeki kod durumuna gore tek tek dogrulandi.
+Son guncelleme: 2026-11-08. Oncelikler urun hedefine gore duzenlendi: repo, baskalarinin GitHub'dan indirip kendi verisiyle kullanacagi bir urun.
 
 Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigini ve bunlarin hangi oncelikle ele alinmasi gerektigini toplar. Tamamlanan maddeler asagida ayri bir bolumde kisaca listelenir; ayrintilari git gecmisinde ve `docs/` altinda.
 
@@ -28,11 +28,45 @@ Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigi
 - **Log yapisi (eski #8, buyuk kismi)** - Her request icin request id (header yoksa uretiliyor), `latencyMs`, `errorCode`, retrieval suresi ve kaynak sayisi loglaniyor; typed `HttpError` / `RagQueryError` ve merkezi error handler var.
 - **Recursive directory ingestion (eski #6'dan)** - `sourcePath` alt klasorleriyle taraniyor (gizli dosyalar ve `node_modules` atlaniyor); `test/recursive.ingestion.test.ts`.
 - **Ozelge JSON desteginin kaldirilmasi** - 2026-11-08. `ozelgeDataPath` / `indexSampleSize` config ve API alanlari, ozelge loader'i, `ozelgeId`/`sayi`/`tarih`/`konu` kaynak metadata'si, admin panel alanlari ve `data/dataset2/ozelge_veri.json` kaldirildi. Eski config dosyalarindaki bu anahtarlar sessizce yok sayiliyor; eski registry'lerdeki `ozelge_data_path` kolonu startup migration'i ile siliniyor. API'ye `ozelgeDataPath` gonderen istemciler artik `400 INVALID_REQUEST_BODY` aliyor.
+- **Tasinabilir config ve registry** - 2026-11-08. Proje icindeki yollar goreli saklaniyor (`src/paths.ts`): config'te `collectionDefaults.sourcePath: data`, onboarding goreli yaziyor, registry koleksiyon `sourcePath`'lerini goreli kaydediyor ve eski mutlak kayitlari (index snapshot'lari dahil) acilista bir defalik donusturuyor. `RAG_PORT`, `RAG_REGISTRY_PATH`, `RAG_CHROMA_URL`, `RAG_OLLAMA_BASE_URL`, `RAG_OLLAMA_CHAT_MODEL`, `RAG_OLLAMA_EMBEDDING_MODEL`, `RAG_SOURCE_PATH`, `RAG_CONFIG_PATH` YAML'i calisma aninda eziyor. Kalan: Chroma chunk metadata'sindaki `sourcePath` hala mutlak (sadece gosterim; reindex'te yeniden yazilir).
 - **Onboarding hata akisi** - 2026-11-08. Bagimlilik/kaynak eksiklerinde durmuyor; "Config saved; fix these before indexing" altinda her eksik icin tek satir cozum yaziyor, "Next steps"i her zaman gosteriyor, exit code 0. `--skip-index` deprecated.
 
-## P0 - Kritik eksikler
+## P0 - Urun hedefi icin kritik eksikler
 
-### 1. CI pipeline yok
+Hedef: baskalarinin repoyu GitHub'dan indirip kendi verisiyle kolayca kullanabilmesi. Olcut: yeni bir kullanicinin ilk cevabini almasi ne kadar zahmetsiz?
+
+### 1. All-in-one deployment (Docker) eksik
+
+Sorun:
+
+- `docker-compose.yml` sadece Chroma'yi calistiriyor; backend icin `Dockerfile` yok.
+- Kullanici Node.js'i, Docker Desktop'i ve Ollama'yi ayrica kurup modelleri manuel indirmek, sonra onboarding calistirmak zorunda. Bu, yeni kullanici icin en buyuk engel.
+
+Hazir olanlar (2026-11-08): goreli yollar ve `RAG_*` env override'lari (asagida "Tamamlananlar"), yani container icinde YAML duzenlemeden `RAG_CHROMA_URL=http://chroma:8000`, `RAG_OLLAMA_BASE_URL=http://ollama:11434` verilebilir.
+
+Yapilacaklar:
+
+- Multi-stage `Dockerfile` (build + runtime).
+- `docker-compose.yml`'i Chroma + Ollama + backend olarak genislet; servisler env override'lar ile birbirini bulsun.
+- Ollama ayaga kalkinca gerekli modelleri otomatik pull eden entrypoint (model adlari env ile).
+- `./data:/app/data` ve registry/chroma icin volume'lar; README'de "tek komutla kurulum" adimi.
+- Admin auth acik kurulum icin `RAG_ADMIN_SESSION_SECRET` ve kullanici olusturma akisini dokumante et.
+
+### 2. Dosya formati destegi dar
+
+Sorun:
+
+- Sadece `txt`, `md`, `pdf`, `doc`, `docx` destekleniyor. Ozelge adapter'i kalkinca JSON destegi tamamen gitti.
+- Son kullanici verisinde yaygin olan CSV, JSON/JSONL ve HTML desteklenmiyor; bu dosyalar "unsupported" olarak atlaniyor.
+
+Yapilacaklar:
+
+- HTML loader (metni cikar, script/style at).
+- CSV ve JSONL loader'lari; satir/kayit basina belge.
+- Generic JSON mapping: `contentField`, `idField`, `metadataFields` benzeri koleksiyon ayarlari; nested alanlar icin JSON pointer/path; yanlis mapping'de anlasilir hata.
+- Desteklenen formatlari README'de ve admin panelde net goster.
+
+### 3. CI pipeline yok
 
 Sorun:
 
@@ -49,40 +83,7 @@ Yapilacaklar:
   - `npm test`
 - Integration testleri (Ollama + Chroma) ayri, opsiyonel/manuel bir job olarak dusun.
 - Lint eklenince (P2 #1) zincire ekle.
-
-### 2. Benchmark seti ve kosusu yok
-
-Sorun:
-
-- Eski `benchmark/benchmark.json` (+ schema) sadece ozelge sorularindan olustugu icin ozelge destegiyle birlikte 2026-11-08'de silindi. Ne benchmark verisi ne de onu kosan bir script var.
-- `data/` altindaki ornek dataset'ler icin yeni bir soru/beklenen-kaynak seti yazilmali.
-- "Dogru cevap veriyor mu", "retrieval dogru chunk'i getiriyor mu", "degisiklikten sonra kalite dustu mu" sorularina otomatik cevap verilemiyor.
-
-Yapilacaklar:
-
-- `npm run benchmark -- --collection-id <id>` benzeri bir script ekle.
-- Benchmark dosyasini oku ve her soru icin `POST /v1/rag/collections/:id/query` + `/retrieve` veya dogrudan `answerQuestion()` / `retrieveSources()` cagir.
-- Her soru icin raporla:
-  - beklenen cevap / uretilen cevap
-  - retrieved source id'leri ve `distanceScore`'lari
-  - beklenen kaynak belge (`documentId` / `sourcePath`) ilk `k` sonuc icinde var mi (hit@k)
-  - basit pass/fail veya manual review etiketi
-- Sonucu JSON + okunabilir markdown/console tablosu olarak kaydet.
-- CI'da opsiyonel bir benchmark smoke check dusun.
-
-### 3. Readiness gercek RAG akisini temsil etmiyor
-
-Sorun:
-
-- `/ready`; Chroma, Ollama model varligi, embedding smoke, chat smoke ve veri kaynagi okunabilirligini raporluyor. Koleksiyon bazli `/v1/rag/collections/:id/ready` de var.
-- Retrieved context iceren gercek bir query probe'u yok. Bazi modeller kisa chat smoke'unda saglikli gorunup gercek RAG akisinda bos/kirik cevap verebiliyor (ozellikle model degisiminden sonra).
-- Startup fail-fast / warmup modu yok; sunucu bagimliliklar hazir olmasa da ayaga kalkiyor.
-
-Yapilacaklar:
-
-- Retrieved context kullanan gercekci, opsiyonel bir smoke query tanimla (readiness veya benchmark akisinda).
-- Modeller icin kisa bir compatibility notu/matrisi tut.
-- Startup fail-fast veya warmup modu eklenip eklenmeyecegine karar ver; readiness ile startup davranisi arasindaki sozlesmeyi yaz.
+- Urun baskalarinin elindeyken kirik bir surum yayinlamamak icin gerekli.
 
 ## P1 - Kalite ve dayaniklilik eksikleri
 
@@ -97,7 +98,7 @@ Yapilacaklar:
 
 - Metadata ile filtreleme (tarih, konu, belge id) dusun.
 - Ikinci adim reranker icin yapiyi hazirla.
-- Benchmark (P0 #2) geldikten sonra degisiklikleri olcerek yap.
+- Degisiklikleri olcerek yap (bkz. P2 #2 opsiyonel degerlendirme araci).
 
 ### 2. `retrieve` response'u retrieval metadata acisindan sinirli
 
@@ -109,7 +110,7 @@ Sorun:
 Yapilacaklar:
 
 - Her kaynak icin anlamli metadata alanlarini netlestir.
-- Benchmark raporu ile `retrieve` response seklinin uyumlu kalmasini sagla.
+- Degerlendirme araci (P2 #2) ile `retrieve` response seklinin uyumlu kalmasini sagla.
 
 ### 3. Ingestion genisletme ve kalite isleri
 
@@ -117,10 +118,7 @@ Yapildi (ozet): `txt`/`md`/`pdf`/`doc`/`docx` loader'lari, ortak metadata contra
 
 Kalanlar:
 
-- JSON destegi yok (ozelge adapter'i 2026-11-08'de kaldirildi); generic JSON mapping gerekirse sifirdan tasarlanmali.
-  - `contentField`, `idField`, `metadataFields` benzeri koleksiyon ayarlari; nested alanlar icin JSON pointer/path semantigi.
-  - Yanlis field mapping'de anlasilir hata.
-- JSONL ve CSV loader'lari yok.
+- Yeni formatlar (HTML, CSV, JSONL, generic JSON) P0 #2'de.
 - Recursive tarama her zaman acik; config ile kapatma/derinlik siniri yok.
 - Loader options config yuzeyi yok.
 - OCR artigi, header/footer ayiklama, tekrarli metin ve asiri kisa chunk filtreleme temel seviyede.
@@ -181,6 +179,20 @@ Kalanlar:
 - `docs/openapi.yaml` HTTP uzerinden sunulmuyor (ornek: `GET /openapi.json`) ve route'larla otomatik karsilastirilmiyor.
 - Reindex: "basarisiz (`failed`) job'un `error` mesajini reindex response'una ekle" maddesi netlestirilmeli. `failed` job aktif sayilmadigi icin yeni reindex ile cakismiyor; `409` artik `details.jobId` / `details.status` donuyor. Asil ihtiyac "son basarisiz job'un hatasini koleksiyon detayinda gostermek" olabilir.
 
+### 9. Readiness gercek RAG akisini temsil etmiyor
+
+Sorun:
+
+- `/ready`; Chroma, Ollama model varligi, embedding smoke, chat smoke ve veri kaynagi okunabilirligini raporluyor. Koleksiyon bazli `/v1/rag/collections/:id/ready` de var.
+- Retrieved context iceren gercek bir query probe'u yok. Bazi modeller kisa chat smoke'unda saglikli gorunup gercek RAG akisinda bos/kirik cevap verebiliyor (ozellikle model degisiminden sonra).
+- Startup fail-fast / warmup modu yok; sunucu bagimliliklar hazir olmasa da ayaga kalkiyor.
+
+Yapilacaklar:
+
+- Retrieved context kullanan gercekci, opsiyonel bir smoke query tanimla (readiness akisinda).
+- Modeller icin kisa bir compatibility notu/matrisi tut.
+- Startup fail-fast veya warmup modu eklenip eklenmeyecegine karar ver; readiness ile startup davranisi arasindaki sozlesmeyi yaz.
+
 ## P2 - Gelistirici deneyimi ve repo bakimi
 
 ### 1. Lint ve format adimi yok
@@ -188,24 +200,17 @@ Kalanlar:
 - ESLint ekle; Prettier veya mevcut stili standardize et.
 - CI zincirine ekle (P0 #1).
 
-### 2. All-in-one deployment (Docker) eksik
+### 2. Opsiyonel degerlendirme (benchmark) araci
 
-Sorun:
+Karar (2026-11-08): soru seti ve "dogru cevap" tanimi son kullanicinin isi; backend en fazla bunu kosacak opsiyonel bir arac sunabilir. Eski ozelge benchmark'i silindi.
 
-- `docker-compose.yml` sadece Chroma'yi calistiriyor; `Dockerfile` yok.
-- Kullanici Node.js'i ve Ollama'yi ayrica kurup modelleri manuel indirmek zorunda.
+Yapilacaklar (istenirse):
 
-Yapilacaklar:
+- Basit bir soru dosyasi formati (soru, beklenen kaynak dosya, opsiyonel beklenen cevap, "cevap yok" beklentisi).
+- `npm run eval -- --collection-id <id> --questions <file>`: her soru icin query + retrieve; hit@k, no-answer dogrulugu ve cevap/kaynak tablosu (JSON + markdown).
 
-- Multi-stage `Dockerfile` (build + runtime).
-- `docker-compose.yml`'i Chroma + Ollama + backend olarak genislet; servisler `http://chroma:8000`, `http://ollama:11434` uzerinden konussun.
-- Ollama ayaga kalkinca gerekli modelleri (`bge-m3`, chat modeli) otomatik pull eden entrypoint.
-- `./data:/app/data` gibi volume mapping'leri ve README'de "tek komutla kurulum" adimi.
-- Admin session secret icin `RAG_ADMIN_SESSION_SECRET` env kullanimini dokumante et.
+### 3. Konfigurasyon dogrulamasi
 
-### 3. Konfigurasyon dogrulamasi ve tasinabilirlik
-
-- `collectionDefaults.sourcePath` hardcoded mutlak Windows yolu (`C:\Codes\Vanilla Rag Backend\data`); baska makinede/container'da calismaz. Goreli yol veya env override dusun.
 - `retrievalK` ve `numPredict` icin operasyonel ust sinirlar yok.
 - Model degisikliginin restart / re-index etkisini config contract'ina bagla.
 
@@ -213,7 +218,6 @@ Yapilacaklar:
 
 - "Known limitations" bolumu ekle:
   - retrieval kalitesi baseline (rerank / filtre yok)
-  - benchmark otomasyonu yok
   - incremental indexing yok
   - gerekli Ollama modelleri zorunlu (create/reindex artik eksik modelde `422` donuyor)
   - rate limit ve session store in-memory (tek instance varsayimi)
@@ -236,15 +240,15 @@ Kalanlar:
 
 ## Sonraki oncelikli uygulama sirasi
 
-1. CI pipeline (typecheck + typecheck:test + build + test).
-2. Benchmark runner.
-3. Readiness icin gercek RAG smoke probe.
-4. Test coverage bosluklari (config, onboarding).
-5. Generic JSON mapping, ardindan CSV/JSONL.
+1. All-in-one Docker (backend + Chroma + Ollama, otomatik model pull).
+2. Yeni dosya formatlari: HTML, CSV, JSONL, generic JSON mapping.
+3. CI pipeline (typecheck + typecheck:test + build + test).
+4. README bilinen sinirlar + ilk kurulum deneyimi cilasi.
+5. Readiness icin gercek RAG smoke probe.
 6. Incremental / upsert indexing.
-7. Lint, Docker all-in-one, README bilinen sinirlar.
+7. Test coverage bosluklari, lint, opsiyonel degerlendirme araci.
 
 ## Kapanis notu
 
 Repo artik "calisan bir baseline vanilla RAG backend" seviyesini gecti: multi-collection, multi-tenant, auth'lu admin API, guvenli blue/green reindex ve genis test kapsami var.
-"Guvenle olculebilen ve otomatik dogrulanan" seviyesine cikmak icin oncelik CI ve benchmark'ta.
+Baskalarinin kolayca kurup kendi verisiyle kullanabilecegi bir urun olmasi icin oncelik tek komutla kurulum (Docker) ve daha genis dosya formati desteginde.

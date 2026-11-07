@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import type { DistanceMetric } from "../config.js";
 import { createPhysicalCollectionName, generateCollectionId } from "./ids.js";
 import { buildCollectionIndexSnapshot, buildCollectionIndexState, parseCollectionIndexSnapshot } from "./indexState.js";
+import { toPortablePath } from "../paths.js";
 import type { OperationalLogEvent } from "../observability/logger.js";
 import type {
   AuditLogRecord,
@@ -36,6 +37,11 @@ import type {
 
 type SqliteRegistryOptions = {
   dbPath: string;
+  /**
+   * When set, collection source paths inside this folder are stored relative to it, and existing
+   * absolute rows are rewritten once at startup. Keeps the registry valid after the repo is moved.
+   */
+  projectRoot?: string;
 };
 
 type CollectionRow = {
@@ -145,8 +151,11 @@ type SqliteDatabase = Database.Database;
 export function createSqliteCollectionRegistry(options: SqliteRegistryOptions): CollectionRegistry {
   const db = openDatabase(options.dbPath);
   initializeSchema(db);
+  if (options.projectRoot) {
+    makeStoredSourcePathsPortable(db, options.projectRoot);
+  }
 
-  return new SqliteCollectionRegistry(db);
+  return new SqliteCollectionRegistry(db, options.projectRoot);
 }
 
 function openDatabase(dbPath: string): SqliteDatabase {
@@ -323,6 +332,43 @@ function migrateSchema(db: SqliteDatabase): void {
   }
 }
 
+/** Rewrites absolute source paths inside projectRoot (and their index snapshots) to the portable relative form. */
+function makeStoredSourcePathsPortable(db: SqliteDatabase, projectRoot: string): void {
+  const rows = db.prepare(`SELECT id, source_path, indexed_snapshot_json FROM collections`).all() as Array<{
+    id: string;
+    source_path: string;
+    indexed_snapshot_json: string | null;
+  }>;
+  const update = db.prepare(`
+    UPDATE collections
+    SET source_path = @sourcePath, indexed_snapshot_json = @indexedSnapshotJson
+    WHERE id = @id
+  `);
+
+  const rewrite = db.transaction(() => {
+    for (const row of rows) {
+      const sourcePath = toPortablePath(row.source_path, projectRoot);
+      let indexedSnapshotJson = row.indexed_snapshot_json;
+      if (indexedSnapshotJson) {
+        try {
+          const snapshot = JSON.parse(indexedSnapshotJson) as { sourcePath?: unknown };
+          if (typeof snapshot.sourcePath === "string") {
+            snapshot.sourcePath = toPortablePath(snapshot.sourcePath, projectRoot);
+            indexedSnapshotJson = JSON.stringify(snapshot);
+          }
+        } catch {
+          // Leave unparseable snapshots alone; index state already treats them as unavailable.
+        }
+      }
+
+      if (sourcePath !== row.source_path || indexedSnapshotJson !== row.indexed_snapshot_json) {
+        update.run({ id: row.id, sourcePath, indexedSnapshotJson });
+      }
+    }
+  });
+  rewrite();
+}
+
 function ensureColumn(db: SqliteDatabase, tableName: string, columnName: string, definition: string): void {
   const columns = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
   if (columns.some((column) => column.name === columnName)) {
@@ -342,7 +388,14 @@ function dropColumnIfExists(db: SqliteDatabase, tableName: string, columnName: s
 }
 
 class SqliteCollectionRegistry implements CollectionRegistry {
-  constructor(private readonly db: SqliteDatabase) {}
+  constructor(
+    private readonly db: SqliteDatabase,
+    private readonly projectRoot?: string,
+  ) {}
+
+  private storedSourcePath(sourcePath: string): string {
+    return this.projectRoot ? toPortablePath(sourcePath, this.projectRoot) : sourcePath;
+  }
 
   async listVisibleCollections(context: RequestContext): Promise<RagCollection[]> {
     const rows = this.db
@@ -773,7 +826,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       tenantId: context.tenantId,
       displayName: input.displayName,
       description: input.description ?? null,
-      sourcePath: input.sourcePath,
+      sourcePath: this.storedSourcePath(input.sourcePath),
       embeddingModel: input.embeddingModel,
       chatModel: input.chatModel,
       distanceMetric: input.distanceMetric,
@@ -815,7 +868,13 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     addPatch("displayName", "display_name", patch.displayName, updates, values);
     addNullablePatch("description", "description", patch.description, updates, values);
     addPatch("status", "status", patch.status, updates, values);
-    addPatch("sourcePath", "source_path", patch.sourcePath, updates, values);
+    addPatch(
+      "sourcePath",
+      "source_path",
+      patch.sourcePath === undefined ? undefined : this.storedSourcePath(patch.sourcePath),
+      updates,
+      values,
+    );
     addPatch("embeddingModel", "embedding_model", patch.embeddingModel, updates, values);
     addPatch("chatModel", "chat_model", patch.chatModel, updates, values);
     addPatch("distanceMetric", "distance_metric", patch.distanceMetric, updates, values);

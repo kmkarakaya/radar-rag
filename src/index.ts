@@ -90,7 +90,7 @@ export async function runIndexing(
 
   log(`Starting reindex job for logical collection "${collectionId}"`);
 
-  const registry = createSqliteCollectionRegistry({ dbPath: runtimeConfig.registryPath });
+  const registry = createSqliteCollectionRegistry({ dbPath: runtimeConfig.registryPath, projectRoot: runtimeConfig.projectRoot });
   const logEvent = createPersistentOperationalLogSink(options.logEvent ?? createConsoleLogSink(), registry);
   const context = {
     tenantId: "default",

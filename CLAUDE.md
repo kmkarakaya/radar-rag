@@ -56,7 +56,7 @@ Implemented in [src/http/adminAuth.ts](src/http/adminAuth.ts); config under `adm
 - Runtime config: [config/rag.config.yaml](config/rag.config.yaml), zod-validated with defaults resolved in [src/config.ts](src/config.ts). Key defaults: `chunkSize 500`, `chunkOverlap 200` (must be `< chunkSize`), `retrievalK 5`, `retrievalDistanceThreshold 1.2`, `distanceMetric l2`, `numCtx 4096`.
 - `RAG_ADMIN_SESSION_SECRET` overrides the local secret file, keeping the runtime portable.
 - Gitignored: `.env*`, `.local/`, `data/*.sqlite`, `chroma_data/`, `dist/`, `node_modules/`, `graphify-out/` (local only; rebuild with `graphify update .`).
-- Note: `collectionDefaults.sourcePath` is a hardcoded absolute Windows path (`C:\Codes\Vanilla Rag Backend\data`) — environment-specific.
+- Portability: paths inside the repo are stored relative (`src/paths.ts` `toPortablePath`) in the config (onboarding) and in the registry (collection `sourcePath`, migrated at startup when `projectRoot` is passed). `RAG_PORT`, `RAG_REGISTRY_PATH`, `RAG_CHROMA_URL`, `RAG_OLLAMA_BASE_URL`, `RAG_OLLAMA_CHAT_MODEL`, `RAG_OLLAMA_EMBEDDING_MODEL`, `RAG_SOURCE_PATH`, `RAG_CONFIG_PATH` override the YAML at runtime (`applyConfigEnvOverrides`).
 
 ## Docs & knowledge graph
 

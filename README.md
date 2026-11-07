@@ -132,6 +132,26 @@ Flags:
 
 Run onboarding again when you change machines, switch models, change ports or service URLs, change the default source folder, or want to turn admin auth on or off. Restart the server (`npm.cmd run dev`) afterwards, because the config is only read at startup. To index new data, use the admin panel instead.
 
+## Running on another machine or in a container
+
+Paths inside the project are kept relative (for example `collectionDefaults.sourcePath: data`, collection source paths such as `data/dataset1`), so you can clone or move the repo anywhere and run it from the project root. Collections created before this change that still point at an absolute path inside the project are rewritten to relative paths automatically when the server starts. Paths outside the project stay absolute.
+
+These environment variables override [config/rag.config.yaml](config/rag.config.yaml) at runtime without editing it (useful for Docker, CI, or a second machine):
+
+| Variable | Overrides |
+| --- | --- |
+| `RAG_CONFIG_PATH` | Config file location (default `config/rag.config.yaml`) |
+| `RAG_PORT` | `server.port` |
+| `RAG_REGISTRY_PATH` | `registry.path` |
+| `RAG_CHROMA_URL` | `chroma.url` (e.g. `http://chroma:8000` in Docker) |
+| `RAG_OLLAMA_BASE_URL` | `ollama.baseUrl` (e.g. `http://ollama:11434` in Docker) |
+| `RAG_OLLAMA_CHAT_MODEL` | `ollama.chatModel` |
+| `RAG_OLLAMA_EMBEDDING_MODEL` | `ollama.embeddingModel` |
+| `RAG_SOURCE_PATH` | `collectionDefaults.sourcePath` |
+| `RAG_ADMIN_SESSION_SECRET` | Admin session secret (instead of `.local/rag_admin_session.secret`) |
+
+Onboarding edits the YAML file itself; these variables are only applied when the server or the CLI loads its config, and are never written back.
+
 ## Troubleshooting
 
 | Symptom                                                                                                                          | Cause                                                | Fix                                                                                                                                                                                            |

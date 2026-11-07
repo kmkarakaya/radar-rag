@@ -13,12 +13,9 @@ describe("ingestion hashing", () => {
     // 1. Initial content
     await fs.writeFile(filePath, "initial content");
     
-    const ozelgeDataPath = path.resolve("test/data/dataset2/ozelge_veri.json"); // dummy path
     
     const analysis1 = await analyzeIndexingSource({
       sourcePath: tempDir,
-      ozelgeDataPath,
-      indexSampleSize: 0
     });
     
     assert.strictEqual(analysis1.documents.length, 1);
@@ -30,8 +27,6 @@ describe("ingestion hashing", () => {
     
     const analysis2 = await analyzeIndexingSource({
       sourcePath: tempDir,
-      ozelgeDataPath,
-      indexSampleSize: 0
     });
     
     assert.strictEqual(analysis2.documents.length, 1);

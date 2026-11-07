@@ -26,7 +26,6 @@ const AUDIT_LOG_OPERATION_OPTIONS = [
     { value: "collection_readiness", label: "Collection readiness" },
     { value: "index_build", label: "Index build" },
     { value: "cleanup", label: "Cleanup" },
-    { value: "load_ozelge_file", label: "Load ozelge file" },
     { value: "load_file", label: "Load file" },
 ];
 const AUDIT_COLLECTION_PANEL_WIDTH_CLASS = "w-[min(92vw,34rem)]";
@@ -35,7 +34,6 @@ const EDIT_FIELD_IDS = {
     displayName: "editDisplayName",
     description: "editDescription",
     sourcePath: "editSourcePath",
-    ozelgeDataPath: "editOzelgeDataPath",
     distanceMetric: "editDistanceMetric",
     chunkSize: "editChunkSize",
     chunkOverlap: "editChunkOverlap",
@@ -223,7 +221,6 @@ const elements = {
     editDisplayName: document.getElementById("editDisplayName"),
     editDescription: document.getElementById("editDescription"),
     editSourcePath: document.getElementById("editSourcePath"),
-    editOzelgeDataPath: document.getElementById("editOzelgeDataPath"),
     editDistanceMetric: document.getElementById("editDistanceMetric"),
     editChunkSize: document.getElementById("editChunkSize"),
     editChunkOverlap: document.getElementById("editChunkOverlap"),
@@ -665,11 +662,10 @@ function syncConfigDefaultsPanel() {
     elements.configDefaultsPanel.classList.toggle("hidden", !isCreateMode);
 
     const clearHelpers = () => {
-        ["sourcePath", "ozelgeDataPath", "distanceMetric", "chunkSize", "chunkOverlap", "retrievalK", "retrievalDistanceThreshold", "embeddingModel", "chatModel"].forEach((field) => {
+        ["sourcePath", "distanceMetric", "chunkSize", "chunkOverlap", "retrievalK", "retrievalDistanceThreshold", "embeddingModel", "chatModel"].forEach((field) => {
             setCreateFieldDefault(field, "Backend default unavailable");
         });
         if (elements.editSourcePath) elements.editSourcePath.placeholder = "";
-        if (elements.editOzelgeDataPath) elements.editOzelgeDataPath.placeholder = "";
         if (elements.editChunkSize) elements.editChunkSize.placeholder = "";
         if (elements.editChunkOverlap) elements.editChunkOverlap.placeholder = "";
         if (elements.editRetrievalK) elements.editRetrievalK.placeholder = "";
@@ -721,12 +717,10 @@ function syncConfigDefaultsPanel() {
 
     const summaryParts = [
         `Source path: ${formatConfigDefault(collectionDefaults.sourcePath)}`,
-        `Ozelge data: ${formatConfigDefault(collectionDefaults.ozelgeDataPath)}`,
         `Distance metric: ${formatConfigDefault(collectionDefaults.distanceMetric)}`,
         `Chunk size/overlap: ${formatConfigDefault(collectionDefaults.chunkSize)}/${formatConfigDefault(collectionDefaults.chunkOverlap)}`,
         `Retrieval K: ${formatConfigDefault(collectionDefaults.retrievalK)}`,
         `Threshold: ${formatConfigDefault(collectionDefaults.retrievalDistanceThreshold)}`,
-        `Index sample size: ${formatConfigDefault(collectionDefaults.indexSampleSize)}`,
         `Models: ${formatConfigDefault(modelDefaults.embeddingModel)} / ${formatConfigDefault(modelDefaults.chatModel)}`,
     ];
 
@@ -739,7 +733,6 @@ function syncConfigDefaultsPanel() {
     }
 
     setCreateFieldDefault("sourcePath", `Backend default: ${formatConfigDefault(collectionDefaults.sourcePath)}`);
-    setCreateFieldDefault("ozelgeDataPath", `Backend default: ${formatConfigDefault(collectionDefaults.ozelgeDataPath)}`);
     setCreateFieldDefault("distanceMetric", `Backend default: ${formatConfigDefault(collectionDefaults.distanceMetric)}`);
     setCreateFieldDefault("chunkSize", `Backend default: ${formatConfigDefault(collectionDefaults.chunkSize)}`);
     setCreateFieldDefault("chunkOverlap", `Backend default: ${formatConfigDefault(collectionDefaults.chunkOverlap)}`);
@@ -749,7 +742,6 @@ function syncConfigDefaultsPanel() {
     setCreateFieldDefault("chatModel", `Backend default: ${formatConfigDefault(modelDefaults.chatModel)}`);
 
     if (elements.editSourcePath) elements.editSourcePath.placeholder = formatConfigDefault(collectionDefaults.sourcePath);
-    if (elements.editOzelgeDataPath) elements.editOzelgeDataPath.placeholder = formatConfigDefault(collectionDefaults.ozelgeDataPath);
     if (elements.editChunkSize) elements.editChunkSize.placeholder = String(formatConfigDefault(collectionDefaults.chunkSize));
     if (elements.editChunkOverlap) elements.editChunkOverlap.placeholder = String(formatConfigDefault(collectionDefaults.chunkOverlap));
     if (elements.editRetrievalK) elements.editRetrievalK.placeholder = String(formatConfigDefault(collectionDefaults.retrievalK));
@@ -770,9 +762,7 @@ async function loadConfigDefaults() {
             loaded: true,
             collectionDefaults: {
                 sourcePath: typeof data?.collectionDefaults?.sourcePath === "string" ? data.collectionDefaults.sourcePath : "",
-                ozelgeDataPath: typeof data?.collectionDefaults?.ozelgeDataPath === "string" ? data.collectionDefaults.ozelgeDataPath : "",
                 distanceMetric: typeof data?.collectionDefaults?.distanceMetric === "string" ? data.collectionDefaults.distanceMetric : "",
-                indexSampleSize: Number.isFinite(data?.collectionDefaults?.indexSampleSize) ? data.collectionDefaults.indexSampleSize : 0,
                 chunkSize: Number.isFinite(data?.collectionDefaults?.chunkSize) ? data.collectionDefaults.chunkSize : "",
                 chunkOverlap: Number.isFinite(data?.collectionDefaults?.chunkOverlap) ? data.collectionDefaults.chunkOverlap : "",
                 retrievalK: Number.isFinite(data?.collectionDefaults?.retrievalK) ? data.collectionDefaults.retrievalK : "",
@@ -1530,7 +1520,6 @@ const VALIDATION_FIELD_LABELS = {
     displayName: "Display name",
     description: "Description",
     sourcePath: "Source path",
-    ozelgeDataPath: "Ozelge data path",
     distanceMetric: "Distance metric",
     chunkSize: "Chunk size",
     chunkOverlap: "Chunk overlap",
@@ -1696,7 +1685,6 @@ function renderCollectionIndexStateBanner() {
 
     const snapshotGrid = createEl("div", "mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2");
     snapshotGrid.appendChild(createMetaItem("Saved source path", indexState?.desiredSnapshot?.sourcePath ?? collection.sourcePath));
-    snapshotGrid.appendChild(createMetaItem("Saved Ozelge path", indexState?.desiredSnapshot?.ozelgeDataPath ?? collection.ozelgeDataPath));
     snapshotGrid.appendChild(createMetaItem("Saved chunk size", indexState?.desiredSnapshot?.chunkSize ?? collection.chunkSize));
     snapshotGrid.appendChild(createMetaItem("Saved chunk overlap", indexState?.desiredSnapshot?.chunkOverlap ?? collection.chunkOverlap));
     snapshotGrid.appendChild(createMetaItem("Saved embedding model", indexState?.desiredSnapshot?.embeddingModel ?? collection.embeddingModel));
@@ -1709,7 +1697,6 @@ function renderCollectionIndexStateBanner() {
         activeSection.appendChild(createEl("div", "font-semibold text-slate-800", "Active indexed snapshot"));
         const activeGrid = createEl("div", "mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2");
         activeGrid.appendChild(createMetaItem("Active source path", indexState.activeSnapshot.sourcePath));
-        activeGrid.appendChild(createMetaItem("Active Ozelge path", indexState.activeSnapshot.ozelgeDataPath));
         activeGrid.appendChild(createMetaItem("Active chunk size", indexState.activeSnapshot.chunkSize));
         activeGrid.appendChild(createMetaItem("Active chunk overlap", indexState.activeSnapshot.chunkOverlap));
         activeGrid.appendChild(createMetaItem("Active embedding model", indexState.activeSnapshot.embeddingModel));
@@ -2721,7 +2708,6 @@ function setupEditorTab(collection) {
     elements.editDisplayName.value = fieldValueFromCollection(collection, "displayName");
     elements.editDescription.value = fieldValueFromCollection(collection, "description");
     elements.editSourcePath.value = fieldValueFromCollection(collection, "sourcePath");
-    elements.editOzelgeDataPath.value = fieldValueFromCollection(collection, "ozelgeDataPath");
     elements.editDistanceMetric.value = collection.distanceMetric || "";
     elements.editChunkSize.value = collection.chunkSize ?? "";
     elements.editChunkOverlap.value = collection.chunkOverlap ?? "";
@@ -2758,7 +2744,6 @@ function readEditorValues() {
         displayName: readTrimmed(EDIT_FIELD_IDS.displayName),
         description: readTrimmed(EDIT_FIELD_IDS.description),
         sourcePath: readTrimmed(EDIT_FIELD_IDS.sourcePath),
-        ozelgeDataPath: readTrimmed(EDIT_FIELD_IDS.ozelgeDataPath),
         distanceMetric: readTrimmed(EDIT_FIELD_IDS.distanceMetric),
         chunkSize: readOptionalInteger(EDIT_FIELD_IDS.chunkSize),
         chunkOverlap: readOptionalInteger(EDIT_FIELD_IDS.chunkOverlap),
@@ -2809,7 +2794,6 @@ function buildCollectionPayload(mode) {
         payload.displayName = values.displayName;
         addIfText(payload, "description", values.description);
         addIfText(payload, "sourcePath", values.sourcePath);
-        addIfText(payload, "ozelgeDataPath", values.ozelgeDataPath);
         if (values.distanceMetric) payload.distanceMetric = values.distanceMetric;
         addIfNumber(payload, "chunkSize", values.chunkSize);
         addIfNumber(payload, "chunkOverlap", values.chunkOverlap);
@@ -2828,7 +2812,7 @@ function buildCollectionPayload(mode) {
         else if (initial.description) payload.description = null;
     }
 
-    ["sourcePath", "ozelgeDataPath", "embeddingModel", "chatModel"].forEach((key) => {
+    ["sourcePath", "embeddingModel", "chatModel"].forEach((key) => {
         if (values[key] && values[key] !== initial[key]) payload[key] = values[key];
     });
 
@@ -2973,10 +2957,6 @@ function renderSourceFields(source, index) {
     if (index === 0) details.open = true;
     const summaryParts = [
         source.sourcePath || source.documentId || `Source ${index + 1}`,
-        source.ozelgeId ? `Ozelge: ${source.ozelgeId}` : null,
-        source.sayi ? `Sayi: ${source.sayi}` : null,
-        source.tarih ? `Tarih: ${source.tarih}` : null,
-        source.konu ? `Konu: ${source.konu}` : null,
     ].filter(Boolean);
     const summary = createEl("summary", "cursor-pointer break-all-words text-sm font-semibold text-slate-700", summaryParts.join(" / "));
     details.appendChild(summary);
@@ -2986,10 +2966,6 @@ function renderSourceFields(source, index) {
         ["Source path", source.sourcePath],
         ["Source type", source.sourceType],
         ["Chunk", source.chunkIndex],
-        ["Ozelge ID", source.ozelgeId],
-        ["Sayi", source.sayi],
-        ["Tarih", source.tarih],
-        ["Konu", source.konu],
         ["Distance", formatMetric(source.distanceScore)],
     ].forEach(([label, value]) => {
         if (value !== undefined && value !== null && value !== "") grid.appendChild(createMetaItem(label, value));

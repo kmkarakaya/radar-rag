@@ -237,10 +237,7 @@ async function promptConfig(rawConfig: RawConfig): Promise<PromptedConfig> {
   const rl = createInterface({ input, output });
 
   try {
-    console.log("Press Enter to keep the current value.");
-    console.log(
-      "collectionDefaults.indexSampleSize is the default sample size for newly created collections; 0 means all parsed ozelge records.\n",
-    );
+    console.log("Press Enter to keep the current value.\n");
 
     const adminAuthResult = await promptAdminAuth(rl, rawConfig.adminAuth);
 
@@ -264,22 +261,11 @@ async function promptConfig(rawConfig: RawConfig): Promise<PromptedConfig> {
         },
         collectionDefaults: {
           sourcePath: await promptString(rl, "collectionDefaults.sourcePath", rawConfig.collectionDefaults.sourcePath),
-          ozelgeDataPath: await promptString(
-            rl,
-            "collectionDefaults.ozelgeDataPath",
-            rawConfig.collectionDefaults.ozelgeDataPath,
-          ),
           distanceMetric: await promptEnum(
             rl,
             "collectionDefaults.distanceMetric",
             rawConfig.collectionDefaults.distanceMetric,
             DISTANCE_METRICS,
-          ),
-          indexSampleSize: await promptNumber(
-            rl,
-            "collectionDefaults.indexSampleSize",
-            rawConfig.collectionDefaults.indexSampleSize,
-            nonNegativeInteger,
           ),
           chunkSize: await promptNumber(
             rl,
@@ -422,9 +408,7 @@ async function printConfigSummary(runtimeConfig: ResolvedConfig, env: NodeJS.Pro
   console.log(`- ollama chat: ${runtimeConfig.ollamaChatModel}`);
   console.log(`- ollama embedding: ${runtimeConfig.ollamaEmbeddingModel}`);
   console.log(`- collectionDefaults.sourcePath: ${runtimeConfig.sourcePath}`);
-  console.log(`- collectionDefaults.ozelgeDataPath: ${runtimeConfig.ozelgeDataPath}`);
   console.log(`- collectionDefaults.distanceMetric: ${runtimeConfig.chromaDistanceMetric}`);
-  console.log(`- collectionDefaults.indexSampleSize: ${runtimeConfig.indexSampleSize}`);
   console.log(`- collectionDefaults.chunkSize/chunkOverlap: ${runtimeConfig.chunkSize}/${runtimeConfig.chunkOverlap}`);
   console.log(`- collectionDefaults.retrievalK: ${runtimeConfig.retrievalK}`);
   console.log(`- collectionDefaults.retrievalDistanceThreshold: ${runtimeConfig.retrievalDistanceThreshold}`);
@@ -447,8 +431,6 @@ async function printSourceAnalysis(runtimeConfig: ResolvedConfig): Promise<numbe
   console.log(`- sourcePath: ${analysis.sourcePath}`);
   console.log(`- files: ${analysis.fileCount}`);
   console.log(`- parsed/indexable documents: ${analysis.loadedDocumentCount}/${analysis.documents.length}`);
-  console.log(`- ozelge records: ${analysis.sampledRecordCount ?? 0}/${analysis.recordCount ?? 0}`);
-  console.log(`- sampleLimited: ${analysis.sampleLimited}`);
 
   for (const sourceFile of analysis.sourceFiles) {
     console.log(`  - ${sourceFile.path} (${sourceFile.sourceType}): ${sourceFile.loadedDocumentCount}`);

@@ -47,7 +47,6 @@ type CollectionRow = {
   active_physical_collection: string | null;
   active_version: string | null;
   source_path: string;
-  ozelge_data_path: string;
   embedding_model: string;
   chat_model: string;
   distance_metric: "l2" | "cosine" | "ip";
@@ -171,7 +170,6 @@ function initializeSchema(db: SqliteDatabase): void {
       active_physical_collection TEXT,
       active_version TEXT,
       source_path TEXT NOT NULL,
-      ozelge_data_path TEXT NOT NULL,
       embedding_model TEXT NOT NULL,
       chat_model TEXT NOT NULL,
       distance_metric TEXT NOT NULL,
@@ -286,17 +284,18 @@ function initializeSchema(db: SqliteDatabase): void {
 function migrateSchema(db: SqliteDatabase): void {
   ensureColumn(db, "collections", "active_embedding_model", "TEXT");
   ensureColumn(db, "collections", "indexed_snapshot_json", "TEXT");
+  // Ozelge JSON support was removed; older registries still have this NOT NULL column, which would break inserts.
+  dropColumnIfExists(db, "collections", "ozelge_data_path");
 
   const backfillNow = new Date().toISOString();
   const snapshotRows = db.prepare(`
-    SELECT id, source_path, ozelge_data_path, distance_metric, chunk_size, chunk_overlap, embedding_model
+    SELECT id, source_path, distance_metric, chunk_size, chunk_overlap, embedding_model
     FROM collections
     WHERE active_physical_collection IS NOT NULL
       AND (indexed_snapshot_json IS NULL OR indexed_snapshot_json = '')
   `).all() as Array<{
     id: string;
     source_path: string;
-    ozelge_data_path: string;
     distance_metric: "l2" | "cosine" | "ip";
     chunk_size: number;
     chunk_overlap: number;
@@ -314,7 +313,6 @@ function migrateSchema(db: SqliteDatabase): void {
       id: row.id,
       indexedSnapshotJson: JSON.stringify({
         sourcePath: row.source_path,
-        ozelgeDataPath: row.ozelge_data_path,
         distanceMetric: row.distance_metric,
         chunkSize: row.chunk_size,
         chunkOverlap: row.chunk_overlap,
@@ -332,6 +330,15 @@ function ensureColumn(db: SqliteDatabase, tableName: string, columnName: string,
   }
 
   db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+}
+
+function dropColumnIfExists(db: SqliteDatabase, tableName: string, columnName: string): void {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === columnName)) {
+    return;
+  }
+
+  db.exec(`ALTER TABLE ${tableName} DROP COLUMN ${columnName}`);
 }
 
 class SqliteCollectionRegistry implements CollectionRegistry {
@@ -731,7 +738,6 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         description,
         status,
         source_path,
-        ozelge_data_path,
         embedding_model,
         chat_model,
         distance_metric,
@@ -750,7 +756,6 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         @description,
         'creating',
         @sourcePath,
-        @ozelgeDataPath,
         @embeddingModel,
         @chatModel,
         @distanceMetric,
@@ -769,7 +774,6 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       displayName: input.displayName,
       description: input.description ?? null,
       sourcePath: input.sourcePath,
-      ozelgeDataPath: input.ozelgeDataPath,
       embeddingModel: input.embeddingModel,
       chatModel: input.chatModel,
       distanceMetric: input.distanceMetric,
@@ -812,7 +816,6 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     addNullablePatch("description", "description", patch.description, updates, values);
     addPatch("status", "status", patch.status, updates, values);
     addPatch("sourcePath", "source_path", patch.sourcePath, updates, values);
-    addPatch("ozelgeDataPath", "ozelge_data_path", patch.ozelgeDataPath, updates, values);
     addPatch("embeddingModel", "embedding_model", patch.embeddingModel, updates, values);
     addPatch("chatModel", "chat_model", patch.chatModel, updates, values);
     addPatch("distanceMetric", "distance_metric", patch.distanceMetric, updates, values);
@@ -1274,7 +1277,6 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         lastIndexedAt: now,
         indexedSnapshotJson: JSON.stringify(buildCollectionIndexSnapshot({
           sourcePath: collection.source_path,
-          ozelgeDataPath: collection.ozelge_data_path,
           distanceMetric: collection.distance_metric,
           chunkSize: collection.chunk_size,
           chunkOverlap: collection.chunk_overlap,
@@ -1829,7 +1831,6 @@ function mapCollectionRow(row: CollectionRow): RagCollection {
     activePhysicalCollection: row.active_physical_collection ?? undefined,
     activeVersion: row.active_version ?? undefined,
     sourcePath: row.source_path,
-    ozelgeDataPath: row.ozelge_data_path,
     embeddingModel: row.embedding_model,
     chatModel: row.chat_model,
     distanceMetric: row.distance_metric,

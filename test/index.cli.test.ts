@@ -24,7 +24,6 @@ describe("CLI indexing command contract", () => {
     const collection = await registry.createCollection(context, {
       displayName: "CLI Fail Test",
       sourcePath: "data",
-      ozelgeDataPath: "data/ozelge",
       embeddingModel: "test",
       chatModel: "test",
       distanceMetric: "l2",
@@ -67,7 +66,6 @@ describe("CLI indexing command contract", () => {
     const collection = await registry.createCollection(context, {
       displayName: "CLI Success Test",
       sourcePath: "data",
-      ozelgeDataPath: "data/ozelge",
       embeddingModel: "test",
       chatModel: "test",
       distanceMetric: "l2",

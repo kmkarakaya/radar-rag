@@ -53,7 +53,7 @@ TypeScript Express backend for multi-collection LangChain RAG over documents in 
 
 ### Data and Indexing
 
-- Document ingestion for PDF, DOCX, TXT, and custom JSON sources.
+- Document ingestion for TXT, MD, PDF, DOC, and DOCX files, scanning the source folder recursively.
 - Chunking controls, retrieval thresholds, and distance-metric selection per collection.
 - Configurable source path and auxiliary data path for collection provisioning.
 
@@ -119,12 +119,12 @@ Use onboarding again when you change machines, reset the config, add new source 
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-| --- | --- | --- |
-| `docker compose up -d chroma` fails with `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified` | Docker Desktop is not running | Start Docker Desktop, wait until it shows "Engine running", then run `docker compose up -d chroma` again |
-| Onboarding prints `Chroma: fail - Failed to connect to chromadb` under "Config saved; fix these before indexing" | The Chroma container is not running | Start Chroma as above. Onboarding already saved the config and still prints the next steps, so you do not need to rerun it; start the server with `npm.cmd run dev` and check `GET /ready` |
-| Creating a collection or starting a reindex returns `422 UNAVAILABLE_MODEL` | The embedding or chat model is not pulled in Ollama | Run the `ollama pull …` command listed in `details.recommendedActions`, or pick a model from `details.availableModels` |
-| Creating a collection or starting a reindex returns `503 OLLAMA_UNREACHABLE` | Ollama is not running or `ollama.baseUrl` is wrong | Start Ollama (`ollama serve` or the desktop app) and check `ollama.baseUrl` in [config/rag.config.yaml](config/rag.config.yaml) |
+| Symptom                                                                                                                          | Cause                                                | Fix                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docker compose up -d chroma` fails with `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified` | Docker Desktop is not running                        | Start Docker Desktop, wait until it shows "Engine running", then run `docker compose up -d chroma` again                                                                                     |
+| Onboarding prints `Chroma: fail - Failed to connect to chromadb` under "Config saved; fix these before indexing"               | The Chroma container is not running                  | Start Chroma as above. Onboarding already saved the config and still prints the next steps, so you do not need to rerun it; start the server with `npm.cmd run dev` and check `GET /ready` |
+| Creating a collection or starting a reindex returns `422 UNAVAILABLE_MODEL`                                                    | The embedding or chat model is not pulled in Ollama  | Run the `ollama pull …` command listed in `details.recommendedActions`, or pick a model from `details.availableModels`                                                                  |
+| Creating a collection or starting a reindex returns `503 OLLAMA_UNREACHABLE`                                                   | Ollama is not running or `ollama.baseUrl` is wrong | Start Ollama (`ollama serve` or the desktop app) and check `ollama.baseUrl` in [config/rag.config.yaml](config/rag.config.yaml)                                                             |
 
 Quick health check: `GET http://localhost:3010/ready?details=true` reports Chroma, Ollama, model, and data source status with blockers and recommended actions.
 
@@ -256,7 +256,7 @@ The panel surface is split across:
 - Node.js, TypeScript, Express
 - LangChain, Chroma, Ollama
 - SQLite registry and job state
-- PDF, DOCX, TXT, and custom JSON ingestion support
+- TXT, MD, PDF, DOC, and DOCX ingestion
 
 ## Notes
 

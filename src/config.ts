@@ -52,9 +52,7 @@ export const configSchema = z.object({
   }).strict(),
   collectionDefaults: z.object({
     sourcePath: z.string().trim().min(1),
-    ozelgeDataPath: z.string().trim().min(1),
     distanceMetric: distanceMetricSchema,
-    indexSampleSize: z.number().int().nonnegative(),
     chunkSize: z.number().int().positive(),
     chunkOverlap: z.number().int().nonnegative(),
     retrievalK: z.number().int().positive(),
@@ -104,8 +102,21 @@ export function readConfigFile(configPath = defaultConfigPath): unknown {
   }
 }
 
+/** Keys removed with ozelge JSON support. Older config files may still contain them; drop instead of rejecting. */
+const LEGACY_COLLECTION_DEFAULT_KEYS = ["ozelgeDataPath", "indexSampleSize"] as const;
+
+function dropLegacyConfigKeys(rawConfig: unknown): unknown {
+  if (!rawConfig || typeof rawConfig !== "object" || Array.isArray(rawConfig)) return rawConfig;
+  const defaults = (rawConfig as { collectionDefaults?: unknown }).collectionDefaults;
+  if (!defaults || typeof defaults !== "object" || Array.isArray(defaults)) return rawConfig;
+
+  const cleanedDefaults = { ...(defaults as Record<string, unknown>) };
+  for (const key of LEGACY_COLLECTION_DEFAULT_KEYS) delete cleanedDefaults[key];
+  return { ...(rawConfig as Record<string, unknown>), collectionDefaults: cleanedDefaults };
+}
+
 export function parseConfig(rawConfig: unknown, configPath = defaultConfigPath): RawConfig {
-  const parsedConfig = configSchema.safeParse(rawConfig);
+  const parsedConfig = configSchema.safeParse(dropLegacyConfigKeys(rawConfig));
 
   if (!parsedConfig.success) {
     throw new Error(
@@ -125,9 +136,7 @@ export function resolveConfig(
 ) {
   const collectionDefaults = {
     sourcePath: path.resolve(cwd, rawConfig.collectionDefaults.sourcePath),
-    ozelgeDataPath: path.resolve(cwd, rawConfig.collectionDefaults.ozelgeDataPath),
     distanceMetric: rawConfig.collectionDefaults.distanceMetric,
-    indexSampleSize: rawConfig.collectionDefaults.indexSampleSize,
     chunkSize: rawConfig.collectionDefaults.chunkSize,
     chunkOverlap: rawConfig.collectionDefaults.chunkOverlap,
     retrievalK: rawConfig.collectionDefaults.retrievalK,
@@ -147,8 +156,6 @@ export function resolveConfig(
     ollamaNumPredict: rawConfig.ollama.numPredict,
     collectionDefaults,
     sourcePath: collectionDefaults.sourcePath,
-    ozelgeDataPath: collectionDefaults.ozelgeDataPath,
-    indexSampleSize: collectionDefaults.indexSampleSize,
     chunkSize: collectionDefaults.chunkSize,
     chunkOverlap: collectionDefaults.chunkOverlap,
     retrievalK: collectionDefaults.retrievalK,

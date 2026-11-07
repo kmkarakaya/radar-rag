@@ -50,7 +50,6 @@ export type IndexJobEventProgress = {
 
 export type CollectionIndexSnapshot = {
   sourcePath: string;
-  ozelgeDataPath: string;
   distanceMetric: DistanceMetric;
   chunkSize: number;
   chunkOverlap: number;
@@ -75,7 +74,6 @@ export type RagCollection = {
   activePhysicalCollection?: string;
   activeVersion?: string;
   sourcePath: string;
-  ozelgeDataPath: string;
   embeddingModel: string;
   chatModel: string;
   distanceMetric: DistanceMetric;
@@ -199,7 +197,6 @@ export type CreateCollectionInput = {
   displayName: string;
   description?: string;
   sourcePath: string;
-  ozelgeDataPath: string;
   embeddingModel: string;
   chatModel: string;
   distanceMetric: DistanceMetric;
@@ -215,7 +212,6 @@ export type UpdateCollectionPatch = {
   description?: RagCollection["description"] | null;
   status?: RagCollection["status"];
   sourcePath?: RagCollection["sourcePath"];
-  ozelgeDataPath?: RagCollection["ozelgeDataPath"];
   embeddingModel?: RagCollection["embeddingModel"];
   chatModel?: RagCollection["chatModel"];
   distanceMetric?: RagCollection["distanceMetric"];

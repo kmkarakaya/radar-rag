@@ -154,12 +154,8 @@ function createHealthyHealthChecks(): HealthChecks {
         sourcePath: "data",
         fileCount: 1,
         loadedDocumentCount: 1,
-        recordCount: 1,
-        sampledRecordCount: 1,
         documentCount: 1,
         unsupportedFiles: [],
-        indexSampleSize: 0,
-        sampleLimited: false,
       },
     }),
   };

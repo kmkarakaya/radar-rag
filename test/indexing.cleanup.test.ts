@@ -35,7 +35,6 @@ const collectionInput: CreateCollectionInput = {
   displayName: "Cleanup Test Collection",
   description: "Cleanup test collection",
   sourcePath: "data",
-  ozelgeDataPath: "data/ozelge_veri.json",
   embeddingModel: "bge-m3",
   chatModel: "gemma3:4b-cloud",
   distanceMetric: "l2",

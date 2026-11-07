@@ -8,12 +8,9 @@ import { analyzeIndexingSource, registryExcludePaths } from "../src/ingestion/pi
 describe("recursive ingestion", () => {
   it("should find files in subdirectories", async () => {
     const sourcePath = path.resolve("test/data/recursive");
-    const ozelgeDataPath = path.resolve("test/data/dataset2/ozelge_veri.json"); // dummy path
     
     const analysis = await analyzeIndexingSource({
       sourcePath,
-      ozelgeDataPath,
-      indexSampleSize: 0
     });
     
     const foundFiles = analysis.sourceFiles.map(f => f.path);
@@ -30,8 +27,6 @@ describe("recursive ingestion", () => {
 
       const analysis = await analyzeIndexingSource({
         sourcePath,
-        ozelgeDataPath: path.join(sourcePath, "missing.json"),
-        indexSampleSize: 0,
         excludePaths: registryExcludePaths(registryPath),
       });
 

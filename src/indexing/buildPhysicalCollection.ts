@@ -116,7 +116,6 @@ export async function buildPhysicalCollection(input: {
       message: "Analyzing indexing source.",
       details: {
         sourcePath: collection.sourcePath,
-        ozelgeDataPath: collection.ozelgeDataPath,
       },
       progress: {
         phase: 3,
@@ -125,8 +124,6 @@ export async function buildPhysicalCollection(input: {
     });
     const analysis = await loadSource({
       sourcePath: collection.sourcePath,
-      ozelgeDataPath: collection.ozelgeDataPath,
-      indexSampleSize: runtimeConfig.indexSampleSize,
       logEvent: input.logEvent,
       excludePaths: registryExcludePaths(runtimeConfig.registryPath),
     });
@@ -139,9 +136,6 @@ export async function buildPhysicalCollection(input: {
         fileCount: analysis.fileCount,
         parsedSourceDocumentCount: analysis.loadedDocumentCount,
         unsupportedFileCount: analysis.unsupportedFiles.length,
-        sampleLimited: analysis.sampleLimited,
-        recordCount: analysis.recordCount,
-        sampledRecordCount: analysis.sampledRecordCount,
       },
       progress: {
         phase: 3,

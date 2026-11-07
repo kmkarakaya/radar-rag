@@ -3,7 +3,6 @@ import type { CollectionIndexSnapshot, CollectionIndexState, RagCollection } fro
 
 const INDEX_SNAPSHOT_FIELDS = [
   "sourcePath",
-  "ozelgeDataPath",
   "distanceMetric",
   "chunkSize",
   "chunkOverlap",
@@ -12,11 +11,10 @@ const INDEX_SNAPSHOT_FIELDS = [
 
 export function buildCollectionIndexSnapshot(collection: Pick<
   RagCollection,
-  "sourcePath" | "ozelgeDataPath" | "distanceMetric" | "chunkSize" | "chunkOverlap" | "embeddingModel"
+  "sourcePath" | "distanceMetric" | "chunkSize" | "chunkOverlap" | "embeddingModel"
 >): CollectionIndexSnapshot {
   return {
     sourcePath: collection.sourcePath,
-    ozelgeDataPath: collection.ozelgeDataPath,
     distanceMetric: collection.distanceMetric,
     chunkSize: collection.chunkSize,
     chunkOverlap: collection.chunkOverlap,
@@ -30,7 +28,6 @@ export function parseCollectionIndexSnapshot(input: unknown): CollectionIndexSna
 
   if (
     typeof value.sourcePath !== "string"
-    || typeof value.ozelgeDataPath !== "string"
     || !isDistanceMetric(value.distanceMetric)
     || typeof value.chunkSize !== "number"
     || typeof value.chunkOverlap !== "number"
@@ -41,7 +38,6 @@ export function parseCollectionIndexSnapshot(input: unknown): CollectionIndexSna
 
   return {
     sourcePath: value.sourcePath,
-    ozelgeDataPath: value.ozelgeDataPath,
     distanceMetric: value.distanceMetric,
     chunkSize: value.chunkSize,
     chunkOverlap: value.chunkOverlap,
@@ -52,7 +48,7 @@ export function parseCollectionIndexSnapshot(input: unknown): CollectionIndexSna
 export function buildCollectionIndexState(
   collection: Pick<
     RagCollection,
-    "sourcePath" | "ozelgeDataPath" | "distanceMetric" | "chunkSize" | "chunkOverlap" | "embeddingModel" | "activePhysicalCollection"
+    "sourcePath" | "distanceMetric" | "chunkSize" | "chunkOverlap" | "embeddingModel" | "activePhysicalCollection"
   >,
   activeSnapshot: CollectionIndexSnapshot | null,
 ): CollectionIndexState {

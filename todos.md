@@ -13,7 +13,7 @@ Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigi
 - Dayaniklilik: in-memory rate limit (`429` + `Retry-After`), embedding/generation semaphore'lari, timeout/abort, Ollama model preflight (`422 UNAVAILABLE_MODEL`, `503 OLLAMA_UNREACHABLE`).
 - Gozlemlenebilirlik: request id, `latencyMs`, `errorCode`, `retrievalMs` iceren yapisal operational log (+ `operational_logs` tablosu), audit log, opsiyonel `debug.latency` response alani.
 - `/health`, `/ready` (`?strict=true`, `?details=true`), koleksiyon bazli `/ready`.
-- Ingestion: `txt`, `md`, `pdf`, `doc`, `docx` (alt klasorler dahil, recursive) + ozelge JSON adapter'i; SHA-256 source hash; dosya bazli hata toleransi.
+- Ingestion: `txt`, `md`, `pdf`, `doc`, `docx` (alt klasorler dahil, recursive; registry SQLite dosyasi atlanir); SHA-256 source hash; dosya bazli hata toleransi.
 - Testler: `node:test` ile 164 unit + acceptance testi, ayrica Ollama + Chroma isteyen integration testi; dokuman/statik contract testleri.
 - Dokumanlar: README, `docs/` (API, workflow, `openapi.yaml`), mimari dokumani; admin panel (`/admin`) ve ornek istemci (`/test-frontend`).
 
@@ -27,6 +27,8 @@ Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigi
 - **API yuzeyi urunlesmesi (eski #9, buyuk kismi)** - `/v1` versioning, admin API, auth, rate limit, request id, `docs/openapi.yaml`. Kalanlar P1 #8'de.
 - **Log yapisi (eski #8, buyuk kismi)** - Her request icin request id (header yoksa uretiliyor), `latencyMs`, `errorCode`, retrieval suresi ve kaynak sayisi loglaniyor; typed `HttpError` / `RagQueryError` ve merkezi error handler var.
 - **Recursive directory ingestion (eski #6'dan)** - `sourcePath` alt klasorleriyle taraniyor (gizli dosyalar ve `node_modules` atlaniyor); `test/recursive.ingestion.test.ts`.
+- **Ozelge JSON desteginin kaldirilmasi** - 2026-11-08. `ozelgeDataPath` / `indexSampleSize` config ve API alanlari, ozelge loader'i, `ozelgeId`/`sayi`/`tarih`/`konu` kaynak metadata'si, admin panel alanlari ve `data/dataset2/ozelge_veri.json` kaldirildi. Eski config dosyalarindaki bu anahtarlar sessizce yok sayiliyor; eski registry'lerdeki `ozelge_data_path` kolonu startup migration'i ile siliniyor. API'ye `ozelgeDataPath` gonderen istemciler artik `400 INVALID_REQUEST_BODY` aliyor.
+- **Onboarding hata akisi** - 2026-11-08. Bagimlilik/kaynak eksiklerinde durmuyor; "Config saved; fix these before indexing" altinda her eksik icin tek satir cozum yaziyor, "Next steps"i her zaman gosteriyor, exit code 0. `--skip-index` deprecated.
 
 ## P0 - Kritik eksikler
 
@@ -53,6 +55,7 @@ Yapilacaklar:
 Sorun:
 
 - `benchmark/benchmark.json` ve `benchmark/benchmark.schema.json` repoda duruyor; bunlari kullanan bir script yok (`package.json`'da `benchmark` script'i yok).
+- Mevcut benchmark sorulari kaldirilan ozelge verisine dayaniyor; `data/` altindaki ornek dataset'ler icin yeni bir benchmark seti gerekiyor.
 - "Dogru cevap veriyor mu", "retrieval dogru chunk'i getiriyor mu", "degisiklikten sonra kalite dustu mu" sorularina otomatik cevap verilemiyor.
 
 Yapilacaklar:
@@ -62,7 +65,7 @@ Yapilacaklar:
 - Her soru icin raporla:
   - beklenen cevap / uretilen cevap
   - retrieved source id'leri ve `distanceScore`'lari
-  - beklenen ozelge id'si ilk `k` sonuc icinde var mi (hit@k)
+  - beklenen kaynak belge (`documentId` / `sourcePath`) ilk `k` sonuc icinde var mi (hit@k)
   - basit pass/fail veya manual review etiketi
 - Sonucu JSON + okunabilir markdown/console tablosu olarak kaydet.
 - CI'da opsiyonel bir benchmark smoke check dusun.
@@ -110,11 +113,11 @@ Yapilacaklar:
 
 ### 3. Ingestion genisletme ve kalite isleri
 
-Yapildi (ozet): `txt`/`md`/`pdf`/`doc`/`docx` loader'lari, ozelge JSON adapter'i, ortak metadata contract'i (`documentId`, `sourcePath`, `sourceType`, `chunkIndex`; ozelge icin `ozelgeId`, `sayi`, `tarih`, `konu`), `normalizeText()`, unsupported dosyalarin raporlanmasi, recursive klasor tarama, SHA-256 hash, hata toleransi ve bunlarin testleri.
+Yapildi (ozet): `txt`/`md`/`pdf`/`doc`/`docx` loader'lari, ortak metadata contract'i (`documentId`, `sourcePath`, `sourceType`, `chunkIndex`), `normalizeText()`, unsupported dosyalarin raporlanmasi, recursive klasor tarama, SHA-256 hash, hata toleransi ve bunlarin testleri.
 
 Kalanlar:
 
-- Generic JSON mapping yok; `.json` destegi sadece `ozelgeDataPath` ile isaretlenen ozelge adapter'i demek.
+- JSON destegi yok (ozelge adapter'i 2026-11-08'de kaldirildi); generic JSON mapping gerekirse sifirdan tasarlanmali.
   - `contentField`, `idField`, `metadataFields` benzeri koleksiyon ayarlari; nested alanlar icin JSON pointer/path semantigi.
   - Yanlis field mapping'de anlasilir hata.
 - JSONL ve CSV loader'lari yok.
@@ -150,14 +153,12 @@ Sorun (mevcut 164 teste ragmen):
 
 - `src/config.ts` icin ayri schema testi yok (hatali kombinasyonlar, `chunkOverlap >= chunkSize`, default cozumleme).
 - Onboarding CLI (`npm run onboard`) icin davranis testi yok; `runtime.static.test.ts` sadece kaynak kodda string ariyor.
-- `indexSampleSize` birkac testte geciyor; `0 = tum kayitlar` ve pozitif limit semantiginin acikca kilitlendigi dogrulanmadi.
 - Statik string testleri (README / config / onboarding metni) kirilgan: dokuman yeniden yazilinca veya operator config degistirince kiriliyor (2026-11-07'deki kirilmalarin bir kismi buydu).
 
 Yapilacaklar:
 
 - `config.ts` icin schema/default testleri ekle.
 - Onboarding icin `--dry-run --yes --no-write` gibi non-interactive modlari kapsayan davranis testi ekle.
-- `indexSampleSize` semantigini acik testlerle kilitle.
 - Statik string testlerini davranis testlerine veya daha toleransli kontrollere donustur.
 
 ### 7. Onboarding CLI kalanlari
@@ -238,7 +239,7 @@ Kalanlar:
 1. CI pipeline (typecheck + typecheck:test + build + test).
 2. Benchmark runner.
 3. Readiness icin gercek RAG smoke probe.
-4. Test coverage bosluklari (config, onboarding, indexSampleSize).
+4. Test coverage bosluklari (config, onboarding).
 5. Generic JSON mapping, ardindan CSV/JSONL.
 6. Incremental / upsert indexing.
 7. Lint, Docker all-in-one, README bilinen sinirlar.

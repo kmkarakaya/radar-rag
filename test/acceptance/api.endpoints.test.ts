@@ -254,7 +254,6 @@ describe("v1 admin and rag api endpoints", () => {
         displayName: "API Test Collection",
         description: "Test description",
         sourcePath: "data/api-test",
-        ozelgeDataPath: "data/ozelge_veri.json",
         distanceMetric: "cosine",
       }),
     });
@@ -277,7 +276,7 @@ describe("v1 admin and rag api endpoints", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         displayName: "Defaults Test Collection",
-        // sourcePath and ozelgeDataPath are omitted to test auto-fill
+        // sourcePath is omitted to test auto-fill
       }),
     });
 
@@ -291,7 +290,7 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(saved.displayName, "Defaults Test Collection");
     // Assert auto-filled paths from config
     assert.equal(saved.sourcePath, config.collectionDefaults.sourcePath);
-    assert.equal(saved.ozelgeDataPath, config.collectionDefaults.ozelgeDataPath);
+    assert.equal("ozelgeDataPath" in saved, false);
     
     // Assert defaults from config
     assert.equal(saved.chunkSize, config.collectionDefaults.chunkSize);
@@ -707,7 +706,6 @@ describe("v1 admin and rag api endpoints", () => {
       auditCollection = await auditRegistry.createCollection(auditContext, {
         displayName: "Audit Collection",
         sourcePath: "data/audit",
-        ozelgeDataPath: "data/ozelge_veri.json",
         embeddingModel: "embed-audit",
         chatModel: "chat-audit",
         distanceMetric: "cosine",
@@ -727,7 +725,6 @@ describe("v1 admin and rag api endpoints", () => {
       otherTenantCollection = await auditRegistry.createCollection(otherTenantContext, {
         displayName: "Other Tenant Audit Collection",
         sourcePath: "data/other-audit",
-        ozelgeDataPath: "data/other-ozelge.json",
         embeddingModel: "embed-other",
         chatModel: "chat-other",
         distanceMetric: "cosine",
@@ -740,7 +737,6 @@ describe("v1 admin and rag api endpoints", () => {
       auditPeerCollection = await auditRegistry.createCollection(auditContext, {
         displayName: "Audit Peer Collection",
         sourcePath: "data/audit-peer",
-        ozelgeDataPath: "data/ozelge_peer.json",
         embeddingModel: "embed-peer",
         chatModel: "chat-peer",
         distanceMetric: "cosine",
@@ -1091,7 +1087,6 @@ describe("v1 admin and rag api endpoints", () => {
     let debugCollection = await debugRegistry.createCollection(debugContext, {
       displayName: "Debug Collection",
       sourcePath: "data/debug",
-      ozelgeDataPath: "data/ozelge_veri.json",
       embeddingModel: "embed-debug",
       chatModel: "chat-debug",
       distanceMetric: "cosine",
@@ -1167,7 +1162,6 @@ describe("v1 admin and rag api endpoints", () => {
         displayName: "API Patched Collection",
         description: null,
         sourcePath: "data/api-test-updated",
-        ozelgeDataPath: "data/api-test-updated-ozelge.json",
         embeddingModel: "embed-patched-http",
         chatModel: "chat-patched-http",
         distanceMetric: "ip",
@@ -1182,7 +1176,7 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(response.status, 200);
     assert.equal(body.collection.displayName, "API Patched Collection");
     assert.equal(body.collection.sourcePath, "data/api-test-updated");
-    assert.equal(body.collection.ozelgeDataPath, "data/api-test-updated-ozelge.json");
+    assert.equal("ozelgeDataPath" in body.collection, false);
     assert.equal(body.collection.embeddingModel, "embed-patched-http");
     assert.equal(body.collection.chatModel, "chat-patched-http");
     assert.equal(body.collection.distanceMetric, "ip");
@@ -1202,7 +1196,6 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(saved?.displayName, "API Patched Collection");
     assert.equal(saved?.description, undefined);
     assert.equal(saved?.sourcePath, "data/api-test-updated");
-    assert.equal(saved?.ozelgeDataPath, "data/api-test-updated-ozelge.json");
     assert.equal(saved?.embeddingModel, "embed-patched-http");
     assert.equal(saved?.chatModel, "chat-patched-http");
     assert.equal(saved?.distanceMetric, "ip");
@@ -1220,7 +1213,7 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(body.collection.id, createdCollection.id);
     assert.equal(body.collection.displayName, "API Patched Collection");
     assert.equal(body.collection.sourcePath, "data/api-test-updated");
-    assert.equal(body.collection.ozelgeDataPath, "data/api-test-updated-ozelge.json");
+    assert.equal("ozelgeDataPath" in body.collection, false);
     assert.equal(body.collection.embeddingModel, "embed-patched-http");
     assert.equal(body.collection.chatModel, "chat-patched-http");
     assert.equal(body.collection.distanceMetric, "ip");
@@ -1289,7 +1282,6 @@ describe("v1 admin and rag api endpoints", () => {
       body: JSON.stringify({
         displayName: "Validation Draft",
         sourcePath: "missing/source/path",
-        ozelgeDataPath: "missing/source/path/ozelge.json",
         chunkSize: 64,
         chunkOverlap: 64,
         embeddingModel: "bge-m3",
@@ -1331,7 +1323,6 @@ describe("v1 admin and rag api endpoints", () => {
       body: JSON.stringify({
         displayName: "Validation Base Collection",
         sourcePath: "data",
-        ozelgeDataPath: "data/ozelge_veri.json",
         chunkSize: 128,
         chunkOverlap: 32,
         retrievalK: 5,
@@ -1379,7 +1370,6 @@ describe("v1 admin and rag api endpoints", () => {
       body: JSON.stringify({
         displayName: "Impact Test Collection",
         sourcePath: "data",
-        ozelgeDataPath: "data/ozelge_veri.json",
         chunkSize: 128,
         chunkOverlap: 32,
         retrievalK: 5,
@@ -1420,7 +1410,6 @@ describe("v1 admin and rag api endpoints", () => {
       body: JSON.stringify({
         displayName: "Immediate Impact Collection",
         sourcePath: "data",
-        ozelgeDataPath: "data/ozelge_veri.json",
         chunkSize: 128,
         chunkOverlap: 32,
         retrievalK: 5,
@@ -1487,9 +1476,7 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(response.status, 200);
     assert.deepEqual(body.collectionDefaults, {
       sourcePath: config.collectionDefaults.sourcePath,
-      ozelgeDataPath: config.collectionDefaults.ozelgeDataPath,
       distanceMetric: config.chromaDistanceMetric,
-      indexSampleSize: config.indexSampleSize,
       chunkSize: config.collectionDefaults.chunkSize,
       chunkOverlap: config.collectionDefaults.chunkOverlap,
       retrievalK: config.collectionDefaults.retrievalK,
@@ -1525,6 +1512,18 @@ describe("v1 admin and rag api endpoints", () => {
     }
   });
 
+  it("POST /v1/admin/collections rejects the removed ozelgeDataPath field with 400 INVALID_REQUEST_BODY", async () => {
+    const response = await request("/v1/admin/collections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ displayName: "Legacy Ozelge Client", ozelgeDataPath: "data/ozelge_veri.json" }),
+    });
+    const body = await response.json() as any;
+
+    assert.equal(response.status, 400);
+    assert.equal(body.code, "INVALID_REQUEST_BODY");
+  });
+
   describe("Ollama model preflight", () => {
     const preflightCtx = { tenantId: "default", userId: "local-dev", requestId: "model-preflight" };
 
@@ -1532,7 +1531,6 @@ describe("v1 admin and rag api endpoints", () => {
       return registry.createCollection(preflightCtx, {
         displayName,
         sourcePath: "data",
-        ozelgeDataPath: "data/ozelge.json",
         embeddingModel,
         chatModel,
         distanceMetric: "l2",
@@ -1699,7 +1697,6 @@ describe("v1 admin and rag api endpoints", () => {
     const collection = await registry.createCollection(ctx, {
       displayName: "Physical Visibility",
       sourcePath: "data",
-      ozelgeDataPath: "data/ozelge.json",
       embeddingModel: "embed",
       chatModel: "chat",
       distanceMetric: "l2",
@@ -1966,7 +1963,6 @@ describe("v1 admin and rag api endpoints", () => {
     const collection = await registry.createCollection(ctx, {
       displayName: "Job Delete Terminal",
       sourcePath: "data",
-      ozelgeDataPath: "data/ozelge.json",
       embeddingModel: "embed",
       chatModel: "chat",
       distanceMetric: "l2",
@@ -2019,7 +2015,6 @@ describe("v1 admin and rag api endpoints", () => {
     const collection = await registry.createCollection(ctx, {
       displayName: "Job Delete Running",
       sourcePath: "data",
-      ozelgeDataPath: "data/ozelge.json",
       embeddingModel: "embed",
       chatModel: "chat",
       distanceMetric: "l2",
@@ -2044,7 +2039,6 @@ describe("v1 admin and rag api endpoints", () => {
     const collection = await registry.createCollection(ctx, {
       displayName: "Job Events",
       sourcePath: "data",
-      ozelgeDataPath: "data/ozelge.json",
       embeddingModel: "embed",
       chatModel: "chat",
       distanceMetric: "l2",
@@ -2083,7 +2077,6 @@ describe("v1 admin and rag api endpoints", () => {
       const collection = await registry.createCollection(ctx, {
         displayName,
         sourcePath: "data",
-        ozelgeDataPath: "data/ozelge.json",
         embeddingModel: "embed",
         chatModel: "chat",
         distanceMetric: "l2",
@@ -2151,7 +2144,6 @@ describe("v1 admin and rag api endpoints", () => {
     const terminalCollection = await registry.createCollection(ctx, {
       displayName: "Job Bulk Delete Terminal",
       sourcePath: "data",
-      ozelgeDataPath: "data/ozelge.json",
       embeddingModel: "embed",
       chatModel: "chat",
       distanceMetric: "l2",
@@ -2182,7 +2174,6 @@ describe("v1 admin and rag api endpoints", () => {
     const queuedCollection = await registry.createCollection(ctx, {
       displayName: "Job Bulk Delete Queued",
       sourcePath: "data",
-      ozelgeDataPath: "data/ozelge.json",
       embeddingModel: "embed",
       chatModel: "chat",
       distanceMetric: "l2",
@@ -2311,7 +2302,6 @@ describe("v1 admin and rag api endpoints", () => {
     const created = await registry.createCollection(ctx, {
       displayName: 'Signal Test',
       sourcePath: 'data/signal',
-      ozelgeDataPath: 'data/signal.json',
       embeddingModel: 'embed-test',
       chatModel: 'chat-test',
       distanceMetric: 'cosine',
@@ -2393,7 +2383,6 @@ describe("v1 admin and rag api endpoints", () => {
     const created = await registry.createCollection(ctx, {
       displayName: "Normal Signal Test",
       sourcePath: "data/normal-signal",
-      ozelgeDataPath: "data/normal-signal.json",
       embeddingModel: "embed-test",
       chatModel: "chat-test",
       distanceMetric: "cosine",
@@ -2463,7 +2452,6 @@ describe("v1 admin and rag api endpoints", () => {
     const created = await registry.createCollection(ctx, {
       displayName: 'Snapshot Test',
       sourcePath: 'data/p25',
-      ozelgeDataPath: 'data/p25.json',
       embeddingModel: 'embed-v1',
       chatModel: 'chat-v1',
       distanceMetric: 'cosine',
@@ -2535,7 +2523,6 @@ describe("v1 admin and rag api endpoints", () => {
       displayName: 'Sanitization Test',
       description: 'Public description',
       sourcePath: 'internal/path',
-      ozelgeDataPath: 'internal/data.json',
       embeddingModel: 'embed-internal',
       chatModel: 'chat-internal',
       distanceMetric: 'cosine',
@@ -2630,7 +2617,6 @@ describe("v1 admin and rag api endpoints", () => {
     const collection = await registry.createCollection(ctx, {
       displayName: 'Abort Test',
       sourcePath: 'data',
-      ozelgeDataPath: 'data/ozelge.json',
       embeddingModel: 'embed',
       chatModel: 'chat',
       distanceMetric: 'l2',
@@ -2667,7 +2653,6 @@ describe("v1 admin and rag api endpoints", () => {
     const created = await registry.createCollection(ctx, {
       displayName: 'API Cancel Test',
       sourcePath: 'data',
-      ozelgeDataPath: 'data/ozelge.json',
       embeddingModel: config.ollamaEmbeddingModel,
       chatModel: 'chat',
       distanceMetric: 'l2',

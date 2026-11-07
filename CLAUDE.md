@@ -4,7 +4,7 @@ Agent brief for the Vanilla RAG Backend. Read this first, then see [AGENTS.md](A
 
 ## What this is
 
-A TypeScript / Express 5 (ESM) **multi-collection, multi-tenant LangChain RAG** backend over documents (Turkish tax rulings — "özelge" — are a first-class case). Local-first:
+A TypeScript / Express 5 (ESM) **multi-collection, multi-tenant LangChain RAG** backend over local documents (TXT, MD, PDF, DOC, DOCX). Local-first:
 
 - **Ollama** for chat + embeddings (`localhost:11434`, default chat `gemma3:4b-cloud`, embeddings `bge-m3`).
 - **Chroma** for the vector store (`localhost:8000`, via Docker).
@@ -26,7 +26,7 @@ Prereqs: `docker compose up -d chroma`, then Ollama running with `gemma3:4b-clou
 ## Architecture map
 
 - **Entry points**: [src/server.ts](src/server.ts) (HTTP server + graceful shutdown), [src/app.ts](src/app.ts) (Express app assembly + `/`, `/health`, `/ready`), [src/index.ts](src/index.ts) (CLI indexer).
-- **RAG pipeline**: ingestion [src/ingestion/pipeline.ts](src/ingestion/pipeline.ts) (loaders for PDF/DOCX/TXT/MD + custom özelge JSON; SHA-256 source hashing; fault-tolerant per-file) → chunk + embed + index as a **blue/green physical build** [src/indexing/buildPhysicalCollection.ts](src/indexing/buildPhysicalCollection.ts) → retrieval + grounded generation [src/rag.ts](src/rag.ts) (distance-threshold filtering; `__NO_ANSWER_FROM_CONTEXT__` no-answer signal; context budgeted to `numCtx`).
+- **RAG pipeline**: ingestion [src/ingestion/pipeline.ts](src/ingestion/pipeline.ts) (loaders for PDF/DOC/DOCX/TXT/MD, recursive folder scan that skips the SQLite registry; SHA-256 source hashing; fault-tolerant per-file) → chunk + embed + index as a **blue/green physical build** [src/indexing/buildPhysicalCollection.ts](src/indexing/buildPhysicalCollection.ts) → retrieval + grounded generation [src/rag.ts](src/rag.ts) (distance-threshold filtering; `__NO_ANSWER_FROM_CONTEXT__` no-answer signal; context budgeted to `numCtx`).
 - **Indexing jobs**: async job runner + lifecycle in [src/indexing/](src/indexing/) (`jobRunner.ts`, `jobs.ts`, `cleanup.ts`); one active job per collection enforced by a partial unique index; blue/green swap retires old physical collections with a retention TTL.
 - **HTTP routers**: public `/v1/rag` [src/http/ragRouter.ts](src/http/ragRouter.ts) (list, get, ready, retrieve, query), admin `/v1/admin` [src/http/adminRouter.ts](src/http/adminRouter.ts) (auth, collections CRUD + validate + reindex, jobs, audit-log, config/defaults, models). Static admin panel at `/admin`, browser example at `/test-frontend`.
 - **Data layer**: hand-written prepared statements in [src/collections/sqliteRegistry.ts](src/collections/sqliteRegistry.ts) behind the `CollectionRegistry` interface ([src/collections/types.ts](src/collections/types.ts)). No ORM. Migrations are code-driven at startup (`ensureColumn` / `PRAGMA table_info`), no migration files.
@@ -55,7 +55,7 @@ Implemented in [src/http/adminAuth.ts](src/http/adminAuth.ts); config under `adm
 
 - Runtime config: [config/rag.config.yaml](config/rag.config.yaml), zod-validated with defaults resolved in [src/config.ts](src/config.ts). Key defaults: `chunkSize 500`, `chunkOverlap 200` (must be `< chunkSize`), `retrievalK 5`, `retrievalDistanceThreshold 1.2`, `distanceMetric l2`, `numCtx 4096`.
 - `RAG_ADMIN_SESSION_SECRET` overrides the local secret file, keeping the runtime portable.
-- Gitignored: `.env*`, `.local/`, `data/*.sqlite`, `data/ozelge_veri.json`, `chroma_data/`, `dist/`, `node_modules/`, `graphify-out/` (local only; rebuild with `graphify update .`).
+- Gitignored: `.env*`, `.local/`, `data/*.sqlite`, `chroma_data/`, `dist/`, `node_modules/`, `graphify-out/` (local only; rebuild with `graphify update .`).
 - Note: `collectionDefaults.sourcePath` is a hardcoded absolute Windows path (`C:\Codes\Vanilla Rag Backend\data`) — environment-specific.
 
 ## Docs & knowledge graph

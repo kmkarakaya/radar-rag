@@ -537,37 +537,15 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
       capabilities: ["index"],
       message: documentCount > 0
         ? `Indexing source contains ${documentCount} documents with indexable content.`
-        : "Indexing source does not contain any documents with indexable content in the current sample, so indexing cannot proceed.",
+        : "Indexing source does not contain any documents with indexable content so indexing cannot proceed.",
       details: {
         sourcePath: runtimeConfig.sourcePath,
         fileCount: dataSourceDetails.fileCount,
         loadedDocumentCount: dataSourceDetails.loadedDocumentCount,
-        recordCount: dataSourceDetails.recordCount,
-        sampledRecordCount: dataSourceDetails.sampledRecordCount,
         documentCount,
         unsupportedFiles: dataSourceDetails.unsupportedFiles,
-        indexSampleSize: dataSourceDetails.indexSampleSize,
       },
     });
-
-    if (dataSourceDetails.sampleLimited) {
-      const loadedDocumentCount = dataSourceDetails.loadedDocumentCount ?? dataSourceDetails.recordCount;
-      checks.push({
-        code: "INDEX_SAMPLE_LIMIT_ACTIVE",
-        name: "Index sample limit",
-        status: "warn",
-        blocking: false,
-        capabilities: ["index", "query"],
-        message: `Indexing currently uses only the first ${dataSourceDetails.documentCount} documents because collectionDefaults.indexSampleSize is set to ${dataSourceDetails.indexSampleSize}.`,
-        details: {
-          sourcePath: runtimeConfig.sourcePath,
-          loadedDocumentCount,
-          recordCount: dataSourceDetails.recordCount,
-          sampledRecordCount: dataSourceDetails.sampledRecordCount,
-          indexSampleSize: dataSourceDetails.indexSampleSize,
-        },
-      });
-    }
   }
 
   const blockers = checks

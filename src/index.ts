@@ -6,14 +6,8 @@ import { createSqliteCollectionRegistry } from "./collections/sqliteRegistry.js"
 import {
   analyzeIndexingSource as analyzeMixedIndexingSource,
   registryExcludePaths,
-  toDocuments as mapOzelgeRecordsToDocuments,
   type UnsupportedSourceFile,
 } from "./ingestion/pipeline.js";
-import {
-  loadOzelgeRecords as loadOzelgeRecordsFromJson,
-  type OzelgeRecord,
-} from "./ingestion/loaders/ozelgeJsonLoader.js";
-import { createVectorStore } from "./rag.js";
 import {
   createConsoleLogSink,
   createPersistentOperationalLogSink,
@@ -24,12 +18,8 @@ export type IndexingSourceHealthDetails = {
   sourcePath: string;
   fileCount?: number;
   loadedDocumentCount?: number;
-  recordCount?: number;
-  sampledRecordCount?: number;
   documentCount?: number;
   unsupportedFiles?: UnsupportedSourceFile[];
-  indexSampleSize: number;
-  sampleLimited: boolean;
 };
 
 export type IndexingRunResult = {
@@ -38,19 +28,9 @@ export type IndexingRunResult = {
   chunkCount: number;
 };
 
-export async function loadOzelgeRecords(): Promise<OzelgeRecord[]> {
-  return loadOzelgeRecordsFromJson(config.ozelgeDataPath);
-}
-
-export function toDocuments(records: OzelgeRecord[]) {
-  return mapOzelgeRecordsToDocuments(records, "");
-}
-
 export async function analyzeIndexingSource(runtimeConfig = config) {
   return analyzeMixedIndexingSource({
     sourcePath: runtimeConfig.sourcePath,
-    ozelgeDataPath: runtimeConfig.ozelgeDataPath,
-    indexSampleSize: runtimeConfig.indexSampleSize,
     excludePaths: registryExcludePaths(runtimeConfig.registryPath),
   });
 }
@@ -73,12 +53,8 @@ export async function checkIndexingSourceHealth(runtimeConfig = config): Promise
         sourcePath: runtimeConfig.sourcePath,
         fileCount: analysis.fileCount,
         loadedDocumentCount: analysis.loadedDocumentCount,
-        recordCount: analysis.recordCount,
-        sampledRecordCount: analysis.sampledRecordCount,
         documentCount: analysis.documents.length,
         unsupportedFiles: analysis.unsupportedFiles,
-        indexSampleSize: runtimeConfig.indexSampleSize,
-        sampleLimited: analysis.sampleLimited,
       },
     };
   } catch (error) {
@@ -88,8 +64,6 @@ export async function checkIndexingSourceHealth(runtimeConfig = config): Promise
       error: error instanceof Error ? error.message : String(error),
       details: {
         sourcePath: runtimeConfig.sourcePath,
-        indexSampleSize: runtimeConfig.indexSampleSize,
-        sampleLimited: false,
       },
     };
   }

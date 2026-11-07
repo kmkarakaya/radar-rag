@@ -158,7 +158,7 @@ Default summary response shape:
       "severity": "warn",
       "message": "1 jobs have failed. Latest failure was observed at 2026-06-30T11:59:30.000Z."
     }
-  }
+  ]
 }
 ```
 
@@ -182,7 +182,6 @@ Public collection list and detail responses use a sanitized DTO:
     "reindexRequired": false,
     "activeSnapshot": {
       "sourcePath": "data",
-      "ozelgeDataPath": "data/ozelge_veri.json",
       "distanceMetric": "cosine",
       "chunkSize": 1000,
       "chunkOverlap": 200,
@@ -190,7 +189,6 @@ Public collection list and detail responses use a sanitized DTO:
     },
     "desiredSnapshot": {
       "sourcePath": "data",
-      "ozelgeDataPath": "data/ozelge_veri.json",
       "distanceMetric": "cosine",
       "chunkSize": 1000,
       "chunkOverlap": 200,
@@ -236,7 +234,6 @@ Example response:
         "reindexRequired": false,
         "activeSnapshot": {
           "sourcePath": "data",
-          "ozelgeDataPath": "data/ozelge_veri.json",
           "distanceMetric": "cosine",
           "chunkSize": 1000,
           "chunkOverlap": 200,
@@ -244,7 +241,6 @@ Example response:
         },
         "desiredSnapshot": {
           "sourcePath": "data",
-          "ozelgeDataPath": "data/ozelge_veri.json",
           "distanceMetric": "cosine",
           "chunkSize": 1000,
           "chunkOverlap": 200,
@@ -418,13 +414,9 @@ Response body:
   "sources": [
     {
       "documentId": "doc-17",
-      "sourcePath": "data/rulings/2026-01.json",
-      "sourceType": "json",
+      "sourcePath": "data/dataset1/Canakkale.txt",
+      "sourceType": "text",
       "chunkIndex": 0,
-      "ozelgeId": "OZG-17",
-      "sayi": "E-123",
-      "tarih": "2026-01-12",
-      "konu": "Withholding tax",
       "distanceScore": 0.18,
       "content": "Retrieved chunk text..."
     }
@@ -465,13 +457,9 @@ Response body:
   "sources": [
     {
       "documentId": "doc-17",
-      "sourcePath": "data/rulings/2026-01.json",
-      "sourceType": "json",
+      "sourcePath": "data/dataset1/Canakkale.txt",
+      "sourceType": "text",
       "chunkIndex": 0,
-      "ozelgeId": "OZG-17",
-      "sayi": "E-123",
-      "tarih": "2026-01-12",
-      "konu": "Withholding tax",
       "distanceScore": 0.18,
       "content": "Retrieved chunk text..."
     }

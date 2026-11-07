@@ -17,10 +17,6 @@ export type RagSource = {
   sourcePath?: string;
   sourceType?: string;
   chunkIndex?: number;
-  ozelgeId?: string;
-  sayi?: number | string;
-  tarih?: string;
-  konu?: string;
   distanceScore?: number;
   content: string;
 };
@@ -479,9 +475,6 @@ function formatContext(sources: RagSource[]): string {
         source.documentId ? `documentId=${source.documentId}` : undefined,
         source.sourceType ? `sourceType=${source.sourceType}` : undefined,
         source.sourcePath ? `sourcePath=${source.sourcePath}` : undefined,
-        source.ozelgeId ? `ozelgeId=${source.ozelgeId}` : undefined,
-        source.tarih ? `tarih=${source.tarih}` : undefined,
-        source.konu ? `konu=${source.konu}` : undefined,
       ]
         .filter(Boolean)
         .join(" | ");
@@ -529,8 +522,6 @@ function summarizeSourcesForError(sources: RagSource[]): Array<{
   sourcePath?: string;
   sourceType?: string;
   chunkIndex?: number;
-  ozelgeId?: string;
-  konu?: string;
   distanceScore?: number;
 }> {
   return sources.map((source) => ({
@@ -538,8 +529,6 @@ function summarizeSourcesForError(sources: RagSource[]): Array<{
     sourcePath: source.sourcePath,
     sourceType: source.sourceType,
     chunkIndex: source.chunkIndex,
-    ozelgeId: source.ozelgeId,
-    konu: source.konu,
     distanceScore: source.distanceScore,
   }));
 }
@@ -646,10 +635,6 @@ export async function retrieveSources(
         sourcePath: doc.metadata.sourcePath as string | undefined,
         sourceType: doc.metadata.sourceType as string | undefined,
         chunkIndex: doc.metadata.chunkIndex as number | undefined,
-        ozelgeId: doc.metadata.ozelgeId as string | undefined,
-        sayi: doc.metadata.sayi as number | string | undefined,
-        tarih: doc.metadata.tarih as string | undefined,
-        konu: doc.metadata.konu as string | undefined,
         distanceScore,
         content: doc.pageContent,
       }))

@@ -1615,11 +1615,9 @@ components:
       enum: [building, failed_build, active, retired, delete_pending, deleted, cleanup_failed]
     CollectionIndexSnapshot:
       type: object
-      required: [sourcePath, ozelgeDataPath, distanceMetric, chunkSize, chunkOverlap, embeddingModel]
+      required: [sourcePath, distanceMetric, chunkSize, chunkOverlap, embeddingModel]
       properties:
         sourcePath:
-          type: string
-        ozelgeDataPath:
           type: string
         distanceMetric:
           $ref: "#/components/schemas/DistanceMetric"
@@ -1811,16 +1809,6 @@ components:
           type: string
         chunkIndex:
           type: integer
-        ozelgeId:
-          type: string
-        sayi:
-          oneOf:
-            - type: integer
-            - type: string
-        tarih:
-          type: string
-        konu:
-          type: string
         distanceScore:
           type: number
         content:
@@ -1957,9 +1945,6 @@ components:
         sourcePath:
           type: string
           minLength: 1
-        ozelgeDataPath:
-          type: string
-          minLength: 1
         distanceMetric:
           $ref: "#/components/schemas/DistanceMetric"
         chunkSize:
@@ -1990,9 +1975,6 @@ components:
         description:
           type: [string, "null"]
         sourcePath:
-          type: string
-          minLength: 1
-        ozelgeDataPath:
           type: string
           minLength: 1
         distanceMetric:
@@ -2039,7 +2021,6 @@ components:
         - displayName
         - status
         - sourcePath
-        - ozelgeDataPath
         - embeddingModel
         - chatModel
         - distanceMetric
@@ -2067,8 +2048,6 @@ components:
         activeVersion:
           type: string
         sourcePath:
-          type: string
-        ozelgeDataPath:
           type: string
         embeddingModel:
           type: string
@@ -2173,16 +2152,12 @@ components:
       properties:
         collectionDefaults:
           type: object
-          required: [sourcePath, ozelgeDataPath, distanceMetric, indexSampleSize, chunkSize, chunkOverlap, retrievalK, retrievalDistanceThreshold]
+          required: [sourcePath, distanceMetric, chunkSize, chunkOverlap, retrievalK, retrievalDistanceThreshold]
           properties:
             sourcePath:
               type: string
-            ozelgeDataPath:
-              type: string
             distanceMetric:
               $ref: "#/components/schemas/DistanceMetric"
-            indexSampleSize:
-              type: integer
             chunkSize:
               type: integer
             chunkOverlap:

@@ -194,7 +194,7 @@ curl.exe -s `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
-  -d '{"displayName":"Example Collection","sourcePath":"data","ozelgeDataPath":"data/ozelge_veri.json"}' `
+  -d '{"displayName":"Example Collection","sourcePath":"data"}' `
   "$BASE_URL/v1/admin/collections"
 ```
 

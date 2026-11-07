@@ -327,7 +327,7 @@ Başarılı çıktı:
 
 - `answer: string`
 - `distanceScoreThreshold: number`
-- `sources: Array<{ ozelgeId?, sayi?, tarih?, konu?, distanceScore?, content }>`
+- `sources: Array<{ documentId?, sourcePath?, sourceType?, chunkIndex?, distanceScore?, content }>`
 - `collectionId: string`
 - `collectionDisplayName: string`
 - `activeVersion: string`
@@ -380,7 +380,7 @@ Başarılı çıktı:
 - `k: number`
 - `distanceScoreThreshold: number`
 - `sourceCount: number`
-- `sources: Array<{ ozelgeId?, sayi?, tarih?, konu?, distanceScore?, content }>`
+- `sources: Array<{ documentId?, sourcePath?, sourceType?, chunkIndex?, distanceScore?, content }>`
 - `collectionId: string`
 - `collectionDisplayName: string`
 - `activeVersion: string`
@@ -813,14 +813,9 @@ Bu önemli bir olgunluk artışıdır. Ancak mevcut readiness katmanı yine de g
 
 Dolayısıyla readiness implement edilmiştir; fakat gerçek RAG çağrısına daha yakın smoke testler eklenirse operasyonel güven daha da artar.
 
-### 11.5 Full-data indexing semantiği net değil
+### 11.5 Full-data indexing
 
-Varsayılan `collectionDefaults.indexSampleSize=0` olduğu için sistem varsayılan durumda tüm veriyi endeksler.
-
-Bu, Vanilla RAG demo için kabul edilebilir ama backend mimarisi dokümanı açısından şu notu düşmek gerekir:
-
-- implementasyon baseline seviyede
-- veri kapsamı yalnızca `collectionDefaults.indexSampleSize` bilinçli olarak sıfırdan büyük bir değere çekilirse sınırlanır
+Her re-index, koleksiyonun `sourcePath` klasöründeki (alt klasörler dahil) desteklenen tüm dosyaları (`txt`, `md`, `pdf`, `doc`, `docx`) endeksler; örnekleme (sample) limiti yoktur. Registry SQLite dosyası kaynak klasörde olsa bile atlanır.
 
 ### 11.6 Incremental indexing yok
 

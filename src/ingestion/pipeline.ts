@@ -5,7 +5,6 @@ import { Document } from "@langchain/core/documents";
 import { TextLoader } from "@langchain/classic/document_loaders/fs/text";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { DocxLoader } from "@langchain/community/document_loaders/fs/docx";
-import { loadOzelgeRecords, type OzelgeRecord } from "./loaders/ozelgeJsonLoader.js";
 import { normalizeText } from "./transformers/normalizeText.js";
 import { emitOperationalLog, type OperationalLogSink } from "../observability/logger.js";
 
@@ -29,18 +28,10 @@ export type IndexingSourceAnalysis = {
   loadedDocumentCount: number;
   documents: Document[];
   unsupportedFiles: UnsupportedSourceFile[];
-  indexSampleSize: number;
-  sampleLimited: boolean;
-  records?: OzelgeRecord[];
-  sampledRecords?: OzelgeRecord[];
-  recordCount?: number;
-  sampledRecordCount?: number;
 };
 
 export type AnalyzeIndexingSourceOptions = {
   sourcePath: string;
-  ozelgeDataPath: string;
-  indexSampleSize: number;
   logEvent?: OperationalLogSink;
   /** Files to skip entirely (not counted, not reported as unsupported), e.g. the SQLite registry. */
   excludePaths?: string[];
@@ -56,123 +47,26 @@ function normalizeComparablePath(filePath: string): string {
   return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }
 
-export function toDocuments(records: OzelgeRecord[], sourceHash: string): Document[] {
-  const documents = records
-    .map((record, index) => {
-      const pageContent = typeof record.pdfText === "string"
-        ? normalizeText(record.pdfText)
-        : "";
-
-      if (pageContent.length === 0) {
-        return null;
-      }
-
-      return new Document({
-        pageContent,
-        metadata: {
-          documentId: `ozelge:${record.evrakOid ?? `record-${index}`}`,
-          sourcePath: "",
-          sourceType: "ozelge-json",
-          ozelgeId: record.evrakOid ?? `record-${index}`,
-          sayi: record.sayi ?? "",
-          tarih: record.tarih ?? "",
-          konu: record.konu ?? "",
-          sourceHash,
-        },
-      });
-    });
-
-  return documents.filter((document): document is NonNullable<typeof document> => document !== null);
-}
-
-export async function analyzeOzelgeIndexingSource(
-  dataPath: string,
-  indexSampleSize: number,
-): Promise<IndexingSourceAnalysis> {
-  const rawContent = await fs.readFile(dataPath);
-  const hash = createHash("sha256").update(rawContent).digest("hex");
-  const records = await loadOzelgeRecords(dataPath);
-  const sampledRecords = sampleRecords(records, indexSampleSize);
-  const documents = toDocuments(sampledRecords, hash).map((document) => withSourcePath(document, dataPath));
-
-  return {
-    sourcePath: dataPath,
-    sourceFiles: [{
-      path: dataPath,
-      extension: ".json",
-      sourceType: "ozelge-json",
-      loadedDocumentCount: documents.length,
-    }],
-    fileCount: 1,
-    loadedDocumentCount: documents.length,
-    documents,
-    unsupportedFiles: [],
-    indexSampleSize,
-    sampleLimited: sampledRecords.length < records.length,
-    records,
-    sampledRecords,
-    recordCount: records.length,
-    sampledRecordCount: sampledRecords.length,
-  };
-}
-
-function sampleRecords(records: OzelgeRecord[], indexSampleSize: number): OzelgeRecord[] {
-  return indexSampleSize === 0 ? records : records.slice(0, indexSampleSize);
-}
-
 export async function analyzeIndexingSource(
   options: AnalyzeIndexingSourceOptions,
 ): Promise<IndexingSourceAnalysis> {
   const sourcePath = path.resolve(options.sourcePath);
-  const ozelgeDataPath = path.resolve(options.ozelgeDataPath);
   const excluded = new Set((options.excludePaths ?? []).map(normalizeComparablePath));
   const sourceFilePaths = (await collectSourceFiles(sourcePath))
     .filter((filePath) => !excluded.has(normalizeComparablePath(filePath)));
   const sourceFiles: SourceFileSummary[] = [];
   const unsupportedFiles: UnsupportedSourceFile[] = [];
   const loadedDocuments: Document[] = [];
-  let recordCount: number | undefined;
-  let sampledRecordCount: number | undefined;
-  let sourceSampleLimited = false;
 
   for (const filePath of sourceFilePaths) {
     const extension = path.extname(filePath).toLowerCase();
-
-    if (path.resolve(filePath) === ozelgeDataPath) {
-      try {
-        const analysis = await analyzeOzelgeIndexingSource(filePath, options.indexSampleSize);
-        loadedDocuments.push(...analysis.documents);
-        sourceFiles.push(...analysis.sourceFiles);
-        recordCount = analysis.recordCount;
-        sampledRecordCount = analysis.sampledRecordCount;
-        sourceSampleLimited = sourceSampleLimited || analysis.sampleLimited;
-      } catch (error: any) {
-        emitOperationalLog(options.logEvent, {
-          operation: "load_ozelge_file",
-          status: "failed",
-          message: `Failed to load ozelge file: ${filePath}`,
-          details: {
-            path: filePath,
-            error: error.message,
-          },
-        });
-        unsupportedFiles.push({
-          path: filePath,
-          extension: extension || "(none)",
-          reason: `Failed to load: ${error.message}`,
-        });
-      }
-      continue;
-    }
 
     const sourceType = sourceTypeForExtension(extension);
     if (!sourceType) {
       unsupportedFiles.push({
         path: filePath,
         extension: extension || "(none)",
-        reason: extension === ".json"
-          ? "Only the configured ozelge JSON file is supported in this version."
-          : "Unsupported file extension.",
+        reason: "Unsupported file extension.",
       });
       continue;
     }
@@ -212,10 +106,6 @@ export async function analyzeIndexingSource(
     loadedDocumentCount: loadedDocuments.length,
     documents: loadedDocuments,
     unsupportedFiles,
-    indexSampleSize: options.indexSampleSize,
-    sampleLimited: sourceSampleLimited,
-    recordCount,
-    sampledRecordCount,
   };
 }
 
@@ -336,16 +226,6 @@ function normalizeLoadedDocument(
       sourcePath,
       sourceType,
       sourceHash,
-    },
-  });
-}
-
-function withSourcePath(document: Document, sourcePath: string): Document {
-  return new Document({
-    pageContent: document.pageContent,
-    metadata: {
-      ...document.metadata,
-      sourcePath,
     },
   });
 }

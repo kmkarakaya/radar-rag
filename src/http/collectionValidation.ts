@@ -33,7 +33,6 @@ export type CollectionValidationDraft = {
   displayName: string;
   description?: string;
   sourcePath: string;
-  ozelgeDataPath: string;
   embeddingModel: string;
   chatModel: string;
   chunkSize: number;
@@ -70,7 +69,6 @@ const IMMEDIATE_FIELDS = new Set([
 
 const REINDEX_FIELDS = new Set([
   "sourcePath",
-  "ozelgeDataPath",
   "distanceMetric",
   "chunkSize",
   "chunkOverlap",
@@ -86,7 +84,6 @@ const VALIDATION_FIELD_ORDER = [
   "displayName",
   "description",
   "sourcePath",
-  "ozelgeDataPath",
   "distanceMetric",
   "chunkSize",
   "chunkOverlap",
@@ -153,7 +150,6 @@ export function buildCreateCollectionInput(
     displayName: input.displayName as string,
     description: input.description,
     sourcePath: input.sourcePath ?? runtimeConfig.collectionDefaults.sourcePath,
-    ozelgeDataPath: input.ozelgeDataPath ?? runtimeConfig.collectionDefaults.ozelgeDataPath,
     distanceMetric: input.distanceMetric ?? runtimeConfig.collectionDefaults.distanceMetric,
     chunkSize: input.chunkSize ?? runtimeConfig.collectionDefaults.chunkSize,
     chunkOverlap: input.chunkOverlap ?? runtimeConfig.collectionDefaults.chunkOverlap,
@@ -179,7 +175,6 @@ export function buildCreateValidationDraft(
     displayName: input.displayName,
     description: input.description,
     sourcePath: input.sourcePath,
-    ozelgeDataPath: input.ozelgeDataPath,
     embeddingModel: input.embeddingModel,
     chatModel: input.chatModel,
     chunkSize: input.chunkSize,
@@ -201,7 +196,6 @@ function buildChangedFields(collection: RagCollection, patch: UpdateCollectionPa
   pushIfChanged("displayName", collection.displayName);
   if (patch.description !== undefined && patch.description !== collection.description) changed.push("description");
   pushIfChanged("sourcePath", collection.sourcePath);
-  pushIfChanged("ozelgeDataPath", collection.ozelgeDataPath);
   pushIfChanged("distanceMetric", collection.distanceMetric);
   pushIfChanged("chunkSize", collection.chunkSize);
   pushIfChanged("chunkOverlap", collection.chunkOverlap);
@@ -226,7 +220,6 @@ export function buildUpdateValidationDraft(
     displayName: patch.displayName ?? collection.displayName,
     description: patch.description ?? collection.description,
     sourcePath: patch.sourcePath ?? collection.sourcePath,
-    ozelgeDataPath: patch.ozelgeDataPath ?? collection.ozelgeDataPath,
     embeddingModel: patch.embeddingModel ?? collection.embeddingModel,
     chatModel: patch.chatModel ?? collection.chatModel,
     chunkSize: patch.chunkSize ?? collection.chunkSize,
@@ -246,8 +239,6 @@ async function analyzeSourcePath(
   try {
     const analysis = await analyzeIndexingSource({
       sourcePath: draft.sourcePath,
-      ozelgeDataPath: draft.ozelgeDataPath,
-      indexSampleSize: runtimeConfig.collectionDefaults.indexSampleSize,
       excludePaths: registryExcludePaths(runtimeConfig.registryPath),
     });
 
@@ -258,14 +249,6 @@ async function analyzeSourcePath(
       blockers.push(makeIssue(
         "NO_INDEXABLE_DOCUMENTS",
         `No indexable documents were found in ${draft.sourcePath}.`,
-        runtimeConfig,
-      ));
-    }
-
-    if (analysis.sampleLimited) {
-      warnings.push(makeIssue(
-        "INDEX_SAMPLE_LIMIT_ACTIVE",
-        `Indexing currently uses only the first ${analysis.sampledRecordCount ?? analysis.loadedDocumentCount} source records because collectionDefaults.indexSampleSize is set to ${analysis.indexSampleSize}.`,
         runtimeConfig,
       ));
     }

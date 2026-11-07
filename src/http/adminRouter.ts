@@ -335,9 +335,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     return {
       collectionDefaults: {
         sourcePath: runtimeConfig.collectionDefaults.sourcePath,
-        ozelgeDataPath: runtimeConfig.collectionDefaults.ozelgeDataPath,
         distanceMetric: runtimeConfig.chromaDistanceMetric,
-        indexSampleSize: runtimeConfig.indexSampleSize,
         chunkSize: runtimeConfig.collectionDefaults.chunkSize,
         chunkOverlap: runtimeConfig.collectionDefaults.chunkOverlap,
         retrievalK: runtimeConfig.collectionDefaults.retrievalK,

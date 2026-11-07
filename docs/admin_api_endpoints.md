@@ -76,9 +76,7 @@ Example response:
 {
   "collectionDefaults": {
     "sourcePath": "C:\\Codes\\Vanilla Rag Backend\\data",
-    "ozelgeDataPath": "C:\\Codes\\Vanilla Rag Backend\\data\\ozelge_veri.json",
     "distanceMetric": "l2",
-    "indexSampleSize": 0,
     "chunkSize": 500,
     "chunkOverlap": 200,
     "retrievalK": 5,
@@ -93,7 +91,7 @@ Example response:
 
 Notes:
 
-- `collectionDefaults.sourcePath` and `collectionDefaults.ozelgeDataPath` are resolved runtime paths, so they may appear absolute.
+- `collectionDefaults.sourcePath` is a resolved runtime path, so it may appear absolute.
 - This endpoint is intended for create-form visibility only; it does not expose the full config file.
 - Use this together with `GET /v1/admin/models` so the create form can show both backend defaults and runtime model suggestions.
 
@@ -210,7 +208,6 @@ Optional:
 
 - `description`
 - `sourcePath`
-- `ozelgeDataPath`
 - `distanceMetric`: `l2`, `cosine`, or `ip`
 - `chunkSize`
 - `chunkOverlap`
@@ -254,7 +251,6 @@ Immediate fields:
 Reindex-bound fields:
 
 - `sourcePath`
-- `ozelgeDataPath`
 - `distanceMetric`
 - `chunkSize`
 - `chunkOverlap`
@@ -284,7 +280,6 @@ Example request:
   "displayName": "API Test Collection",
   "description": "Test description",
   "sourcePath": "data/api-test",
-  "ozelgeDataPath": "data/ozelge_veri.json",
   "distanceMetric": "cosine"
 }
 ```
@@ -338,7 +333,6 @@ Example response:
     "activePhysicalCollection": "api-test-active-physical",
     "activeVersion": "v-active-1",
     "sourcePath": "data/api-test-updated",
-    "ozelgeDataPath": "data/api-test-updated-ozelge.json",
     "embeddingModel": "embed-patched-http",
     "chatModel": "chat-patched-http",
     "distanceMetric": "ip",
@@ -359,7 +353,6 @@ Example response:
       "reindexRequired": true,
       "activeSnapshot": {
         "sourcePath": "data/api-test",
-        "ozelgeDataPath": "data/ozelge_veri.json",
         "distanceMetric": "cosine",
         "chunkSize": 1000,
         "chunkOverlap": 200,
@@ -367,7 +360,6 @@ Example response:
       },
       "desiredSnapshot": {
         "sourcePath": "data/api-test-updated",
-        "ozelgeDataPath": "data/api-test-updated-ozelge.json",
         "distanceMetric": "ip",
         "chunkSize": 321,
         "chunkOverlap": 12,
@@ -375,7 +367,6 @@ Example response:
       },
       "changedFields": [
         "sourcePath",
-        "ozelgeDataPath",
         "distanceMetric",
         "chunkSize",
         "chunkOverlap",
@@ -519,7 +510,6 @@ Example request:
 {
   "displayName": "Validation Draft",
   "sourcePath": "missing/source/path",
-  "ozelgeDataPath": "missing/source/path/ozelge.json",
   "chunkSize": 64,
   "chunkOverlap": 64,
   "embeddingModel": "bge-m3",
@@ -555,7 +545,6 @@ Example response:
     ],
     "reindexFields": [
       "sourcePath",
-      "ozelgeDataPath",
       "chunkSize",
       "chunkOverlap",
       "embeddingModel",
@@ -588,7 +577,6 @@ Example request:
   "displayName": "API Patched Collection",
   "description": null,
   "sourcePath": "data/api-test-updated",
-  "ozelgeDataPath": "data/api-test-updated-ozelge.json",
   "embeddingModel": "embed-patched-http",
   "chatModel": "chat-patched-http",
   "distanceMetric": "ip",
@@ -751,8 +739,7 @@ Example response:
       "details": {
         "fileCount": 12,
         "parsedSourceDocumentCount": 87,
-        "unsupportedFileCount": 1,
-        "sampleLimited": false
+        "unsupportedFileCount": 1
       },
       "progress": {
         "phase": 3,

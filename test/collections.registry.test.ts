@@ -29,7 +29,6 @@ const collectionInput: CreateCollectionInput = {
   displayName: "Test Belgeleri",
   description: "Test collection",
   sourcePath: "data",
-  ozelgeDataPath: "data/ozelge_veri.json",
   embeddingModel: "bge-m3",
   chatModel: "gemma3:4b-cloud",
   distanceMetric: "l2",
@@ -229,7 +228,8 @@ describe("sqlite collection registry", () => {
     `).run({
       tenantId: context.tenantId,
       sourcePath: collectionInput.sourcePath,
-      ozelgeDataPath: collectionInput.ozelgeDataPath,
+      // Legacy registries had a NOT NULL ozelge_data_path column; the migration must drop it.
+      ozelgeDataPath: "data/legacy-ozelge.json",
       embeddingModel: collectionInput.embeddingModel,
       chatModel: collectionInput.chatModel,
       distanceMetric: collectionInput.distanceMetric,
@@ -250,6 +250,7 @@ describe("sqlite collection registry", () => {
       try {
         const columns = migratedDb.prepare("PRAGMA table_info(collections)").all() as Array<{ name: string }>;
         assert.ok(columns.some((column) => column.name === "active_embedding_model"));
+        assert.ok(!columns.some((column) => column.name === "ozelge_data_path"));
       } finally {
         migratedDb.close();
       }
@@ -289,7 +290,6 @@ describe("sqlite collection registry", () => {
       description: null,
       status: "ready",
       sourcePath: "data/patched-source",
-      ozelgeDataPath: "data/patched-ozelge.json",
       embeddingModel: "embed-v2",
       chatModel: "chat-v2",
       distanceMetric: "cosine",
@@ -317,7 +317,6 @@ describe("sqlite collection registry", () => {
     assert.equal(updated.description, undefined);
     assert.equal(updated.status, "ready");
     assert.equal(updated.sourcePath, "data/patched-source");
-    assert.equal(updated.ozelgeDataPath, "data/patched-ozelge.json");
     assert.equal(updated.embeddingModel, "embed-v2");
     assert.equal(updated.chatModel, "chat-v2");
     assert.equal(updated.distanceMetric, "cosine");

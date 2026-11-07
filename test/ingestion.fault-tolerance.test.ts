@@ -23,8 +23,6 @@ describe("ingestion fault tolerance", () => {
     const logEvents: OperationalLogEvent[] = [];
     const analysis = await analyzeIndexingSource({
       sourcePath: testDir,
-      ozelgeDataPath: path.resolve("non-existent.json"),
-      indexSampleSize: 0,
       logEvent: (event) => {
         logEvents.push(event);
       }

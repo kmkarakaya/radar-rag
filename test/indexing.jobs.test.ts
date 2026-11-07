@@ -15,7 +15,6 @@ describe("indexing jobs", () => {
     return registry.createCollection(context, {
       displayName,
       sourcePath: "data",
-      ozelgeDataPath: "data/ozelge",
       embeddingModel: "test-model",
       chatModel: "test-chat",
       distanceMetric: "l2",
@@ -192,7 +191,6 @@ describe("indexing jobs", () => {
         displayName: "Test",
         status: "indexing",
         sourcePath: "data",
-        ozelgeDataPath: "data/ozelge_veri.json",
         embeddingModel: "embed",
         chatModel: "chat",
         distanceMetric: "l2",

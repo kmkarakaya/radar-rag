@@ -301,6 +301,7 @@ describe("indexing jobs", () => {
       markPhysicalCollectionDeleted: async () => {},
       markPhysicalCollectionCleanupFailed: async () => {},
       listDuePhysicalCollectionsForCleanup: async () => [],
+      listPhysicalCollectionsForCollection: async () => [],
       collectionExists: async () => true,
     };
 

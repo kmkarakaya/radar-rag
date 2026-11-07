@@ -8,15 +8,15 @@ import { hashPassword } from "../src/admin/passwordHash.js";
 import { config } from "../src/config.js";
 
 function createSessionCookieHeader(auth: AdminAuthService, sessionId: string): string {
+  const headers = new Map<string, string[]>();
   const res = {
-    headers: new Map<string, string[]>(),
     setHeader(name: string, value: string | string[]) {
-      this.headers.set(name.toLowerCase(), Array.isArray(value) ? value : [value]);
+      headers.set(name.toLowerCase(), Array.isArray(value) ? value : [value]);
     },
   } as unknown as Parameters<AdminAuthService["setSessionCookie"]>[0];
 
   auth.setSessionCookie(res, sessionId);
-  return (res as { headers: Map<string, string[]> }).headers.get("set-cookie")?.[0] ?? "";
+  return headers.get("set-cookie")?.[0] ?? "";
 }
 
 function createCookiePair(setCookieHeader: string): string {
@@ -107,8 +107,10 @@ describe("admin auth service", () => {
     auth.requireActionTokenFor("/v1/admin/collections/demo/reindex")(req, res, (...args: unknown[]) => {
       nextArgs = args;
     });
-    assert.ok(nextArgs);
-    assert.equal(nextArgs?.[0] instanceof Error, true);
+    // Cast: TS narrows nextArgs to null because it can't see the callback assignment.
+    const rejectedArgs = nextArgs as unknown[] | null;
+    assert.ok(rejectedArgs);
+    assert.equal(rejectedArgs[0] instanceof Error, true);
   });
 
   it("sets hardened cookies, rejects bad credentials, and invalidates sessions on logout", () => {
@@ -145,10 +147,10 @@ describe("admin auth service", () => {
 
       const cookiePair = createCookiePair(setCookie);
       const req = { headers: { cookie: cookiePair } } as any;
+      const headers = new Map<string, string[]>();
       const res = {
-        headers: new Map<string, string[]>(),
         setHeader(name: string, value: string | string[]) {
-          this.headers.set(name.toLowerCase(), Array.isArray(value) ? value : [value]);
+          headers.set(name.toLowerCase(), Array.isArray(value) ? value : [value]);
         },
       } as unknown as Parameters<AdminAuthService["logout"]>[1];
 
@@ -156,7 +158,7 @@ describe("admin auth service", () => {
       auth.logout(req, res);
       assert.equal(auth.getSessionRecordFromRequest(req), null);
 
-      const clearedCookie = (res as { headers: Map<string, string[]> }).headers.get("set-cookie")?.[0] ?? "";
+      const clearedCookie = headers.get("set-cookie")?.[0] ?? "";
       assert.match(clearedCookie, /Max-Age=0/);
       assert.match(clearedCookie, /HttpOnly/);
       assert.match(clearedCookie, /SameSite=Lax/);
@@ -286,7 +288,9 @@ describe("admin auth service", () => {
           { username: "broken", passwordHash: hashPassword("secret-password"), role: "viewer", tenantId: "tenant-a" },
         ],
       },
-    }));
+      // Isolate from any real .local/ secret written by `npm run onboard`.
+      sessionSecretFilePath: ".local/__missing_test_secret__",
+    }), /no secret file was found/);
   });
 });
 

@@ -159,17 +159,19 @@ function readConfiguredSessionSecret(sessionSecretFilePath: string): string {
 export function validateAdminAuthConfig(input: {
   config: AdminAuthConfig;
   env?: NodeJS.ProcessEnv;
+  sessionSecretFilePath?: string;
 }): { secret: string; sessionSecretConfigured: boolean } {
   const cfg = input.config;
+  const sessionSecretFilePath = input.sessionSecretFilePath ?? defaultAdminSessionSecretFilePath;
   const configuredSecret = (input.env?.[cfg.sessionSecretEnvVar] ?? "").trim();
-  const fileSecret = configuredSecret.length > 0 ? "" : readConfiguredSessionSecret(defaultAdminSessionSecretFilePath);
+  const fileSecret = configuredSecret.length > 0 ? "" : readConfiguredSessionSecret(sessionSecretFilePath);
   const sessionSecretConfigured = configuredSecret.length > 0 || fileSecret.length > 0;
   const secret = cfg.enabled ? (configuredSecret.length > 0 ? configuredSecret : fileSecret) : "";
 
   if (cfg.enabled) {
     if (!secret) {
       throw new Error(
-        `Admin auth is enabled but ${cfg.sessionSecretEnvVar} is missing and no secret file was found at ${defaultAdminSessionSecretFilePath}.`,
+        `Admin auth is enabled but ${cfg.sessionSecretEnvVar} is missing and no secret file was found at ${sessionSecretFilePath}.`,
       );
     }
     if (!Array.isArray(cfg.users) || cfg.users.length === 0) {
@@ -219,6 +221,7 @@ export function isAdminActionTokenRequired(method: string, path: string): boolea
 export function createAdminAuthService(input: {
   config: AdminAuthConfig;
   env?: NodeJS.ProcessEnv;
+  sessionSecretFilePath?: string;
   now?: () => number;
 }) {
   const cfg = input.config;
@@ -226,6 +229,7 @@ export function createAdminAuthService(input: {
   const { secret } = validateAdminAuthConfig({
     config: cfg,
     env: input.env,
+    sessionSecretFilePath: input.sessionSecretFilePath,
   });
 
   const userMap = new Map(cfg.users.map((user) => [user.username, user]));

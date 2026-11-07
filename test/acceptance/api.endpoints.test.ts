@@ -15,6 +15,13 @@ import type { RateLimitInput, RequestRateLimiter } from "../../src/http/rateLimi
 import type { OperationalLogEvent } from "../../src/observability/logger.js";
 import { RagQueryError } from "../../src/rag.js";
 
+// These tests exercise the API contract, not admin auth (covered in test/admin.auth.test.ts),
+// so they must not depend on whether the shipped YAML has adminAuth enabled.
+const testRuntimeConfig = {
+  ...config,
+  adminAuth: { ...config.adminAuth, enabled: false },
+};
+
 let server: Server;
 let baseUrl: string;
 let registry: CollectionRegistry;
@@ -57,6 +64,7 @@ before(async () => {
     },
   };
   const app = createApp({
+    runtimeConfig: testRuntimeConfig,
     registry,
     jobRunner,
     ragHandlers: {
@@ -189,7 +197,7 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 }
 
 async function startEphemeralApp(deps: AppDependencies): Promise<{ server: Server; baseUrl: string }> {
-  const app = createApp(deps);
+  const app = createApp({ runtimeConfig: testRuntimeConfig, ...deps });
   let ephemeralServer!: Server;
   await new Promise<void>((resolve) => {
     ephemeralServer = app.listen(0, () => resolve());
@@ -643,7 +651,7 @@ describe("v1 admin and rag api endpoints", () => {
           }
 
           await auditRegistry.markIndexJobRunning(jobId);
-          void auditRegistry.appendOperationalLog({
+          void auditRegistry.appendOperationalLog?.({
             tenantId: auditContext.tenantId,
             userId: auditContext.userId,
             jobId,
@@ -660,7 +668,7 @@ describe("v1 admin and rag api endpoints", () => {
             chunkCount: 14,
             retentionMs: 0,
           });
-          void auditRegistry.appendOperationalLog({
+          void auditRegistry.appendOperationalLog?.({
             tenantId: auditContext.tenantId,
             userId: auditContext.userId,
             jobId,
@@ -980,7 +988,7 @@ describe("v1 admin and rag api endpoints", () => {
     };
     const started = await startEphemeralApp({
       runtimeConfig: {
-        ...config,
+        ...testRuntimeConfig,
         rateLimitWindowMs: 5000,
         rateLimitMaxRequestsPerWindow: 1,
       },
@@ -1075,7 +1083,7 @@ describe("v1 admin and rag api endpoints", () => {
       registry: debugRegistry,
       jobRunner,
       runtimeConfig: {
-        ...config,
+        ...testRuntimeConfig,
         includeDebugTimings: true,
       },
       ragHandlers: {

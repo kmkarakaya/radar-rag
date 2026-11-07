@@ -51,9 +51,11 @@ describe("runtime static contract", () => {
     assert.match(configContent, /rateLimit:\s*[\r\n]+\s+enabled:\s*true/);
     assert.match(configContent, /windowMs:\s*60000/);
     assert.match(configContent, /maxRequestsPerWindow:\s*60/);
-    assert.match(configContent, /adminAuth:\s*[\r\n]+\s+enabled:\s*false/);
+    // adminAuth.enabled / users are operator choices written by `npm run onboard`;
+    // lock that the section is present, not which value is shipped.
+    assert.match(configContent, /adminAuth:\s*[\r\n]+\s+enabled:\s*(true|false)/);
     assert.match(configContent, /sessionSecretEnvVar:\s*RAG_ADMIN_SESSION_SECRET/);
-    assert.match(configContent, /users:\s*\[\]/);
+    assert.match(configContent, /\n\s+users:/);
     assert.match(configContent, /observability:\s*[\r\n]+\s+includeDebugTimings:\s*false/);
   });
 
@@ -93,7 +95,7 @@ describe("runtime static contract", () => {
     assert.match(onboard, /\/test-frontend\//);
     assert.match(onboard, /admin panel or the admin API\/job flow/i);
     assert.match(onboard, /admin:hash-password/);
-    assert.match(onboard, /\.local\/rag_admin_session\.secret/);
+    assert.match(adminAuth, /defaultAdminSessionSecretFilePath = "\.local\/rag_admin_session\.secret"/);
     assert.match(adminAuth, /export function validateAdminAuthConfig/);
     assert.doesNotMatch(onboard, /request rate limiting: not enabled yet/i);
   });

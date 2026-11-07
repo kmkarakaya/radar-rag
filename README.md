@@ -238,6 +238,7 @@ The panel surface is split across:
 - Treat `POST /v1/rag/collections/:collectionId/query` and `POST /v1/rag/collections/:collectionId/retrieve` as separate flows.
 - `query.sources` may be only the subset used for answer generation.
 - Handle `429 RATE_LIMIT_EXCEEDED` with the returned `Retry-After` header.
+- Set `observability.includeDebugTimings: true` in the config to add `debug.latency` (`retrievalMs`, `generationMs`, `totalMs`) to query and retrieve responses; it is `false` by default.
 
 ## Stack
 

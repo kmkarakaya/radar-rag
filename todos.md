@@ -50,12 +50,12 @@ Yapilacaklar:
 - Integration testleri (Ollama + Chroma) ayri, opsiyonel/manuel bir job olarak dusun.
 - Lint eklenince (P2 #1) zincire ekle.
 
-### 2. Benchmark verisi var, benchmark kosusu yok
+### 2. Benchmark seti ve kosusu yok
 
 Sorun:
 
-- `benchmark/benchmark.json` ve `benchmark/benchmark.schema.json` repoda duruyor; bunlari kullanan bir script yok (`package.json`'da `benchmark` script'i yok).
-- Mevcut benchmark sorulari kaldirilan ozelge verisine dayaniyor; `data/` altindaki ornek dataset'ler icin yeni bir benchmark seti gerekiyor.
+- Eski `benchmark/benchmark.json` (+ schema) sadece ozelge sorularindan olustugu icin ozelge destegiyle birlikte 2026-11-08'de silindi. Ne benchmark verisi ne de onu kosan bir script var.
+- `data/` altindaki ornek dataset'ler icin yeni bir soru/beklenen-kaynak seti yazilmali.
 - "Dogru cevap veriyor mu", "retrieval dogru chunk'i getiriyor mu", "degisiklikten sonra kalite dustu mu" sorularina otomatik cevap verilemiyor.
 
 Yapilacaklar:

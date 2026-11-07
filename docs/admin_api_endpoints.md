@@ -83,8 +83,8 @@ Example response:
     "retrievalDistanceThreshold": 1.2
   },
   "modelDefaults": {
-    "embeddingModel": "bge-m3",
-    "chatModel": "gemma3:4b-cloud"
+    "embeddingModel": "embeddinggemma-2:270m",
+    "chatModel": "gemma3:4b"
   }
 }
 ```
@@ -108,10 +108,10 @@ Example response:
     "gemma3:4b",
     "gemma3:4b-cloud",
     "gpt-oss:120b-cloud",
-    "bge-m3:latest"
+    "embeddinggemma-2:270m"
   ],
   "embeddingModels": [
-    "bge-m3:latest"
+    "embeddinggemma-2:270m"
   ],
   "chatModels": [
     "gemma3:4b",
@@ -119,8 +119,8 @@ Example response:
     "gpt-oss:120b-cloud"
   ],
   "defaults": {
-    "embeddingModel": "bge-m3",
-    "chatModel": "gemma3:4b-cloud"
+    "embeddingModel": "embeddinggemma-2:270m",
+    "chatModel": "gemma3:4b"
   }
 }
 ```
@@ -134,8 +134,8 @@ If Ollama discovery is unavailable, the endpoint still returns `200` with:
   "embeddingModels": [],
   "chatModels": [],
   "defaults": {
-    "embeddingModel": "bge-m3",
-    "chatModel": "gemma3:4b-cloud"
+    "embeddingModel": "embeddinggemma-2:270m",
+    "chatModel": "gemma3:4b"
   }
 }
 ```
@@ -307,12 +307,12 @@ Example `422` response:
 {
   "error": "Request failed",
   "code": "UNAVAILABLE_MODEL",
-  "message": "Collection cannot be created. Embedding model 'bge-m3' is not available in Ollama. Run: ollama pull bge-m3",
+  "message": "Collection cannot be created. Embedding model 'embeddinggemma-2:270m' is not available in Ollama. Run: ollama pull embeddinggemma-2:270m",
   "requestId": "req_123",
   "details": {
-    "missingModels": [{ "role": "embedding", "name": "bge-m3" }],
-    "availableModels": ["gemma3:4b-cloud"],
-    "recommendedActions": ["ollama pull bge-m3"]
+    "missingModels": [{ "role": "embedding", "name": "embeddinggemma-2:270m" }],
+    "availableModels": ["gemma3:4b"],
+    "recommendedActions": ["ollama pull embeddinggemma-2:270m"]
   }
 }
 ```
@@ -356,7 +356,7 @@ Example response:
         "distanceMetric": "cosine",
         "chunkSize": 1000,
         "chunkOverlap": 200,
-        "embeddingModel": "bge-m3"
+        "embeddingModel": "embeddinggemma-2:270m"
       },
       "desiredSnapshot": {
         "sourcePath": "data/api-test-updated",
@@ -512,8 +512,8 @@ Example request:
   "sourcePath": "missing/source/path",
   "chunkSize": 64,
   "chunkOverlap": 64,
-  "embeddingModel": "bge-m3",
-  "chatModel": "gemma3:4b-cloud"
+  "embeddingModel": "embeddinggemma-2:270m",
+  "chatModel": "gemma3:4b"
 }
 ```
 
@@ -668,7 +668,7 @@ Example response:
         "status": "running",
         "targetPhysicalCollection": "col_123_v2",
         "targetVersion": "v2",
-        "targetEmbeddingModel": "bge-m3",
+        "targetEmbeddingModel": "embeddinggemma-2:270m",
         "targetChromaConfiguration": {
           "hnsw": {
             "space": "cosine"

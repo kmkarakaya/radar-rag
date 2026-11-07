@@ -72,8 +72,8 @@ TypeScript Express backend for multi-collection LangChain RAG over documents in 
 cd "C:\Codes\Vanilla Rag Backend"
 docker compose up -d chroma
 npm.cmd install
-ollama pull gemma3:4b-cloud
-ollama pull bge-m3
+ollama pull gemma3:4b
+ollama pull embeddinggemma-2:270m
 npm.cmd run onboard
 npm.cmd run dev
 ```
@@ -83,8 +83,8 @@ What each command does:
 - `cd "C:\Codes\Vanilla Rag Backend"` changes the shell into the project root so the rest of the commands resolve the right files and config.
 - `docker compose up -d chroma` starts the Chroma vector database in the background. You need this before indexing or querying collections. Docker Desktop must be running first; see [Troubleshooting](#troubleshooting) if this command fails.
 - `npm.cmd install` installs the Node.js dependencies listed in `package.json`.
-- `ollama pull gemma3:4b-cloud` downloads the default chat model used by the backend.
-- `ollama pull bge-m3` downloads the default embedding model used for chunk indexing and retrieval.
+- `ollama pull gemma3:4b` downloads the default chat model used by the backend (runs locally).
+- `ollama pull embeddinggemma-2:270m` downloads the default embedding model used for chunk indexing and retrieval. It needs Ollama 0.40.4 or newer; run `ollama --version` if the pull fails.
 - `npm.cmd run onboard` writes the runtime config ([config/rag.config.yaml](config/rag.config.yaml)) for this machine and checks that Chroma, Ollama, and the models are ready. It does not create, index, or edit collections.
 - `npm.cmd run dev` starts the backend in watch mode and prints the admin panel, readiness, and test frontend links (Ctrl+click to open them from the terminal).
 

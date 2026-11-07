@@ -93,8 +93,8 @@ Default summary response shape:
   },
   "config": {
     "port": 3000,
-    "chatModel": "gemma3:4b-cloud",
-    "embeddingModel": "bge-m3",
+    "chatModel": "gemma3:4b",
+    "embeddingModel": "embeddinggemma-2:270m",
     "chromaUrl": "http://127.0.0.1:8000"
   },
   "diagnostics": {
@@ -185,14 +185,14 @@ Public collection list and detail responses use a sanitized DTO:
       "distanceMetric": "cosine",
       "chunkSize": 1000,
       "chunkOverlap": 200,
-      "embeddingModel": "bge-m3"
+      "embeddingModel": "embeddinggemma-2:270m"
     },
     "desiredSnapshot": {
       "sourcePath": "data",
       "distanceMetric": "cosine",
       "chunkSize": 1000,
       "chunkOverlap": 200,
-      "embeddingModel": "bge-m3"
+      "embeddingModel": "embeddinggemma-2:270m"
     },
     "changedFields": [],
     "note": "Saved settings are aligned with the active indexed snapshot."
@@ -237,14 +237,14 @@ Example response:
           "distanceMetric": "cosine",
           "chunkSize": 1000,
           "chunkOverlap": 200,
-          "embeddingModel": "bge-m3"
+          "embeddingModel": "embeddinggemma-2:270m"
         },
         "desiredSnapshot": {
           "sourcePath": "data",
           "distanceMetric": "cosine",
           "chunkSize": 1000,
           "chunkOverlap": 200,
-          "embeddingModel": "bge-m3"
+          "embeddingModel": "embeddinggemma-2:270m"
         },
         "changedFields": [],
         "note": "Saved settings are aligned with the active indexed snapshot."
@@ -303,9 +303,9 @@ Example: collection has no active physical collection yet, but a job is queued:
   "chromaReadable": false,
   "chromaCount": -1,
   "modelAvailability": {
-    "embeddingModel": "bge-m3",
+    "embeddingModel": "embeddinggemma-2:270m",
     "embeddingModelAvailable": true,
-    "chatModel": "gemma3:4b-cloud",
+    "chatModel": "gemma3:4b",
     "chatModelAvailable": true
   },
   "capabilities": {
@@ -421,7 +421,7 @@ Response body:
       "content": "Retrieved chunk text..."
     }
   ],
-  "embeddingModel": "bge-m3",
+  "embeddingModel": "embeddinggemma-2:270m",
   "collectionId": "col_123",
   "collectionDisplayName": "Tax Rulings 2026",
   "activeVersion": "v-2026-06-27"
@@ -464,8 +464,8 @@ Response body:
       "content": "Retrieved chunk text..."
     }
   ],
-  "embeddingModel": "bge-m3",
-  "chatModel": "gemma3:4b-cloud",
+  "embeddingModel": "embeddinggemma-2:270m",
+  "chatModel": "gemma3:4b",
   "collectionId": "col_123",
   "collectionDisplayName": "Tax Rulings 2026",
   "activeVersion": "v-2026-06-27"

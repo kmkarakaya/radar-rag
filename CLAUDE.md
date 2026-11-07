@@ -6,7 +6,7 @@ Agent brief for the Vanilla RAG Backend. Read this first, then see [AGENTS.md](A
 
 A TypeScript / Express 5 (ESM) **multi-collection, multi-tenant LangChain RAG** backend over local documents (TXT, MD, PDF, DOC, DOCX). Local-first:
 
-- **Ollama** for chat + embeddings (`localhost:11434`, default chat `gemma3:4b-cloud`, embeddings `bge-m3`).
+- **Ollama** for chat + embeddings (`localhost:11434`, default chat `gemma3:4b`, embeddings `embeddinggemma-2:270m`).
 - **Chroma** for the vector store (`localhost:8000`, via Docker).
 - **SQLite** (`better-sqlite3`) for the collection/job registry (`data/registry.sqlite`).
 
@@ -14,7 +14,7 @@ The server listens on **port 3010** in the shipped config. APIs are strictly ver
 
 ## Run / build / test
 
-Prereqs: `docker compose up -d chroma`, then Ollama running with `gemma3:4b-cloud` and `bge-m3` pulled.
+Prereqs: `docker compose up -d chroma`, then Ollama (0.40.4+) running with `gemma3:4b` and `embeddinggemma-2:270m` pulled.
 
 - `npm run dev` — start in watch mode (`tsx watch src/server.ts`).
 - `npm run build` — compile TypeScript to `dist/` (`tsc`); `npm start` — run compiled server.

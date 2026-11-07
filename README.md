@@ -85,37 +85,52 @@ What each command does:
 - `npm.cmd install` installs the Node.js dependencies listed in `package.json`.
 - `ollama pull gemma3:4b-cloud` downloads the default chat model used by the backend.
 - `ollama pull bge-m3` downloads the default embedding model used for chunk indexing and retrieval.
-- `npm.cmd run onboard` creates or refreshes runtime config and registry state for local development. It does not create or edit collections.
-- `npm.cmd run dev` starts the backend in watch mode.
+- `npm.cmd run onboard` writes the runtime config ([config/rag.config.yaml](config/rag.config.yaml)) for this machine and checks that Chroma, Ollama, and the models are ready. It does not create, index, or edit collections.
+- `npm.cmd run dev` starts the backend in watch mode and prints the admin panel, readiness, and test frontend links (Ctrl+click to open them from the terminal).
+
+### First collection and first question
+
+Onboarding only prepares the config; you create and index collections in the admin panel. With `npm.cmd run dev` running:
+
+1. Open `http://localhost:3010/ready`. Every check should pass; if not, see [Troubleshooting](#troubleshooting).
+2. Open the admin panel at `http://localhost:3010/admin` (if admin auth is enabled you land on the login page first).
+3. In **Collections**, click **New Collection**. Give it a display name and a source path, for example `data/dataset1` (the sample TXT/PDF/DOC files). Leave the other fields empty to use the backend defaults, then click **Save Changes**.
+4. With the collection open (click it in the list if the panel closed), click **Re-index Collection**. Follow the job in **Job Monitor** until it is `succeeded`; if it fails, its error is shown there.
+5. Open the collection again and use the **Playground** tab to run **Query** (answer + sources) or **Retrieve** (sources only).
+6. Optional: `http://localhost:3010/test-frontend/` shows the same public `/v1/rag` API from a client's point of view.
 
 How to extend it:
 
 - Pull more chat models with `ollama pull <chat-model-name>` and then point `ollama.chatModel` or a collection-specific chat model setting at that model in [config/rag.config.yaml](config/rag.config.yaml).
 - Pull more embedding models with `ollama pull <embedding-model-name>` and then update `ollama.embeddingModel` or a collection-specific embedding model setting.
 - If you want to test a different vector store or service layout, adjust the Compose stack first, then update the config to match the new runtime target.
-- If you add more collection templates or data sources, re-run `npm.cmd run onboard` so the registry and runtime defaults stay in sync.
+- To index new data, create a collection in the admin panel with its own source path (for example `data/dataset1`) and run re-index. You do not need to rerun onboarding for new data.
 - If you want a different local workflow, keep `ollama pull` commands for the models you actually use and remove the rest.
 
 ## What onboarding is for
 
-Onboarding is the local bootstrap step. It prepares the runtime environment so the backend and admin panel can work correctly, and it can also bootstrap admin auth on first setup.
+Onboarding is the local setup step for the runtime config. It asks for each setting (press Enter to keep the current value), saves the config, and then tells you what still has to be fixed before you can index.
 
 What `npm run onboard` does:
 
-- creates or refreshes the runtime config for this machine
-- writes a backup copy of the previous config before changes are saved
-- resolves local defaults such as ports, paths, model names, and registry state
-- optionally prompts whether admin auth is being used
-- if admin auth is enabled, asks for the session secret, asks for the first admin password, hashes that password, and stores the session secret in `.local/rag_admin_session.secret`
-- checks whether Chroma, Ollama, and the configured models are reachable
-- verifies that indexing can run against the current source data
+- asks for the runtime settings (port, registry path, Chroma and Ollama URLs, chat and embedding models, defaults for new collections, limits, rate limiting, debug timings) and writes them to [config/rag.config.yaml](config/rag.config.yaml), keeping the previous version as `config/rag.config.yaml.bak`
+- optionally sets up admin auth: asks for the session secret and the first admin user (username, tenant, password), stores the secret in `.local/rag_admin_session.secret`, and saves only a scrypt hash of the password
+- analyzes the default source folder (`collectionDefaults.sourcePath`), the folder new collections use unless you give them their own path
+- checks that Chroma and Ollama are reachable and that the embedding and chat models are pulled and respond
+- if something is missing, prints `Config saved; fix these before indexing:` with a one-line fix for each problem, and still prints the next steps. The config is already saved, so after fixing the problem you do not need to run onboarding again
 
 What it does not do:
 
-- create, edit, validate, reindex, or monitor collections
-- replace the admin panel for daily collection management
+- create, edit, validate, index, or monitor collections (use the admin panel or the admin API)
+- create or migrate the SQLite registry (the server does that on startup)
 
-Use onboarding again when you change machines, reset the config, add new source data, switch local models, or want to re-bootstrap admin auth. If the runtime is already healthy and you are only working in the admin panel, you usually do not need to rerun it.
+Flags:
+
+- `--yes` skips the questions and only runs the checks against the existing config
+- `--dry-run` or `--no-write` asks the questions and runs the checks without writing the config
+- `--config <path>` uses a different config file
+
+Run onboarding again when you change machines, switch models, change ports or service URLs, change the default source folder, or want to turn admin auth on or off. Restart the server (`npm.cmd run dev`) afterwards, because the config is only read at startup. To index new data, use the admin panel instead.
 
 ## Troubleshooting
 
@@ -211,7 +226,7 @@ The panel surface is split across:
 
 ### Admin collection setup
 
-1. Open the admin panel at [admin/index.html](admin/index.html).
+1. Open the admin panel at `http://localhost:3010/admin` while the server is running (the panel files live in [admin/](admin/), but they must be served by the backend).
 2. Create or edit the collection in the panel instead of hand-writing POSTs.
 3. Use the panel's validate and reindex actions to build the active index.
 4. Monitor job progress and physical collection state from the panel views.

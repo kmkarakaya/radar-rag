@@ -55,7 +55,7 @@ Implemented in [src/http/adminAuth.ts](src/http/adminAuth.ts); config under `adm
 
 - Runtime config: [config/rag.config.yaml](config/rag.config.yaml), zod-validated with defaults resolved in [src/config.ts](src/config.ts). Key defaults: `chunkSize 500`, `chunkOverlap 200` (must be `< chunkSize`), `retrievalK 5`, `retrievalDistanceThreshold 1.2`, `distanceMetric l2`, `numCtx 4096`.
 - `RAG_ADMIN_SESSION_SECRET` overrides the local secret file, keeping the runtime portable.
-- Gitignored: `.env*`, `.local/`, `data/*.sqlite`, `data/ozelge_veri.json`, `chroma_data/`, `dist/`, `node_modules/`.
+- Gitignored: `.env*`, `.local/`, `data/*.sqlite`, `data/ozelge_veri.json`, `chroma_data/`, `dist/`, `node_modules/`, `graphify-out/` (local only; rebuild with `graphify update .`).
 - Note: `collectionDefaults.sourcePath` is a hardcoded absolute Windows path (`C:\Codes\Vanilla Rag Backend\data`) — environment-specific.
 
 ## Docs & knowledge graph

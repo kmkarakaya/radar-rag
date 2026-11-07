@@ -26,3 +26,6 @@ Thumbs.db
 
 # Coverage directory
 coverage/
+
+# graphify knowledge graph (regenerate locally: graphify update .)
+graphify-out/

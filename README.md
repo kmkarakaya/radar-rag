@@ -165,7 +165,7 @@ Quick health check: `GET http://localhost:3010/ready?details=true` reports Chrom
 
 ## Güvenli admin quickstart
 
-Admin auth is opt-in. During onboarding, answer yes when asked whether admin auth is used. Onboarding will ask for a session secret and the first admin password, hash the password for you, write the admin user into `adminAuth.users[]`, and store the session secret locally in `.local/rag_admin_session.secret`.
+Admin auth is opt-in: the shipped config has `adminAuth.enabled: false` and no users, so a fresh clone starts without a login. During onboarding, answer yes when asked whether admin auth is used. Onboarding will ask for a session secret and the first admin password, hash the password for you, write the admin user into `adminAuth.users[]`, and store the session secret locally in `.local/rag_admin_session.secret`.
 
 1. Run `npm.cmd run onboard`.
 2. Answer yes when the admin auth prompt appears.
@@ -185,7 +185,7 @@ adminAuth:
   actionTokenTtlMs: 300000
   sessionSecretEnvVar: RAG_ADMIN_SESSION_SECRET
   users:
-    - username: kmkarakaya
+    - username: admin
       passwordHash: "scrypt$16384$8$1$64$..."
       role: admin
       tenantId: "default"

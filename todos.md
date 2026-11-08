@@ -14,7 +14,7 @@ Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigi
 - Gozlemlenebilirlik: request id, `latencyMs`, `errorCode`, `retrievalMs` iceren yapisal operational log (+ `operational_logs` tablosu), audit log, opsiyonel `debug.latency` response alani.
 - `/health`, `/ready` (`?strict=true`, `?details=true`), koleksiyon bazli `/ready`.
 - Ingestion: `txt`, `md`, `pdf`, `doc`, `docx` (alt klasorler dahil, recursive; registry SQLite dosyasi atlanir); SHA-256 source hash; dosya bazli hata toleransi.
-- Testler: `node:test` ile 164 unit + acceptance testi, ayrica Ollama + Chroma isteyen integration testi; dokuman/statik contract testleri.
+- Testler: `node:test` ile 180 unit + acceptance testi, ayrica Ollama + Chroma isteyen integration testi; dokuman/statik contract testleri.
 - Dokumanlar: README, `docs/` (API, workflow, `openapi.yaml`), mimari dokumani; admin panel (`/admin`) ve ornek istemci (`/test-frontend`).
 
 ## Tamamlananlar (eski listeden kapatilanlar)
@@ -32,11 +32,89 @@ Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigi
 - **All-in-one Docker** - 2026-11-08. `Dockerfile` (multi-stage, node:22-bookworm-slim) + `docker-compose.yml`: backend + Chroma `1.5.9` + Ollama `0.40.12` (host'a acilmiyor, yerel Ollama ile cakismaz) + `ollama-init` (modelleri cekip cikar; backend onu bekler). `./data` mount, modeller `.env` ile degistirilebilir, host Ollama icin `RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434`, GPU blogu yorumda. Imaj host Chroma/Ollama'ya karsi denendi (`/ready` ok, admin 200); Tam yigin (bundled Ollama, `bonsai-2:2b` + `embeddinggemma-2:270m`) temiz klonda uctan uca kosuldu: ilk kurulum ~79 dk (cogu Ollama imaji + model indirme), `/ready` ok, koleksiyon olustur -> reindex (10 sn) -> query calisti; `down`/`up` sonrasi koleksiyon, vektorler ve modeller korundu (yeniden baslatma 12 sn). Bu testte bulunan iki hata duzeltildi: kucuk modellerin bozuk yazdigi `NO_ANSWER_FROM_CONTEXT` isareti cevaba sizmiyor; kaynaklardaki `sourcePath` proje kokune gore goreli donuyor (`/app/data/...` yerine `data/...`). `NODE_ENV=production` bilerek set edilmiyor (Secure cookie HTTP'de admin login'i bozar).
 - **Onboarding hata akisi** - 2026-11-08. Bagimlilik/kaynak eksiklerinde durmuyor; "Config saved; fix these before indexing" altinda her eksik icin tek satir cozum yaziyor, "Next steps"i her zaman gosteriyor, exit code 0. `--skip-index` deprecated.
 
+## Urun yonu ve hedef kitle
+
+Karar (2026-11-08): repo, **kendi sunucunda calisan, LLM'den bagimsiz bir dokuman retrieval servisi** olarak konumlaniyor. Cevap uretme (`/query`) opsiyonel bir eklenti.
+
+Oncelikli kullanicilar:
+
+- **A. Kendi uygulamasini yapan gelistirici** (chatbot, ic arac): dokumanlarini yukler, API anahtariyla ilgili chunk'lari alir, LLM'i kendisi secer.
+- **C. AI asistani / ajan kullanan gelistirici** (Claude Desktop, Claude Code, Cursor): retrieve'i MCP araci olarak kullanir.
+- **D. RAG'i ogrenmek isteyen**: okunabilir, framework'e gomulmemis, iyi dokumante bir referans uygulama. Kodu sade ve aciklamali tutmak bu kitleye hizmet eder.
+
+Sonraya birakilan: **B. Dokumanlariyla sohbet etmek isteyen teknik olmayan kullanici.** Sohbet arayuzu, retrieval servisi oturduktan sonra API'nin ustune eklenecek. Bunun icin `/query` ve Ollama destegi kaldirilmayacak, sadece opsiyonel hale getirilecek.
+
+## Elestiriler: altyapi agir, giris kapisi zayif
+
+Yonetim tarafi kurumsal duzeyde (blue/green reindex, job kuyrugu, RBAC, CSRF, audit log, detayli readiness), ama disaridan birinin ilk ihtiyac duyacagi seyler eksik. Asagidaki maddeler P0'da kapatilacak:
+
+- **Public API'de kimlik dogrulama yok.** `/v1/rag/**` herkese acik; tenant `x-tenant-id` header'indan okunuyor, yoksa `default` (`src/http/requestContext.ts`). Herkes header'i degistirerek baska bir tenant'in verisini sorgulayabilir; multi-tenant yapi bu haliyle guvenli degil. -> P0 #2
+- **CORS yok.** Baska bir adresteki web uygulamasi API'yi tarayicidan cagiramiyor (test frontend ayni adresten sunuldugu icin calisiyor). -> P0 #2
+- **Dokuman yukleme/silme yok.** Dokumanlar sunucu diskine (`./data/...`) elle konuyor; API veya panelden yukleme, silme, listeleme yok. Docker'da ve uzak sunucuda cok zahmetli. -> P0 #3
+- **Tek model saglayicisi ve zorunlu chat modeli.** Sadece Ollama; koleksiyon olusturma ve genel `/ready` chat modelini sart kosuyor, oysa indexing ve retrieve kullanmiyor. -> P0 #1, P0 #5
+- **Indexing hep tam.** Tek dosya degisse de butun koleksiyon yeniden isleniyor; dosya formatlari dar. -> P0 #6, P1 #5
+
 ## P0 - Urun hedefi icin kritik eksikler
 
-Hedef: baskalarinin repoyu GitHub'dan indirip kendi verisiyle kolayca kullanabilmesi. Olcut: yeni bir kullanicinin ilk cevabini almasi ne kadar zahmetsiz?
+Hedef: baskalarinin repoyu GitHub'dan indirip kendi verisiyle kolayca kullanabilmesi (once A, C, D). Olcut: yeni bir kullanicinin kendi dokumanlarindan ilk sonucu almasi ne kadar zahmetsiz ve guvenli?
 
-### 1. Dosya formati destegi dar
+### 1. Chat modelini opsiyonel yap
+
+Sorun:
+
+- `POST /v1/admin/collections` embedding ile birlikte chat modelinin de Ollama'da olmasini sart kosuyor (`src/http/adminRouter.ts`), indexing chat modelini hic kullanmadigi halde.
+- Genel `/ready` chat modeli eksikse blocker veriyor (`CHAT_MODEL_MISSING`, `src/app.ts`); retrieve-only kullanicida `ready: false` yaniltici.
+- Docker kurulumu, sadece retrieval isteyen biri icin de chat modelini indiriyor.
+
+Yapilacaklar:
+
+- Chat modeli config'de opsiyonel; yoksa `/query` kapali (anlasilir bir hata kodu ile), `/retrieve` tam calisir.
+- Koleksiyon olusturma ve genel `/ready` chat modelini sadece `/query` aciksa kontrol etsin.
+- Docker'da chat modeli indirmesi opsiyonel olsun.
+- README'de "retrieve-only" kullanimi ana yol olarak anlat.
+
+### 2. Public API icin API anahtari ve CORS
+
+Yapilacaklar:
+
+- `/v1/rag/**` icin API anahtari (`Authorization: Bearer ...` veya `x-api-key`); anahtarlar hash'lenerek saklanir, admin panelden olusturulur/iptal edilir.
+- Tenant header'dan degil, anahtardan belirlenir; `x-tenant-id` ile baska tenant'a erisim kapanir.
+- Koleksiyon bazli yetki (bir anahtar hangi koleksiyonlari okuyabilir) dusunulsun.
+- Config ile CORS izinli origin listesi.
+- Anahtarsiz kullanim sadece acikca izin verilirse (lokal gelistirme) mumkun olsun.
+
+### 3. Dokuman yonetimi: yukleme, silme, listeleme
+
+Yapilacaklar:
+
+- Admin API: bir koleksiyona dosya yukleme (multipart), dosyalari listeleme, silme, degistirme.
+- Admin panelde ayni islemler (surukle-birak yukleme, dosya listesi, silme).
+- Boyut ve format limitleri, dosya adi guvenligi (path traversal), tenant izolasyonu.
+- Yukleme/silme sonrasi reindex akisi; ileride incremental indexing ile (P1 #5) sadece degisen dosyalar islenir.
+- Mevcut "sunucu klasoru" (`sourcePath`) kullanimi da desteklenmeye devam etsin.
+
+### 4. MCP sunucusu
+
+Yapilacaklar:
+
+- Koleksiyonlari listeleme ve retrieve'i MCP araclari olarak acan bir MCP sunucusu (stdio ve/veya HTTP).
+- Claude Desktop / Claude Code / Cursor icin kurulum ornegi README'de.
+- API anahtari (P0 #2) ile kimlik dogrulama.
+
+### 5. Degistirilebilir embedding saglayicisi
+
+Sorun:
+
+- Embedding tek bir fabrikadan geciyor (`createEmbeddings`, `src/rag.ts`) ve LangChain `Embeddings` arayuzu kullaniliyor; ama model kontrolleri, `/ready`, config (`ollama.*`), admin panel model listesi, onboarding ve Docker Ollama'ya ozel.
+
+Yapilacaklar:
+
+- Config'de saglayici secimi: `ollama`, surec ici (ornegin transformers.js, ayri sunucu gerektirmez), bulut API'leri (OpenAI vb.).
+- Model kontrolu / readiness'i saglayiciya gore soyutla.
+- Koleksiyon embedding saglayicisini da saklasin (model degisince reindex gerekir mantigi korunur).
+- Embedding backend'de kalmali: indexing ve sorgu ayni modelle yapilmak zorunda.
+
+### 6. Dosya formati destegi dar
 
 Sorun:
 
@@ -50,7 +128,7 @@ Yapilacaklar:
 - Generic JSON mapping: `contentField`, `idField`, `metadataFields` benzeri koleksiyon ayarlari; nested alanlar icin JSON pointer/path; yanlis mapping'de anlasilir hata.
 - Desteklenen formatlari README'de ve admin panelde net goster.
 
-### 2. CI pipeline yok
+### 7. CI pipeline yok
 
 Sorun:
 
@@ -103,7 +181,7 @@ Yapildi (ozet): `txt`/`md`/`pdf`/`doc`/`docx` loader'lari, ortak metadata contra
 
 Kalanlar:
 
-- Yeni formatlar (HTML, CSV, JSONL, generic JSON) P0 #1'de.
+- Yeni formatlar (HTML, CSV, JSONL, generic JSON) P0 #6'da.
 - Recursive tarama her zaman acik; config ile kapatma/derinlik siniri yok.
 - Loader options config yuzeyi yok.
 - OCR artigi, header/footer ayiklama, tekrarli metin ve asiri kisa chunk filtreleme temel seviyede.
@@ -183,7 +261,7 @@ Yapilacaklar:
 ### 1. Lint ve format adimi yok
 
 - ESLint ekle; Prettier veya mevcut stili standardize et.
-- CI zincirine ekle (P0 #1).
+- CI zincirine ekle (P0 #7).
 
 ### 2. Opsiyonel degerlendirme (benchmark) araci
 
@@ -225,14 +303,21 @@ Kalanlar:
 
 ## Sonraki oncelikli uygulama sirasi
 
-1. Yeni dosya formatlari: HTML, CSV, JSONL, generic JSON mapping.
-2. CI pipeline (typecheck + typecheck:test + build + test + Docker build).
-3. README bilinen sinirlar + ilk kurulum deneyimi cilasi.
-4. Readiness icin gercek RAG smoke probe.
-5. Incremental / upsert indexing.
-6. Test coverage bosluklari, lint, opsiyonel degerlendirme araci.
+Urun yonune (A, C, D) gore:
+
+1. Chat modelini opsiyonel yap (P0 #1). Kucuk is; Docker kurulumu da hafifler.
+2. Public API'ye API anahtari ve CORS (P0 #2). Tenant anahtardan belirlenir; urun olarak dagitmadan once sart.
+3. Dokuman yonetimi: admin API ve panelden yukleme/silme/listeleme (P0 #3).
+4. MCP sunucusu: retrieve'i AI asistanlarina arac olarak ac (P0 #4).
+5. Degistirilebilir embedding saglayicisi (P0 #5).
+6. Dosya formatlari (P0 #6) ve incremental / upsert indexing (P1 #5).
+7. CI pipeline (P0 #7; ucuz oldugu icin araya da alinabilir).
+8. README bilinen sinirlar + ilk kurulum deneyimi cilasi.
+9. Readiness icin gercek RAG smoke probe.
+10. Sohbet arayuzu (B kitlesi), API'nin ustune.
+11. Test coverage bosluklari, lint, opsiyonel degerlendirme araci.
 
 ## Kapanis notu
 
 Repo artik "calisan bir baseline vanilla RAG backend" seviyesini gecti: multi-collection, multi-tenant, auth'lu admin API, guvenli blue/green reindex ve genis test kapsami var.
-Tek komutla kurulum (Docker) artik var; baskalarinin kendi verisiyle kullanabilmesi icin siradaki oncelik daha genis dosya formati destegi ve CI.
+Tek komutla kurulum (Docker) artik var; baskalarinin kendi verisiyle kullanabilmesi icin siradaki oncelik urun yonune gore (A, C, D): opsiyonel chat modeli, public API guvenligi (API anahtari + CORS), dokuman yonetimi ve MCP.

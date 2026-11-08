@@ -19,7 +19,6 @@ describe("buildPhysicalCollection", () => {
         status: "indexing",
         sourcePath: "data",
         embeddingModel: "embed-build-specific",
-        chatModel: "chat-build-specific",
         distanceMetric: "cosine",
         chromaCollectionConfiguration: {
           hnsw: {
@@ -109,7 +108,6 @@ describe("buildPhysicalCollection", () => {
         status: "indexing",
         sourcePath: "data",
         embeddingModel: "m1",
-        chatModel: "c1",
         distanceMetric: "l2",
         chromaCollectionConfiguration: {},
         chunkSize: 100,
@@ -168,7 +166,6 @@ describe("buildPhysicalCollection", () => {
           status: "indexing",
           sourcePath: "data",
           embeddingModel: "embed-build-specific",
-          chatModel: "chat-build-specific",
           distanceMetric: "l2",
           chromaCollectionConfiguration: {
             hnsw: {
@@ -214,7 +211,6 @@ describe("buildPhysicalCollection", () => {
       status: "indexing" as const,
       sourcePath: "empty/path",
       embeddingModel: "m1",
-      chatModel: "c1",
       distanceMetric: "l2" as const,
       chromaCollectionConfiguration: {},
       chunkSize: 100,
@@ -258,7 +254,6 @@ describe("buildPhysicalCollection", () => {
       status: "indexing" as const,
       sourcePath: "path",
       embeddingModel: "m1",
-      chatModel: "c1",
       distanceMetric: "l2" as const,
       chromaCollectionConfiguration: {},
       chunkSize: 100,

@@ -16,8 +16,9 @@ import {
 } from "../config.js";
 import { defaultAdminSessionSecretFilePath, validateAdminAuthConfig } from "../http/adminAuth.js";
 import { analyzeIndexingSource } from "../index.js";
+import { checkChatGeneration, checkChatProvider } from "../chat.js";
+import { defaultChatApiKeyFilePath, readSecretFile, removeSecretFile, writeSecretFile } from "../secrets.js";
 import {
-  checkChatGenerationHealth,
   checkChromaHealth,
   checkEmbeddingHealth,
   checkOllamaHealth,
@@ -33,9 +34,13 @@ type CliOptions = {
   noWrite: boolean;
 };
 
+/** What to do with the chat API key file (.local/rag_chat_api_key.secret); the key never goes into the YAML. */
+type ChatApiKeyAction = { kind: "keep" } | { kind: "set"; value: string } | { kind: "remove" };
+
 type PromptedConfig = {
   rawConfig: RawConfig;
   adminSessionSecretValue?: string;
+  chatApiKeyAction: ChatApiKeyAction;
 };
 
 const DISTANCE_METRICS = ["l2", "cosine", "ip"] as const;
@@ -88,6 +93,77 @@ async function promptString(
 ): Promise<string> {
   const answer = await rl.question(`${label} [${currentValue}]: `);
   return answer.trim().length === 0 ? currentValue : answer.trim();
+}
+
+/** Like promptString, but "-" clears the value. */
+async function promptClearableString(rl: Interface, label: string, currentValue: string): Promise<string> {
+  const answer = (await rl.question(`${label} [${currentValue}]: `)).trim();
+  if (answer === "-") return "";
+  return answer.length === 0 ? currentValue : answer;
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function describeStoredChatApiKey(env: NodeJS.ProcessEnv): string {
+  if (env.RAG_CHAT_API_KEY?.trim()) return "set via RAG_CHAT_API_KEY, which overrides the file";
+  return readSecretFile(defaultChatApiKeyFilePath, "chat API key") ? `stored in ${defaultChatApiKeyFilePath}` : "none";
+}
+
+/**
+ * Optional chat LLM for /query: only base URL, model and API key are asked. Model parameters are left
+ * to the provider defaults; advanced keys added by hand to the YAML (temperature, maxTokens,
+ * maxContextTokens) are kept.
+ */
+async function promptChat(
+  rl: Interface,
+  current: RawConfig["chat"],
+  onApiKey: (action: ChatApiKeyAction) => void,
+): Promise<NonNullable<RawConfig["chat"]>> {
+  const advanced = {
+    ...(current?.temperature !== undefined ? { temperature: current.temperature } : {}),
+    ...(current?.maxTokens !== undefined ? { maxTokens: current.maxTokens } : {}),
+    ...(current?.maxContextTokens !== undefined ? { maxContextTokens: current.maxContextTokens } : {}),
+  };
+
+  console.log("\nChat LLM for /query (optional). Leave the base URL empty for retrieve-only; type - to clear it.");
+  console.log("Any OpenAI-compatible API works, for example:");
+  console.log("  local Ollama: http://localhost:11434/v1");
+  console.log("  OpenAI:       https://api.openai.com/v1");
+  console.log("  OpenRouter:   https://openrouter.ai/api/v1");
+
+  let baseUrl = "";
+  while (true) {
+    baseUrl = await promptClearableString(rl, "chat.baseUrl", current?.baseUrl ?? "");
+    if (baseUrl === "" || isHttpUrl(baseUrl)) break;
+    console.log("Please enter an http(s) URL, or leave it empty for retrieve-only.");
+  }
+
+  if (baseUrl === "") {
+    console.log("Chat LLM disabled: /query will return CHAT_NOT_CONFIGURED; retrieval and indexing still work.");
+    return { ...advanced, baseUrl: "", model: "" };
+  }
+
+  const model = current?.model
+    ? await promptString(rl, "chat.model", current.model)
+    : await promptRequiredString(rl, "chat.model");
+
+  const keyAnswer = (await rl.question(
+    `chat API key [${describeStoredChatApiKey(process.env)}] (Enter = keep, - = remove; not needed for a local Ollama): `,
+  )).trim();
+  if (keyAnswer === "-") {
+    onApiKey({ kind: "remove" });
+  } else if (keyAnswer.length > 0) {
+    onApiKey({ kind: "set", value: keyAnswer });
+  }
+
+  return { ...advanced, baseUrl, model };
 }
 
 async function promptNumber(
@@ -241,6 +317,7 @@ async function promptConfig(rawConfig: RawConfig): Promise<PromptedConfig> {
     console.log("Press Enter to keep the current value.\n");
 
     const adminAuthResult = await promptAdminAuth(rl, rawConfig.adminAuth);
+    let chatApiKeyAction: ChatApiKeyAction = { kind: "keep" };
 
     return {
       rawConfig: {
@@ -255,11 +332,11 @@ async function promptConfig(rawConfig: RawConfig): Promise<PromptedConfig> {
         },
         ollama: {
           baseUrl: await promptString(rl, "ollama.baseUrl", rawConfig.ollama.baseUrl),
-          chatModel: await promptString(rl, "ollama.chatModel", rawConfig.ollama.chatModel),
           embeddingModel: await promptString(rl, "ollama.embeddingModel", rawConfig.ollama.embeddingModel),
-          numCtx: await promptNumber(rl, "ollama.numCtx", rawConfig.ollama.numCtx, positiveInteger),
-          numPredict: await promptNumber(rl, "ollama.numPredict", rawConfig.ollama.numPredict, positiveInteger),
         },
+        chat: await promptChat(rl, rawConfig.chat, (action) => {
+          chatApiKeyAction = action;
+        }),
         collectionDefaults: {
           sourcePath: await promptString(rl, "collectionDefaults.sourcePath", rawConfig.collectionDefaults.sourcePath),
           distanceMetric: await promptEnum(
@@ -311,11 +388,8 @@ async function promptConfig(rawConfig: RawConfig): Promise<PromptedConfig> {
             "readiness.embeddingProbeText",
             rawConfig.readiness.embeddingProbeText,
           ),
-          chatProbeText: await promptString(
-            rl,
-            "readiness.chatProbeText",
-            rawConfig.readiness.chatProbeText,
-          ),
+          // Used only by onboarding's chat smoke test; not asked, edit the YAML to change it.
+          chatProbeText: rawConfig.readiness.chatProbeText,
         },
         cleanup: {
           retentionMs: await promptNumber(
@@ -368,6 +442,7 @@ async function promptConfig(rawConfig: RawConfig): Promise<PromptedConfig> {
         },
       },
       adminSessionSecretValue: adminAuthResult.adminSessionSecretValue,
+      chatApiKeyAction,
     };
   } finally {
     rl.close();
@@ -375,9 +450,7 @@ async function promptConfig(rawConfig: RawConfig): Promise<PromptedConfig> {
 }
 
 async function writeAdminSessionSecretFile(secretValue: string): Promise<void> {
-  const secretFilePath = path.resolve(process.cwd(), defaultAdminSessionSecretFilePath);
-  await fs.mkdir(path.dirname(secretFilePath), { recursive: true });
-  await fs.writeFile(secretFilePath, `${secretValue}\n`, { encoding: "utf8", mode: 0o600 });
+  await writeSecretFile(defaultAdminSessionSecretFilePath, secretValue);
 }
 
 function positiveInteger(value: number): string | null {
@@ -418,8 +491,10 @@ async function printConfigSummary(runtimeConfig: ResolvedConfig, env: NodeJS.Pro
   console.log(`- server.port: ${runtimeConfig.port}`);
   console.log(`- registry.path: ${runtimeConfig.registryPath}`);
   console.log(`- chroma.url: ${runtimeConfig.chromaUrl}`);
-  console.log(`- ollama chat: ${runtimeConfig.ollamaChatModel}`);
   console.log(`- ollama embedding: ${runtimeConfig.ollamaEmbeddingModel}`);
+  console.log(runtimeConfig.chat.enabled
+    ? `- chat: ${runtimeConfig.chat.model} @ ${runtimeConfig.chat.baseUrl}, api key: ${runtimeConfig.chat.apiKeySource === "none" ? "not set" : runtimeConfig.chat.apiKeySource}`
+    : "- chat: disabled (/query off, retrieve-only)");
   console.log(`- collectionDefaults.sourcePath: ${runtimeConfig.sourcePath}`);
   console.log(`- collectionDefaults.distanceMetric: ${runtimeConfig.chromaDistanceMetric}`);
   console.log(`- collectionDefaults.chunkSize/chunkOverlap: ${runtimeConfig.chunkSize}/${runtimeConfig.chunkOverlap}`);
@@ -475,6 +550,13 @@ async function runDependencyChecks(runtimeConfig: ResolvedConfig): Promise<Setup
     });
   }
 
+  issues.push(...await runOllamaChecks(runtimeConfig));
+  issues.push(...await runChatChecks(runtimeConfig));
+  return issues;
+}
+
+async function runOllamaChecks(runtimeConfig: ResolvedConfig): Promise<SetupIssue[]> {
+  const issues: SetupIssue[] = [];
   const ollama = await checkOllamaHealth(runtimeConfig);
   console.log(`- Ollama: ${ollama.ok ? "ok" : "fail"}${ollama.error ? ` - ${ollama.error}` : ""}`);
   if (!ollama.ok) {
@@ -505,25 +587,51 @@ async function runDependencyChecks(runtimeConfig: ResolvedConfig): Promise<Setup
     }
   }
 
-  if (ollamaDetails.chatModelAvailable !== true) {
-    console.log(`- Chat model: missing (${runtimeConfig.ollamaChatModel}); indexing can still run.`);
-    console.log(`  Run: ollama pull ${runtimeConfig.ollamaChatModel}`);
-    issues.push({
-      problem: `Chat model ${runtimeConfig.ollamaChatModel} is not pulled in Ollama (needed for queries, not for indexing).`,
-      fix: `ollama pull ${runtimeConfig.ollamaChatModel}`,
-    });
-  } else {
-    const chat = await checkChatGenerationHealth(runtimeConfig);
-    console.log(`- Chat smoke: ${chat.ok ? "ok" : "warn"}${chat.error ? ` - ${chat.error}` : ""}`);
-    if (!chat.ok) {
-      issues.push({
-        problem: `Chat model ${runtimeConfig.ollamaChatModel} did not answer the smoke prompt.`,
-        fix: "Check the Ollama logs or choose another chat model.",
-      });
-    }
+  return issues;
+}
+
+/** Checks the optional chat LLM: the free model listing first, then one real generation (onboarding only). */
+async function runChatChecks(runtimeConfig: ResolvedConfig): Promise<SetupIssue[]> {
+  const chat = runtimeConfig.chat;
+  if (!chat.enabled) {
+    console.log("- Chat LLM: not configured (/query disabled, retrieve-only)");
+    return [];
   }
 
-  return issues;
+  const provider = await checkChatProvider(runtimeConfig, { useCache: false });
+  if (!provider.reachable) {
+    console.log(`- Chat LLM: fail - ${provider.error ?? "not reachable"}`);
+    return [{
+      problem: `The chat LLM at ${chat.baseUrl} is not reachable (needed for /query only).`,
+      fix: "Start it, or rerun onboarding with the right chat.baseUrl (an OpenAI-compatible URL such as http://localhost:11434/v1).",
+    }];
+  }
+  if (!provider.authOk) {
+    console.log("- Chat LLM: fail - the API key was rejected");
+    return [{
+      problem: `The chat LLM at ${chat.baseUrl} rejected the API key.`,
+      fix: "Rerun onboarding with the right key, or set RAG_CHAT_API_KEY.",
+    }];
+  }
+  if (provider.modelListed === false) {
+    const suggestions = (provider.availableModels ?? []).slice(0, 10).join(", ");
+    console.log(`- Chat model: missing (${chat.model})`);
+    return [{
+      problem: `Chat model ${chat.model} is not offered by ${chat.baseUrl}.`,
+      fix: suggestions
+        ? `Rerun onboarding and pick one of: ${suggestions}`
+        : `Rerun onboarding with another model, or for a local Ollama run: ollama pull ${chat.model}`,
+    }];
+  }
+
+  const generation = await checkChatGeneration(runtimeConfig);
+  console.log(`- Chat smoke: ${generation.ok ? "ok" : "fail"}${generation.error ? ` - ${generation.error}` : ""}`);
+  return generation.ok
+    ? []
+    : [{
+      problem: `Chat model ${chat.model} did not answer the smoke prompt (needed for /query only).`,
+      fix: "Check the provider logs or rerun onboarding with another chat model.",
+    }];
 }
 
 function printSetupIssues(issues: SetupIssue[], configWritten: boolean): void {
@@ -544,8 +652,14 @@ function printSetupIssues(issues: SetupIssue[], configWritten: boolean): void {
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const rawConfig = parseConfig(readConfigFile(options.configPath), options.configPath);
-  const nextConfig = options.yes ? { rawConfig, adminSessionSecretValue: undefined } : await promptConfig(rawConfig);
-  const runtimeConfig = resolveConfig(parseConfig(nextConfig.rawConfig, options.configPath), options.configPath);
+  const nextConfig: PromptedConfig = options.yes
+    ? { rawConfig, adminSessionSecretValue: undefined, chatApiKeyAction: { kind: "keep" } }
+    : await promptConfig(rawConfig);
+  const keyAction = nextConfig.chatApiKeyAction;
+  const runtimeConfig = resolveConfig(parseConfig(nextConfig.rawConfig, options.configPath), options.configPath, process.cwd(), {
+    // Checks below use the key just entered, even before (or without) writing the secret file.
+    chatApiKeyOverride: keyAction.kind === "set" ? keyAction.value : keyAction.kind === "remove" ? null : undefined,
+  });
 
   await printConfigSummary(runtimeConfig, process.env);
 
@@ -560,6 +674,13 @@ async function main(): Promise<void> {
     if (nextConfig.adminSessionSecretValue) {
       await writeAdminSessionSecretFile(nextConfig.adminSessionSecretValue);
       console.log(`Secret written to ${defaultAdminSessionSecretFilePath}`);
+    }
+    if (keyAction.kind === "set") {
+      await writeSecretFile(defaultChatApiKeyFilePath, keyAction.value);
+      console.log(`Chat API key written to ${defaultChatApiKeyFilePath} (gitignored; never stored in the YAML).`);
+    } else if (keyAction.kind === "remove") {
+      await removeSecretFile(defaultChatApiKeyFilePath);
+      console.log(`Chat API key removed from ${defaultChatApiKeyFilePath}.`);
     }
     console.log(`\nConfig written to ${options.configPath}`);
     console.log(`Backup written to ${options.configPath}.bak`);
@@ -608,6 +729,9 @@ async function main(): Promise<void> {
   console.log(`- http://localhost:${runtimeConfig.port}/ready`);
   console.log(`- ${adminUrl}`);
   console.log(`- http://localhost:${runtimeConfig.port}/test-frontend/`);
+  if (!runtimeConfig.chat.enabled) {
+    console.log("- Optional: rerun onboarding with a chat.baseUrl and chat.model to enable answer generation (/query).");
+  }
   if (runtimeConfig.adminAuth.enabled) {
     console.log("- npm run admin:hash-password");
   }

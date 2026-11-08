@@ -36,7 +36,6 @@ const collectionInput: CreateCollectionInput = {
   description: "Cleanup test collection",
   sourcePath: "data",
   embeddingModel: "bge-m3",
-  chatModel: "gemma3:4b-cloud",
   distanceMetric: "l2",
   chunkSize: 500,
   chunkOverlap: 200,

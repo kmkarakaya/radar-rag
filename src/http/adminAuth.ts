@@ -6,6 +6,7 @@ import { HttpError } from "./errors.js";
 import type { RequestContext } from "./requestContext.js";
 import type { ResolvedConfig } from "../config.js";
 import { parsePasswordHash, verifyPasswordHash } from "../admin/passwordHash.js";
+import { readSecretFile } from "../secrets.js";
 
 export type AdminRole = "viewer" | "operator" | "admin";
 export type AdminCapability =
@@ -141,19 +142,7 @@ function ensureValidPasswordHashes(users: AdminUserConfig[]): void {
 }
 
 function readConfiguredSessionSecret(sessionSecretFilePath: string): string {
-  const resolvedPath = path.resolve(process.cwd(), sessionSecretFilePath);
-
-  try {
-    return readFileSync(resolvedPath, "utf8").trim();
-  } catch (error) {
-    const code = error instanceof Error && "code" in error ? String((error as NodeJS.ErrnoException).code ?? "") : "";
-    if (code === "ENOENT") {
-      return "";
-    }
-
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to read admin session secret file at ${resolvedPath}: ${message}`);
-  }
+  return readSecretFile(sessionSecretFilePath, "admin session secret");
 }
 
 export function validateAdminAuthConfig(input: {

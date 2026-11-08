@@ -9,7 +9,8 @@ import { createApp, type AppDependencies } from "../../src/app.js";
 import { createSqliteCollectionRegistry } from "../../src/collections/sqliteRegistry.js";
 import { resolveReadableCollection as actualResolveReadableCollection } from "../../src/collections/resolveReadableCollection.js";
 import type { CollectionRegistry, RagCollection } from "../../src/collections/types.js";
-import { config as loadedConfig } from "../../src/config.js";
+import type { ChatProviderStatus } from "../../src/chat.js";
+import { config as loadedConfig, type ResolvedConfig } from "../../src/config.js";
 import type { IndexJobRunner } from "../../src/indexing/jobRunner.js";
 import type { RateLimitInput, RequestRateLimiter } from "../../src/http/rateLimit.js";
 import type { OperationalLogEvent } from "../../src/observability/logger.js";
@@ -19,10 +20,20 @@ import { RagQueryError } from "../../src/rag.js";
 // `npm run onboard` writes to config/rag.config.yaml (models, rate limit, debug timings, admin auth).
 // Admin auth itself is covered in test/admin.auth.test.ts. Every `config.*` reference below uses
 // this pinned copy, which the Ollama stub (availableOllamaModels) is built to match.
+const TEST_CHAT_API_KEY = "test-secret-chat-key";
 const config = {
   ...loadedConfig,
   ollamaEmbeddingModel: "bge-m3",
-  ollamaChatModel: "gemma3:4b-cloud",
+  chat: {
+    enabled: true,
+    baseUrl: "http://chat.test/v1",
+    model: "gemma3:4b-cloud",
+    apiKey: TEST_CHAT_API_KEY,
+    apiKeySource: "env" as const,
+    temperature: undefined,
+    maxTokens: undefined,
+    maxContextTokens: undefined,
+  },
   rateLimitEnabled: true,
   includeDebugTimings: false,
   adminAuth: { ...loadedConfig.adminAuth, enabled: false },
@@ -67,13 +78,26 @@ async function stubOllamaModelDiscovery() {
     embeddingModels: ollamaModelDiscoveryReachable
       ? availableOllamaModels.filter((model) => (ollamaModelCapabilities[model] ?? []).includes("embedding"))
       : [],
-    chatModels: ollamaModelDiscoveryReachable
-      ? availableOllamaModels.filter((model) => (ollamaModelCapabilities[model] ?? []).includes("completion"))
-      : [],
     defaults: {
       embeddingModel: config.ollamaEmbeddingModel,
-      chatModel: config.ollamaChatModel,
     },
+  };
+}
+
+/** The chat LLM is global; tests flip this to simulate provider problems. Never touches the network. */
+let chatProviderModelListed: boolean | "unknown" = true;
+async function stubChatProvider(runtimeConfig: ResolvedConfig): Promise<ChatProviderStatus> {
+  const configured = runtimeConfig.chat.enabled;
+  return {
+    configured,
+    baseUrl: runtimeConfig.chat.baseUrl || null,
+    model: runtimeConfig.chat.model || null,
+    reachable: configured,
+    authOk: configured,
+    modelListed: configured ? chatProviderModelListed : "unknown",
+    ok: configured && chatProviderModelListed !== false,
+    latencyMs: 1,
+    ...(configured && chatProviderModelListed === false ? { availableModels: ["other-model"] } : {}),
   };
 }
 
@@ -110,7 +134,7 @@ before(async () => {
         return {
           answer: "stub-answer",
           embeddingModel: options.embeddingModel ?? config.ollamaEmbeddingModel,
-          chatModel: options.chatModel ?? config.ollamaChatModel,
+          chatModel: config.chat.model,
           distanceScoreThreshold: options.retrievalDistanceThreshold ?? -1,
           sources: [],
         };
@@ -133,12 +157,12 @@ before(async () => {
             reachable: true,
             availableModels: availableOllamaModels,
             missingModels: [],
-            chatModelAvailable: true,
             embeddingModelAvailable: true,
           },
         };
       },
       checkOllamaModelDiscovery: stubOllamaModelDiscovery,
+      checkChatProvider: stubChatProvider,
       checkChromaHealth: async (_runtimeConfig, options) => {
         chromaHealthCalls += 1;
         if (!options?.collectionName) {
@@ -212,7 +236,7 @@ async function startEphemeralApp(deps: AppDependencies): Promise<{ server: Serve
     runtimeConfig: testRuntimeConfig,
     ...deps,
     // Never let admin model preflight reach a real Ollama instance from tests.
-    healthChecks: { checkOllamaModelDiscovery: stubOllamaModelDiscovery, ...deps.healthChecks },
+    healthChecks: { checkOllamaModelDiscovery: stubOllamaModelDiscovery, checkChatProvider: stubChatProvider, ...deps.healthChecks },
   });
   let ephemeralServer!: Server;
   await new Promise<void>((resolve) => {
@@ -299,7 +323,8 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(saved.retrievalDistanceThreshold, config.collectionDefaults.retrievalDistanceThreshold);
     assert.equal(saved.distanceMetric, config.collectionDefaults.distanceMetric);
     assert.equal(saved.embeddingModel, config.ollamaEmbeddingModel);
-    assert.equal(saved.chatModel, config.ollamaChatModel);
+    // The chat LLM is global (config `chat`), not stored per collection.
+    assert.equal("chatModel" in saved, false);
   });
 
   it("GET /v1/rag/collections lists collections", async () => {
@@ -487,12 +512,12 @@ describe("v1 admin and rag api endpoints", () => {
     assert.deepEqual(body.modelAvailability, {
       embeddingModel: createdCollection.embeddingModel,
       embeddingModelAvailable: true,
-      chatModel: createdCollection.chatModel,
+      chatModel: config.chat.model,
       chatModelAvailable: true,
     });
   });
 
-  it("collection ready disables query capability when collection-specific models are unavailable", async () => {
+  it("collection ready disables query capability when the embedding model or the global chat model is unavailable", async () => {
     const ctx = { tenantId: "default", userId: "local-dev", requestId: "ready-models" };
     const activePhysicalCollection = "api-test-missing-models";
     readablePhysicalCollections.set(activePhysicalCollection, 12);
@@ -502,10 +527,10 @@ describe("v1 admin and rag api endpoints", () => {
       activePhysicalCollection,
       activeVersion: "v-missing-models",
       embeddingModel: "missing-embed-model",
-      chatModel: "missing-chat-model",
     });
 
     availableOllamaModels = ["gemma3:4b-cloud", "bge-m3:latest"];
+    chatProviderModelListed = false;
     try {
       const response = await request(`/v1/rag/collections/${createdCollection.id}/ready`);
       const body = await response.json() as any;
@@ -514,7 +539,7 @@ describe("v1 admin and rag api endpoints", () => {
       assert.deepEqual(body.modelAvailability, {
         embeddingModel: "missing-embed-model",
         embeddingModelAvailable: false,
-        chatModel: "missing-chat-model",
+        chatModel: config.chat.model,
         chatModelAvailable: false,
       });
       assert.deepEqual(body.blockers.map((issue: any) => issue.code), [
@@ -528,7 +553,7 @@ describe("v1 admin and rag api endpoints", () => {
       }]);
       assert.deepEqual(body.recommendedActions, [
         "Pull the embedding model with: ollama pull missing-embed-model",
-        "Pull the chat model with: ollama pull missing-chat-model",
+        `Use a model offered by ${config.chat.baseUrl} (see details.availableModels) or pull it there, e.g. ollama pull ${config.chat.model} for a local Ollama.`,
         "Wait for the current indexing job to finish before changing settings or starting another re-index.",
       ]);
       assert.deepEqual(body.capabilities, {
@@ -538,10 +563,11 @@ describe("v1 admin and rag api endpoints", () => {
       });
     } finally {
       availableOllamaModels = ["gemma3:4b", "gemma3:4b-cloud", "gpt-oss:120b-cloud", "bge-m3:latest", "glm-5:cloud", "qwen3.5:cloud"];
+      chatProviderModelListed = true;
     }
   });
 
-  it("query and retrieve forward collection-specific models and thresholds to the rag core", async () => {
+  it("query and retrieve forward collection-specific embedding models and thresholds to the rag core", async () => {
     const ctx = { tenantId: "default", userId: "local-dev", requestId: "route-settings" };
     const activePhysicalCollection = "api-test-route-settings";
     readablePhysicalCollections.set(activePhysicalCollection, 7);
@@ -554,7 +580,6 @@ describe("v1 admin and rag api endpoints", () => {
       activePhysicalCollection,
       activeVersion: "v-route-settings",
       embeddingModel: "embed-collection-specific",
-      chatModel: "chat-collection-specific",
       retrievalK: 7,
       retrievalDistanceThreshold: 0.42,
     });
@@ -605,7 +630,7 @@ describe("v1 admin and rag api endpoints", () => {
 
       assert.equal(queryResponse.status, 200);
       assert.equal(queryBody.embeddingModel, "embed-collection-specific");
-      assert.equal(queryBody.chatModel, "chat-collection-specific");
+      assert.equal(queryBody.chatModel, config.chat.model);
       assert.equal(queryBody.distanceScoreThreshold, 0.42);
       assert.equal(queryBody.collectionId, createdCollection.id);
       assert.equal(queryBody.activeVersion, "v-route-settings");
@@ -614,7 +639,7 @@ describe("v1 admin and rag api endpoints", () => {
       assert.equal(answerCalls[0]?.collectionName, activePhysicalCollection);
       assert.equal(answerCalls[0]?.collectionId, createdCollection.id);
       assert.equal(answerCalls[0]?.embeddingModel, "embed-collection-specific");
-      assert.equal(answerCalls[0]?.chatModel, "chat-collection-specific");
+      assert.equal("chatModel" in (answerCalls[0] ?? {}), false);
       assert.equal(answerCalls[0]?.retrievalDistanceThreshold, 0.42);
       assert.equal(answerCalls[0]?.retrievalK, 7);
       assert.equal(answerCalls[0]?.includeDebugTimings, false);
@@ -707,7 +732,6 @@ describe("v1 admin and rag api endpoints", () => {
         displayName: "Audit Collection",
         sourcePath: "data/audit",
         embeddingModel: "embed-audit",
-        chatModel: "chat-audit",
         distanceMetric: "cosine",
         chunkSize: 128,
         chunkOverlap: 16,
@@ -726,7 +750,6 @@ describe("v1 admin and rag api endpoints", () => {
         displayName: "Other Tenant Audit Collection",
         sourcePath: "data/other-audit",
         embeddingModel: "embed-other",
-        chatModel: "chat-other",
         distanceMetric: "cosine",
         chunkSize: 128,
         chunkOverlap: 16,
@@ -738,7 +761,6 @@ describe("v1 admin and rag api endpoints", () => {
         displayName: "Audit Peer Collection",
         sourcePath: "data/audit-peer",
         embeddingModel: "embed-peer",
-        chatModel: "chat-peer",
         distanceMetric: "cosine",
         chunkSize: 128,
         chunkOverlap: 16,
@@ -764,7 +786,7 @@ describe("v1 admin and rag api endpoints", () => {
           answerQuestion: async (_question, options) => ({
             answer: "audit-answer",
             embeddingModel: options.embeddingModel ?? "embed-audit",
-            chatModel: options.chatModel ?? "chat-audit",
+            chatModel: "chat-audit",
             distanceScoreThreshold: options.retrievalDistanceThreshold ?? 0.5,
             sources: [],
           }),
@@ -776,8 +798,7 @@ describe("v1 admin and rag api endpoints", () => {
             reachable: true,
             models: ["embed-audit", "embed-peer", "embed-other"],
             embeddingModels: ["embed-audit", "embed-peer", "embed-other"],
-            chatModels: [],
-            defaults: { embeddingModel: config.ollamaEmbeddingModel, chatModel: config.ollamaChatModel },
+            defaults: { embeddingModel: config.ollamaEmbeddingModel },
           }),
         },
         logEvent: () => {},
@@ -1088,7 +1109,6 @@ describe("v1 admin and rag api endpoints", () => {
       displayName: "Debug Collection",
       sourcePath: "data/debug",
       embeddingModel: "embed-debug",
-      chatModel: "chat-debug",
       distanceMetric: "cosine",
       chunkSize: 100,
       chunkOverlap: 0,
@@ -1114,7 +1134,7 @@ describe("v1 admin and rag api endpoints", () => {
           return {
             answer: "debug-answer",
             embeddingModel: options.embeddingModel ?? config.ollamaEmbeddingModel,
-            chatModel: options.chatModel ?? config.ollamaChatModel,
+            chatModel: config.chat.model,
             distanceScoreThreshold: 0.4,
             sources: [],
             debug: {
@@ -1152,6 +1172,85 @@ describe("v1 admin and rag api endpoints", () => {
     }
   });
 
+  it("without a chat LLM, /query returns 503 CHAT_NOT_CONFIGURED while /retrieve and readiness keep working", async () => {
+    const retrieveOnlyRegistry = createSqliteCollectionRegistry({ dbPath: ":memory:" });
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "retrieve-only" };
+    let collection = await retrieveOnlyRegistry.createCollection(ctx, {
+      displayName: "Retrieve Only",
+      sourcePath: "data/retrieve-only",
+      embeddingModel: config.ollamaEmbeddingModel,
+      distanceMetric: "l2",
+      chunkSize: 100,
+      chunkOverlap: 0,
+      retrievalK: 3,
+      retrievalDistanceThreshold: 1,
+    });
+    collection = await retrieveOnlyRegistry.updateCollection(ctx, collection.id, {
+      status: "ready",
+      activePhysicalCollection: "retrieve-only-physical",
+      activeVersion: "retrieve_only_v1",
+    });
+    let answerCalled = false;
+    const started = await startEphemeralApp({
+      registry: retrieveOnlyRegistry,
+      jobRunner,
+      runtimeConfig: {
+        ...testRuntimeConfig,
+        chat: { ...testRuntimeConfig.chat, enabled: false, baseUrl: "", model: "", apiKey: undefined, apiKeySource: "none" },
+      },
+      ragHandlers: {
+        resolveReadableCollection: async () => collection,
+        retrieveSources: async () => ({ distanceScoreThreshold: 1, sources: [] }),
+        answerQuestion: async () => {
+          answerCalled = true;
+          throw new Error("answerQuestion must not run without a chat LLM");
+        },
+      },
+      healthChecks: {
+        checkOllamaHealth: async () => ({
+          ok: true,
+          latencyMs: 1,
+          details: { reachable: true, availableModels: availableOllamaModels, missingModels: [], embeddingModelAvailable: true },
+        }),
+        checkChromaHealth: async () => ({
+          ok: true,
+          latencyMs: 1,
+          details: { reachable: true, collectionReadable: true, collectionCount: 5 },
+        }),
+      },
+      logEvent: () => {},
+    });
+
+    try {
+      const query = await fetch(`${started.baseUrl}/v1/rag/collections/${collection.id}/query`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "anything?" }),
+      });
+      const queryBody = await query.json() as any;
+      assert.equal(query.status, 503);
+      assert.equal(queryBody.code, "CHAT_NOT_CONFIGURED");
+      assert.equal(query.headers.get("retry-after"), null);
+      assert.equal(answerCalled, false);
+
+      const retrieve = await fetch(`${started.baseUrl}/v1/rag/collections/${collection.id}/retrieve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "anything?" }),
+      });
+      assert.equal(retrieve.status, 200);
+
+      const ready = await (await fetch(`${started.baseUrl}/v1/rag/collections/${collection.id}/ready`)).json() as any;
+      assert.deepEqual(ready.capabilities, { query: false, retrieve: true, reindex: true });
+      assert.equal(ready.modelAvailability.chatModel, null);
+      assert.deepEqual(ready.blockers, []);
+      assert.ok(ready.warnings.some((issue: any) => issue.code === "CHAT_NOT_CONFIGURED"));
+    } finally {
+      await stopServer(started.server);
+      retrieveOnlyRegistry.close?.();
+    }
+  });
+
   it("admin collection update persists all supported patch fields and returns the updated collection payload", async () => {
     const response = await request(`/v1/admin/collections/${createdCollection.id}`, {
       method: "PATCH",
@@ -1163,7 +1262,6 @@ describe("v1 admin and rag api endpoints", () => {
         description: null,
         sourcePath: "data/api-test-updated",
         embeddingModel: "embed-patched-http",
-        chatModel: "chat-patched-http",
         distanceMetric: "ip",
         chunkSize: 321,
         chunkOverlap: 12,
@@ -1178,7 +1276,7 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(body.collection.sourcePath, "data/api-test-updated");
     assert.equal("ozelgeDataPath" in body.collection, false);
     assert.equal(body.collection.embeddingModel, "embed-patched-http");
-    assert.equal(body.collection.chatModel, "chat-patched-http");
+    assert.equal("chatModel" in body.collection, false);
     assert.equal(body.collection.distanceMetric, "ip");
     assert.equal(body.collection.chunkSize, 321);
     assert.equal(body.collection.chunkOverlap, 12);
@@ -1197,7 +1295,6 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(saved?.description, undefined);
     assert.equal(saved?.sourcePath, "data/api-test-updated");
     assert.equal(saved?.embeddingModel, "embed-patched-http");
-    assert.equal(saved?.chatModel, "chat-patched-http");
     assert.equal(saved?.distanceMetric, "ip");
     assert.equal(saved?.chunkSize, 321);
     assert.equal(saved?.chunkOverlap, 12);
@@ -1215,7 +1312,7 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(body.collection.sourcePath, "data/api-test-updated");
     assert.equal("ozelgeDataPath" in body.collection, false);
     assert.equal(body.collection.embeddingModel, "embed-patched-http");
-    assert.equal(body.collection.chatModel, "chat-patched-http");
+    assert.equal("chatModel" in body.collection, false);
     assert.equal(body.collection.distanceMetric, "ip");
     assert.equal(body.collection.chunkSize, 321);
     assert.equal(body.collection.chunkOverlap, 12);
@@ -1285,7 +1382,6 @@ describe("v1 admin and rag api endpoints", () => {
         chunkSize: 64,
         chunkOverlap: 64,
         embeddingModel: "bge-m3",
-        chatModel: "gemma3:4b-cloud",
       }),
     });
     const body = await response.json() as any;
@@ -1328,7 +1424,6 @@ describe("v1 admin and rag api endpoints", () => {
         retrievalK: 5,
         retrievalDistanceThreshold: 0.3,
         embeddingModel: "bge-m3",
-        chatModel: "gemma3:4b-cloud",
       }),
     });
     const createBody = await createResponse.json() as any;
@@ -1375,7 +1470,6 @@ describe("v1 admin and rag api endpoints", () => {
         retrievalK: 5,
         retrievalDistanceThreshold: 0.3,
         embeddingModel: "bge-m3",
-        chatModel: "gemma3:4b-cloud",
       }),
     });
     const createBody = await createResponse.json() as any;
@@ -1415,7 +1509,6 @@ describe("v1 admin and rag api endpoints", () => {
         retrievalK: 5,
         retrievalDistanceThreshold: 0.3,
         embeddingModel: "bge-m3",
-        chatModel: "gemma3:4b-cloud",
       }),
     });
     const createBody = await createResponse.json() as any;
@@ -1451,14 +1544,12 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(body.reachable, true);
     assert.deepEqual(body.defaults, {
       embeddingModel: config.ollamaEmbeddingModel,
-      chatModel: config.ollamaChatModel,
     });
     assert.ok(Array.isArray(body.models));
     assert.ok(Array.isArray(body.embeddingModels));
-    assert.ok(Array.isArray(body.chatModels));
+    // Ollama discovery is for embedding models only; the chat LLM is configured globally.
+    assert.equal("chatModels" in body, false);
     assert.ok(body.embeddingModels.some((model: string) => model.startsWith("bge-m3")));
-    assert.ok(body.chatModels.includes("gemma3:4b"));
-    assert.ok(body.chatModels.includes("gemma3:4b-cloud"));
     assert.ok(body.models.includes("gpt-oss:120b-cloud"));
   });
 
@@ -1484,8 +1575,14 @@ describe("v1 admin and rag api endpoints", () => {
     });
     assert.deepEqual(body.modelDefaults, {
       embeddingModel: config.ollamaEmbeddingModel,
-      chatModel: config.ollamaChatModel,
     });
+    assert.deepEqual(body.chat, {
+      enabled: true,
+      baseUrl: config.chat.baseUrl,
+      model: config.chat.model,
+      apiKeyConfigured: true,
+    });
+    assert.ok(!JSON.stringify(body).includes(TEST_CHAT_API_KEY));
   });
 
   it("GET /v1/admin/models soft-fails when Ollama discovery is unavailable", async () => {
@@ -1502,14 +1599,29 @@ describe("v1 admin and rag api endpoints", () => {
       assert.equal(body.reachable, false);
       assert.deepEqual(body.models, []);
       assert.deepEqual(body.embeddingModels, []);
-      assert.deepEqual(body.chatModels, []);
       assert.deepEqual(body.defaults, {
         embeddingModel: config.ollamaEmbeddingModel,
-        chatModel: config.ollamaChatModel,
       });
     } finally {
       ollamaModelDiscoveryReachable = previousReachable;
     }
+  });
+
+  it("collection create and update reject the removed per-collection chatModel field with 400", async () => {
+    const created = await request("/v1/admin/collections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ displayName: "Legacy Chat Client", chatModel: "gemma3:4b" }),
+    });
+    assert.equal(created.status, 400);
+    assert.equal((await created.json() as any).code, "INVALID_REQUEST_BODY");
+
+    const patched = await request(`/v1/admin/collections/${createdCollection.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chatModel: "gemma3:4b" }),
+    });
+    assert.equal(patched.status, 400);
   });
 
   it("POST /v1/admin/collections rejects the removed ozelgeDataPath field with 400 INVALID_REQUEST_BODY", async () => {
@@ -1527,12 +1639,11 @@ describe("v1 admin and rag api endpoints", () => {
   describe("Ollama model preflight", () => {
     const preflightCtx = { tenantId: "default", userId: "local-dev", requestId: "model-preflight" };
 
-    async function createRegistryCollection(displayName: string, embeddingModel: string, chatModel: string) {
+    async function createRegistryCollection(displayName: string, embeddingModel: string) {
       return registry.createCollection(preflightCtx, {
         displayName,
         sourcePath: "data",
         embeddingModel,
-        chatModel,
         distanceMetric: "l2",
         chunkSize: 500,
         chunkOverlap: 50,
@@ -1564,23 +1675,18 @@ describe("v1 admin and rag api endpoints", () => {
       assert.equal(await countVisibleCollections(), before);
     });
 
-    it("POST /v1/admin/collections reports both missing models", async () => {
-      const response = await request("/v1/admin/collections", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          displayName: "Preflight Missing Both",
-          embeddingModel: "not-pulled-embed",
-          chatModel: "not-pulled-chat",
-        }),
-      });
-      const body = await response.json() as any;
-
-      assert.equal(response.status, 422);
-      assert.deepEqual(body.details.missingModels, [
-        { role: "embedding", name: "not-pulled-embed" },
-        { role: "chat", name: "not-pulled-chat" },
-      ]);
+    it("POST /v1/admin/collections does not depend on the chat LLM (retrieve-only collections)", async () => {
+      chatProviderModelListed = false;
+      try {
+        const response = await request("/v1/admin/collections", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ displayName: "Preflight Without Chat" }),
+        });
+        assert.equal(response.status, 201);
+      } finally {
+        chatProviderModelListed = true;
+      }
     });
 
     it("POST /v1/admin/collections accepts ':latest'-tagged models for untagged names", async () => {
@@ -1588,7 +1694,7 @@ describe("v1 admin and rag api endpoints", () => {
       const response = await request("/v1/admin/collections", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ displayName: "Preflight Latest Tag", embeddingModel: "bge-m3", chatModel: "gemma3:4b-cloud" }),
+        body: JSON.stringify({ displayName: "Preflight Latest Tag", embeddingModel: "bge-m3" }),
       });
 
       assert.equal(response.status, 201);
@@ -1617,7 +1723,7 @@ describe("v1 admin and rag api endpoints", () => {
     });
 
     it("POST /v1/admin/collections/:id/reindex rejects a missing embedding model with 422 and does not start a job", async () => {
-      const collection = await createRegistryCollection("Preflight Reindex Missing Embed", "not-pulled-embed", config.ollamaChatModel);
+      const collection = await createRegistryCollection("Preflight Reindex Missing Embed", "not-pulled-embed");
 
       const response = await request(`/v1/admin/collections/${collection.id}/reindex`, { method: "POST" });
       const body = await response.json() as any;
@@ -1631,19 +1737,8 @@ describe("v1 admin and rag api endpoints", () => {
       assert.notEqual(unchanged?.status, "indexing");
     });
 
-    it("POST /v1/admin/collections/:id/reindex does not require the chat model (retrieve-only indexing)", async () => {
-      const collection = await createRegistryCollection("Preflight Reindex Missing Chat", config.ollamaEmbeddingModel, "not-pulled-chat");
-
-      const response = await request(`/v1/admin/collections/${collection.id}/reindex`, { method: "POST" });
-      const body = await response.json() as any;
-
-      assert.equal(response.status, 202);
-      assert.equal(body.job.status, "queued");
-      await registry.cancelIndexJob(body.job.id);
-    });
-
     it("POST /v1/admin/collections/:id/reindex returns 503 OLLAMA_UNREACHABLE when Ollama is down", async () => {
-      const collection = await createRegistryCollection("Preflight Reindex Ollama Down", config.ollamaEmbeddingModel, config.ollamaChatModel);
+      const collection = await createRegistryCollection("Preflight Reindex Ollama Down", config.ollamaEmbeddingModel);
       const previousReachable = ollamaModelDiscoveryReachable;
       ollamaModelDiscoveryReachable = false;
 
@@ -1660,7 +1755,7 @@ describe("v1 admin and rag api endpoints", () => {
     });
 
     it("POST /v1/admin/collections/:id/reindex reports an active job (409) before probing models", async () => {
-      const collection = await createRegistryCollection("Preflight Reindex Conflict", config.ollamaEmbeddingModel, config.ollamaChatModel);
+      const collection = await createRegistryCollection("Preflight Reindex Conflict", config.ollamaEmbeddingModel);
       const first = await request(`/v1/admin/collections/${collection.id}/reindex`, { method: "POST" });
       assert.equal(first.status, 202);
       const firstBody = await first.json() as any;
@@ -1698,7 +1793,6 @@ describe("v1 admin and rag api endpoints", () => {
       displayName: "Physical Visibility",
       sourcePath: "data",
       embeddingModel: "embed",
-      chatModel: "chat",
       distanceMetric: "l2",
       chunkSize: 500,
       chunkOverlap: 50,
@@ -1964,7 +2058,6 @@ describe("v1 admin and rag api endpoints", () => {
       displayName: "Job Delete Terminal",
       sourcePath: "data",
       embeddingModel: "embed",
-      chatModel: "chat",
       distanceMetric: "l2",
       chunkSize: 500,
       chunkOverlap: 50,
@@ -2016,7 +2109,6 @@ describe("v1 admin and rag api endpoints", () => {
       displayName: "Job Delete Running",
       sourcePath: "data",
       embeddingModel: "embed",
-      chatModel: "chat",
       distanceMetric: "l2",
       chunkSize: 500,
       chunkOverlap: 50,
@@ -2040,7 +2132,6 @@ describe("v1 admin and rag api endpoints", () => {
       displayName: "Job Events",
       sourcePath: "data",
       embeddingModel: "embed",
-      chatModel: "chat",
       distanceMetric: "l2",
       chunkSize: 500,
       chunkOverlap: 50,
@@ -2078,7 +2169,6 @@ describe("v1 admin and rag api endpoints", () => {
         displayName,
         sourcePath: "data",
         embeddingModel: "embed",
-        chatModel: "chat",
         distanceMetric: "l2",
         chunkSize: 500,
         chunkOverlap: 50,
@@ -2145,7 +2235,6 @@ describe("v1 admin and rag api endpoints", () => {
       displayName: "Job Bulk Delete Terminal",
       sourcePath: "data",
       embeddingModel: "embed",
-      chatModel: "chat",
       distanceMetric: "l2",
       chunkSize: 500,
       chunkOverlap: 50,
@@ -2175,7 +2264,6 @@ describe("v1 admin and rag api endpoints", () => {
       displayName: "Job Bulk Delete Queued",
       sourcePath: "data",
       embeddingModel: "embed",
-      chatModel: "chat",
       distanceMetric: "l2",
       chunkSize: 500,
       chunkOverlap: 50,
@@ -2216,7 +2304,6 @@ describe("v1 admin and rag api endpoints", () => {
       activePhysicalCollection,
       activeVersion: "v-backpressure",
       embeddingModel: "embed-collection-specific",
-      chatModel: "chat-collection-specific",
     });
 
     resolveReadableCollectionOverride = async (req, deps, _runtimeConfig) => {
@@ -2303,7 +2390,6 @@ describe("v1 admin and rag api endpoints", () => {
       displayName: 'Signal Test',
       sourcePath: 'data/signal',
       embeddingModel: 'embed-test',
-      chatModel: 'chat-test',
       distanceMetric: 'cosine',
       chunkSize: 1000,
       chunkOverlap: 200,
@@ -2384,7 +2470,6 @@ describe("v1 admin and rag api endpoints", () => {
       displayName: "Normal Signal Test",
       sourcePath: "data/normal-signal",
       embeddingModel: "embed-test",
-      chatModel: "chat-test",
       distanceMetric: "cosine",
       chunkSize: 1000,
       chunkOverlap: 200,
@@ -2453,7 +2538,6 @@ describe("v1 admin and rag api endpoints", () => {
       displayName: 'Snapshot Test',
       sourcePath: 'data/p25',
       embeddingModel: 'embed-v1',
-      chatModel: 'chat-v1',
       distanceMetric: 'cosine',
       chunkSize: 1000,
       chunkOverlap: 200,
@@ -2524,7 +2608,6 @@ describe("v1 admin and rag api endpoints", () => {
       description: 'Public description',
       sourcePath: 'internal/path',
       embeddingModel: 'embed-internal',
-      chatModel: 'chat-internal',
       distanceMetric: 'cosine',
       chunkSize: 1000,
       chunkOverlap: 200,
@@ -2618,7 +2701,6 @@ describe("v1 admin and rag api endpoints", () => {
       displayName: 'Abort Test',
       sourcePath: 'data',
       embeddingModel: 'embed',
-      chatModel: 'chat',
       distanceMetric: 'l2',
       chunkSize: 500,
       chunkOverlap: 50,
@@ -2654,7 +2736,6 @@ describe("v1 admin and rag api endpoints", () => {
       displayName: 'API Cancel Test',
       sourcePath: 'data',
       embeddingModel: config.ollamaEmbeddingModel,
-      chatModel: 'chat',
       distanceMetric: 'l2',
       chunkSize: 500,
       chunkOverlap: 50,

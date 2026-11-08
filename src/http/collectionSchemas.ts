@@ -10,7 +10,6 @@ export const collectionCreateSchema = z.object({
   retrievalK: z.number().int().positive().optional(),
   retrievalDistanceThreshold: z.number().nonnegative().optional(),
   embeddingModel: z.string().trim().min(1).optional(),
-  chatModel: z.string().trim().min(1).optional(),
 }).strict();
 
 export const collectionUpdateSchema = z.object({
@@ -23,6 +22,5 @@ export const collectionUpdateSchema = z.object({
   retrievalK: z.number().int().positive().optional(),
   retrievalDistanceThreshold: z.number().nonnegative().optional(),
   embeddingModel: z.string().trim().min(1).optional(),
-  chatModel: z.string().trim().min(1).optional(),
 }).strict();
 

@@ -171,6 +171,16 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
 
   router.post("/collections/:collectionId/query", requireRegistry, async (req, res, next) => {
     try {
+      // Answer generation is optional; without a chat LLM the API is retrieve-only.
+      // No Retry-After: this is a configuration state, not a transient overload.
+      if (!runtimeConfig.chat.enabled) {
+        throw new HttpError(
+          503,
+          "CHAT_NOT_CONFIGURED",
+          "Answer generation is disabled: no chat LLM is configured. Use /retrieve, or set chat.baseUrl and chat.model (npm run onboard or RAG_CHAT_BASE_URL / RAG_CHAT_MODEL).",
+        );
+      }
+
       const parsed = querySchema.safeParse(req.body);
       if (!parsed.success) {
         throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid query payload", { issues: parsed.error.issues });
@@ -194,7 +204,6 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         retrievalK: collection.retrievalK,
         runtimeConfig,
         embeddingModel: collection.activeEmbeddingModel ?? collection.embeddingModel,
-        chatModel: collection.chatModel,
         retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,
         abortSignal,

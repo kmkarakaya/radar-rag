@@ -1,7 +1,8 @@
 import type { CollectionRegistry, IndexJob, RagCollection, RequestContext } from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
+import { checkChatProvider } from "../chat.js";
 import { hasConfiguredModel, checkChromaHealth, checkOllamaHealth } from "../rag.js";
-import { recommendedActionFor, unique } from "../readiness.js";
+import { describeChatReadiness, recommendedActionFor, unique } from "../readiness.js";
 
 export type CollectionReadinessIssue = {
   code: string;
@@ -20,7 +21,8 @@ export type CollectionReadinessPayload = {
   modelAvailability: {
     embeddingModel: string;
     embeddingModelAvailable: boolean;
-    chatModel: string;
+    /** The global chat LLM model, or null when no chat LLM is configured (retrieve-only). */
+    chatModel: string | null;
     chatModelAvailable: boolean;
     desiredEmbeddingModel?: string;
   };
@@ -37,6 +39,7 @@ export type CollectionReadinessPayload = {
 export type CollectionReadinessHealthChecks = {
   checkChromaHealth?: typeof checkChromaHealth;
   checkOllamaHealth?: typeof checkOllamaHealth;
+  checkChatProvider?: typeof checkChatProvider;
 };
 
 function makeIssue(
@@ -67,7 +70,9 @@ export async function buildCollectionReadinessPayload(
   const readEmbeddingModel = collection.activeEmbeddingModel ?? collection.embeddingModel;
   const hasActivePhysicalCollection = Boolean(collection.activePhysicalCollection);
   const embeddingModelAvailable = ollama.ok && hasConfiguredModel(availableModels, readEmbeddingModel);
-  const chatModelAvailable = ollama.ok && hasConfiguredModel(availableModels, collection.chatModel);
+  // The chat LLM is global (not per collection) and optional; it only gates /query.
+  const chatProvider = await (healthChecks?.checkChatProvider ?? checkChatProvider)(runtimeConfig);
+  const chatModelAvailable = chatProvider.ok;
 
   let chromaCount = -1;
   let chromaReadable = false;
@@ -115,15 +120,14 @@ export async function buildCollectionReadinessPayload(
         `Pull the embedding model with: ollama pull ${readEmbeddingModel}`,
       ));
     }
+  }
 
-    if (!chatModelAvailable) {
-      blockers.push(makeIssue(
-        "CHAT_MODEL_MISSING",
-        `Chat model ${collection.chatModel} is missing in Ollama, so answer generation cannot run.`,
-        runtimeConfig,
-        `Pull the chat model with: ollama pull ${collection.chatModel}`,
-      ));
-    }
+  const chatReadiness = describeChatReadiness(chatProvider, runtimeConfig);
+  if (chatReadiness.status === "fail") {
+    blockers.push(makeIssue(chatReadiness.code, chatReadiness.message, runtimeConfig));
+  } else if (chatReadiness.status === "warn" || chatReadiness.status === "skip") {
+    // Not configured (retrieve-only) or unverifiable: informational, retrieval is unaffected.
+    warnings.push(makeIssue(chatReadiness.code, chatReadiness.message, runtimeConfig));
   }
 
   if (activeJob && (activeJob.status === "queued" || activeJob.status === "running")) {
@@ -136,8 +140,8 @@ export async function buildCollectionReadinessPayload(
     ));
   }
 
-  const queryReady = chromaReadable && embeddingModelAvailable && chatModelAvailable;
   const retrieveReady = chromaReadable && embeddingModelAvailable;
+  const queryReady = retrieveReady && runtimeConfig.chat.enabled && chatModelAvailable;
 
   return {
     id: collection.id,
@@ -150,7 +154,7 @@ export async function buildCollectionReadinessPayload(
     modelAvailability: {
       embeddingModel: readEmbeddingModel,
       embeddingModelAvailable,
-      chatModel: collection.chatModel,
+      chatModel: runtimeConfig.chat.enabled ? runtimeConfig.chat.model : null,
       chatModelAvailable,
       desiredEmbeddingModel: collection.embeddingModel !== readEmbeddingModel ? collection.embeddingModel : undefined,
     },

@@ -34,7 +34,6 @@ export type CollectionValidationDraft = {
   description?: string;
   sourcePath: string;
   embeddingModel: string;
-  chatModel: string;
   chunkSize: number;
   chunkOverlap: number;
   retrievalK: number;
@@ -64,7 +63,6 @@ const IMMEDIATE_FIELDS = new Set([
   "description",
   "retrievalK",
   "retrievalDistanceThreshold",
-  "chatModel",
 ]);
 
 const REINDEX_FIELDS = new Set([
@@ -77,7 +75,6 @@ const REINDEX_FIELDS = new Set([
 
 const OLLAMA_FIELDS = new Set([
   "embeddingModel",
-  "chatModel",
 ]);
 
 const VALIDATION_FIELD_ORDER = [
@@ -90,7 +87,6 @@ const VALIDATION_FIELD_ORDER = [
   "retrievalK",
   "retrievalDistanceThreshold",
   "embeddingModel",
-  "chatModel",
 ];
 
 function buildImpact(draft: CollectionValidationDraft): CollectionValidationImpact {
@@ -157,7 +153,6 @@ export function buildCreateCollectionInput(
     retrievalDistanceThreshold:
       input.retrievalDistanceThreshold ?? runtimeConfig.collectionDefaults.retrievalDistanceThreshold,
     embeddingModel: input.embeddingModel ?? runtimeConfig.ollamaEmbeddingModel,
-    chatModel: input.chatModel ?? runtimeConfig.ollamaChatModel,
   };
 }
 
@@ -176,7 +171,6 @@ export function buildCreateValidationDraft(
     description: input.description,
     sourcePath: input.sourcePath,
     embeddingModel: input.embeddingModel,
-    chatModel: input.chatModel,
     chunkSize: input.chunkSize,
     chunkOverlap: input.chunkOverlap,
     retrievalK: input.retrievalK,
@@ -202,7 +196,6 @@ function buildChangedFields(collection: RagCollection, patch: UpdateCollectionPa
   pushIfChanged("retrievalK", collection.retrievalK);
   pushIfChanged("retrievalDistanceThreshold", collection.retrievalDistanceThreshold);
   pushIfChanged("embeddingModel", collection.embeddingModel);
-  pushIfChanged("chatModel", collection.chatModel);
 
   return changed;
 }
@@ -221,7 +214,6 @@ export function buildUpdateValidationDraft(
     description: patch.description ?? collection.description,
     sourcePath: patch.sourcePath ?? collection.sourcePath,
     embeddingModel: patch.embeddingModel ?? collection.embeddingModel,
-    chatModel: patch.chatModel ?? collection.chatModel,
     chunkSize: patch.chunkSize ?? collection.chunkSize,
     chunkOverlap: patch.chunkOverlap ?? collection.chunkOverlap,
     retrievalK: patch.retrievalK ?? collection.retrievalK,
@@ -353,15 +345,6 @@ export async function validateCollectionDraft(
             `Embedding model ${draft.embeddingModel} is missing in Ollama, so retrieval and indexing embeddings cannot run.`,
             runtimeConfig,
             `Pull the embedding model with: ollama pull ${draft.embeddingModel}`,
-          ));
-        }
-
-        if (!hasConfiguredModel(availableModels, draft.chatModel)) {
-          blockers.push(makeIssue(
-            "CHAT_MODEL_MISSING",
-            `Chat model ${draft.chatModel} is missing in Ollama, so answer generation cannot run.`,
-            runtimeConfig,
-            `Pull the chat model with: ollama pull ${draft.chatModel}`,
           ));
         }
       }

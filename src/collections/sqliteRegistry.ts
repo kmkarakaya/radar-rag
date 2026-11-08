@@ -54,7 +54,6 @@ type CollectionRow = {
   active_version: string | null;
   source_path: string;
   embedding_model: string;
-  chat_model: string;
   distance_metric: "l2" | "cosine" | "ip";
   chroma_collection_configuration_json: string;
   chunk_size: number;
@@ -180,7 +179,6 @@ function initializeSchema(db: SqliteDatabase): void {
       active_version TEXT,
       source_path TEXT NOT NULL,
       embedding_model TEXT NOT NULL,
-      chat_model TEXT NOT NULL,
       distance_metric TEXT NOT NULL,
       chroma_collection_configuration_json TEXT NOT NULL,
       chunk_size INTEGER NOT NULL,
@@ -295,6 +293,8 @@ function migrateSchema(db: SqliteDatabase): void {
   ensureColumn(db, "collections", "indexed_snapshot_json", "TEXT");
   // Ozelge JSON support was removed; older registries still have this NOT NULL column, which would break inserts.
   dropColumnIfExists(db, "collections", "ozelge_data_path");
+  // The chat LLM is now global and optional (config `chat` section); older registries have a NOT NULL chat_model column.
+  dropColumnIfExists(db, "collections", "chat_model");
 
   const backfillNow = new Date().toISOString();
   const snapshotRows = db.prepare(`
@@ -792,7 +792,6 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         status,
         source_path,
         embedding_model,
-        chat_model,
         distance_metric,
         chroma_collection_configuration_json,
         chunk_size,
@@ -810,7 +809,6 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         'creating',
         @sourcePath,
         @embeddingModel,
-        @chatModel,
         @distanceMetric,
         @chromaCollectionConfigurationJson,
         @chunkSize,
@@ -828,7 +826,6 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       description: input.description ?? null,
       sourcePath: this.storedSourcePath(input.sourcePath),
       embeddingModel: input.embeddingModel,
-      chatModel: input.chatModel,
       distanceMetric: input.distanceMetric,
       chromaCollectionConfigurationJson: JSON.stringify(chromaConfiguration),
       chunkSize: input.chunkSize,
@@ -876,7 +873,6 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       values,
     );
     addPatch("embeddingModel", "embedding_model", patch.embeddingModel, updates, values);
-    addPatch("chatModel", "chat_model", patch.chatModel, updates, values);
     addPatch("distanceMetric", "distance_metric", patch.distanceMetric, updates, values);
     if (patch.chromaCollectionConfiguration !== undefined || patch.distanceMetric !== undefined) {
       const nextDistanceMetric = patch.distanceMetric ?? existing.distanceMetric;
@@ -1891,7 +1887,6 @@ function mapCollectionRow(row: CollectionRow): RagCollection {
     activeVersion: row.active_version ?? undefined,
     sourcePath: row.source_path,
     embeddingModel: row.embedding_model,
-    chatModel: row.chat_model,
     distanceMetric: row.distance_metric,
     chromaCollectionConfiguration: JSON.parse(row.chroma_collection_configuration_json) as Record<string, unknown>,
     chunkSize: row.chunk_size,

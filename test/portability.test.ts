@@ -16,7 +16,6 @@ function collectionInput(sourcePath: string): CreateCollectionInput {
     displayName: "Portable",
     sourcePath,
     embeddingModel: "bge-m3",
-    chatModel: "gemma3:4b",
     distanceMetric: "l2",
     chunkSize: 500,
     chunkOverlap: 50,
@@ -113,10 +112,7 @@ describe("config environment overrides", () => {
     chroma: { url: "http://localhost:8000" },
     ollama: {
       baseUrl: "http://localhost:11434",
-      chatModel: "gemma3:4b",
       embeddingModel: "bge-m3",
-      numCtx: 4096,
-      numPredict: 512,
     },
     collectionDefaults: {
       sourcePath: "data",
@@ -137,13 +133,16 @@ describe("config environment overrides", () => {
       RAG_OLLAMA_BASE_URL: "http://ollama:11434",
       RAG_OLLAMA_EMBEDDING_MODEL: "nomic-embed-text",
       RAG_SOURCE_PATH: "/data",
+      RAG_CHAT_BASE_URL: "http://ollama:11434/v1",
+      RAG_CHAT_MODEL: "gemma3:4b",
     }));
 
     assert.equal(overridden.server.port, 8080);
     assert.equal(overridden.chroma.url, "http://chroma:8000");
     assert.equal(overridden.ollama.baseUrl, "http://ollama:11434");
     assert.equal(overridden.ollama.embeddingModel, "nomic-embed-text");
-    assert.equal(overridden.ollama.chatModel, "gemma3:4b");
+    // The chat section does not exist in the file; the override creates it.
+    assert.deepEqual(overridden.chat, { baseUrl: "http://ollama:11434/v1", model: "gemma3:4b" });
     assert.equal(overridden.collectionDefaults.sourcePath, "/data");
     assert.equal(raw.server.port, 3010);
   });

@@ -2,8 +2,9 @@ import type { ResolvedConfig } from "../config.js";
 import { getOllamaModelDiscovery, hasConfiguredModel, type OllamaModelDiscovery } from "../rag.js";
 import { HttpError } from "./errors.js";
 
+/** Ollama serves embeddings only; the optional chat LLM is checked by chat.ts. */
 export type RequiredOllamaModel = {
-  role: "embedding" | "chat";
+  role: "embedding";
   name: string;
 };
 
@@ -11,7 +12,6 @@ export type OllamaModelDiscoveryFn = (runtimeConfig: ResolvedConfig) => Promise<
 
 const ROLE_LABEL: Record<RequiredOllamaModel["role"], string> = {
   embedding: "Embedding model",
-  chat: "Chat model",
 };
 
 /**
@@ -39,10 +39,8 @@ export async function assertOllamaModelsAvailable(input: {
       reachable: false,
       models: [],
       embeddingModels: [],
-      chatModels: [],
       defaults: {
         embeddingModel: runtimeConfig.ollamaEmbeddingModel,
-        chatModel: runtimeConfig.ollamaChatModel,
       },
       error: error instanceof Error ? error.message : String(error),
     };

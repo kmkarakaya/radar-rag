@@ -16,7 +16,6 @@ describe("indexing jobs", () => {
       displayName,
       sourcePath: "data",
       embeddingModel: "test-model",
-      chatModel: "test-chat",
       distanceMetric: "l2",
       chunkSize: 500,
       chunkOverlap: 50,
@@ -111,7 +110,6 @@ describe("indexing jobs", () => {
     const collection = await createCollection(context, "Immutable Test");
     await registry.updateCollection(context, collection.id, {
       embeddingModel: "m1",
-      chatModel: "m",
     });
 
     const realDate = Date;
@@ -192,7 +190,6 @@ describe("indexing jobs", () => {
         status: "indexing",
         sourcePath: "data",
         embeddingModel: "embed",
-        chatModel: "chat",
         distanceMetric: "l2",
         chromaCollectionConfiguration: { hnsw: { space: "l2" } },
         chunkSize: 10,

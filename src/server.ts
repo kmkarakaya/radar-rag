@@ -66,6 +66,15 @@ export function formatStartupLinks(runtimeConfig: Pick<ResolvedConfig, "port">):
   ].join("\n");
 }
 
+/** One line telling whether /query is available, plus notes about ignored legacy settings. */
+export function formatChatStatus(runtimeConfig: Pick<ResolvedConfig, "chat" | "configWarnings">): string {
+  const chat = runtimeConfig.chat;
+  const status = chat.enabled
+    ? `Chat LLM:      ${chat.model} @ ${chat.baseUrl} (/query enabled)`
+    : "Chat LLM:      not configured (/query disabled, retrieve-only). Enable it with npm run onboard or RAG_CHAT_BASE_URL + RAG_CHAT_MODEL.";
+  return [status, ...runtimeConfig.configWarnings.map((warning) => `Warning: ${warning}`)].join("\n");
+}
+
 export async function startServer(input: {
   runtimeConfig?: ResolvedConfig;
   registry?: CollectionRegistry;
@@ -92,6 +101,7 @@ export async function startServer(input: {
     const startedServer = app.listen(runtimeConfig.port, () => {
       log.log(`RAG backend listening on http://localhost:${runtimeConfig.port}`);
       log.log(formatStartupLinks(runtimeConfig));
+      log.log(formatChatStatus(runtimeConfig));
       resolve(startedServer);
     });
   });

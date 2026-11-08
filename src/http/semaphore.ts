@@ -1,3 +1,5 @@
+import { OperationTimeoutError } from "../observability/timeout.js";
+
 export class Semaphore {
   private count = 0;
   private queue: Array<() => void> = [];
@@ -41,7 +43,8 @@ export class Semaphore {
         cleanup();
         const index = this.queue.indexOf(execute);
         if (index !== -1) this.queue.splice(index, 1);
-        reject(new Error(`Timeout of ${timeoutMs}ms exceeded while waiting for semaphore`));
+        // A typed timeout so callers map it to 503 MODEL_BACKPRESSURE instead of a 500.
+        reject(new OperationTimeoutError(`Timeout of ${timeoutMs}ms exceeded while waiting for semaphore`));
       };
 
       const timeoutTimer = setTimeout(onTimeout, timeoutMs);

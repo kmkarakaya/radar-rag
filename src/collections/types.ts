@@ -75,7 +75,6 @@ export type RagCollection = {
   activeVersion?: string;
   sourcePath: string;
   embeddingModel: string;
-  chatModel: string;
   distanceMetric: DistanceMetric;
   chromaCollectionConfiguration: Record<string, unknown>;
   chunkSize: number;
@@ -198,7 +197,6 @@ export type CreateCollectionInput = {
   description?: string;
   sourcePath: string;
   embeddingModel: string;
-  chatModel: string;
   distanceMetric: DistanceMetric;
   chromaCollectionConfiguration?: Record<string, unknown>;
   chunkSize: number;
@@ -213,7 +211,6 @@ export type UpdateCollectionPatch = {
   status?: RagCollection["status"];
   sourcePath?: RagCollection["sourcePath"];
   embeddingModel?: RagCollection["embeddingModel"];
-  chatModel?: RagCollection["chatModel"];
   distanceMetric?: RagCollection["distanceMetric"];
   chromaCollectionConfiguration?: RagCollection["chromaCollectionConfiguration"];
   chunkSize?: RagCollection["chunkSize"];

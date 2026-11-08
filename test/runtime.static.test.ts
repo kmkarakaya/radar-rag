@@ -91,7 +91,12 @@ describe("runtime static contract", () => {
     assert.match(onboard, /writeAdminSessionSecretFile/);
     assert.match(onboard, /validateAdminAuthConfig/);
     assert.match(onboard, /Run: ollama pull \$\{runtimeConfig\.ollamaEmbeddingModel\}/);
-    assert.match(onboard, /Run: ollama pull \$\{runtimeConfig\.ollamaChatModel\}/);
+    // Optional chat LLM: base URL + model + API key (stored in .local, never in the YAML).
+    assert.match(onboard, /"chat\.baseUrl"/);
+    assert.match(onboard, /"chat\.model"/);
+    assert.match(onboard, /defaultChatApiKeyFilePath/);
+    assert.match(onboard, /checkChatProvider/);
+    assert.doesNotMatch(onboard, /ollamaChatModel/);
     assert.match(onboard, /\/admin\/login/);
     assert.match(onboard, /\/test-frontend\//);
     assert.match(onboard, /admin panel or the admin API\/job flow/i);

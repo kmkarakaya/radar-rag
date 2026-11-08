@@ -4,7 +4,8 @@ import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
 import { createApp, type AppDependencies } from "../src/app.js";
 import type { CollectionRegistry, RequestContext } from "../src/collections/types.js";
-import { config } from "../src/config.js";
+import type { ChatProviderStatus } from "../src/chat.js";
+import { config, type ResolvedConfig } from "../src/config.js";
 
 type HealthChecks = NonNullable<AppDependencies["healthChecks"]>;
 
@@ -110,6 +111,37 @@ async function startServer(
   };
 }
 
+function chatProviderStatus(
+  runtimeConfig: ResolvedConfig,
+  ok: boolean,
+  overrides: Partial<ChatProviderStatus> = {},
+): ChatProviderStatus {
+  const configured = runtimeConfig.chat.enabled;
+  return {
+    configured,
+    baseUrl: runtimeConfig.chat.baseUrl || null,
+    model: runtimeConfig.chat.model || null,
+    reachable: configured && ok,
+    authOk: configured && ok,
+    modelListed: configured && ok ? true : "unknown",
+    ok: configured && ok,
+    latencyMs: 1,
+    ...overrides,
+  };
+}
+
+function withChat(runtimeConfig: ResolvedConfig): ResolvedConfig {
+  return {
+    ...runtimeConfig,
+    chat: {
+      ...runtimeConfig.chat,
+      enabled: true,
+      baseUrl: "http://chat.test/v1",
+      model: "test-chat",
+    },
+  };
+}
+
 function createHealthyHealthChecks(): HealthChecks {
   return {
     checkChromaHealth: async () => ({
@@ -124,9 +156,8 @@ function createHealthyHealthChecks(): HealthChecks {
       latencyMs: 1,
       details: {
         reachable: true,
-        availableModels: ["test-chat", "test-embed"],
+        availableModels: ["test-embed"],
         missingModels: [],
-        chatModelAvailable: true,
         embeddingModelAvailable: true,
       },
     }),
@@ -139,14 +170,8 @@ function createHealthyHealthChecks(): HealthChecks {
         finiteValues: true,
       },
     }),
-    checkChatGenerationHealth: async () => ({
-      ok: true,
-      latencyMs: 1,
-      details: {
-        probeText: "foundation probe",
-        responseLength: 12,
-      },
-    }),
+    // Mirrors the real free check: nothing to probe when no chat LLM is configured.
+    checkChatProvider: async (runtimeConfig: ResolvedConfig) => chatProviderStatus(runtimeConfig, true),
     checkIndexingSourceHealth: async () => ({
       ok: true,
       latencyMs: 1,
@@ -299,10 +324,16 @@ describe("app foundation", () => {
     assert.equal(typeof body.indexReady, "boolean");
     assert.ok(Array.isArray(body.blockerCodes));
     assert.ok(Array.isArray(body.warningCodes));
+    assert.equal(typeof body.retrieveReady, "boolean");
+    assert.equal(typeof body.queryEnabled, "boolean");
     assert.deepEqual(body.dependencies, {
       registry: { ok: true },
       chroma: { ok: Boolean((body.dependencies as any)?.chroma?.ok) },
       ollama: { ok: Boolean((body.dependencies as any)?.ollama?.ok) },
+      chat: {
+        ok: Boolean((body.dependencies as any)?.chat?.ok),
+        configured: Boolean((body.dependencies as any)?.chat?.configured),
+      },
     });
     assert.deepEqual(body.diagnostics, {
       full: "GET /ready?details=true",
@@ -353,17 +384,16 @@ describe("app foundation", () => {
     }
   });
 
-  it("passes the active runtime config into embedding and chat smoke checks", async () => {
-    const smokeCalls: Array<{ kind: "embed" | "chat"; probeText: string }> = [];
-    const runtimeConfig = {
+  it("passes the active runtime config to the embedding smoke and the free chat check, never generating", async () => {
+    const calls: Array<{ kind: "embed" | "chat"; value: string }> = [];
+    const runtimeConfig = withChat({
       ...config,
       readyEmbedProbeText: "embed-probe-from-runtime-config",
-      readyChatProbeText: "chat-probe-from-runtime-config",
-    };
+    });
     const started = await startServer(createHealthyRegistryStub(), {
       ...createHealthyHealthChecks(),
       checkEmbeddingHealth: async (receivedConfig = config) => {
-        smokeCalls.push({ kind: "embed", probeText: receivedConfig.readyEmbedProbeText });
+        calls.push({ kind: "embed", value: receivedConfig.readyEmbedProbeText });
         return {
           ok: true,
           latencyMs: 1,
@@ -374,28 +404,81 @@ describe("app foundation", () => {
           },
         };
       },
-      checkChatGenerationHealth: async (receivedConfig = config) => {
-        smokeCalls.push({ kind: "chat", probeText: receivedConfig.readyChatProbeText });
-        return {
-          ok: true,
-          latencyMs: 1,
-          details: {
-            probeText: receivedConfig.readyChatProbeText,
-            responseLength: 12,
-          },
-        };
+      checkChatProvider: async (receivedConfig: ResolvedConfig) => {
+        calls.push({ kind: "chat", value: receivedConfig.chat.model });
+        return chatProviderStatus(receivedConfig, true);
       },
     }, runtimeConfig);
 
     try {
       const response = await fetch(`${started.baseUrl}/ready?details=true`);
+      const body = await response.json() as any;
       assert.equal(response.status, 200);
-      assert.deepEqual(smokeCalls, [
-        { kind: "embed", probeText: "embed-probe-from-runtime-config" },
-        { kind: "chat", probeText: "chat-probe-from-runtime-config" },
+      assert.deepEqual(calls, [
+        { kind: "embed", value: "embed-probe-from-runtime-config" },
+        { kind: "chat", value: "test-chat" },
       ]);
+      assert.equal(body.ready, true);
+      assert.equal(body.systemReadyFor, "query-and-index");
+      assert.ok(body.checks.some((check: any) => check.code === "CHAT_MODEL_AVAILABLE"));
+      assert.equal(body.chatModel, "test-chat");
     } finally {
       await stopServer(started.server);
+    }
+  });
+
+  it("is ready without a chat LLM (retrieve-only) and reports /query as disabled", async () => {
+    const runtimeConfig = { ...config, chat: { ...config.chat, enabled: false, baseUrl: "", model: "" } };
+    const started = await startServer(createHealthyRegistryStub(), createHealthyHealthChecks(), runtimeConfig);
+
+    try {
+      const body = await (await fetch(`${started.baseUrl}/ready?details=true`)).json() as any;
+      assert.equal(body.ready, true);
+      assert.equal(body.status, "ok");
+      assert.equal(body.systemReadyFor, "retrieve-and-index");
+      assert.equal(body.retrieveReady, true);
+      assert.equal(body.queryEnabled, false);
+      assert.equal(body.queryReady, false);
+      assert.equal(body.chatModel, null);
+      assert.equal(body.capabilities.query.enabled, false);
+      assert.equal(body.capabilities.retrieve.ready, true);
+      assert.ok(!body.blockerCodes.includes("CHAT_NOT_CONFIGURED"));
+      assert.ok(body.checks.some((check: any) => check.code === "CHAT_NOT_CONFIGURED" && check.status === "skip"));
+    } finally {
+      await stopServer(started.server);
+    }
+  });
+
+  it("blocks only /query when the configured chat LLM is unreachable or unverifiable", async () => {
+    const runtimeConfig = withChat(config);
+    const unreachable = await startServer(createHealthyRegistryStub(), {
+      ...createHealthyHealthChecks(),
+      checkChatProvider: async (receivedConfig: ResolvedConfig) => chatProviderStatus(receivedConfig, false, { error: "connect ECONNREFUSED" }),
+    }, runtimeConfig);
+
+    try {
+      const body = await (await fetch(`${unreachable.baseUrl}/ready?details=true`)).json() as any;
+      assert.equal(body.ready, false);
+      assert.equal(body.retrieveReady, true);
+      assert.equal(body.queryReady, false);
+      assert.equal(body.systemReadyFor, "retrieve-and-index");
+      assert.ok(body.blockerCodes.includes("CHAT_PROVIDER_UNREACHABLE"));
+      assert.ok(!JSON.stringify(body).includes("secret"));
+    } finally {
+      await stopServer(unreachable.server);
+    }
+
+    const unverified = await startServer(createHealthyRegistryStub(), {
+      ...createHealthyHealthChecks(),
+      checkChatProvider: async (receivedConfig: ResolvedConfig) => chatProviderStatus(receivedConfig, true, { modelListed: "unknown" }),
+    }, runtimeConfig);
+
+    try {
+      const body = await (await fetch(`${unverified.baseUrl}/ready?details=true`)).json() as any;
+      assert.equal(body.ready, true);
+      assert.ok(body.warningCodes.includes("CHAT_MODEL_UNVERIFIED"));
+    } finally {
+      await stopServer(unverified.server);
     }
   });
 });

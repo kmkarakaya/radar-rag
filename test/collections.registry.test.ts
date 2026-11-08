@@ -30,7 +30,6 @@ const collectionInput: CreateCollectionInput = {
   description: "Test collection",
   sourcePath: "data",
   embeddingModel: "bge-m3",
-  chatModel: "gemma3:4b-cloud",
   distanceMetric: "l2",
   chunkSize: 500,
   chunkOverlap: 200,
@@ -231,7 +230,8 @@ describe("sqlite collection registry", () => {
       // Legacy registries had a NOT NULL ozelge_data_path column; the migration must drop it.
       ozelgeDataPath: "data/legacy-ozelge.json",
       embeddingModel: collectionInput.embeddingModel,
-      chatModel: collectionInput.chatModel,
+      // Legacy registries also stored a per-collection chat model; the chat LLM is now global.
+      chatModel: "gemma3:4b",
       distanceMetric: collectionInput.distanceMetric,
       chromaConfiguration: JSON.stringify({ hnsw: { space: collectionInput.distanceMetric } }),
       chunkSize: collectionInput.chunkSize,
@@ -251,6 +251,7 @@ describe("sqlite collection registry", () => {
         const columns = migratedDb.prepare("PRAGMA table_info(collections)").all() as Array<{ name: string }>;
         assert.ok(columns.some((column) => column.name === "active_embedding_model"));
         assert.ok(!columns.some((column) => column.name === "ozelge_data_path"));
+        assert.ok(!columns.some((column) => column.name === "chat_model"));
       } finally {
         migratedDb.close();
       }
@@ -291,7 +292,6 @@ describe("sqlite collection registry", () => {
       status: "ready",
       sourcePath: "data/patched-source",
       embeddingModel: "embed-v2",
-      chatModel: "chat-v2",
       distanceMetric: "cosine",
       chromaCollectionConfiguration: {
         hnsw: {
@@ -318,7 +318,6 @@ describe("sqlite collection registry", () => {
     assert.equal(updated.status, "ready");
     assert.equal(updated.sourcePath, "data/patched-source");
     assert.equal(updated.embeddingModel, "embed-v2");
-    assert.equal(updated.chatModel, "chat-v2");
     assert.equal(updated.distanceMetric, "cosine");
     assert.deepEqual(updated.chromaCollectionConfiguration, {
       hnsw: {

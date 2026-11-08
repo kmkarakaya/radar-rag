@@ -8,10 +8,7 @@ const baseRawConfig = {
   chroma: { url: "http://localhost:8000" },
   ollama: {
     baseUrl: "http://localhost:11434",
-    chatModel: "gemma3:4b",
     embeddingModel: "bge-m3",
-    numCtx: 4096,
-    numPredict: 512,
   },
   collectionDefaults: {
     sourcePath: "data",

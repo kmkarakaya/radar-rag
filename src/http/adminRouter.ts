@@ -343,7 +343,13 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       },
       modelDefaults: {
         embeddingModel: runtimeConfig.ollamaEmbeddingModel,
-        chatModel: runtimeConfig.ollamaChatModel,
+      },
+      // Global, optional chat LLM for /query (set via onboarding or RAG_CHAT_*). The API key is never returned.
+      chat: {
+        enabled: runtimeConfig.chat.enabled,
+        baseUrl: runtimeConfig.chat.baseUrl || null,
+        model: runtimeConfig.chat.model || null,
+        apiKeyConfigured: runtimeConfig.chat.apiKeySource !== "none",
       },
     };
   }
@@ -365,7 +371,6 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
         runtimeConfig,
         required: [
           { role: "embedding", name: input.embeddingModel },
-          { role: "chat", name: input.chatModel },
         ],
         action: "Collection cannot be created.",
         discover: deps.healthChecks?.checkOllamaModelDiscovery,
@@ -399,7 +404,6 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
         reachable: discovery.reachable,
         models: discovery.models,
         embeddingModels: discovery.embeddingModels,
-        chatModels: discovery.chatModels,
         defaults: discovery.defaults,
       });
     } catch (error) {
@@ -568,8 +572,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
         );
       }
 
-      // Indexing only needs the embedding model; a missing chat model still allows
-      // building the index for retrieve-only use, so it is not checked here.
+      // Indexing only needs the embedding model; the optional chat LLM is never involved.
       await assertOllamaModelsAvailable({
         runtimeConfig,
         required: [{ role: "embedding", name: collection.embeddingModel }],

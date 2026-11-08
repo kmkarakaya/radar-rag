@@ -2,14 +2,37 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { ChromaClient } from "chromadb";
-import { config } from "../src/config.js";
+import { ChatOpenAICompletions } from "@langchain/openai";
+import { config, type ResolvedConfig } from "../src/config.js";
 import path from "node:path";
-import { answerQuestion, RagQueryError, retrieveSources, stripNoAnswerSignal } from "../src/rag.js";
+import {
+  answerQuestion,
+  buildSystemPrompt,
+  RagQueryError,
+  retrieveSources,
+  selectSourcesForGeneration,
+  stripNoAnswerSignal,
+  type RagSource,
+} from "../src/rag.js";
+
+const chatEnabledConfig: ResolvedConfig = {
+  ...config,
+  chat: {
+    enabled: true,
+    baseUrl: "http://chat.test/v1",
+    model: "test-model",
+    apiKey: "secret-key-123",
+    apiKeySource: "env",
+    temperature: undefined,
+    maxTokens: undefined,
+    maxContextTokens: undefined,
+  },
+};
 
 describe("rag core", () => {
   it("NO_RELEVANT_CONTEXT reports the effective retrievalK in error details", async (t) => {
     const runtimeConfig = {
-      ...config,
+      ...chatEnabledConfig,
       retrievalK: 9,
       retrievalDistanceThreshold: 0.5,
     };
@@ -85,5 +108,84 @@ describe("retrieveSources", () => {
       "data/docs/a.txt",
       path.resolve("elsewhere", "b.txt"),
     ]);
+  });
+});
+
+describe("answer generation with the optional chat LLM", () => {
+  function mockRetrieval(t: { mock: { method: (...args: any[]) => unknown } }) {
+    t.mock.method(ChromaClient.prototype, "getCollection", async () => ({ count: async () => 1 }) as any);
+    t.mock.method(Chroma.prototype, "similaritySearchWithScore", async () => [
+      [{ metadata: { documentId: "doc-1", sourcePath: "data/a.txt" }, pageContent: "Murat Karakaya is a professor." }, 0.1],
+    ] as any);
+  }
+
+  it("rejects /query with CHAT_NOT_CONFIGURED when no chat LLM is configured", async () => {
+    await assert.rejects(
+      answerQuestion("q", { collectionName: "c", runtimeConfig: { ...config, chat: { ...chatEnabledConfig.chat, enabled: false } } }),
+      (error) => {
+        assert.ok(error instanceof RagQueryError);
+        assert.equal(error.code, "CHAT_NOT_CONFIGURED");
+        assert.equal(error.statusCode, 503);
+        return true;
+      },
+    );
+  });
+
+  it("returns the generated answer and the global chat model", async (t) => {
+    mockRetrieval(t);
+    t.mock.method(ChatOpenAICompletions.prototype, "invoke", async () => ({ content: "He is a professor." }) as any);
+
+    const result = await answerQuestion("Who is Murat Karakaya?", { collectionName: "c", runtimeConfig: chatEnabledConfig });
+    assert.equal(result.answer, "He is a professor.");
+    assert.equal(result.chatModel, "test-model");
+    assert.equal(result.sources.length, 1);
+  });
+
+  it("maps provider and connection failures to clear errors without leaking the API key", async (t) => {
+    mockRetrieval(t);
+    const invoke = t.mock.method(ChatOpenAICompletions.prototype, "invoke", async () => {
+      throw Object.assign(new Error("Incorrect API key provided: secret-key-123"), { status: 401 });
+    });
+
+    await assert.rejects(answerQuestion("q", { collectionName: "c", runtimeConfig: chatEnabledConfig }), (error) => {
+      assert.ok(error instanceof RagQueryError);
+      assert.equal(error.code, "CHAT_PROVIDER_ERROR");
+      assert.equal(error.statusCode, 502);
+      assert.equal(error.details?.upstreamStatus, 401);
+      assert.ok(!JSON.stringify({ message: error.message, details: error.details }).includes("secret-key-123"));
+      return true;
+    });
+
+    invoke.mock.mockImplementation(async () => {
+      throw Object.assign(new Error("Connection error."), { name: "APIConnectionError" });
+    });
+    await assert.rejects(answerQuestion("q", { collectionName: "c", runtimeConfig: chatEnabledConfig }), (error) => {
+      assert.ok(error instanceof RagQueryError);
+      assert.equal(error.code, "CHAT_PROVIDER_UNREACHABLE");
+      assert.equal(error.statusCode, 503);
+      return true;
+    });
+  });
+});
+
+describe("generation context and prompt", () => {
+  const sources: RagSource[] = Array.from({ length: 5 }, (_, index) => ({
+    documentId: `doc-${index}`,
+    content: "x".repeat(400),
+  }));
+
+  it("sends every retrieved source unless chat.maxContextTokens caps it", () => {
+    assert.equal(selectSourcesForGeneration(sources, chatEnabledConfig).length, 5);
+
+    const capped = { ...chatEnabledConfig, chat: { ...chatEnabledConfig.chat, maxContextTokens: 700 } };
+    const selected = selectSourcesForGeneration(sources, capped);
+    assert.ok(selected.length >= 1 && selected.length < 5);
+  });
+
+  it("uses a domain-neutral grounding prompt", () => {
+    const prompt = buildSystemPrompt(sources.slice(0, 1));
+    assert.doesNotMatch(prompt, /tax|ruling|Turkish/i);
+    assert.match(prompt, /__NO_ANSWER_FROM_CONTEXT__/);
+    assert.match(prompt, /language of the question/);
   });
 });

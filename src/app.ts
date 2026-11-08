@@ -16,16 +16,23 @@ import {
   createPersistentOperationalLogSink,
   type OperationalLogSink,
 } from "./observability/logger.js";
-import { capabilitySummary, recommendedActionFor, unique, type Capability, type ReadinessIssue } from "./readiness.js";
+import { checkChatProvider } from "./chat.js";
+import {
+  capabilitySummary,
+  describeChatReadiness,
+  QUERY_DISABLED_SUMMARY,
+  recommendedActionFor,
+  unique,
+  type Capability,
+  type ReadinessIssue,
+} from "./readiness.js";
 import {
   answerQuestion,
-  checkChatGenerationHealth,
   checkChromaHealth,
   checkEmbeddingHealth,
   checkOllamaHealth,
   getOllamaModelDiscovery,
   retrieveSources,
-  type ChatGenerationHealthDetails,
   type EmbeddingHealthDetails,
   type OllamaHealthDetails,
 } from "./rag.js";
@@ -48,7 +55,8 @@ export type AppDependencies = {
     checkOllamaHealth?: typeof checkOllamaHealth;
     checkOllamaModelDiscovery?: typeof getOllamaModelDiscovery;
     checkEmbeddingHealth?: typeof checkEmbeddingHealth;
-    checkChatGenerationHealth?: typeof checkChatGenerationHealth;
+    /** Free GET /models check of the optional chat LLM (never a generation). */
+    checkChatProvider?: typeof checkChatProvider;
     checkIndexingSourceHealth?: typeof checkIndexingSourceHealth;
   };
 };
@@ -361,13 +369,9 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
   const embedding = ollama.ok && ollamaDetails.embeddingModelAvailable
     ? await (healthChecks?.checkEmbeddingHealth ?? checkEmbeddingHealth)(runtimeConfig)
     : null;
-  const chatGeneration = ollama.ok && ollamaDetails.chatModelAvailable
-    ? await (healthChecks?.checkChatGenerationHealth ?? checkChatGenerationHealth)(runtimeConfig)
-    : null;
+  const chatEnabled = runtimeConfig.chat.enabled;
+  const chatProvider = await (healthChecks?.checkChatProvider ?? checkChatProvider)(runtimeConfig);
   const embeddingDetails = (embedding?.details ?? {}) as Partial<EmbeddingHealthDetails>;
-  const chatGenerationDetails = (
-    chatGeneration?.details ?? {}
-  ) as Partial<ChatGenerationHealthDetails>;
   const checks: ReadinessCheck[] = [];
 
   checks.push({
@@ -375,7 +379,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
     name: "Chroma reachability",
     status: chromaReachable ? "pass" : "fail",
     blocking: true,
-    capabilities: ["query", "index"],
+    capabilities: ["retrieve", "query", "index"],
     message: chromaReachable
       ? `Chroma is reachable at ${runtimeConfig.chromaUrl}.`
       : `Chroma is not reachable at ${runtimeConfig.chromaUrl}. ${chroma.error ?? ""}`.trim(),
@@ -391,7 +395,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
     name: "Registry reachability",
     status: registryHealth.ok ? "pass" : "fail",
     blocking: true,
-    capabilities: ["query", "index"],
+    capabilities: ["retrieve", "query", "index"],
     message: registryHealth.ok
       ? "SQLite registry is reachable."
       : `SQLite registry is unreachable. ${registryHealth.error ?? ""}`.trim(),
@@ -406,7 +410,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
     name: "Ollama reachability",
     status: ollama.ok ? "pass" : "fail",
     blocking: true,
-    capabilities: ["query", "index"],
+    capabilities: ["retrieve", "query", "index"],
     message: ollama.ok
       ? `Ollama is reachable at ${runtimeConfig.ollamaBaseUrl}.`
       : `Ollama is not reachable at ${runtimeConfig.ollamaBaseUrl}. ${ollama.error ?? ""}`.trim(),
@@ -419,26 +423,11 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
 
   if (ollama.ok) {
     checks.push({
-      code: ollamaDetails.chatModelAvailable ? "CHAT_MODEL_AVAILABLE" : "CHAT_MODEL_MISSING",
-      name: "Chat model availability",
-      status: ollamaDetails.chatModelAvailable ? "pass" : "fail",
-      blocking: true,
-      capabilities: ["query"],
-      message: ollamaDetails.chatModelAvailable
-        ? `Chat model ${runtimeConfig.ollamaChatModel} is available in Ollama.`
-        : `Chat model ${runtimeConfig.ollamaChatModel} is missing in Ollama, so answer generation cannot run.`,
-      details: {
-        model: runtimeConfig.ollamaChatModel,
-        availableModels: ollamaDetails.availableModels,
-      },
-    });
-
-    checks.push({
       code: ollamaDetails.embeddingModelAvailable ? "EMBED_MODEL_AVAILABLE" : "EMBED_MODEL_MISSING",
       name: "Embedding model availability",
       status: ollamaDetails.embeddingModelAvailable ? "pass" : "fail",
       blocking: true,
-      capabilities: ["query", "index"],
+      capabilities: ["retrieve", "query", "index"],
       message: ollamaDetails.embeddingModelAvailable
         ? `Embedding model ${runtimeConfig.ollamaEmbeddingModel} is available in Ollama.`
         : `Embedding model ${runtimeConfig.ollamaEmbeddingModel} is missing in Ollama, so retrieval and indexing embeddings cannot run.`,
@@ -455,7 +444,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
       name: "Embedding smoke test",
       status: "skip",
       blocking: true,
-      capabilities: ["query", "index"],
+      capabilities: ["retrieve", "query", "index"],
       message: "Embedding smoke test was skipped because Ollama or the embedding model is not ready.",
       details: {
         probeText: runtimeConfig.readyEmbedProbeText,
@@ -467,7 +456,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
       name: "Embedding smoke test",
       status: embedding?.ok ? "pass" : "fail",
       blocking: true,
-      capabilities: ["query", "index"],
+      capabilities: ["retrieve", "query", "index"],
       message: embedding?.ok
         ? `Embedding smoke test succeeded with a vector length of ${embeddingDetails.vectorLength}.`
         : `Embedding smoke test failed. ${embedding?.error ?? ""}`.trim(),
@@ -479,34 +468,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
     });
   }
 
-  if (!ollama.ok || !ollamaDetails.chatModelAvailable) {
-    checks.push({
-      code: "CHAT_SMOKE_SKIPPED",
-      name: "Chat generation smoke test",
-      status: "skip",
-      blocking: true,
-      capabilities: ["query"],
-      message: "Chat generation smoke test was skipped because Ollama or the chat model is not ready.",
-      details: {
-        probeText: runtimeConfig.readyChatProbeText,
-      },
-    });
-  } else {
-    checks.push({
-      code: chatGeneration?.ok ? "CHAT_SMOKE_PASSED" : "CHAT_SMOKE_FAILED",
-      name: "Chat generation smoke test",
-      status: chatGeneration?.ok ? "pass" : "fail",
-      blocking: true,
-      capabilities: ["query"],
-      message: chatGeneration?.ok
-        ? `Chat generation smoke test succeeded with a response length of ${chatGenerationDetails.responseLength}.`
-        : `Chat generation smoke test failed. ${chatGeneration?.error ?? ""}`.trim(),
-      details: {
-        probeText: chatGenerationDetails.probeText ?? runtimeConfig.readyChatProbeText,
-        responseLength: chatGenerationDetails.responseLength,
-      },
-    });
-  }
+  checks.push({ name: "Chat LLM", capabilities: ["query"], ...describeChatReadiness(chatProvider, runtimeConfig) });
 
   checks.push({
     code: dataSource.ok ? "INDEXING_SOURCE_READABLE" : "INDEXING_SOURCE_UNREADABLE",
@@ -568,27 +530,35 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
       recommendedAction: recommendedActionFor(check.code, runtimeConfig),
     } satisfies ReadinessIssue));
 
-  const queryReady = !checks.some(
-    (check) => check.blocking && check.status === "fail" && check.capabilities.includes("query"),
+  const isBlocked = (capability: Capability) => checks.some(
+    (check) => check.blocking && check.status === "fail" && check.capabilities.includes(capability),
   );
-  const indexReady = !checks.some(
-    (check) => check.blocking && check.status === "fail" && check.capabilities.includes("index"),
-  );
-  const ready = queryReady && indexReady;
+  const retrieveReady = !isBlocked("retrieve");
+  // /query exists only when a chat LLM is configured; without one the system is retrieve-only.
+  const queryReady = chatEnabled && !isBlocked("query");
+  const indexReady = !isBlocked("index");
+  const ready = retrieveReady && indexReady && (!chatEnabled || queryReady);
   const systemReadyFor = queryReady && indexReady
     ? "query-and-index"
-    : queryReady
-      ? "query"
-      : indexReady
-        ? "index"
-        : "neither";
-  const overallSummary = ready
+    : retrieveReady && indexReady
+      ? "retrieve-and-index"
+      : queryReady
+        ? "query"
+        : indexReady
+          ? "index"
+          : "neither";
+  const overallSummary = systemReadyFor === "query-and-index"
     ? "System is ready to serve RAG queries and to run indexing from the configured data source."
-    : systemReadyFor === "query"
-      ? "System can serve RAG queries, but it is not ready to run indexing from the configured data source."
-      : systemReadyFor === "index"
-        ? "System can run indexing, but it is not ready to serve RAG queries yet."
-        : "System is not ready for RAG queries or indexing.";
+    : systemReadyFor === "retrieve-and-index"
+      ? chatEnabled
+        ? "System can retrieve evidence and run indexing, but answer generation (/query) is not ready."
+        : "System is ready to retrieve evidence and to run indexing (retrieve-only: no chat LLM configured)."
+      : systemReadyFor === "query"
+        ? "System can serve RAG queries, but it is not ready to run indexing from the configured data source."
+        : systemReadyFor === "index"
+          ? "System can run indexing, but it is not ready to serve retrieval or RAG queries yet."
+          : "System is not ready for retrieval, RAG queries or indexing.";
+  const querySummary = chatEnabled ? capabilitySummary("query", queryReady, blockers) : QUERY_DISABLED_SUMMARY;
 
   return {
     ready,
@@ -597,9 +567,12 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
       ready,
       systemReadyFor,
       overallSummary,
+      retrieveReady,
+      queryEnabled: chatEnabled,
       queryReady,
       indexReady,
-      querySummary: capabilitySummary("query", queryReady, blockers),
+      retrieveSummary: capabilitySummary("retrieve", retrieveReady, blockers),
+      querySummary,
       indexSummary: capabilitySummary("index", indexReady, blockers),
       blockerCodes: blockers.map((issue) => issue.code),
       warningCodes: warnings.map((issue) => issue.code),
@@ -609,14 +582,19 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
           .filter((action): action is string => Boolean(action)),
       ),
       port: runtimeConfig.port,
-      chatModel: runtimeConfig.ollamaChatModel,
+      chatModel: chatEnabled ? runtimeConfig.chat.model : null,
       embeddingModel: runtimeConfig.ollamaEmbeddingModel,
       chromaUrl: runtimeConfig.chromaUrl,
       chromaLatencyMs: chroma.latencyMs,
       capabilities: {
+        retrieve: {
+          ready: retrieveReady,
+          message: capabilitySummary("retrieve", retrieveReady, blockers),
+        },
         query: {
+          enabled: chatEnabled,
           ready: queryReady,
-          message: capabilitySummary("query", queryReady, blockers),
+          message: querySummary,
         },
         index: {
           ready: indexReady,
@@ -638,7 +616,6 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
         },
         ollama: {
           url: runtimeConfig.ollamaBaseUrl,
-          chatModel: runtimeConfig.ollamaChatModel,
           embeddingModel: runtimeConfig.ollamaEmbeddingModel,
           ...ollama,
         },
@@ -653,17 +630,8 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
               latencyMs: 0,
               skipped: true,
             },
-        chatGeneration: chatGeneration
-          ? {
-              model: runtimeConfig.ollamaChatModel,
-              ...chatGeneration,
-            }
-          : {
-              model: runtimeConfig.ollamaChatModel,
-              ok: false,
-              latencyMs: 0,
-              skipped: true,
-            },
+        // Never includes the API key.
+        chat: chatProvider,
       },
       dataSource: {
         path: runtimeConfig.sourcePath,
@@ -687,8 +655,11 @@ function summarizeReadinessPayload(payload: ReadinessPayload) {
     ready: payload.ready,
     systemReadyFor: payload.systemReadyFor,
     overallSummary: payload.overallSummary,
+    retrieveReady: payload.retrieveReady,
+    queryEnabled: payload.queryEnabled,
     queryReady: payload.queryReady,
     indexReady: payload.indexReady,
+    retrieveSummary: payload.retrieveSummary,
     querySummary: payload.querySummary,
     indexSummary: payload.indexSummary,
     blockerCodes: payload.blockerCodes,
@@ -708,6 +679,7 @@ function summarizeReadinessPayload(payload: ReadinessPayload) {
       registry: { ok: payload.dependencies.registry.ok },
       chroma: { ok: payload.dependencies.chroma.ok },
       ollama: { ok: payload.dependencies.ollama.ok },
+      chat: { ok: payload.dependencies.chat.ok, configured: payload.dependencies.chat.configured },
     },
     config: {
       port: payload.port,

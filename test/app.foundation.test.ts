@@ -5,6 +5,7 @@ import { after, before, describe, it } from "node:test";
 import { createApp, type AppDependencies } from "../src/app.js";
 import type { CollectionRegistry, RequestContext } from "../src/collections/types.js";
 import type { ChatProviderStatus } from "../src/chat.js";
+import type { EmbeddingTarget, EmbeddingTargetStatus } from "../src/embeddings/index.js";
 import { config, type ResolvedConfig } from "../src/config.js";
 
 type HealthChecks = NonNullable<AppDependencies["healthChecks"]>;
@@ -142,6 +143,19 @@ function withChat(runtimeConfig: ResolvedConfig): ResolvedConfig {
   };
 }
 
+function builtinStatus(target: EmbeddingTarget, downloaded: boolean): EmbeddingTargetStatus {
+  return {
+    provider: target.provider,
+    model: target.model,
+    configured: true,
+    supported: true,
+    downloaded,
+    approxDownloadMb: 346,
+    ok: true,
+    latencyMs: 0,
+  };
+}
+
 function createHealthyHealthChecks(): HealthChecks {
   return {
     checkChromaHealth: async () => ({
@@ -151,25 +165,8 @@ function createHealthyHealthChecks(): HealthChecks {
         reachable: true,
       },
     }),
-    checkOllamaHealth: async () => ({
-      ok: true,
-      latencyMs: 1,
-      details: {
-        reachable: true,
-        availableModels: ["test-embed"],
-        missingModels: [],
-        embeddingModelAvailable: true,
-      },
-    }),
-    checkEmbeddingHealth: async () => ({
-      ok: true,
-      latencyMs: 1,
-      details: {
-        probeText: "foundation probe",
-        vectorLength: 3,
-        finiteValues: true,
-      },
-    }),
+    // Built-in default model, already downloaded (a cheap cache check; /ready never embeds).
+    checkEmbeddingTarget: async (_runtimeConfig: ResolvedConfig, target: EmbeddingTarget) => builtinStatus(target, true),
     // Mirrors the real free check: nothing to probe when no chat LLM is configured.
     checkChatProvider: async (runtimeConfig: ResolvedConfig) => chatProviderStatus(runtimeConfig, true),
     checkIndexingSourceHealth: async () => ({
@@ -329,7 +326,7 @@ describe("app foundation", () => {
     assert.deepEqual(body.dependencies, {
       registry: { ok: true },
       chroma: { ok: Boolean((body.dependencies as any)?.chroma?.ok) },
-      ollama: { ok: Boolean((body.dependencies as any)?.ollama?.ok) },
+      embedding: { ok: Boolean((body.dependencies as any)?.embedding?.ok) },
       chat: {
         ok: Boolean((body.dependencies as any)?.chat?.ok),
         configured: Boolean((body.dependencies as any)?.chat?.configured),
@@ -384,25 +381,14 @@ describe("app foundation", () => {
     }
   });
 
-  it("passes the active runtime config to the embedding smoke and the free chat check, never generating", async () => {
+  it("checks the default embedding and the chat LLM with cheap checks only (no embedding, no generation)", async () => {
     const calls: Array<{ kind: "embed" | "chat"; value: string }> = [];
-    const runtimeConfig = withChat({
-      ...config,
-      readyEmbedProbeText: "embed-probe-from-runtime-config",
-    });
+    const runtimeConfig = withChat({ ...config });
     const started = await startServer(createHealthyRegistryStub(), {
       ...createHealthyHealthChecks(),
-      checkEmbeddingHealth: async (receivedConfig = config) => {
-        calls.push({ kind: "embed", value: receivedConfig.readyEmbedProbeText });
-        return {
-          ok: true,
-          latencyMs: 1,
-          details: {
-            probeText: receivedConfig.readyEmbedProbeText,
-            vectorLength: 3,
-            finiteValues: true,
-          },
-        };
+      checkEmbeddingTarget: async (_receivedConfig: ResolvedConfig, target: EmbeddingTarget) => {
+        calls.push({ kind: "embed", value: `${target.provider}/${target.model}` });
+        return builtinStatus(target, true);
       },
       checkChatProvider: async (receivedConfig: ResolvedConfig) => {
         calls.push({ kind: "chat", value: receivedConfig.chat.model });
@@ -415,13 +401,15 @@ describe("app foundation", () => {
       const body = await response.json() as any;
       assert.equal(response.status, 200);
       assert.deepEqual(calls, [
-        { kind: "embed", value: "embed-probe-from-runtime-config" },
+        { kind: "embed", value: `${config.embedding.provider}/${config.embedding.model}` },
         { kind: "chat", value: "test-chat" },
       ]);
       assert.equal(body.ready, true);
       assert.equal(body.systemReadyFor, "query-and-index");
       assert.ok(body.checks.some((check: any) => check.code === "CHAT_MODEL_AVAILABLE"));
+      assert.ok(body.checks.some((check: any) => check.code === "EMBEDDING_MODEL_READY"));
       assert.equal(body.chatModel, "test-chat");
+      assert.equal(body.embeddingProvider, config.embedding.provider);
     } finally {
       await stopServer(started.server);
     }
@@ -479,6 +467,50 @@ describe("app foundation", () => {
       assert.ok(body.warningCodes.includes("CHAT_MODEL_UNVERIFIED"));
     } finally {
       await stopServer(unverified.server);
+    }
+  });
+
+  it("stays ready while the built-in model is not downloaded yet (it downloads on first indexing)", async () => {
+    const started = await startServer(createHealthyRegistryStub(), {
+      ...createHealthyHealthChecks(),
+      checkEmbeddingTarget: async (_receivedConfig: ResolvedConfig, target: EmbeddingTarget) => builtinStatus(target, false),
+    });
+
+    try {
+      const body = await (await fetch(`${started.baseUrl}/ready?details=true`)).json() as any;
+      assert.equal(body.ready, true);
+      assert.ok(body.warningCodes.includes("EMBEDDING_MODEL_NOT_DOWNLOADED"));
+      assert.ok(!body.blockerCodes.includes("EMBEDDING_MODEL_NOT_DOWNLOADED"));
+    } finally {
+      await stopServer(started.server);
+    }
+  });
+
+  it("blocks retrieval and indexing when the default openai-compatible embedding service is unreachable", async () => {
+    const started = await startServer(createHealthyRegistryStub(), {
+      ...createHealthyHealthChecks(),
+      checkEmbeddingTarget: async (_receivedConfig: ResolvedConfig, target: EmbeddingTarget) => ({
+        provider: "openai-compatible",
+        model: target.model,
+        configured: true,
+        supported: true,
+        reachable: false,
+        authOk: false,
+        modelListed: "unknown",
+        ok: false,
+        latencyMs: 1,
+        error: "connect ECONNREFUSED",
+      }),
+    });
+
+    try {
+      const body = await (await fetch(`${started.baseUrl}/ready?details=true`)).json() as any;
+      assert.equal(body.ready, false);
+      assert.equal(body.retrieveReady, false);
+      assert.equal(body.indexReady, false);
+      assert.ok(body.blockerCodes.includes("EMBEDDING_PROVIDER_UNREACHABLE"));
+    } finally {
+      await stopServer(started.server);
     }
   });
 });

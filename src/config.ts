@@ -3,7 +3,13 @@ import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { parse, stringify } from "yaml";
 import { z } from "zod";
-import { defaultChatApiKeyFilePath, readSecretFile } from "./secrets.js";
+import {
+  BUILTIN_EMBEDDING_MODELS,
+  DEFAULT_BUILTIN_EMBEDDING_MODEL,
+  EMBEDDING_PROVIDERS,
+  type EmbeddingProvider,
+} from "./embeddings/models.js";
+import { defaultChatApiKeyFilePath, defaultEmbeddingApiKeyFilePath, readSecretFile } from "./secrets.js";
 
 export const defaultConfigPath = path.resolve(process.cwd(), process.env.RAG_CONFIG_PATH?.trim() || "config/rag.config.yaml");
 
@@ -41,15 +47,48 @@ const adminAuthSchema = z.object({
  * The API key is never stored here; see resolveChatConfig.
  */
 const chatSchema = z.object({
-  baseUrl: z.string().trim().default("").refine(
-    (value) => value === "" || z.string().url().safeParse(value).success,
-    { message: "must be empty (retrieve-only) or a valid URL" },
-  ),
+  baseUrl: z.string().trim().default("").refine(isEmptyOrUrl, {
+    message: "must be empty (retrieve-only) or a valid URL",
+  }),
   model: z.string().trim().default(""),
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().positive().optional(),
   maxContextTokens: z.number().int().positive().optional(),
 }).strict();
+
+function isEmptyOrUrl(value: string): boolean {
+  return value === "" || z.string().url().safeParse(value).success;
+}
+
+/**
+ * Embedding provider and model used as the default for NEW collections. Each collection stores its own
+ * provider and model; changing this never touches existing collections.
+ * - builtin: in-process model, downloaded on first use into cacheDir.
+ * - openai-compatible: any OpenAI-compatible /v1/embeddings API at baseUrl (API key from env or .local).
+ */
+const embeddingSchema = z.object({
+  provider: z.enum(EMBEDDING_PROVIDERS).default("builtin"),
+  model: z.string().trim().min(1).default(DEFAULT_BUILTIN_EMBEDDING_MODEL),
+  baseUrl: z.string().trim().default("").refine(isEmptyOrUrl, {
+    message: "must be empty or a valid URL (an OpenAI-compatible API such as http://localhost:11434/v1)",
+  }),
+  cacheDir: z.string().trim().min(1).default("models"),
+}).strict().superRefine((value, ctx) => {
+  if (value.provider === "openai-compatible" && value.baseUrl === "") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["baseUrl"],
+      message: "is required when provider is openai-compatible",
+    });
+  }
+  if (value.provider === "builtin" && !BUILTIN_EMBEDDING_MODELS[value.model]) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["model"],
+      message: `is not a built-in model; supported: ${Object.keys(BUILTIN_EMBEDDING_MODELS).join(", ")}`,
+    });
+  }
+});
 
 export const configSchema = z.object({
   server: z.object({
@@ -61,10 +100,7 @@ export const configSchema = z.object({
   chroma: z.object({
     url: z.string().url(),
   }).strict(),
-  ollama: z.object({
-    baseUrl: z.string().url(),
-    embeddingModel: z.string().trim().min(1),
-  }).strict(),
+  embedding: embeddingSchema.default({}),
   chat: chatSchema.optional(),
   collectionDefaults: z.object({
     sourcePath: z.string().trim().min(1),
@@ -120,12 +156,6 @@ export function readConfigFile(configPath = defaultConfigPath): unknown {
 
 /** Keys removed with ozelge JSON support. Older config files may still contain them; drop instead of rejecting. */
 const LEGACY_COLLECTION_DEFAULT_KEYS = ["ozelgeDataPath", "indexSampleSize"] as const;
-/**
- * Ollama chat keys replaced by the optional `chat` section. They are dropped, not migrated:
- * answer generation stays off until the user configures `chat` (onboarding or RAG_CHAT_*).
- */
-const LEGACY_OLLAMA_KEYS = ["chatModel", "numCtx", "numPredict"] as const;
-
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -142,32 +172,7 @@ function dropLegacyConfigKeys(rawConfig: unknown): unknown {
     result.collectionDefaults = cleanedDefaults;
   }
 
-  const ollama = asRecord(root.ollama);
-  if (ollama) {
-    const cleanedOllama = { ...ollama };
-    for (const key of LEGACY_OLLAMA_KEYS) delete cleanedOllama[key];
-    result.ollama = cleanedOllama;
-  }
-
   return result;
-}
-
-/** Human-readable notes about ignored legacy settings, printed once at startup. */
-export function legacyConfigWarnings(rawConfig: unknown, env: NodeJS.ProcessEnv = process.env): string[] {
-  const warnings: string[] = [];
-  const ollama = asRecord(asRecord(rawConfig)?.ollama);
-
-  if (ollama && LEGACY_OLLAMA_KEYS.some((key) => key in ollama)) {
-    warnings.push(
-      "ollama.chatModel, ollama.numCtx and ollama.numPredict are no longer used; answer generation moved to the optional `chat` section. "
-        + "To enable /query, run `npm run onboard` or set RAG_CHAT_BASE_URL and RAG_CHAT_MODEL.",
-    );
-  }
-  if (env.RAG_OLLAMA_CHAT_MODEL?.trim()) {
-    warnings.push("RAG_OLLAMA_CHAT_MODEL is no longer used; set RAG_CHAT_BASE_URL and RAG_CHAT_MODEL instead.");
-  }
-
-  return warnings;
 }
 
 export function parseConfig(rawConfig: unknown, configPath = defaultConfigPath): RawConfig {
@@ -184,19 +189,47 @@ export function parseConfig(rawConfig: unknown, configPath = defaultConfigPath):
   return parsedConfig.data;
 }
 
-export type ChatApiKeySource = "env" | "file" | "none";
+export type ApiKeySource = "env" | "file" | "none";
+/** @deprecated kept as an alias; use ApiKeySource. */
+export type ChatApiKeySource = ApiKeySource;
 
 export interface ResolveConfigOptions {
   env?: NodeJS.ProcessEnv;
   /** Where onboarding stores the chat API key; relative to cwd. */
   chatApiKeyFilePath?: string;
-  /** Notes about ignored legacy settings (see legacyConfigWarnings). */
-  warnings?: string[];
+  /** Where onboarding stores the embedding API key; relative to cwd. */
+  embeddingApiKeyFilePath?: string;
   /**
    * Onboarding only: the API key the user just entered (string) or removed (null), used before the
    * secret file is written. Overrides the env var and the file.
    */
   chatApiKeyOverride?: string | null;
+  embeddingApiKeyOverride?: string | null;
+}
+
+/**
+ * Resolves an API key: an onboarding override first, then the env var, then the local secret file.
+ * Keys are never read from or written to the YAML config.
+ */
+function resolveApiKey(input: {
+  override: string | null | undefined;
+  env: NodeJS.ProcessEnv;
+  envVar: string;
+  filePath: string;
+  label: string;
+  cwd: string;
+}): { apiKey: string | undefined; apiKeySource: ApiKeySource } {
+  if (input.override !== undefined) {
+    const apiKey = input.override?.trim() || undefined;
+    return { apiKey, apiKeySource: apiKey ? "file" : "none" };
+  }
+
+  const envKey = input.env[input.envVar]?.trim() ?? "";
+  const fileKey = envKey ? "" : readSecretFile(input.filePath, input.label, input.cwd);
+  return {
+    apiKey: envKey || fileKey || undefined,
+    apiKeySource: envKey ? "env" : fileKey ? "file" : "none",
+  };
 }
 
 /**
@@ -206,25 +239,14 @@ export interface ResolveConfigOptions {
 function resolveChatConfig(rawChat: RawConfig["chat"], cwd: string, options: ResolveConfigOptions) {
   const baseUrl = (rawChat?.baseUrl ?? "").replace(/\/+$/, "");
   const model = rawChat?.model ?? "";
-  if (options.chatApiKeyOverride !== undefined) {
-    const apiKey = options.chatApiKeyOverride?.trim() || undefined;
-    return {
-      enabled: baseUrl !== "" && model !== "",
-      baseUrl,
-      model,
-      apiKey,
-      apiKeySource: (apiKey ? "file" : "none") as ChatApiKeySource,
-      temperature: rawChat?.temperature,
-      maxTokens: rawChat?.maxTokens,
-      maxContextTokens: rawChat?.maxContextTokens,
-    };
-  }
-
-  const env = options.env ?? process.env;
-  const envKey = env.RAG_CHAT_API_KEY?.trim() ?? "";
-  const fileKey = envKey ? "" : readSecretFile(options.chatApiKeyFilePath ?? defaultChatApiKeyFilePath, "chat API key", cwd);
-  const apiKey = envKey || fileKey || undefined;
-  const apiKeySource: ChatApiKeySource = envKey ? "env" : fileKey ? "file" : "none";
+  const { apiKey, apiKeySource } = resolveApiKey({
+    override: options.chatApiKeyOverride,
+    env: options.env ?? process.env,
+    envVar: "RAG_CHAT_API_KEY",
+    filePath: options.chatApiKeyFilePath ?? defaultChatApiKeyFilePath,
+    label: "chat API key",
+    cwd,
+  });
 
   return {
     enabled: baseUrl !== "" && model !== "",
@@ -239,6 +261,34 @@ function resolveChatConfig(rawChat: RawConfig["chat"], cwd: string, options: Res
 }
 
 export type ChatConfig = ReturnType<typeof resolveChatConfig>;
+
+/** Resolves the embedding defaults for new collections and the openai-compatible connection. */
+function resolveEmbeddingConfig(rawEmbedding: RawConfig["embedding"], cwd: string, options: ResolveConfigOptions) {
+  const baseUrl = rawEmbedding.baseUrl.replace(/\/+$/, "");
+  const { apiKey, apiKeySource } = resolveApiKey({
+    override: options.embeddingApiKeyOverride,
+    env: options.env ?? process.env,
+    envVar: "RAG_EMBEDDING_API_KEY",
+    filePath: options.embeddingApiKeyFilePath ?? defaultEmbeddingApiKeyFilePath,
+    label: "embedding API key",
+    cwd,
+  });
+
+  return {
+    /** Default provider for NEW collections. */
+    provider: rawEmbedding.provider as EmbeddingProvider,
+    /** Default model for NEW collections. */
+    model: rawEmbedding.model,
+    /** The openai-compatible API, shared by every collection that uses that provider. Empty = not configured. */
+    baseUrl,
+    apiKey,
+    apiKeySource,
+    /** Where built-in models are downloaded and cached. */
+    cacheDir: path.resolve(cwd, rawEmbedding.cacheDir),
+  };
+}
+
+export type EmbeddingConfig = ReturnType<typeof resolveEmbeddingConfig>;
 
 export function resolveConfig(
   rawConfig: RawConfig,
@@ -263,10 +313,8 @@ export function resolveConfig(
     port: rawConfig.server.port,
     registryPath: path.resolve(cwd, rawConfig.registry.path),
     chromaUrl: rawConfig.chroma.url,
-    ollamaBaseUrl: rawConfig.ollama.baseUrl,
-    ollamaEmbeddingModel: rawConfig.ollama.embeddingModel,
+    embedding: resolveEmbeddingConfig(rawConfig.embedding, cwd, options),
     chat: resolveChatConfig(rawConfig.chat, cwd, options),
-    configWarnings: options.warnings ?? [],
     collectionDefaults,
     sourcePath: collectionDefaults.sourcePath,
     chunkSize: collectionDefaults.chunkSize,
@@ -299,8 +347,10 @@ export const CONFIG_ENV_OVERRIDES = [
   { env: "RAG_PORT", path: ["server", "port"], type: "integer" },
   { env: "RAG_REGISTRY_PATH", path: ["registry", "path"], type: "string" },
   { env: "RAG_CHROMA_URL", path: ["chroma", "url"], type: "string" },
-  { env: "RAG_OLLAMA_BASE_URL", path: ["ollama", "baseUrl"], type: "string" },
-  { env: "RAG_OLLAMA_EMBEDDING_MODEL", path: ["ollama", "embeddingModel"], type: "string" },
+  { env: "RAG_EMBEDDING_PROVIDER", path: ["embedding", "provider"], type: "string" },
+  { env: "RAG_EMBEDDING_MODEL", path: ["embedding", "model"], type: "string" },
+  { env: "RAG_EMBEDDING_BASE_URL", path: ["embedding", "baseUrl"], type: "string" },
+  { env: "RAG_EMBEDDING_CACHE_DIR", path: ["embedding", "cacheDir"], type: "string" },
   { env: "RAG_CHAT_BASE_URL", path: ["chat", "baseUrl"], type: "string" },
   { env: "RAG_CHAT_MODEL", path: ["chat", "model"], type: "string" },
   { env: "RAG_SOURCE_PATH", path: ["collectionDefaults", "sourcePath"], type: "string" },
@@ -340,7 +390,7 @@ export function loadConfig(configPath = defaultConfigPath, env: NodeJS.ProcessEn
     parseConfig(applyConfigEnvOverrides(rawConfig, env), configPath),
     path.resolve(configPath),
     process.cwd(),
-    { env, warnings: legacyConfigWarnings(rawConfig, env) },
+    { env },
   );
 }
 

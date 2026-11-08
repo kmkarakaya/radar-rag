@@ -7,6 +7,7 @@ import { config, type ResolvedConfig } from "../config.js";
 import type { RequestContext } from "./requestContext.js";
 import { resolveReadableCollection } from "../collections/resolveReadableCollection.js";
 import { retrieveSources, answerQuestion } from "../rag.js";
+import { activeEmbeddingTarget } from "../embeddings/index.js";
 import { buildCollectionReadinessPayload } from "./collectionReadiness.js";
 import type { RagCollection } from "../collections/types.js";
 
@@ -131,7 +132,8 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         timeoutMs: runtimeConfig.ragTimeoutMs,
         logEvent: deps.logEvent,
       });
-      const embeddingModel = collection.activeEmbeddingModel ?? collection.embeddingModel;
+      // Reads always use the embedding the active index was built with, never the configured default.
+      const embedding = activeEmbeddingTarget(collection);
       res.locals.collectionId = collection.id;
       res.locals.physicalCollection = collection.activePhysicalCollection;
 
@@ -140,7 +142,8 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         collectionName: collection.activePhysicalCollection!,
         k: parsed.data.k ?? collection.retrievalK,
         runtimeConfig,
-        embeddingModel,
+        embeddingProvider: embedding.provider,
+        embeddingModel: embedding.model,
         retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,
         abortSignal,
@@ -157,7 +160,8 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         collectionId: collection.id,
         collectionDisplayName: collection.displayName,
         activeVersion: collection.activeVersion,
-        embeddingModel,
+        embeddingProvider: embedding.provider,
+        embeddingModel: embedding.model,
         ...(runtimeConfig.includeDebugTimings && debug ? { debug } : {}),
       });
     } catch (error) {
@@ -203,14 +207,15 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         collectionName: collection.activePhysicalCollection!,
         retrievalK: collection.retrievalK,
         runtimeConfig,
-        embeddingModel: collection.activeEmbeddingModel ?? collection.embeddingModel,
+        embeddingProvider: activeEmbeddingTarget(collection).provider,
+        embeddingModel: activeEmbeddingTarget(collection).model,
         retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,
         abortSignal,
         includeDebugTimings: runtimeConfig.includeDebugTimings,
         logEvent: deps.logEvent,
       });
-      const { debug, chatModel, embeddingModel, ...publicResult } = result;
+      const { debug, chatModel, embeddingProvider, embeddingModel, ...publicResult } = result;
 
       res.json({
         ...publicResult,
@@ -218,6 +223,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         collectionDisplayName: collection.displayName,
         activeVersion: collection.activeVersion,
         chatModel,
+        embeddingProvider,
         embeddingModel,
         ...(runtimeConfig.includeDebugTimings && debug ? { debug } : {}),
       });

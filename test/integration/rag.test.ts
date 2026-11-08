@@ -22,8 +22,10 @@ describe("rag core", () => {
       // Chroma client throws a "not found" error. LangChain's Chroma.fromTexts calls getOrCreateCollection. 
       // Our createVectorStore doesn't call it. It just passes the collectionName.
       await retrieveSources("test question", { 
-        collectionName: missingCollectionName, 
-        runtimeConfig: config 
+        collectionName: missingCollectionName,
+        runtimeConfig: config,
+        embeddingProvider: config.embedding.provider,
+        embeddingModel: config.embedding.model,
       });
       assert.fail("Should have thrown an error");
     } catch (error) {

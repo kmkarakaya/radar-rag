@@ -228,6 +228,7 @@ export async function buildPhysicalCollection(input: {
     const vectorStore = vectorStoreFactory({
       collectionName: targetPhysicalCollection,
       runtimeConfig,
+      embeddingProvider: collection.embeddingProvider,
       embeddingModel: collection.embeddingModel,
     });
 

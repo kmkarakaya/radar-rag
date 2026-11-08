@@ -90,7 +90,12 @@ describe("runtime static contract", () => {
     assert.match(onboard, /defaultAdminSessionSecretFilePath/);
     assert.match(onboard, /writeAdminSessionSecretFile/);
     assert.match(onboard, /validateAdminAuthConfig/);
-    assert.match(onboard, /Run: ollama pull \$\{runtimeConfig\.ollamaEmbeddingModel\}/);
+    // Embedding: explicit provider choice (builtin | openai-compatible); no Ollama-only setup anymore.
+    assert.match(onboard, /"Embedding provider for new collections"/);
+    assert.match(onboard, /"embedding\.baseUrl"/);
+    assert.match(onboard, /defaultEmbeddingApiKeyFilePath/);
+    assert.match(onboard, /downloaded on the first indexing/);
+    assert.doesNotMatch(onboard, /ollamaEmbeddingModel|ollamaBaseUrl/);
     // Optional chat LLM: base URL + model + API key (stored in .local, never in the YAML).
     assert.match(onboard, /"chat\.baseUrl"/);
     assert.match(onboard, /"chat\.model"/);

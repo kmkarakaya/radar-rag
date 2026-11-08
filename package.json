@@ -16,10 +16,10 @@
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.3.2",
     "@langchain/classic": "^1.0.34",
     "@langchain/community": "^1.0.0",
     "@langchain/core": "^1.0.0",
-    "@langchain/ollama": "^1.0.0",
     "@langchain/openai": "^1.8.2",
     "@langchain/textsplitters": "^1.0.0",
     "better-sqlite3": "^12.10.0",
@@ -38,5 +38,10 @@
     "@types/node": "^24.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
+  },
+  "overrides": {
+    "@langchain/community": {
+      "@huggingface/transformers": "$@huggingface/transformers"
+    }
   }
 }

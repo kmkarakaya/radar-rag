@@ -1,7 +1,13 @@
 import type { CollectionRegistry, CreateCollectionInput, RagCollection, RequestContext, UpdateCollectionPatch } from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
 import { analyzeIndexingSource, registryExcludePaths } from "../ingestion/pipeline.js";
-import { checkChromaHealth, checkOllamaHealth, hasConfiguredModel } from "../rag.js";
+import { checkChromaHealth } from "../rag.js";
+import {
+  checkEmbeddingTarget,
+  DEFAULT_BUILTIN_EMBEDDING_MODEL,
+  type EmbeddingProvider,
+} from "../embeddings/index.js";
+import { describeEmbeddingReadiness } from "../readiness.js";
 import { recommendedActionFor, unique } from "../readiness.js";
 
 export type CollectionValidationIssue = {
@@ -33,6 +39,7 @@ export type CollectionValidationDraft = {
   displayName: string;
   description?: string;
   sourcePath: string;
+  embeddingProvider: EmbeddingProvider;
   embeddingModel: string;
   chunkSize: number;
   chunkOverlap: number;
@@ -45,7 +52,7 @@ export type CollectionValidationDraft = {
 
 export type CollectionValidationHealthChecks = {
   checkChromaHealth?: typeof checkChromaHealth;
-  checkOllamaHealth?: typeof checkOllamaHealth;
+  checkEmbeddingTarget?: typeof checkEmbeddingTarget;
 };
 
 function makeIssue(
@@ -70,10 +77,12 @@ const REINDEX_FIELDS = new Set([
   "distanceMetric",
   "chunkSize",
   "chunkOverlap",
+  "embeddingProvider",
   "embeddingModel",
 ]);
 
-const OLLAMA_FIELDS = new Set([
+const EMBEDDING_FIELDS = new Set([
+  "embeddingProvider",
   "embeddingModel",
 ]);
 
@@ -86,6 +95,7 @@ const VALIDATION_FIELD_ORDER = [
   "chunkOverlap",
   "retrievalK",
   "retrievalDistanceThreshold",
+  "embeddingProvider",
   "embeddingModel",
 ];
 
@@ -152,8 +162,26 @@ export function buildCreateCollectionInput(
     retrievalK: input.retrievalK ?? runtimeConfig.collectionDefaults.retrievalK,
     retrievalDistanceThreshold:
       input.retrievalDistanceThreshold ?? runtimeConfig.collectionDefaults.retrievalDistanceThreshold,
-    embeddingModel: input.embeddingModel ?? runtimeConfig.ollamaEmbeddingModel,
+    ...defaultEmbeddingForCreate(input, runtimeConfig),
   };
+}
+
+/**
+ * The configured embedding default applies to NEW collections only. A request may pick another provider;
+ * then the model defaults to that provider's default (builtin) or must be given (openai-compatible).
+ */
+function defaultEmbeddingForCreate(
+  input: Partial<CreateCollectionInput>,
+  runtimeConfig: ResolvedConfig,
+): { embeddingProvider: EmbeddingProvider; embeddingModel: string } {
+  const provider = input.embeddingProvider ?? runtimeConfig.embedding.provider;
+  if (input.embeddingModel) {
+    return { embeddingProvider: provider, embeddingModel: input.embeddingModel };
+  }
+  if (provider === runtimeConfig.embedding.provider) {
+    return { embeddingProvider: provider, embeddingModel: runtimeConfig.embedding.model };
+  }
+  return { embeddingProvider: provider, embeddingModel: provider === "builtin" ? DEFAULT_BUILTIN_EMBEDDING_MODEL : "" };
 }
 
 export function buildCreateValidationDraft(
@@ -170,6 +198,7 @@ export function buildCreateValidationDraft(
     displayName: input.displayName,
     description: input.description,
     sourcePath: input.sourcePath,
+    embeddingProvider: input.embeddingProvider ?? "builtin",
     embeddingModel: input.embeddingModel,
     chunkSize: input.chunkSize,
     chunkOverlap: input.chunkOverlap,
@@ -195,6 +224,7 @@ function buildChangedFields(collection: RagCollection, patch: UpdateCollectionPa
   pushIfChanged("chunkOverlap", collection.chunkOverlap);
   pushIfChanged("retrievalK", collection.retrievalK);
   pushIfChanged("retrievalDistanceThreshold", collection.retrievalDistanceThreshold);
+  pushIfChanged("embeddingProvider", collection.embeddingProvider);
   pushIfChanged("embeddingModel", collection.embeddingModel);
 
   return changed;
@@ -213,6 +243,7 @@ export function buildUpdateValidationDraft(
     displayName: patch.displayName ?? collection.displayName,
     description: patch.description ?? collection.description,
     sourcePath: patch.sourcePath ?? collection.sourcePath,
+    embeddingProvider: patch.embeddingProvider ?? collection.embeddingProvider,
     embeddingModel: patch.embeddingModel ?? collection.embeddingModel,
     chunkSize: patch.chunkSize ?? collection.chunkSize,
     chunkOverlap: patch.chunkOverlap ?? collection.chunkOverlap,
@@ -272,7 +303,7 @@ export async function validateCollectionDraft(
   const warnings: CollectionValidationIssue[] = [];
   const hasAnyChanges = draft.changedFields.length > 0;
   const requiresReindexChecks = draft.mode === "create" || !hasAnyChanges || hasChangedField(draft, REINDEX_FIELDS);
-  const requiresOllamaChecks = draft.mode === "create" || !hasAnyChanges || hasChangedField(draft, OLLAMA_FIELDS);
+  const requiresEmbeddingChecks = draft.mode === "create" || !hasAnyChanges || hasChangedField(draft, EMBEDDING_FIELDS);
   const requiresChromaChecks = draft.mode === "create" || !hasAnyChanges || hasChangedField(draft, REINDEX_FIELDS);
 
   if (draft.chunkOverlap >= draft.chunkSize) {
@@ -283,19 +314,15 @@ export async function validateCollectionDraft(
     ));
   }
 
-  const [sourceResult, ollamaResult, chromaResult, activePhysicalResult, activeJob] = await Promise.all([
+  const [sourceResult, embeddingResult, chromaResult, activePhysicalResult, activeJob] = await Promise.all([
     requiresReindexChecks
       ? analyzeSourcePath(draft, runtimeConfig)
       : Promise.resolve({ blockers: [], warnings: [] }),
-    requiresOllamaChecks
-      ? (healthChecks.checkOllamaHealth ?? checkOllamaHealth)(runtimeConfig).catch((error) => ({
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-        details: {
-          reachable: false,
-          availableModels: [],
-        },
-      }))
+    requiresEmbeddingChecks && draft.embeddingModel
+      ? (healthChecks.checkEmbeddingTarget ?? checkEmbeddingTarget)(runtimeConfig, {
+        provider: draft.embeddingProvider,
+        model: draft.embeddingModel,
+      })
       : Promise.resolve(null),
     requiresChromaChecks
       ? (healthChecks.checkChromaHealth ?? checkChromaHealth)(runtimeConfig).catch((error) => ({
@@ -326,28 +353,20 @@ export async function validateCollectionDraft(
   blockers.push(...sourceResult.blockers);
   warnings.push(...sourceResult.warnings);
 
-  if (ollamaResult) {
-    if (!ollamaResult.ok) {
-      blockers.push(makeIssue(
-        "OLLAMA_UNREACHABLE",
-        `Ollama is not reachable at ${runtimeConfig.ollamaBaseUrl}. ${ollamaResult.error ?? ""}`.trim(),
-        runtimeConfig,
-      ));
-    } else {
-      const availableModels = Array.isArray(ollamaResult.details?.availableModels)
-        ? ollamaResult.details.availableModels.filter((value): value is string => typeof value === "string")
-        : [];
+  if (requiresEmbeddingChecks && !draft.embeddingModel) {
+    blockers.push(makeIssue(
+      "EMBEDDING_MODEL_MISSING",
+      `An embedding model is required for the ${draft.embeddingProvider} provider.`,
+      runtimeConfig,
+    ));
+  }
 
-      if (hasChangedField(draft, OLLAMA_FIELDS) || draft.mode === "create" || !hasAnyChanges) {
-        if (!hasConfiguredModel(availableModels, draft.embeddingModel)) {
-          blockers.push(makeIssue(
-            "EMBED_MODEL_MISSING",
-            `Embedding model ${draft.embeddingModel} is missing in Ollama, so retrieval and indexing embeddings cannot run.`,
-            runtimeConfig,
-            `Pull the embedding model with: ollama pull ${draft.embeddingModel}`,
-          ));
-        }
-      }
+  if (embeddingResult) {
+    const embedding = describeEmbeddingReadiness(embeddingResult);
+    if (embedding.status === "fail") {
+      blockers.push(makeIssue(embedding.code, embedding.message, runtimeConfig));
+    } else if (embedding.status === "warn") {
+      warnings.push(makeIssue(embedding.code, embedding.message, runtimeConfig));
     }
   }
 

@@ -10,6 +10,12 @@ import { createSqliteCollectionRegistry } from "../../src/collections/sqliteRegi
 import { resolveReadableCollection as actualResolveReadableCollection } from "../../src/collections/resolveReadableCollection.js";
 import type { CollectionRegistry, RagCollection } from "../../src/collections/types.js";
 import type { ChatProviderStatus } from "../../src/chat.js";
+import {
+  builtinEmbeddingModelIds,
+  type EmbeddingModelCatalog,
+  type EmbeddingTarget,
+  type EmbeddingTargetStatus,
+} from "../../src/embeddings/index.js";
 import { config as loadedConfig, type ResolvedConfig } from "../../src/config.js";
 import type { IndexJobRunner } from "../../src/indexing/jobRunner.js";
 import type { RateLimitInput, RequestRateLimiter } from "../../src/http/rateLimit.js";
@@ -19,11 +25,19 @@ import { RagQueryError } from "../../src/rag.js";
 // These tests exercise the API contract, so they must not depend on operator choices that
 // `npm run onboard` writes to config/rag.config.yaml (models, rate limit, debug timings, admin auth).
 // Admin auth itself is covered in test/admin.auth.test.ts. Every `config.*` reference below uses
-// this pinned copy, which the Ollama stub (availableOllamaModels) is built to match.
+// this pinned copy. Embeddings use a fake openai-compatible service whose model listing is stubbed
+// (availableEmbeddingModels), so no test ever downloads a model or calls a real service.
 const TEST_CHAT_API_KEY = "test-secret-chat-key";
 const config = {
   ...loadedConfig,
-  ollamaEmbeddingModel: "bge-m3",
+  embedding: {
+    ...loadedConfig.embedding,
+    provider: "openai-compatible" as const,
+    model: "bge-m3",
+    baseUrl: "http://embed.test/v1",
+    apiKey: undefined,
+    apiKeySource: "none" as const,
+  },
   chat: {
     enabled: true,
     baseUrl: "http://chat.test/v1",
@@ -51,7 +65,7 @@ const operationalLogs: OperationalLogEvent[] = [];
 let resolveReadableCollectionOverride: typeof actualResolveReadableCollection | undefined;
 let retrieveOverride: AppRagRetrieveHandler | undefined;
 let answerOverride: AppRagAnswerHandler | undefined;
-let availableOllamaModels = ["gemma3:4b", "gemma3:4b-cloud", "gpt-oss:120b-cloud", "bge-m3:latest", "glm-5:cloud", "qwen3.5:cloud"];
+let availableEmbeddingModels = ["gemma3:4b", "gemma3:4b-cloud", "gpt-oss:120b-cloud", "bge-m3:latest", "glm-5:cloud", "qwen3.5:cloud"];
 const ollamaModelCapabilities: Record<string, string[]> = {
   "gemma3:4b": ["completion"],
   "gemma3:4b-cloud": ["completion", "vision"],
@@ -63,23 +77,84 @@ const ollamaModelCapabilities: Record<string, string[]> = {
   "chat-collection-specific": ["completion"],
   "embed-collection-specific": ["embedding"],
 };
-let ollamaModelDiscoveryReachable = true;
+let embeddingServiceReachable = true;
 let chromaHealthCalls = 0;
-let ollamaHealthCalls = 0;
+let embeddingCheckCalls = 0;
 
 type AppRagHandlers = NonNullable<AppDependencies["ragHandlers"]>;
 type AppRagRetrieveHandler = NonNullable<AppRagHandlers["retrieveSources"]>;
 type AppRagAnswerHandler = NonNullable<AppRagHandlers["answerQuestion"]>;
 
-async function stubOllamaModelDiscovery() {
+function normalizeTag(model: string): string {
+  return model.endsWith(":latest") ? model.slice(0, -":latest".length) : model;
+}
+
+/** Stand-in for checkEmbeddingTarget: builtin uses the real catalog; the external service lists availableEmbeddingModels. */
+async function stubEmbeddingTarget(runtimeConfig: ResolvedConfig, target: EmbeddingTarget): Promise<EmbeddingTargetStatus> {
+  embeddingCheckCalls += 1;
+  if (target.provider === "builtin") {
+    const supported = builtinEmbeddingModelIds().includes(target.model);
+    return { provider: "builtin", model: target.model, configured: true, supported, downloaded: true, ok: supported, latencyMs: 0 };
+  }
+  if (!runtimeConfig.embedding.baseUrl) {
+    return { provider: "openai-compatible", model: target.model, configured: false, supported: true, ok: false, latencyMs: 0 };
+  }
+  if (!embeddingServiceReachable) {
+    return {
+      provider: "openai-compatible",
+      model: target.model,
+      configured: true,
+      supported: true,
+      reachable: false,
+      authOk: false,
+      modelListed: "unknown",
+      ok: false,
+      latencyMs: 1,
+      error: "connect ECONNREFUSED",
+    };
+  }
+  const modelListed = availableEmbeddingModels.some((model) => normalizeTag(model) === normalizeTag(target.model));
   return {
-    reachable: ollamaModelDiscoveryReachable,
-    models: ollamaModelDiscoveryReachable ? availableOllamaModels : [],
-    embeddingModels: ollamaModelDiscoveryReachable
-      ? availableOllamaModels.filter((model) => (ollamaModelCapabilities[model] ?? []).includes("embedding"))
-      : [],
-    defaults: {
-      embeddingModel: config.ollamaEmbeddingModel,
+    provider: "openai-compatible",
+    model: target.model,
+    configured: true,
+    supported: true,
+    reachable: true,
+    authOk: true,
+    modelListed,
+    availableModels: availableEmbeddingModels,
+    ok: modelListed,
+    latencyMs: 1,
+  };
+}
+
+/** For fixtures that only need "this embedding works". */
+function availableEmbeddingStatus(target: EmbeddingTarget): EmbeddingTargetStatus {
+  return {
+    provider: target.provider,
+    model: target.model,
+    configured: true,
+    supported: true,
+    downloaded: true,
+    reachable: true,
+    authOk: true,
+    modelListed: true,
+    ok: true,
+    latencyMs: 0,
+  };
+}
+
+async function stubListEmbeddingModels(runtimeConfig: ResolvedConfig): Promise<EmbeddingModelCatalog> {
+  return {
+    default: { provider: runtimeConfig.embedding.provider, model: runtimeConfig.embedding.model },
+    providers: {
+      builtin: { models: builtinEmbeddingModelIds(), cacheDir: runtimeConfig.embedding.cacheDir },
+      "openai-compatible": {
+        configured: Boolean(runtimeConfig.embedding.baseUrl),
+        baseUrl: runtimeConfig.embedding.baseUrl || null,
+        reachable: embeddingServiceReachable,
+        models: embeddingServiceReachable ? availableEmbeddingModels : [],
+      },
     },
   };
 }
@@ -133,7 +208,8 @@ before(async () => {
         answerCalls.push({ ...options });
         return {
           answer: "stub-answer",
-          embeddingModel: options.embeddingModel ?? config.ollamaEmbeddingModel,
+          embeddingProvider: options.embeddingProvider,
+          embeddingModel: options.embeddingModel ?? config.embedding.model,
           chatModel: config.chat.model,
           distanceScoreThreshold: options.retrievalDistanceThreshold ?? -1,
           sources: [],
@@ -148,20 +224,8 @@ before(async () => {
       },
     },
     healthChecks: {
-      checkOllamaHealth: async () => {
-        ollamaHealthCalls += 1;
-        return {
-          ok: true,
-          latencyMs: 1,
-          details: {
-            reachable: true,
-            availableModels: availableOllamaModels,
-            missingModels: [],
-            embeddingModelAvailable: true,
-          },
-        };
-      },
-      checkOllamaModelDiscovery: stubOllamaModelDiscovery,
+      checkEmbeddingTarget: stubEmbeddingTarget,
+      listEmbeddingModels: stubListEmbeddingModels,
       checkChatProvider: stubChatProvider,
       checkChromaHealth: async (_runtimeConfig, options) => {
         chromaHealthCalls += 1;
@@ -235,8 +299,13 @@ async function startEphemeralApp(deps: AppDependencies): Promise<{ server: Serve
   const app = createApp({
     runtimeConfig: testRuntimeConfig,
     ...deps,
-    // Never let admin model preflight reach a real Ollama instance from tests.
-    healthChecks: { checkOllamaModelDiscovery: stubOllamaModelDiscovery, checkChatProvider: stubChatProvider, ...deps.healthChecks },
+    // Never let model checks reach a real embedding service or chat LLM from tests.
+    healthChecks: {
+      checkEmbeddingTarget: stubEmbeddingTarget,
+      listEmbeddingModels: stubListEmbeddingModels,
+      checkChatProvider: stubChatProvider,
+      ...deps.healthChecks,
+    },
   });
   let ephemeralServer!: Server;
   await new Promise<void>((resolve) => {
@@ -322,7 +391,7 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(saved.retrievalK, config.collectionDefaults.retrievalK);
     assert.equal(saved.retrievalDistanceThreshold, config.collectionDefaults.retrievalDistanceThreshold);
     assert.equal(saved.distanceMetric, config.collectionDefaults.distanceMetric);
-    assert.equal(saved.embeddingModel, config.ollamaEmbeddingModel);
+    assert.equal(saved.embeddingModel, config.embedding.model);
     // The chat LLM is global (config `chat`), not stored per collection.
     assert.equal("chatModel" in saved, false);
   });
@@ -331,7 +400,7 @@ describe("v1 admin and rag api endpoints", () => {
     retrieveCalls.length = 0;
     answerCalls.length = 0;
     chromaHealthCalls = 0;
-    ollamaHealthCalls = 0;
+    embeddingCheckCalls = 0;
     const response = await request("/v1/rag/collections");
     const body = await response.json() as any;
 
@@ -354,7 +423,7 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(retrieveCalls.length, 0);
     assert.equal(answerCalls.length, 0);
     assert.equal(chromaHealthCalls, 0);
-    assert.equal(ollamaHealthCalls, 0);
+    assert.equal(embeddingCheckCalls, 0);
   });
 
   it("GET /v1/rag/collections only returns collections visible to the request tenant", async () => {
@@ -510,6 +579,7 @@ describe("v1 admin and rag api endpoints", () => {
       reindex: true,
     });
     assert.deepEqual(body.modelAvailability, {
+      embeddingProvider: "openai-compatible",
       embeddingModel: createdCollection.embeddingModel,
       embeddingModelAvailable: true,
       chatModel: config.chat.model,
@@ -529,7 +599,7 @@ describe("v1 admin and rag api endpoints", () => {
       embeddingModel: "missing-embed-model",
     });
 
-    availableOllamaModels = ["gemma3:4b-cloud", "bge-m3:latest"];
+    availableEmbeddingModels = ["gemma3:4b-cloud", "bge-m3:latest"];
     chatProviderModelListed = false;
     try {
       const response = await request(`/v1/rag/collections/${createdCollection.id}/ready`);
@@ -537,13 +607,14 @@ describe("v1 admin and rag api endpoints", () => {
 
       assert.equal(response.status, 200);
       assert.deepEqual(body.modelAvailability, {
+        embeddingProvider: "openai-compatible",
         embeddingModel: "missing-embed-model",
         embeddingModelAvailable: false,
         chatModel: config.chat.model,
         chatModelAvailable: false,
       });
       assert.deepEqual(body.blockers.map((issue: any) => issue.code), [
-        "EMBED_MODEL_MISSING",
+        "EMBEDDING_MODEL_MISSING",
         "CHAT_MODEL_MISSING",
       ]);
       assert.deepEqual(body.warnings, [{
@@ -552,7 +623,7 @@ describe("v1 admin and rag api endpoints", () => {
         recommendedAction: "Wait for the current indexing job to finish before changing settings or starting another re-index.",
       }]);
       assert.deepEqual(body.recommendedActions, [
-        "Pull the embedding model with: ollama pull missing-embed-model",
+        "Use a model offered by the embedding service (see details.availableModels), or pull it there (for Ollama: ollama pull <model>).",
         `Use a model offered by ${config.chat.baseUrl} (see details.availableModels) or pull it there, e.g. ollama pull ${config.chat.model} for a local Ollama.`,
         "Wait for the current indexing job to finish before changing settings or starting another re-index.",
       ]);
@@ -562,7 +633,7 @@ describe("v1 admin and rag api endpoints", () => {
         reindex: true,
       });
     } finally {
-      availableOllamaModels = ["gemma3:4b", "gemma3:4b-cloud", "gpt-oss:120b-cloud", "bge-m3:latest", "glm-5:cloud", "qwen3.5:cloud"];
+      availableEmbeddingModels = ["gemma3:4b", "gemma3:4b-cloud", "gpt-oss:120b-cloud", "bge-m3:latest", "glm-5:cloud", "qwen3.5:cloud"];
       chatProviderModelListed = true;
     }
   });
@@ -785,6 +856,7 @@ describe("v1 admin and rag api endpoints", () => {
           }),
           answerQuestion: async (_question, options) => ({
             answer: "audit-answer",
+            embeddingProvider: options.embeddingProvider,
             embeddingModel: options.embeddingModel ?? "embed-audit",
             chatModel: "chat-audit",
             distanceScoreThreshold: options.retrievalDistanceThreshold ?? 0.5,
@@ -792,14 +864,9 @@ describe("v1 admin and rag api endpoints", () => {
           }),
           resolveReadableCollection: async () => auditCollection,
         },
-        // Keep the reindex model preflight off the real Ollama instance.
+        // Every embedding these audit fixtures use counts as available.
         healthChecks: {
-          checkOllamaModelDiscovery: async () => ({
-            reachable: true,
-            models: ["embed-audit", "embed-peer", "embed-other"],
-            embeddingModels: ["embed-audit", "embed-peer", "embed-other"],
-            defaults: { embeddingModel: config.ollamaEmbeddingModel },
-          }),
+          checkEmbeddingTarget: async (_runtimeConfig: ResolvedConfig, target: EmbeddingTarget) => availableEmbeddingStatus(target),
         },
         logEvent: () => {},
       });
@@ -1133,7 +1200,8 @@ describe("v1 admin and rag api endpoints", () => {
           assert.equal(options.includeDebugTimings, true);
           return {
             answer: "debug-answer",
-            embeddingModel: options.embeddingModel ?? config.ollamaEmbeddingModel,
+            embeddingProvider: options.embeddingProvider,
+          embeddingModel: options.embeddingModel ?? config.embedding.model,
             chatModel: config.chat.model,
             distanceScoreThreshold: 0.4,
             sources: [],
@@ -1178,7 +1246,7 @@ describe("v1 admin and rag api endpoints", () => {
     let collection = await retrieveOnlyRegistry.createCollection(ctx, {
       displayName: "Retrieve Only",
       sourcePath: "data/retrieve-only",
-      embeddingModel: config.ollamaEmbeddingModel,
+      embeddingModel: config.embedding.model,
       distanceMetric: "l2",
       chunkSize: 100,
       chunkOverlap: 0,
@@ -1207,11 +1275,7 @@ describe("v1 admin and rag api endpoints", () => {
         },
       },
       healthChecks: {
-        checkOllamaHealth: async () => ({
-          ok: true,
-          latencyMs: 1,
-          details: { reachable: true, availableModels: availableOllamaModels, missingModels: [], embeddingModelAvailable: true },
-        }),
+        checkEmbeddingTarget: async (_runtimeConfig: ResolvedConfig, target: EmbeddingTarget) => availableEmbeddingStatus(target),
         checkChromaHealth: async () => ({
           ok: true,
           latencyMs: 1,
@@ -1534,23 +1598,18 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(body.blockers.some((issue: any) => issue.code === "COLLECTION_ACTIVE_PHYSICAL_UNREADABLE"), false);
   });
 
-  it("GET /v1/admin/models returns discovered Ollama models and runtime defaults", async () => {
-    const response = await request("/v1/admin/models", {
-      method: "GET",
-    });
+  it("GET /v1/admin/models lists embedding models per provider and the default for new collections", async () => {
+    const response = await request("/v1/admin/models", { method: "GET" });
     const body = await response.json() as any;
 
     assert.equal(response.status, 200);
-    assert.equal(body.reachable, true);
-    assert.deepEqual(body.defaults, {
-      embeddingModel: config.ollamaEmbeddingModel,
-    });
-    assert.ok(Array.isArray(body.models));
-    assert.ok(Array.isArray(body.embeddingModels));
-    // Ollama discovery is for embedding models only; the chat LLM is configured globally.
+    assert.deepEqual(body.default, { provider: "openai-compatible", model: config.embedding.model });
+    assert.deepEqual(body.providers.builtin.models, builtinEmbeddingModelIds());
+    assert.equal(body.providers["openai-compatible"].configured, true);
+    assert.equal(body.providers["openai-compatible"].reachable, true);
+    assert.ok(body.providers["openai-compatible"].models.includes("bge-m3:latest"));
+    // The chat LLM is configured globally, not discovered here.
     assert.equal("chatModels" in body, false);
-    assert.ok(body.embeddingModels.some((model: string) => model.startsWith("bge-m3")));
-    assert.ok(body.models.includes("gpt-oss:120b-cloud"));
   });
 
   it("GET /v1/admin/config/defaults returns runtime create defaults", async () => {
@@ -1574,7 +1633,8 @@ describe("v1 admin and rag api endpoints", () => {
       retrievalDistanceThreshold: config.collectionDefaults.retrievalDistanceThreshold,
     });
     assert.deepEqual(body.modelDefaults, {
-      embeddingModel: config.ollamaEmbeddingModel,
+      embeddingProvider: config.embedding.provider,
+      embeddingModel: config.embedding.model,
     });
     assert.deepEqual(body.chat, {
       enabled: true,
@@ -1585,25 +1645,21 @@ describe("v1 admin and rag api endpoints", () => {
     assert.ok(!JSON.stringify(body).includes(TEST_CHAT_API_KEY));
   });
 
-  it("GET /v1/admin/models soft-fails when Ollama discovery is unavailable", async () => {
-    const previousReachable = ollamaModelDiscoveryReachable;
-    ollamaModelDiscoveryReachable = false;
+  it("GET /v1/admin/models soft-fails when the embedding service is unavailable", async () => {
+    const previousReachable = embeddingServiceReachable;
+    embeddingServiceReachable = false;
 
     try {
-      const response = await request("/v1/admin/models", {
-        method: "GET",
-      });
+      const response = await request("/v1/admin/models", { method: "GET" });
       const body = await response.json() as any;
 
       assert.equal(response.status, 200);
-      assert.equal(body.reachable, false);
-      assert.deepEqual(body.models, []);
-      assert.deepEqual(body.embeddingModels, []);
-      assert.deepEqual(body.defaults, {
-        embeddingModel: config.ollamaEmbeddingModel,
-      });
+      assert.equal(body.providers["openai-compatible"].reachable, false);
+      assert.deepEqual(body.providers["openai-compatible"].models, []);
+      // Built-in models are always listed.
+      assert.deepEqual(body.providers.builtin.models, builtinEmbeddingModelIds());
     } finally {
-      ollamaModelDiscoveryReachable = previousReachable;
+      embeddingServiceReachable = previousReachable;
     }
   });
 
@@ -1636,13 +1692,18 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(body.code, "INVALID_REQUEST_BODY");
   });
 
-  describe("Ollama model preflight", () => {
+  describe("Embedding model preflight", () => {
     const preflightCtx = { tenantId: "default", userId: "local-dev", requestId: "model-preflight" };
 
-    async function createRegistryCollection(displayName: string, embeddingModel: string) {
+    async function createRegistryCollection(
+      displayName: string,
+      embeddingModel: string,
+      embeddingProvider: "builtin" | "openai-compatible" = "openai-compatible",
+    ) {
       return registry.createCollection(preflightCtx, {
         displayName,
         sourcePath: "data",
+        embeddingProvider,
         embeddingModel,
         distanceMetric: "l2",
         chunkSize: 500,
@@ -1668,10 +1729,9 @@ describe("v1 admin and rag api endpoints", () => {
       assert.equal(response.status, 422);
       assert.equal(body.code, "UNAVAILABLE_MODEL");
       assert.match(body.message, /Collection cannot be created\./);
-      assert.match(body.message, /Embedding model 'not-pulled-embed' is not available in Ollama/);
-      assert.deepEqual(body.details.missingModels, [{ role: "embedding", name: "not-pulled-embed" }]);
-      assert.deepEqual(body.details.availableModels, availableOllamaModels);
-      assert.deepEqual(body.details.recommendedActions, ["ollama pull not-pulled-embed"]);
+      assert.match(body.message, /Embedding model 'not-pulled-embed' is not offered by the embedding service/);
+      assert.equal(body.details.embeddingProvider, "openai-compatible");
+      assert.deepEqual(body.details.availableModels, availableEmbeddingModels);
       assert.equal(await countVisibleCollections(), before);
     });
 
@@ -1690,7 +1750,7 @@ describe("v1 admin and rag api endpoints", () => {
     });
 
     it("POST /v1/admin/collections accepts ':latest'-tagged models for untagged names", async () => {
-      // availableOllamaModels contains "bge-m3:latest"; the request uses "bge-m3".
+      // availableEmbeddingModels contains "bge-m3:latest"; the request uses "bge-m3".
       const response = await request("/v1/admin/collections", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1700,25 +1760,25 @@ describe("v1 admin and rag api endpoints", () => {
       assert.equal(response.status, 201);
     });
 
-    it("POST /v1/admin/collections returns 503 OLLAMA_UNREACHABLE when Ollama is down and creates nothing", async () => {
-      const previousReachable = ollamaModelDiscoveryReachable;
-      ollamaModelDiscoveryReachable = false;
+    it("POST /v1/admin/collections returns 503 EMBEDDING_PROVIDER_UNREACHABLE when the service is down and creates nothing", async () => {
+      const previousReachable = embeddingServiceReachable;
+      embeddingServiceReachable = false;
       const before = await countVisibleCollections();
 
       try {
         const response = await request("/v1/admin/collections", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ displayName: "Preflight Ollama Down" }),
+          body: JSON.stringify({ displayName: "Preflight Service Down" }),
         });
         const body = await response.json() as any;
 
         assert.equal(response.status, 503);
-        assert.equal(body.code, "OLLAMA_UNREACHABLE");
-        assert.equal(body.details.ollamaBaseUrl, config.ollamaBaseUrl);
+        assert.equal(body.code, "EMBEDDING_PROVIDER_UNREACHABLE");
+        assert.equal(body.details.embeddingBaseUrl, config.embedding.baseUrl);
         assert.equal(await countVisibleCollections(), before);
       } finally {
-        ollamaModelDiscoveryReachable = previousReachable;
+        embeddingServiceReachable = previousReachable;
       }
     });
 
@@ -1730,32 +1790,76 @@ describe("v1 admin and rag api endpoints", () => {
 
       assert.equal(response.status, 422);
       assert.equal(body.code, "UNAVAILABLE_MODEL");
-      assert.match(body.message, /^Re-index cannot start\. Embedding model 'not-pulled-embed' is not available in Ollama\./);
-      assert.deepEqual(body.details.recommendedActions, ["ollama pull not-pulled-embed"]);
+      assert.match(body.message, /^Re-index cannot start\. Embedding model 'not-pulled-embed' is not offered by the embedding service\./);
       assert.equal(await registry.getActiveJobForCollection(preflightCtx, collection.id), null);
       const unchanged = await registry.getVisibleCollection(preflightCtx, collection.id);
       assert.notEqual(unchanged?.status, "indexing");
     });
 
-    it("POST /v1/admin/collections/:id/reindex returns 503 OLLAMA_UNREACHABLE when Ollama is down", async () => {
-      const collection = await createRegistryCollection("Preflight Reindex Ollama Down", config.ollamaEmbeddingModel);
-      const previousReachable = ollamaModelDiscoveryReachable;
-      ollamaModelDiscoveryReachable = false;
+    it("POST /v1/admin/collections/:id/reindex returns 503 EMBEDDING_PROVIDER_UNREACHABLE when the service is down", async () => {
+      const collection = await createRegistryCollection("Preflight Reindex Service Down", config.embedding.model);
+      const previousReachable = embeddingServiceReachable;
+      embeddingServiceReachable = false;
 
       try {
         const response = await request(`/v1/admin/collections/${collection.id}/reindex`, { method: "POST" });
         const body = await response.json() as any;
 
         assert.equal(response.status, 503);
-        assert.equal(body.code, "OLLAMA_UNREACHABLE");
+        assert.equal(body.code, "EMBEDDING_PROVIDER_UNREACHABLE");
         assert.equal(await registry.getActiveJobForCollection(preflightCtx, collection.id), null);
       } finally {
-        ollamaModelDiscoveryReachable = previousReachable;
+        embeddingServiceReachable = previousReachable;
+      }
+    });
+
+    it("POST /v1/admin/collections accepts the builtin provider without a download and rejects unknown built-in models", async () => {
+      const accepted = await request("/v1/admin/collections", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayName: "Preflight Builtin", embeddingProvider: "builtin" }),
+      });
+      assert.equal(accepted.status, 201);
+      const createdId = (await accepted.json() as any).collection.id;
+      const saved = await registry.getVisibleCollection(preflightCtx, createdId);
+      // Another provider than the configured default: its own default model is used.
+      assert.equal(saved?.embeddingProvider, "builtin");
+      assert.equal(saved?.embeddingModel, builtinEmbeddingModelIds()[0]);
+
+      const rejected = await request("/v1/admin/collections", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayName: "Preflight Unknown Builtin", embeddingProvider: "builtin", embeddingModel: "not-in-catalog" }),
+      });
+      const body = await rejected.json() as any;
+      assert.equal(rejected.status, 422);
+      assert.equal(body.code, "UNAVAILABLE_MODEL");
+      assert.deepEqual(body.details.availableModels, builtinEmbeddingModelIds());
+    });
+
+    it("POST /v1/admin/collections rejects openai-compatible when no embedding service is configured", async () => {
+      const builtinOnly = await startEphemeralApp({
+        registry,
+        jobRunner,
+        runtimeConfig: { ...testRuntimeConfig, embedding: { ...testRuntimeConfig.embedding, provider: "builtin", model: builtinEmbeddingModelIds()[0], baseUrl: "" } },
+        logEvent: () => {},
+      });
+      try {
+        const response = await fetch(`${builtinOnly.baseUrl}/v1/admin/collections`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ displayName: "Needs External", embeddingProvider: "openai-compatible", embeddingModel: "nomic-embed-text" }),
+        });
+        const body = await response.json() as any;
+        assert.equal(response.status, 422);
+        assert.equal(body.code, "EMBEDDING_PROVIDER_NOT_CONFIGURED");
+      } finally {
+        await stopServer(builtinOnly.server);
       }
     });
 
     it("POST /v1/admin/collections/:id/reindex reports an active job (409) before probing models", async () => {
-      const collection = await createRegistryCollection("Preflight Reindex Conflict", config.ollamaEmbeddingModel);
+      const collection = await createRegistryCollection("Preflight Reindex Conflict", config.embedding.model);
       const first = await request(`/v1/admin/collections/${collection.id}/reindex`, { method: "POST" });
       assert.equal(first.status, 202);
       const firstBody = await first.json() as any;
@@ -2735,7 +2839,8 @@ describe("v1 admin and rag api endpoints", () => {
     const created = await registry.createCollection(ctx, {
       displayName: 'API Cancel Test',
       sourcePath: 'data',
-      embeddingModel: config.ollamaEmbeddingModel,
+      embeddingProvider: config.embedding.provider,
+      embeddingModel: config.embedding.model,
       distanceMetric: 'l2',
       chunkSize: 500,
       chunkOverlap: 50,

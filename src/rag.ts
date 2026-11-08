@@ -1,10 +1,18 @@
 import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { OllamaEmbeddings } from "@langchain/ollama";
 import { ChromaClient, type ChromaClientArgs } from "chromadb";
 import { assertChromaCollectionReadable } from "./collections/chromaCollections.js";
 import { classifyChatError, createChatModel } from "./chat.js";
 import { config, type DistanceMetric, type ResolvedConfig } from "./config.js";
+import {
+  BuiltinModelLoadError,
+  defaultEmbeddingTarget,
+  EmbeddingProviderNotConfiguredError,
+  getEmbeddings,
+  type EmbeddingProvider,
+  type EmbeddingTarget,
+} from "./embeddings/index.js";
+import { classifyProviderError } from "./providers/openaiCompatible.js";
 import { Semaphore } from "./http/semaphore.js";
 import { toPortablePath } from "./paths.js";
 import type { RequestContext } from "./http/requestContext.js";
@@ -47,29 +55,6 @@ export type ChromaHealthDetails = {
   collectionCount?: number;
 };
 
-export type OllamaHealthDetails = {
-  reachable: boolean;
-  availableModels: string[];
-  missingModels: string[];
-  embeddingModelAvailable: boolean;
-};
-
-export type OllamaModelDiscovery = {
-  reachable: boolean;
-  models: string[];
-  embeddingModels: string[];
-  defaults: {
-    embeddingModel: string;
-  };
-  error?: string;
-};
-
-type OllamaTagModel = {
-  name?: string;
-  model?: string;
-  capabilities?: string[];
-};
-
 export type EmbeddingHealthDetails = {
   probeText: string;
   vectorLength?: number;
@@ -88,7 +73,11 @@ export type RagQueryErrorCode =
   | "MODEL_BACKPRESSURE"
   | "CHAT_NOT_CONFIGURED"
   | "CHAT_PROVIDER_UNREACHABLE"
-  | "CHAT_PROVIDER_ERROR";
+  | "CHAT_PROVIDER_ERROR"
+  | "EMBEDDING_PROVIDER_NOT_CONFIGURED"
+  | "EMBEDDING_PROVIDER_UNREACHABLE"
+  | "EMBEDDING_PROVIDER_ERROR"
+  | "EMBEDDING_DIMENSION_MISMATCH";
 
 type RagQueryErrorDetails = Record<string, unknown>;
 
@@ -115,64 +104,6 @@ export class RagQueryError extends Error {
 
 export function isRagQueryError(error: unknown): error is RagQueryError {
   return error instanceof RagQueryError;
-}
-
-function createEmbeddings(runtimeConfig: ResolvedConfig, modelName = runtimeConfig.ollamaEmbeddingModel): OllamaEmbeddings {
-  return new OllamaEmbeddings({
-    model: modelName,
-    baseUrl: runtimeConfig.ollamaBaseUrl,
-  });
-}
-
-function isEmbeddingModel(model: OllamaTagModel): boolean {
-  return Array.isArray(model.capabilities) && model.capabilities.includes("embedding");
-}
-
-export async function getOllamaModelDiscovery(runtimeConfig = config): Promise<OllamaModelDiscovery> {
-  const discovery: OllamaModelDiscovery = {
-    reachable: false,
-    models: [],
-    embeddingModels: [],
-    defaults: {
-      embeddingModel: runtimeConfig.ollamaEmbeddingModel,
-    },
-  };
-
-  try {
-    const response = await fetch(new URL("/api/tags", runtimeConfig.ollamaBaseUrl), {
-      headers: {
-        accept: "application/json",
-      },
-      signal: AbortSignal.timeout(runtimeConfig.readyTimeoutMs),
-    });
-
-    if (!response.ok) {
-      discovery.error = `Ollama returned HTTP ${response.status}`;
-      return discovery;
-    }
-
-    const data = (await response.json()) as {
-      models?: OllamaTagModel[];
-    };
-
-    discovery.reachable = true;
-    const allModels = [...new Set(
-      (data.models ?? [])
-        .map((modelInfo) => modelInfo.name ?? modelInfo.model)
-        .filter((modelName): modelName is string => Boolean(modelName)),
-    )];
-    discovery.models = allModels;
-    discovery.embeddingModels = [...new Set(
-      (data.models ?? [])
-        .filter(isEmbeddingModel)
-        .map((modelInfo) => modelInfo.name ?? modelInfo.model)
-        .filter((modelName): modelName is string => Boolean(modelName)),
-    )];
-    return discovery;
-  } catch (error) {
-    discovery.error = errorMessage(error);
-    return discovery;
-  }
 }
 
 export function chromaClientParams(runtimeConfig: ResolvedConfig): Omit<ChromaClientArgs, "path"> {
@@ -211,17 +142,6 @@ function wrapNetworkError(error: unknown, context: string): never {
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string, abortSignal?: AbortSignal): Promise<T> {
   return withTimeoutAndAbort({ promise, timeoutMs, label, abortSignal });
-}
-
-function normalizeOllamaModelName(modelName: string): string {
-  return modelName.endsWith(":latest") ? modelName.slice(0, -":latest".length) : modelName;
-}
-
-export function hasConfiguredModel(availableModels: string[], configuredModel: string): boolean {
-  const normalizedConfiguredModel = normalizeOllamaModelName(configuredModel);
-  return availableModels.some(
-    (availableModel) => normalizeOllamaModelName(availableModel) === normalizedConfiguredModel,
-  );
 }
 
 const embeddingSemaphores = new Map<number, Semaphore>();
@@ -293,55 +213,18 @@ export async function checkChromaHealth(
   }
 }
 
-export async function checkOllamaHealth(runtimeConfig = config): Promise<DependencyHealth> {
+/**
+ * Real embedding smoke test (one short text). Used by onboarding only: for a built-in model it would
+ * trigger the download, and on a paid API it costs a request, so /ready never calls it.
+ */
+export async function checkEmbeddingHealth(
+  runtimeConfig = config,
+  target: EmbeddingTarget = defaultEmbeddingTarget(runtimeConfig),
+): Promise<DependencyHealth> {
   const startedAt = Date.now();
-  const details: OllamaHealthDetails = {
-    reachable: false,
-    availableModels: [],
-    missingModels: [],
-    embeddingModelAvailable: false,
-  };
 
   try {
-    const discovery = await getOllamaModelDiscovery(runtimeConfig);
-    if (!discovery.reachable) {
-      return {
-        ok: false,
-        latencyMs: Date.now() - startedAt,
-        error: discovery.error ?? `Ollama is not reachable at ${runtimeConfig.ollamaBaseUrl}.`,
-        details,
-      };
-    }
-    details.reachable = discovery.reachable;
-    details.availableModels = discovery.models;
-    details.embeddingModelAvailable = hasConfiguredModel(
-      details.availableModels,
-      runtimeConfig.ollamaEmbeddingModel,
-    );
-    details.missingModels = [runtimeConfig.ollamaEmbeddingModel].filter(
-      (modelName) => !hasConfiguredModel(details.availableModels, modelName),
-    );
-
-    return {
-      ok: true,
-      latencyMs: Date.now() - startedAt,
-      details,
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      latencyMs: Date.now() - startedAt,
-      error: errorMessage(error),
-      details,
-    };
-  }
-}
-
-export async function checkEmbeddingHealth(runtimeConfig = config): Promise<DependencyHealth> {
-  const startedAt = Date.now();
-  const embeddings = createEmbeddings(runtimeConfig);
-
-  try {
+    const embeddings = getEmbeddings(runtimeConfig, target);
     const vector = await withTimeout(
       embeddings.embedQuery(runtimeConfig.readyEmbedProbeText),
       runtimeConfig.readyTimeoutMs,
@@ -374,25 +257,33 @@ export async function checkEmbeddingHealth(runtimeConfig = config): Promise<Depe
 export function createVectorStore(input: {
   collectionName: string;
   runtimeConfig: ResolvedConfig;
-  embeddingModel?: string;
+  embeddingProvider: EmbeddingProvider;
+  embeddingModel: string;
 }): Chroma {
   const runtimeConfig = input.runtimeConfig;
+  const embeddings = getEmbeddings(runtimeConfig, { provider: input.embeddingProvider, model: input.embeddingModel });
 
-  return new Chroma(createEmbeddings(runtimeConfig, input.embeddingModel), {
+  return new Chroma(embeddings, {
     collectionName: input.collectionName,
     clientParams: chromaClientParams(runtimeConfig),
   });
 }
 
+/**
+ * Settings for one read. The embedding always comes from the collection (its active provider/model):
+ * the configured default only applies to new collections, so there is deliberately no fallback here.
+ */
 export function resolveCollectionRuntimeSettings(
   runtimeConfig: ResolvedConfig,
   overrides: {
-    embeddingModel?: string;
+    embeddingProvider: EmbeddingProvider;
+    embeddingModel: string;
     retrievalDistanceThreshold?: number;
-  } = {},
+  },
 ) {
   return {
-    embeddingModel: overrides.embeddingModel ?? runtimeConfig.ollamaEmbeddingModel,
+    embeddingProvider: overrides.embeddingProvider,
+    embeddingModel: overrides.embeddingModel,
     chatModel: runtimeConfig.chat.model,
     retrievalDistanceThreshold: overrides.retrievalDistanceThreshold ?? runtimeConfig.retrievalDistanceThreshold,
   };
@@ -563,6 +454,44 @@ function isLegacyFallbackAnswer(value: string): boolean {
   );
 }
 
+/** Chroma: "Collection expecting embedding with dimension of 768, got 1024". */
+function parseDimensionMismatch(error: unknown): { expected: number; got: number } | null {
+  const match = /expecting embedding with dimension of (\d+), got (\d+)/i.exec(errorMessage(error));
+  return match ? { expected: Number(match[1]), got: Number(match[2]) } : null;
+}
+
+/** Maps a failed query embedding to a clear API error; API keys are never included. */
+function toEmbeddingError(error: unknown, runtimeConfig: ResolvedConfig, details: Record<string, unknown>): unknown {
+  if (error instanceof EmbeddingProviderNotConfiguredError) {
+    return new RagQueryError("EMBEDDING_PROVIDER_NOT_CONFIGURED", error.message, 503, details);
+  }
+  if (error instanceof BuiltinModelLoadError) {
+    return new RagQueryError("EMBEDDING_PROVIDER_UNREACHABLE", error.message, 503, details);
+  }
+
+  const classified = classifyProviderError(error, runtimeConfig.embedding.apiKey);
+  switch (classified.kind) {
+    case "timeout":
+      return new RagQueryError("MODEL_BACKPRESSURE", "Query embedding timed out or the request was aborted.", 503, details);
+    case "unreachable":
+      return new RagQueryError(
+        "EMBEDDING_PROVIDER_UNREACHABLE",
+        `The embedding provider at ${runtimeConfig.embedding.baseUrl} could not be reached: ${classified.message}`,
+        503,
+        details,
+      );
+    case "provider":
+      return new RagQueryError(
+        "EMBEDDING_PROVIDER_ERROR",
+        `The embedding provider returned HTTP ${classified.upstreamStatus}: ${classified.message}`,
+        502,
+        { ...details, upstreamStatus: classified.upstreamStatus, providerMessage: classified.message },
+      );
+    default:
+      return error;
+  }
+}
+
 function timeoutError(label: string, timeoutMs: number): Error {
   return new Error(`${label} timed out after ${timeoutMs}ms.`);
 }
@@ -574,7 +503,9 @@ export async function retrieveSources(
     collectionName: string;
     k?: number;
     runtimeConfig: ResolvedConfig;
-    embeddingModel?: string;
+    /** The collection's active embedding: queries must use the provider/model the index was built with. */
+    embeddingProvider: EmbeddingProvider;
+    embeddingModel: string;
     retrievalDistanceThreshold?: number;
     context?: RequestContext;
     abortSignal?: AbortSignal;
@@ -586,9 +517,15 @@ export async function retrieveSources(
   const startedAt = Date.now();
   const k = options.k ?? runtimeConfig.retrievalK;
   const settings = resolveCollectionRuntimeSettings(runtimeConfig, {
+    embeddingProvider: options.embeddingProvider,
     embeddingModel: options.embeddingModel,
     retrievalDistanceThreshold: options.retrievalDistanceThreshold,
   });
+  const embeddingDetails = {
+    collectionName: options.collectionName,
+    embeddingProvider: settings.embeddingProvider,
+    embeddingModel: settings.embeddingModel,
+  };
 
   try {
     await assertChromaCollectionReadable({
@@ -597,23 +534,33 @@ export async function retrieveSources(
       timeoutMs: runtimeConfig.ragTimeoutMs,
     });
 
+    const semaphore = getEmbeddingSemaphore(runtimeConfig);
+    const retrievalStartedAt = Date.now();
+
+    let queryVector: number[];
+    try {
+      const embeddings = getEmbeddings(runtimeConfig, { provider: settings.embeddingProvider, model: settings.embeddingModel });
+      queryVector = await semaphore.run(
+        () => withTimeout(embeddings.embedQuery(question), runtimeConfig.ragTimeoutMs, "Query embedding"),
+        runtimeConfig.ragTimeoutMs,
+      );
+    } catch (error) {
+      throw toEmbeddingError(error, runtimeConfig, embeddingDetails);
+    }
+
     const vectorStore = createVectorStore({
       collectionName: options.collectionName,
       runtimeConfig,
+      embeddingProvider: settings.embeddingProvider,
       embeddingModel: settings.embeddingModel,
     });
 
-    const semaphore = getEmbeddingSemaphore(runtimeConfig);
-    const retrievalStartedAt = Date.now();
     let docsWithScores;
     try {
-      docsWithScores = await semaphore.run(
-        () => withTimeout(
-          vectorStore.similaritySearchWithScore(question, k),
-          runtimeConfig.ragTimeoutMs,
-          "Chroma vector search",
-        ),
+      docsWithScores = await withTimeout(
+        vectorStore.similaritySearchVectorWithScore(queryVector, k),
         runtimeConfig.ragTimeoutMs,
+        "Chroma vector search",
       );
     } catch (error) {
       if (isTimeoutOrAbortError(error)) {
@@ -621,10 +568,16 @@ export async function retrieveSources(
           "MODEL_BACKPRESSURE",
           "RAG retrieval timed out or the request was aborted.",
           503,
-          {
-            collectionName: options.collectionName,
-            embeddingModel: settings.embeddingModel,
-          },
+          embeddingDetails,
+        );
+      }
+      const mismatch = parseDimensionMismatch(error);
+      if (mismatch) {
+        throw new RagQueryError(
+          "EMBEDDING_DIMENSION_MISMATCH",
+          `The collection was indexed with ${mismatch.expected}-dimensional vectors, but ${settings.embeddingProvider}/${settings.embeddingModel} produces ${mismatch.got}. Re-index this collection.`,
+          409,
+          { ...embeddingDetails, expectedDimensions: mismatch.expected, gotDimensions: mismatch.got },
         );
       }
       wrapNetworkError(error, "retrieval");
@@ -699,7 +652,8 @@ export async function answerQuestion(question: string, options: {
   collectionName: string;
   runtimeConfig: ResolvedConfig;
   retrievalK?: number;
-  embeddingModel?: string;
+  embeddingProvider: EmbeddingProvider;
+  embeddingModel: string;
   retrievalDistanceThreshold?: number;
   context?: RequestContext;
   abortSignal?: AbortSignal;
@@ -707,6 +661,7 @@ export async function answerQuestion(question: string, options: {
   logEvent?: OperationalLogSink;
 }): Promise<{
   answer: string;
+  embeddingProvider: EmbeddingProvider;
   embeddingModel: string;
   chatModel: string;
   distanceScoreThreshold: number;
@@ -729,6 +684,7 @@ export async function answerQuestion(question: string, options: {
     );
   }
   const settings = resolveCollectionRuntimeSettings(runtimeConfig, {
+    embeddingProvider: options.embeddingProvider,
     embeddingModel: options.embeddingModel,
     retrievalDistanceThreshold: options.retrievalDistanceThreshold,
   });
@@ -758,6 +714,7 @@ export async function answerQuestion(question: string, options: {
       collectionId: options.collectionId,
       k,
       runtimeConfig,
+      embeddingProvider: settings.embeddingProvider,
       embeddingModel: settings.embeddingModel,
       retrievalDistanceThreshold: settings.retrievalDistanceThreshold,
       context: options.context,
@@ -927,6 +884,7 @@ export async function answerQuestion(question: string, options: {
 
     return {
       answer,
+      embeddingProvider: settings.embeddingProvider,
       embeddingModel: settings.embeddingModel,
       chatModel: settings.chatModel,
       distanceScoreThreshold: retrieval.distanceScoreThreshold,

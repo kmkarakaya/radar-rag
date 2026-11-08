@@ -15,8 +15,8 @@ import {
   validateCollectionDraft,
 } from "./collectionValidation.js";
 import { createAdminAuthService, type AdminAuthService } from "./adminAuth.js";
-import { getOllamaModelDiscovery } from "../rag.js";
-import { assertOllamaModelsAvailable } from "./modelAvailability.js";
+import { listEmbeddingModels } from "../embeddings/index.js";
+import { assertEmbeddingAvailable } from "./modelAvailability.js";
 
 const JOB_STATUS_VALUES = ["queued", "running", "succeeded", "failed", "cancelled"] as const satisfies readonly IndexJobStatus[];
 
@@ -341,8 +341,10 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
         retrievalK: runtimeConfig.collectionDefaults.retrievalK,
         retrievalDistanceThreshold: runtimeConfig.collectionDefaults.retrievalDistanceThreshold,
       },
+      // Embedding defaults for NEW collections; existing collections keep their own provider/model.
       modelDefaults: {
-        embeddingModel: runtimeConfig.ollamaEmbeddingModel,
+        embeddingProvider: runtimeConfig.embedding.provider,
+        embeddingModel: runtimeConfig.embedding.model,
       },
       // Global, optional chat LLM for /query (set via onboarding or RAG_CHAT_*). The API key is never returned.
       chat: {
@@ -367,13 +369,11 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
 
       const input: CreateCollectionInput = buildCreateCollectionInput(parsed.data, runtimeConfig);
 
-      await assertOllamaModelsAvailable({
+      await assertEmbeddingAvailable({
         runtimeConfig,
-        required: [
-          { role: "embedding", name: input.embeddingModel },
-        ],
+        target: { provider: input.embeddingProvider ?? runtimeConfig.embedding.provider, model: input.embeddingModel },
         action: "Collection cannot be created.",
-        discover: deps.healthChecks?.checkOllamaModelDiscovery,
+        check: deps.healthChecks?.checkEmbeddingTarget,
       });
 
       const collection = await deps.registry!.createCollection(context, input);
@@ -399,13 +399,8 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
 
   router.get("/models", async (_req, res, next) => {
     try {
-      const discovery = await (deps.healthChecks?.checkOllamaModelDiscovery ?? getOllamaModelDiscovery)(runtimeConfig);
-      res.json({
-        reachable: discovery.reachable,
-        models: discovery.models,
-        embeddingModels: discovery.embeddingModels,
-        defaults: discovery.defaults,
-      });
+      // Embedding model suggestions per provider (builtin catalog + the openai-compatible service's GET /models).
+      res.json(await (deps.healthChecks?.listEmbeddingModels ?? listEmbeddingModels)(runtimeConfig));
     } catch (error) {
       next(error);
     }
@@ -573,11 +568,12 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       }
 
       // Indexing only needs the embedding model; the optional chat LLM is never involved.
-      await assertOllamaModelsAvailable({
+      // The job builds with the collection's desired (saved) embedding.
+      await assertEmbeddingAvailable({
         runtimeConfig,
-        required: [{ role: "embedding", name: collection.embeddingModel }],
+        target: { provider: collection.embeddingProvider, model: collection.embeddingModel },
         action: "Re-index cannot start.",
-        discover: deps.healthChecks?.checkOllamaModelDiscovery,
+        check: deps.healthChecks?.checkEmbeddingTarget,
       });
 
       const job = await startReindexJob({

@@ -11,7 +11,7 @@ import {
   createChatModel,
   redactSecret,
 } from "../src/chat.js";
-import { config, legacyConfigWarnings, parseConfig, resolveConfig, type ResolvedConfig } from "../src/config.js";
+import { config, parseConfig, resolveConfig, type ResolvedConfig } from "../src/config.js";
 import { Semaphore } from "../src/http/semaphore.js";
 import { isTimeoutOrAbortError, OperationTimeoutError } from "../src/observability/timeout.js";
 
@@ -19,7 +19,6 @@ const baseRawConfig = {
   server: { port: 3010 },
   registry: { path: "data/registry.sqlite" },
   chroma: { url: "http://localhost:8000" },
-  ollama: { baseUrl: "http://localhost:11434", embeddingModel: "bge-m3" },
   collectionDefaults: {
     sourcePath: "data",
     distanceMetric: "l2",
@@ -98,20 +97,6 @@ describe("chat config", () => {
 
   it("rejects a base URL that is neither empty nor a URL", () => {
     assert.throws(() => parseConfig({ ...baseRawConfig, chat: { baseUrl: "localhost", model: "m" } }), /chat\.baseUrl/);
-  });
-
-  it("drops legacy ollama chat keys without enabling chat, and explains why", () => {
-    const legacy = {
-      ...baseRawConfig,
-      ollama: { ...baseRawConfig.ollama, chatModel: "gemma3:4b", numCtx: 4096, numPredict: 512 },
-    };
-
-    const resolved = resolveConfig(parseConfig(legacy), "test.yaml", process.cwd(), { env: {} });
-    assert.equal(resolved.chat.enabled, false);
-    assert.equal(legacyConfigWarnings(legacy, {}).length, 1);
-    assert.match(legacyConfigWarnings(legacy, {})[0], /RAG_CHAT_BASE_URL/);
-    assert.deepEqual(legacyConfigWarnings(baseRawConfig, {}), []);
-    assert.match(legacyConfigWarnings(baseRawConfig, { RAG_OLLAMA_CHAT_MODEL: "x" })[0], /RAG_OLLAMA_CHAT_MODEL/);
   });
 
   it("reads the API key from RAG_CHAT_API_KEY first, then the local secret file, never from the YAML", async () => {

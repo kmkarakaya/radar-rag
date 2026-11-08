@@ -587,6 +587,52 @@ describe("sqlite collection registry", () => {
     assert.equal(secondPhysical?.status, "building");
   });
 
+  it("activates the embedding the job built with, even if the collection changed during the job", async () => {
+    const collection = await registry.createCollection(context, {
+      ...collectionInput,
+      embeddingProvider: "builtin",
+      embeddingModel: "embed-a",
+    });
+    assert.equal(collection.embeddingProvider, "builtin");
+
+    const queued = await registry.beginIndexJob(context, collection.id);
+    assert.equal(queued.targetEmbeddingProvider, "builtin");
+    assert.equal(queued.targetEmbeddingModel, "embed-a");
+    const job = await registry.markIndexJobRunning(queued.id);
+
+    // The user switches the collection to an external service while the build is still running.
+    await registry.updateCollection(context, collection.id, {
+      embeddingProvider: "openai-compatible",
+      embeddingModel: "embed-b",
+    });
+
+    await registry.createPhysicalCollectionRecord({
+      name: job.targetPhysicalCollection,
+      tenantId: context.tenantId,
+      collectionId: collection.id,
+      version: job.targetVersion,
+      chromaConfiguration: job.targetChromaConfiguration,
+    });
+    await registry.completeIndexJob(job.id, {
+      activePhysicalCollection: job.targetPhysicalCollection,
+      activeVersion: job.targetVersion,
+      documentCount: 1,
+      chunkCount: 1,
+      retentionMs: 0,
+    });
+
+    const after = await registry.getVisibleCollection(context, collection.id);
+    // The index was built with builtin/embed-a: that is what reads must use, and what the snapshot records.
+    assert.equal(after?.activeEmbeddingProvider, "builtin");
+    assert.equal(after?.activeEmbeddingModel, "embed-a");
+    assert.equal(after?.indexState?.activeSnapshot?.embeddingProvider, "builtin");
+    assert.equal(after?.indexState?.activeSnapshot?.embeddingModel, "embed-a");
+    // The saved choice (openai-compatible/embed-b) is pending until the next re-index.
+    assert.equal(after?.embeddingProvider, "openai-compatible");
+    assert.equal(after?.indexState?.status, "reindex_required");
+    assert.ok(after?.indexState?.changedFields.includes("embeddingProvider"));
+  });
+
   it("snapshots and preserves activeEmbeddingModel during reindexing", async () => {
     // 1. Create collection with embed-v1
     const collection = await registry.createCollection(context, {

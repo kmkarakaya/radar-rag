@@ -17,13 +17,22 @@ import {
 import { defaultAdminSessionSecretFilePath, validateAdminAuthConfig } from "../http/adminAuth.js";
 import { analyzeIndexingSource } from "../index.js";
 import { checkChatGeneration, checkChatProvider } from "../chat.js";
-import { defaultChatApiKeyFilePath, readSecretFile, removeSecretFile, writeSecretFile } from "../secrets.js";
 import {
-  checkChromaHealth,
-  checkEmbeddingHealth,
-  checkOllamaHealth,
-  type OllamaHealthDetails,
-} from "../rag.js";
+  defaultChatApiKeyFilePath,
+  defaultEmbeddingApiKeyFilePath,
+  readSecretFile,
+  removeSecretFile,
+  writeSecretFile,
+} from "../secrets.js";
+import { checkChromaHealth, checkEmbeddingHealth } from "../rag.js";
+import {
+  builtinEmbeddingModelIds,
+  checkEmbeddingTarget,
+  DEFAULT_BUILTIN_EMBEDDING_MODEL,
+  EMBEDDING_PROVIDERS,
+  getBuiltinEmbeddingModelSpec,
+  isBuiltinModelCached,
+} from "../embeddings/index.js";
 
 type CliOptions = {
   configPath: string;
@@ -34,14 +43,20 @@ type CliOptions = {
   noWrite: boolean;
 };
 
-/** What to do with the chat API key file (.local/rag_chat_api_key.secret); the key never goes into the YAML. */
-type ChatApiKeyAction = { kind: "keep" } | { kind: "set"; value: string } | { kind: "remove" };
+/** What to do with an API key file under .local/ (chat or embedding); keys never go into the YAML. */
+type ApiKeyAction = { kind: "keep" } | { kind: "set"; value: string } | { kind: "remove" };
+type ChatApiKeyAction = ApiKeyAction;
 
 type PromptedConfig = {
   rawConfig: RawConfig;
   adminSessionSecretValue?: string;
-  chatApiKeyAction: ChatApiKeyAction;
+  chatApiKeyAction: ApiKeyAction;
+  embeddingApiKeyAction: ApiKeyAction;
 };
+
+function apiKeyOverride(action: ApiKeyAction): string | null | undefined {
+  return action.kind === "set" ? action.value : action.kind === "remove" ? null : undefined;
+}
 
 const DISTANCE_METRICS = ["l2", "cosine", "ip"] as const;
 
@@ -105,6 +120,69 @@ function isHttpUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function describeStoredEmbeddingApiKey(env: NodeJS.ProcessEnv): string {
+  if (env.RAG_EMBEDDING_API_KEY?.trim()) return "set via RAG_EMBEDDING_API_KEY, which overrides the file";
+  return readSecretFile(defaultEmbeddingApiKeyFilePath, "embedding API key") ? `stored in ${defaultEmbeddingApiKeyFilePath}` : "none";
+}
+
+async function promptApiKey(rl: Interface, label: string, stored: string, hint: string): Promise<ApiKeyAction> {
+  const answer = (await rl.question(`${label} [${stored}] (Enter = keep, - = remove; ${hint}): `)).trim();
+  if (answer === "-") return { kind: "remove" };
+  return answer.length > 0 ? { kind: "set", value: answer } : { kind: "keep" };
+}
+
+/**
+ * Embedding (required): the provider and model used as the default for NEW collections, and the
+ * openai-compatible service if one is used. The default answer is always the current value, so Enter
+ * never changes anything. Built-in models are not downloaded here: they download on first indexing.
+ */
+async function promptEmbedding(
+  rl: Interface,
+  current: RawConfig["embedding"],
+  onApiKey: (action: ApiKeyAction) => void,
+): Promise<RawConfig["embedding"]> {
+  console.log("\nEmbedding (required). Used for indexing and retrieval.");
+  console.log(`Current default for new collections: ${current.provider} / ${current.model}`);
+  console.log("  builtin:           runs inside the backend on the CPU; nothing else to install.");
+  console.log("  openai-compatible: any OpenAI-compatible /v1/embeddings API (Ollama, OpenAI, LM Studio, vLLM...).");
+
+  const provider = await promptEnum(rl, "Embedding provider for new collections", current.provider, EMBEDDING_PROVIDERS);
+
+  let result: RawConfig["embedding"];
+  if (provider === "builtin") {
+    const models = builtinEmbeddingModelIds();
+    const currentModel = current.provider === "builtin" && models.includes(current.model) ? current.model : DEFAULT_BUILTIN_EMBEDDING_MODEL;
+    const model = models.length > 1
+      ? await promptEnum(rl, "Built-in embedding model", currentModel, models)
+      : currentModel;
+    const spec = getBuiltinEmbeddingModelSpec(model);
+    const cacheDir = path.resolve(process.cwd(), current.cacheDir);
+    console.log(isBuiltinModelCached(model, cacheDir)
+      ? `Built-in model ${model} is already downloaded (${current.cacheDir}).`
+      : `Built-in model ${model} (~${spec?.approxDownloadMb ?? "?"} MB) is downloaded on the first indexing into ${current.cacheDir}/.`);
+    result = { ...current, provider, model };
+  } else {
+    console.log("Press Enter to accept the value in [brackets]. Example for a local Ollama: http://localhost:11434/v1");
+    let baseUrl = "";
+    while (true) {
+      baseUrl = await promptString(rl, "embedding.baseUrl", current.baseUrl || SUGGESTED_CHAT_BASE_URL);
+      if (isHttpUrl(baseUrl)) break;
+      console.log("Please enter an http(s) URL, for example http://localhost:11434/v1.");
+    }
+    const model = current.provider === "openai-compatible" && current.model
+      ? await promptString(rl, "embedding.model", current.model)
+      : await promptRequiredString(rl, "embedding.model (e.g. embeddinggemma-2:270m for Ollama)");
+    onApiKey(await promptApiKey(rl, "embedding API key", describeStoredEmbeddingApiKey(process.env), "not needed for a local Ollama"));
+    result = { ...current, provider, model, baseUrl };
+  }
+
+  if (result.provider !== current.provider || result.model !== current.model || result.baseUrl !== current.baseUrl) {
+    console.log("Note: this only changes the default for NEW collections. Existing collections keep their embedding model;");
+    console.log("if you changed the external service address, reindex the collections that use it.");
+  }
+  return result;
 }
 
 function describeStoredChatApiKey(env: NodeJS.ProcessEnv): string {
@@ -323,7 +401,8 @@ async function promptConfig(rawConfig: RawConfig): Promise<PromptedConfig> {
     console.log("Press Enter to keep the current value.\n");
 
     const adminAuthResult = await promptAdminAuth(rl, rawConfig.adminAuth);
-    let chatApiKeyAction: ChatApiKeyAction = { kind: "keep" };
+    let chatApiKeyAction: ApiKeyAction = { kind: "keep" };
+    let embeddingApiKeyAction: ApiKeyAction = { kind: "keep" };
 
     return {
       rawConfig: {
@@ -336,10 +415,9 @@ async function promptConfig(rawConfig: RawConfig): Promise<PromptedConfig> {
         chroma: {
           url: await promptString(rl, "chroma.url", rawConfig.chroma.url),
         },
-        ollama: {
-          baseUrl: await promptString(rl, "ollama.baseUrl", rawConfig.ollama.baseUrl),
-          embeddingModel: await promptString(rl, "ollama.embeddingModel", rawConfig.ollama.embeddingModel),
-        },
+        embedding: await promptEmbedding(rl, rawConfig.embedding, (action) => {
+          embeddingApiKeyAction = action;
+        }),
         chat: await promptChat(rl, rawConfig.chat, (action) => {
           chatApiKeyAction = action;
         }),
@@ -449,6 +527,7 @@ async function promptConfig(rawConfig: RawConfig): Promise<PromptedConfig> {
       },
       adminSessionSecretValue: adminAuthResult.adminSessionSecretValue,
       chatApiKeyAction,
+      embeddingApiKeyAction,
     };
   } finally {
     rl.close();
@@ -497,7 +576,10 @@ async function printConfigSummary(runtimeConfig: ResolvedConfig, env: NodeJS.Pro
   console.log(`- server.port: ${runtimeConfig.port}`);
   console.log(`- registry.path: ${runtimeConfig.registryPath}`);
   console.log(`- chroma.url: ${runtimeConfig.chromaUrl}`);
-  console.log(`- ollama embedding: ${runtimeConfig.ollamaEmbeddingModel}`);
+  const embedding = runtimeConfig.embedding;
+  console.log(embedding.provider === "builtin"
+    ? `- embedding (new collections): builtin / ${embedding.model}`
+    : `- embedding (new collections): openai-compatible / ${embedding.model} @ ${embedding.baseUrl}, api key: ${embedding.apiKeySource === "none" ? "not set" : embedding.apiKeySource}`);
   console.log(runtimeConfig.chat.enabled
     ? `- chat: ${runtimeConfig.chat.model} @ ${runtimeConfig.chat.baseUrl}, api key: ${runtimeConfig.chat.apiKeySource === "none" ? "not set" : runtimeConfig.chat.apiKeySource}`
     : "- chat: disabled (/query off, retrieve-only)");
@@ -556,44 +638,56 @@ async function runDependencyChecks(runtimeConfig: ResolvedConfig): Promise<Setup
     });
   }
 
-  issues.push(...await runOllamaChecks(runtimeConfig));
+  issues.push(...await runEmbeddingChecks(runtimeConfig));
   issues.push(...await runChatChecks(runtimeConfig));
   return issues;
 }
 
-async function runOllamaChecks(runtimeConfig: ResolvedConfig): Promise<SetupIssue[]> {
-  const issues: SetupIssue[] = [];
-  const ollama = await checkOllamaHealth(runtimeConfig);
-  console.log(`- Ollama: ${ollama.ok ? "ok" : "fail"}${ollama.error ? ` - ${ollama.error}` : ""}`);
-  if (!ollama.ok) {
-    issues.push({
-      problem: `Ollama is not reachable at ${runtimeConfig.ollamaBaseUrl}.`,
-      fix: "Start Ollama (desktop app or: ollama serve), or fix ollama.baseUrl in the config.",
-    });
-    return issues;
-  }
+/**
+ * Checks the default embedding for new collections without downloading anything for builtin. For an
+ * openai-compatible service: the free model listing, then one real embedding of a short text.
+ */
+async function runEmbeddingChecks(runtimeConfig: ResolvedConfig): Promise<SetupIssue[]> {
+  const embedding = runtimeConfig.embedding;
+  const target = { provider: embedding.provider, model: embedding.model };
+  const status = await checkEmbeddingTarget(runtimeConfig, target, { useCache: false });
 
-  const ollamaDetails = (ollama.details ?? {}) as Partial<OllamaHealthDetails>;
-
-  if (ollamaDetails.embeddingModelAvailable !== true) {
-    console.log(`- Embedding model: missing (${runtimeConfig.ollamaEmbeddingModel})`);
-    console.log(`  Run: ollama pull ${runtimeConfig.ollamaEmbeddingModel}`);
-    issues.push({
-      problem: `Embedding model ${runtimeConfig.ollamaEmbeddingModel} is not pulled in Ollama.`,
-      fix: `ollama pull ${runtimeConfig.ollamaEmbeddingModel}`,
-    });
-  } else {
-    const embedding = await checkEmbeddingHealth(runtimeConfig);
-    console.log(`- Embedding smoke: ${embedding.ok ? "ok" : "fail"}${embedding.error ? ` - ${embedding.error}` : ""}`);
-    if (!embedding.ok) {
-      issues.push({
-        problem: `Embedding model ${runtimeConfig.ollamaEmbeddingModel} did not return a usable vector.`,
-        fix: `Check the Ollama logs, re-pull with: ollama pull ${runtimeConfig.ollamaEmbeddingModel}, or choose another embedding model.`,
-      });
+  if (embedding.provider === "builtin") {
+    if (!status.supported) {
+      console.log(`- Embedding: fail - ${status.error ?? "unsupported built-in model"}`);
+      return [{ problem: `${embedding.model} is not a supported built-in model.`, fix: "Rerun onboarding and pick a built-in model from the list." }];
     }
+    console.log(status.downloaded
+      ? `- Embedding: builtin / ${embedding.model} (downloaded)`
+      : `- Embedding: builtin / ${embedding.model} (downloads on first indexing, ~${status.approxDownloadMb ?? "?"} MB)`);
+    return [];
   }
 
-  return issues;
+  if (!status.reachable) {
+    console.log(`- Embedding service: fail - ${status.error ?? "not reachable"}`);
+    return [{
+      problem: `The embedding service at ${embedding.baseUrl} is not reachable.`,
+      fix: "Start it, or rerun onboarding with the right embedding.baseUrl (an OpenAI-compatible URL such as http://localhost:11434/v1).",
+    }];
+  }
+  if (!status.authOk) {
+    console.log("- Embedding service: fail - the API key was rejected");
+    return [{ problem: `The embedding service at ${embedding.baseUrl} rejected the API key.`, fix: "Rerun onboarding with the right key, or set RAG_EMBEDDING_API_KEY." }];
+  }
+  if (status.modelListed === false) {
+    const suggestions = (status.availableModels ?? []).slice(0, 10).join(", ");
+    console.log(`- Embedding model: missing (${embedding.model})`);
+    return [{
+      problem: `Embedding model ${embedding.model} is not offered by ${embedding.baseUrl}.`,
+      fix: suggestions ? `Rerun onboarding and pick one of: ${suggestions}` : `For a local Ollama run: ollama pull ${embedding.model}`,
+    }];
+  }
+
+  const smoke = await checkEmbeddingHealth(runtimeConfig, target);
+  console.log(`- Embedding smoke: ${smoke.ok ? "ok" : "fail"}${smoke.error ? ` - ${smoke.error}` : ""}`);
+  return smoke.ok
+    ? []
+    : [{ problem: `Embedding model ${embedding.model} did not return a usable vector.`, fix: "Check the embedding service logs, or rerun onboarding with another model." }];
 }
 
 /** Checks the optional chat LLM: the free model listing first, then one real generation (onboarding only). */
@@ -659,12 +753,14 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const rawConfig = parseConfig(readConfigFile(options.configPath), options.configPath);
   const nextConfig: PromptedConfig = options.yes
-    ? { rawConfig, adminSessionSecretValue: undefined, chatApiKeyAction: { kind: "keep" } }
+    ? { rawConfig, adminSessionSecretValue: undefined, chatApiKeyAction: { kind: "keep" }, embeddingApiKeyAction: { kind: "keep" } }
     : await promptConfig(rawConfig);
   const keyAction = nextConfig.chatApiKeyAction;
+  const embeddingKeyAction = nextConfig.embeddingApiKeyAction;
   const runtimeConfig = resolveConfig(parseConfig(nextConfig.rawConfig, options.configPath), options.configPath, process.cwd(), {
-    // Checks below use the key just entered, even before (or without) writing the secret file.
-    chatApiKeyOverride: keyAction.kind === "set" ? keyAction.value : keyAction.kind === "remove" ? null : undefined,
+    // Checks below use the keys just entered, even before (or without) writing the secret files.
+    chatApiKeyOverride: apiKeyOverride(keyAction),
+    embeddingApiKeyOverride: apiKeyOverride(embeddingKeyAction),
   });
 
   await printConfigSummary(runtimeConfig, process.env);
@@ -687,6 +783,13 @@ async function main(): Promise<void> {
     } else if (keyAction.kind === "remove") {
       await removeSecretFile(defaultChatApiKeyFilePath);
       console.log(`Chat API key removed from ${defaultChatApiKeyFilePath}.`);
+    }
+    if (embeddingKeyAction.kind === "set") {
+      await writeSecretFile(defaultEmbeddingApiKeyFilePath, embeddingKeyAction.value);
+      console.log(`Embedding API key written to ${defaultEmbeddingApiKeyFilePath} (gitignored; never stored in the YAML).`);
+    } else if (embeddingKeyAction.kind === "remove") {
+      await removeSecretFile(defaultEmbeddingApiKeyFilePath);
+      console.log(`Embedding API key removed from ${defaultEmbeddingApiKeyFilePath}.`);
     }
     console.log(`\nConfig written to ${options.configPath}`);
     console.log(`Backup written to ${options.configPath}.bak`);

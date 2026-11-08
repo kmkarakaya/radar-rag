@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import type { DistanceMetric } from "../config.js";
+import type { EmbeddingProvider } from "../embeddings/models.js";
 import { createPhysicalCollectionName, generateCollectionId } from "./ids.js";
 import { buildCollectionIndexSnapshot, buildCollectionIndexState, parseCollectionIndexSnapshot } from "./indexState.js";
 import { toPortablePath } from "../paths.js";
@@ -53,6 +54,7 @@ type CollectionRow = {
   active_physical_collection: string | null;
   active_version: string | null;
   source_path: string;
+  embedding_provider: EmbeddingProvider;
   embedding_model: string;
   distance_metric: "l2" | "cosine" | "ip";
   chroma_collection_configuration_json: string;
@@ -60,6 +62,7 @@ type CollectionRow = {
   chunk_overlap: number;
   retrieval_k: number;
   retrieval_distance_threshold: number;
+  active_embedding_provider: EmbeddingProvider | null;
   active_embedding_model: string | null;
   document_count: number | null;
   chunk_count: number | null;
@@ -77,6 +80,7 @@ type IndexJobRow = {
   status: IndexJobStatus;
   target_physical_collection: string;
   target_version: string;
+  target_embedding_provider: EmbeddingProvider;
   target_embedding_model: string;
   target_chroma_configuration_json: string;
   started_at: string | null;
@@ -178,6 +182,7 @@ function initializeSchema(db: SqliteDatabase): void {
       active_physical_collection TEXT,
       active_version TEXT,
       source_path TEXT NOT NULL,
+      embedding_provider TEXT NOT NULL DEFAULT 'builtin',
       embedding_model TEXT NOT NULL,
       distance_metric TEXT NOT NULL,
       chroma_collection_configuration_json TEXT NOT NULL,
@@ -185,6 +190,7 @@ function initializeSchema(db: SqliteDatabase): void {
       chunk_overlap INTEGER NOT NULL,
       retrieval_k INTEGER NOT NULL,
       retrieval_distance_threshold REAL NOT NULL,
+      active_embedding_provider TEXT,
       active_embedding_model TEXT,
       document_count INTEGER,
       chunk_count INTEGER,
@@ -202,6 +208,7 @@ function initializeSchema(db: SqliteDatabase): void {
       status TEXT NOT NULL,
       target_physical_collection TEXT NOT NULL,
       target_version TEXT NOT NULL,
+      target_embedding_provider TEXT NOT NULL DEFAULT 'builtin',
       target_embedding_model TEXT NOT NULL,
       target_chroma_configuration_json TEXT NOT NULL,
       started_at TEXT,
@@ -290,6 +297,11 @@ function initializeSchema(db: SqliteDatabase): void {
 
 function migrateSchema(db: SqliteDatabase): void {
   ensureColumn(db, "collections", "active_embedding_model", "TEXT");
+  // Embedding provider per collection (builtin | openai-compatible). Not a data migration: existing dev
+  // registries only need the columns to open; their Ollama-built collections are recreated.
+  ensureColumn(db, "collections", "embedding_provider", "TEXT NOT NULL DEFAULT 'builtin'");
+  ensureColumn(db, "collections", "active_embedding_provider", "TEXT");
+  ensureColumn(db, "index_jobs", "target_embedding_provider", "TEXT NOT NULL DEFAULT 'builtin'");
   ensureColumn(db, "collections", "indexed_snapshot_json", "TEXT");
   // Ozelge JSON support was removed; older registries still have this NOT NULL column, which would break inserts.
   dropColumnIfExists(db, "collections", "ozelge_data_path");
@@ -298,7 +310,7 @@ function migrateSchema(db: SqliteDatabase): void {
 
   const backfillNow = new Date().toISOString();
   const snapshotRows = db.prepare(`
-    SELECT id, source_path, distance_metric, chunk_size, chunk_overlap, embedding_model
+    SELECT id, source_path, distance_metric, chunk_size, chunk_overlap, embedding_provider, embedding_model
     FROM collections
     WHERE active_physical_collection IS NOT NULL
       AND (indexed_snapshot_json IS NULL OR indexed_snapshot_json = '')
@@ -308,6 +320,7 @@ function migrateSchema(db: SqliteDatabase): void {
     distance_metric: "l2" | "cosine" | "ip";
     chunk_size: number;
     chunk_overlap: number;
+    embedding_provider: EmbeddingProvider;
     embedding_model: string;
   }>;
 
@@ -325,6 +338,7 @@ function migrateSchema(db: SqliteDatabase): void {
         distanceMetric: row.distance_metric,
         chunkSize: row.chunk_size,
         chunkOverlap: row.chunk_overlap,
+        embeddingProvider: row.embedding_provider,
         embeddingModel: row.embedding_model,
       }),
       updatedAt: backfillNow,
@@ -791,6 +805,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         description,
         status,
         source_path,
+        embedding_provider,
         embedding_model,
         distance_metric,
         chroma_collection_configuration_json,
@@ -808,6 +823,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         @description,
         'creating',
         @sourcePath,
+        @embeddingProvider,
         @embeddingModel,
         @distanceMetric,
         @chromaCollectionConfigurationJson,
@@ -825,6 +841,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       displayName: input.displayName,
       description: input.description ?? null,
       sourcePath: this.storedSourcePath(input.sourcePath),
+      embeddingProvider: input.embeddingProvider ?? "builtin",
       embeddingModel: input.embeddingModel,
       distanceMetric: input.distanceMetric,
       chromaCollectionConfigurationJson: JSON.stringify(chromaConfiguration),
@@ -872,6 +889,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       updates,
       values,
     );
+    addPatch("embeddingProvider", "embedding_provider", patch.embeddingProvider, updates, values);
     addPatch("embeddingModel", "embedding_model", patch.embeddingModel, updates, values);
     addPatch("distanceMetric", "distance_metric", patch.distanceMetric, updates, values);
     if (patch.chromaCollectionConfiguration !== undefined || patch.distanceMetric !== undefined) {
@@ -890,6 +908,13 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       "retrievalDistanceThreshold",
       "retrieval_distance_threshold",
       patch.retrievalDistanceThreshold,
+      updates,
+      values,
+    );
+    addNullablePatch(
+      "activeEmbeddingProvider",
+      "active_embedding_provider",
+      patch.activeEmbeddingProvider,
       updates,
       values,
     );
@@ -973,6 +998,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           version,
         }),
         targetVersion: version,
+        targetEmbeddingProvider: collection.embedding_provider,
         targetEmbeddingModel: collection.embedding_model,
         targetChromaConfiguration,
         lockToken: input.lockToken ?? randomUUID(),
@@ -988,6 +1014,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           status,
           target_physical_collection,
           target_version,
+          target_embedding_provider,
           target_embedding_model,
           target_chroma_configuration_json,
           lock_token,
@@ -1000,6 +1027,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           @status,
           @targetPhysicalCollection,
           @targetVersion,
+          @targetEmbeddingProvider,
           @targetEmbeddingModel,
           @targetChromaConfigurationJson,
           @lockToken,
@@ -1013,6 +1041,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         status: job.status,
         targetPhysicalCollection: job.targetPhysicalCollection,
         targetVersion: job.targetVersion,
+        targetEmbeddingProvider: job.targetEmbeddingProvider,
         targetEmbeddingModel: job.targetEmbeddingModel,
         targetChromaConfigurationJson: JSON.stringify(job.targetChromaConfiguration),
         lockToken: job.lockToken,
@@ -1314,6 +1343,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           status = 'ready',
           active_physical_collection = @activePhysicalCollection,
           active_version = @activeVersion,
+          active_embedding_provider = @activeEmbeddingProvider,
           active_embedding_model = @activeEmbeddingModel,
           document_count = @documentCount,
           chunk_count = @chunkCount,
@@ -1326,6 +1356,8 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         collectionId: existing.collection_id,
         activePhysicalCollection,
         activeVersion,
+        // The active embedding is what this job built with, not what the collection wants now.
+        activeEmbeddingProvider: existing.target_embedding_provider,
         activeEmbeddingModel: existing.target_embedding_model,
         documentCount: result.documentCount ?? existing.document_count,
         chunkCount: result.chunkCount ?? existing.chunk_count,
@@ -1335,7 +1367,9 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           distanceMetric: collection.distance_metric,
           chunkSize: collection.chunk_size,
           chunkOverlap: collection.chunk_overlap,
-          embeddingModel: collection.embedding_model,
+          // Same source as the active embedding above, so the snapshot matches the index that was built.
+          embeddingProvider: existing.target_embedding_provider,
+          embeddingModel: existing.target_embedding_model,
         })),
         updatedAt: now,
       });
@@ -1886,6 +1920,7 @@ function mapCollectionRow(row: CollectionRow): RagCollection {
     activePhysicalCollection: row.active_physical_collection ?? undefined,
     activeVersion: row.active_version ?? undefined,
     sourcePath: row.source_path,
+    embeddingProvider: row.embedding_provider,
     embeddingModel: row.embedding_model,
     distanceMetric: row.distance_metric,
     chromaCollectionConfiguration: JSON.parse(row.chroma_collection_configuration_json) as Record<string, unknown>,
@@ -1893,6 +1928,7 @@ function mapCollectionRow(row: CollectionRow): RagCollection {
     chunkOverlap: row.chunk_overlap,
     retrievalK: row.retrieval_k,
     retrievalDistanceThreshold: row.retrieval_distance_threshold,
+    activeEmbeddingProvider: row.active_embedding_provider ?? undefined,
     activeEmbeddingModel: row.active_embedding_model ?? undefined,
     documentCount: row.document_count ?? undefined,
     chunkCount: row.chunk_count ?? undefined,
@@ -1925,6 +1961,7 @@ function mapIndexJobRow(row: IndexJobRow): IndexJob {
     status: row.status,
     targetPhysicalCollection: row.target_physical_collection,
     targetVersion: row.target_version,
+    targetEmbeddingProvider: row.target_embedding_provider,
     targetEmbeddingModel: row.target_embedding_model,
     targetChromaConfiguration: JSON.parse(row.target_chroma_configuration_json) as Record<string, unknown>,
     startedAt: row.started_at ?? undefined,

@@ -66,13 +66,17 @@ export function formatStartupLinks(runtimeConfig: Pick<ResolvedConfig, "port">):
   ].join("\n");
 }
 
-/** One line telling whether /query is available, plus notes about ignored legacy settings. */
-export function formatChatStatus(runtimeConfig: Pick<ResolvedConfig, "chat" | "configWarnings">): string {
+/** Startup lines: the embedding default for new collections and whether /query is available. */
+export function formatChatStatus(runtimeConfig: Pick<ResolvedConfig, "chat" | "embedding">): string {
+  const embedding = runtimeConfig.embedding;
+  const embeddingLine = embedding.provider === "builtin"
+    ? `Embedding:     builtin / ${embedding.model} (default for new collections; downloaded on first use)`
+    : `Embedding:     openai-compatible / ${embedding.model} @ ${embedding.baseUrl} (default for new collections)`;
   const chat = runtimeConfig.chat;
-  const status = chat.enabled
+  const chatLine = chat.enabled
     ? `Chat LLM:      ${chat.model} @ ${chat.baseUrl} (/query enabled)`
     : "Chat LLM:      not configured (/query disabled, retrieve-only). Enable it with npm run onboard or RAG_CHAT_BASE_URL + RAG_CHAT_MODEL.";
-  return [status, ...runtimeConfig.configWarnings.map((warning) => `Warning: ${warning}`)].join("\n");
+  return [embeddingLine, chatLine].join("\n");
 }
 
 export async function startServer(input: {

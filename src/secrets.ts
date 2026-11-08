@@ -7,6 +7,7 @@ import fs from "node:fs/promises";
  * Secrets are never stored in config/rag.config.yaml, which is tracked by git.
  */
 export const defaultChatApiKeyFilePath = ".local/rag_chat_api_key.secret";
+export const defaultEmbeddingApiKeyFilePath = ".local/rag_embedding_api_key.secret";
 
 /** Reads a secret file relative to `cwd`. Returns "" if the file does not exist. */
 export function readSecretFile(filePath: string, label: string, cwd = process.cwd()): string {

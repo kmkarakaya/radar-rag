@@ -55,6 +55,12 @@ export const loadBuiltinModelWithTransformers: BuiltinModelLoader = async (spec,
   };
 };
 
+/** Scales a vector to unit length, so distances do not depend on how the model scaled its output. */
+export function normalizeVector(vector: number[]): number[] {
+  const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+  return norm > 0 ? vector.map((value) => value / norm) : vector;
+}
+
 /** One load per model and cache folder; concurrent requests wait for the same download. */
 const loadedModels = new Map<string, Promise<LoadedBuiltinModel>>();
 
@@ -108,7 +114,7 @@ export class BuiltinEmbeddings extends Embeddings {
     const vectors: number[][] = [];
     for (let start = 0; start < texts.length; start += this.batchSize) {
       const batch = texts.slice(start, start + this.batchSize).map((text) => `${this.spec.documentPrefix}${text}`);
-      vectors.push(...await model.embed(batch));
+      vectors.push(...(await model.embed(batch)).map(normalizeVector));
     }
     return vectors;
   }
@@ -116,6 +122,6 @@ export class BuiltinEmbeddings extends Embeddings {
   async embedQuery(text: string): Promise<number[]> {
     const model = await loadOnce(this.spec, this.cacheDir, this.loader);
     const [vector] = await model.embed([`${this.spec.queryPrefix}${text}`]);
-    return vector;
+    return normalizeVector(vector);
   }
 }

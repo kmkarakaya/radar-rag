@@ -2631,6 +2631,44 @@ describe("v1 admin and rag api endpoints", () => {
   // Prompt 25: Active Embedding Model Snapshot
   // ---------------------------------------------------------------------------
 
+  it('changing the configured embedding default only affects new collections', async () => {
+    const ctx = { tenantId: 'default', userId: 'local-dev', requestId: 'default-change' };
+    const existing = await request('/v1/admin/collections', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ displayName: 'Before Default Change' }),
+    });
+    const existingId = (await existing.json() as any).collection.id;
+
+    // Same registry, new default (as after rerunning onboarding with another provider).
+    const switched = await startEphemeralApp({
+      registry,
+      jobRunner,
+      runtimeConfig: {
+        ...testRuntimeConfig,
+        embedding: { ...testRuntimeConfig.embedding, provider: 'builtin', model: builtinEmbeddingModelIds()[0] },
+      },
+      logEvent: () => {},
+    });
+    try {
+      const created = await fetch(`${switched.baseUrl}/v1/admin/collections`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ displayName: 'After Default Change' }),
+      });
+      const newId = (await created.json() as any).collection.id;
+
+      const before = await registry.getVisibleCollection(ctx, existingId);
+      const after = await registry.getVisibleCollection(ctx, newId);
+      assert.equal(before?.embeddingProvider, 'openai-compatible');
+      assert.equal(before?.embeddingModel, config.embedding.model);
+      assert.equal(after?.embeddingProvider, 'builtin');
+      assert.equal(after?.embeddingModel, builtinEmbeddingModelIds()[0]);
+    } finally {
+      await stopServer(switched.server);
+    }
+  });
+
   it('query and retrieve use the snapshotted activeEmbeddingModel until a new reindex completes', async () => {
     const ctx = { tenantId: 'default', userId: 'local-dev', requestId: 'p25-test' };
     const activePhysicalCollection = 'p25-active-physical';
@@ -2641,6 +2679,7 @@ describe("v1 admin and rag api endpoints", () => {
     const created = await registry.createCollection(ctx, {
       displayName: 'Snapshot Test',
       sourcePath: 'data/p25',
+      embeddingProvider: 'openai-compatible',
       embeddingModel: 'embed-v1',
       distanceMetric: 'cosine',
       chunkSize: 1000,
@@ -2655,6 +2694,7 @@ describe("v1 admin and rag api endpoints", () => {
       status: 'ready',
       activePhysicalCollection,
       activeVersion: 'v-p25-1',
+      activeEmbeddingProvider: 'openai-compatible',
       activeEmbeddingModel: 'embed-v1', // Snapshot the model used for build
     });
     
@@ -2675,12 +2715,14 @@ describe("v1 admin and rag api endpoints", () => {
       assert.equal(responseV1.status, 200);
       assert.equal(retrieveCalls.length, 1);
       assert.equal(retrieveCalls[0].embeddingModel, 'embed-v1');
+      assert.equal(retrieveCalls[0].embeddingProvider, 'openai-compatible');
 
       // 3. Admin PATCH to v2 model
       const patchResponse = await request(`/v1/admin/collections/${collectionId}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ embeddingModel: 'embed-v2' }),
+        // Switch provider and model: neither may affect reads before a re-index.
+        body: JSON.stringify({ embeddingProvider: 'builtin', embeddingModel: builtinEmbeddingModelIds()[0] }),
       });
       assert.equal(patchResponse.status, 200);
 
@@ -2694,6 +2736,11 @@ describe("v1 admin and rag api endpoints", () => {
       assert.equal(retrieveCalls.length, 2);
       // THIS IS THE FAILING ASSERTION before fix: it will likely be 'embed-v2'
       assert.equal(retrieveCalls[1].embeddingModel, 'embed-v1', 'Should still use v1 model even after patch');
+      assert.equal(retrieveCalls[1].embeddingProvider, 'openai-compatible', 'Should still use the provider the index was built with');
+
+      const ready = await (await request(`/v1/rag/collections/${collectionId}/ready`)).json() as any;
+      assert.equal(ready.modelAvailability.embeddingProvider, 'openai-compatible');
+      assert.equal(ready.modelAvailability.desiredEmbeddingProvider, 'builtin');
     } finally {
       resolveReadableCollectionOverride = undefined;
     }
@@ -2752,6 +2799,8 @@ describe("v1 admin and rag api endpoints", () => {
       'distanceMetric',
       'chromaCollectionConfiguration',
       'activePhysicalCollection',
+      'embeddingProvider',
+      'activeEmbeddingProvider',
       'activeEmbeddingModel'
     ];
 

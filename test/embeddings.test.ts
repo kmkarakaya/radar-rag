@@ -10,6 +10,7 @@ import {
   BuiltinEmbeddings,
   clearLoadedBuiltinModels,
   isBuiltinModelCached,
+  normalizeVector,
   type BuiltinModelLoader,
 } from "../src/embeddings/builtin.js";
 import {
@@ -72,6 +73,9 @@ describe("BuiltinEmbeddings", () => {
       ["task: search result | query: q"],
     ]);
     assert.deepEqual(query, [0, 1]);
+    // Outputs are normalized to unit length.
+    assert.deepEqual(vectors[1], normalizeVector([1, 1]));
+    assert.ok(Math.abs(Math.hypot(...vectors[2]) - 1) < 1e-9);
     assert.equal(loads.count, 1);
   });
 

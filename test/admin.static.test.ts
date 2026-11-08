@@ -105,7 +105,12 @@ describe("admin panel static contract", () => {
     assert.ok(html.includes('id="modelDiscoverySummary"'));
     assert.ok(html.includes('id="modelDiscoveryStatus"'));
     assert.ok(html.includes('id="embeddingModelSelect"'));
-    assert.ok(html.includes('id="chatModelSelect"'));
+    // The chat LLM is global and optional: shown read-only, never chosen per collection.
+    assert.ok(html.includes('id="chatLlmStatus"'));
+    assert.ok(!html.includes('id="chatModelSelect"'));
+    assert.ok(!html.includes('id="editChatModel"'));
+    assert.ok(!js.includes('addIfText(payload, "chatModel"'));
+    assert.ok(js.includes("CHAT_NOT_CONFIGURED"));
     assert.ok(js.includes('function adminCollectionValidateUrl(id)'));
     assert.ok(js.includes('function validateCollectionOnServer(mode, collectionId, payload = buildCollectionPayload(mode))'));
     assert.ok(js.includes('adminCollectionValidateUrl()'));

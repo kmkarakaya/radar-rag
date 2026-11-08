@@ -40,7 +40,6 @@ const EDIT_FIELD_IDS = {
     retrievalK: "editRetrievalK",
     retrievalDistanceThreshold: "editRetrievalDistanceThreshold",
     embeddingModel: "editEmbeddingModel",
-    chatModel: "editChatModel",
 };
 
 let state = {
@@ -62,16 +61,15 @@ let state = {
         reachable: false,
         models: [],
         embeddingModels: [],
-        chatModels: [],
         defaults: {
             embeddingModel: "",
-            chatModel: "",
         },
     },
     configDefaults: {
         loaded: false,
         collectionDefaults: null,
         modelDefaults: null,
+        chat: null,
     },
     playgroundMode: "retrieve",
     knownJobs: loadKnownJobsFromStorage(),
@@ -227,12 +225,11 @@ const elements = {
     editRetrievalK: document.getElementById("editRetrievalK"),
     editRetrievalDistanceThreshold: document.getElementById("editRetrievalDistanceThreshold"),
     editEmbeddingModel: document.getElementById("editEmbeddingModel"),
-    editChatModel: document.getElementById("editChatModel"),
+    chatLlmStatus: document.getElementById("chatLlmStatus"),
     modelDiscoveryPanel: document.getElementById("modelDiscoveryPanel"),
     modelDiscoverySummary: document.getElementById("modelDiscoverySummary"),
     modelDiscoveryStatus: document.getElementById("modelDiscoveryStatus"),
     embeddingModelSelect: document.getElementById("embeddingModelSelect"),
-    chatModelSelect: document.getElementById("chatModelSelect"),
     btnCancelEdit: document.getElementById("btnCancelEdit"),
     btnSave: document.getElementById("btnSave"),
 
@@ -575,19 +572,12 @@ function normalizeModelList(models) {
     )];
 }
 
-function getModelDiscoveryFieldConfig(kind) {
-    if (kind === "embedding") {
-        return {
-            input: elements.editEmbeddingModel,
-            select: elements.embeddingModelSelect,
-            models: state.modelDiscovery.embeddingModels,
-        };
-    }
-
+// Only the embedding model is chosen per collection; the chat LLM is global (see renderChatLlmStatus).
+function getModelDiscoveryFieldConfig(_kind) {
     return {
-        input: elements.editChatModel,
-        select: elements.chatModelSelect,
-        models: state.modelDiscovery.chatModels,
+        input: elements.editEmbeddingModel,
+        select: elements.embeddingModelSelect,
+        models: state.modelDiscovery.embeddingModels,
     };
 }
 
@@ -635,14 +625,25 @@ function syncModelDiscoveryPanel() {
     if (elements.modelDiscoverySummary) {
         const allCount = normalizeModelList(state.modelDiscovery.models).length;
         const embeddingCount = normalizeModelList(state.modelDiscovery.embeddingModels).length;
-        const chatCount = normalizeModelList(state.modelDiscovery.chatModels).length;
         elements.modelDiscoverySummary.textContent = state.modelDiscovery.reachable
-            ? `GET /v1/admin/models returned ${allCount} models: ${chatCount} chatModels, ${embeddingCount} embeddingModels. Defaults: ${state.modelDiscovery.defaults.embeddingModel || "-"} / ${state.modelDiscovery.defaults.chatModel || "-"}.`
-            : `GET /v1/admin/models unavailable. Using defaults: ${state.modelDiscovery.defaults.embeddingModel || "-"} / ${state.modelDiscovery.defaults.chatModel || "-"}.`;
+            ? `GET /v1/admin/models returned ${allCount} Ollama models, ${embeddingCount} embeddingModels. Default embedding model: ${state.modelDiscovery.defaults.embeddingModel || "-"}.`
+            : `GET /v1/admin/models unavailable. Default embedding model: ${state.modelDiscovery.defaults.embeddingModel || "-"}.`;
     }
 
     syncModelSelect("embedding");
-    syncModelSelect("chat");
+}
+
+function describeChatLlm(chat) {
+    if (!chat) return "Chat LLM status unavailable.";
+    if (!chat.enabled) return "Not configured: Query is disabled (retrieve-only).";
+    return `${chat.model} @ ${chat.baseUrl}${chat.apiKeyConfigured ? " (API key set)" : ""}`;
+}
+
+function renderChatLlmStatus() {
+    if (!elements.chatLlmStatus) return;
+    elements.chatLlmStatus.textContent = state.configDefaults.loaded
+        ? describeChatLlm(state.configDefaults.chat)
+        : "Loading GET /v1/admin/config/defaults...";
 }
 
 function formatConfigDefault(value) {
@@ -656,13 +657,14 @@ function setCreateFieldDefault(field, value) {
 }
 
 function syncConfigDefaultsPanel() {
+    renderChatLlmStatus();
     if (!elements.configDefaultsPanel) return;
 
     const isCreateMode = !elements.editId.value;
     elements.configDefaultsPanel.classList.toggle("hidden", !isCreateMode);
 
     const clearHelpers = () => {
-        ["sourcePath", "distanceMetric", "chunkSize", "chunkOverlap", "retrievalK", "retrievalDistanceThreshold", "embeddingModel", "chatModel"].forEach((field) => {
+        ["sourcePath", "distanceMetric", "chunkSize", "chunkOverlap", "retrievalK", "retrievalDistanceThreshold", "embeddingModel"].forEach((field) => {
             setCreateFieldDefault(field, "Backend default unavailable");
         });
         if (elements.editSourcePath) elements.editSourcePath.placeholder = "";
@@ -671,7 +673,6 @@ function syncConfigDefaultsPanel() {
         if (elements.editRetrievalK) elements.editRetrievalK.placeholder = "";
         if (elements.editRetrievalDistanceThreshold) elements.editRetrievalDistanceThreshold.placeholder = "";
         if (elements.editEmbeddingModel) elements.editEmbeddingModel.placeholder = "";
-        if (elements.editChatModel) elements.editChatModel.placeholder = "";
         const placeholder = elements.editDistanceMetric?.querySelector('option[value=""]');
         if (placeholder) placeholder.textContent = "Use backend default";
     };
@@ -721,7 +722,8 @@ function syncConfigDefaultsPanel() {
         `Chunk size/overlap: ${formatConfigDefault(collectionDefaults.chunkSize)}/${formatConfigDefault(collectionDefaults.chunkOverlap)}`,
         `Retrieval K: ${formatConfigDefault(collectionDefaults.retrievalK)}`,
         `Threshold: ${formatConfigDefault(collectionDefaults.retrievalDistanceThreshold)}`,
-        `Models: ${formatConfigDefault(modelDefaults.embeddingModel)} / ${formatConfigDefault(modelDefaults.chatModel)}`,
+        `Embedding model: ${formatConfigDefault(modelDefaults.embeddingModel)}`,
+        `Chat LLM: ${describeChatLlm(state.configDefaults.chat)}`,
     ];
 
     if (elements.configDefaultsStatus) {
@@ -739,7 +741,6 @@ function syncConfigDefaultsPanel() {
     setCreateFieldDefault("retrievalK", `Backend default: ${formatConfigDefault(collectionDefaults.retrievalK)}`);
     setCreateFieldDefault("retrievalDistanceThreshold", `Backend default: ${formatConfigDefault(collectionDefaults.retrievalDistanceThreshold)}`);
     setCreateFieldDefault("embeddingModel", `Backend default: ${formatConfigDefault(modelDefaults.embeddingModel)}`);
-    setCreateFieldDefault("chatModel", `Backend default: ${formatConfigDefault(modelDefaults.chatModel)}`);
 
     if (elements.editSourcePath) elements.editSourcePath.placeholder = formatConfigDefault(collectionDefaults.sourcePath);
     if (elements.editChunkSize) elements.editChunkSize.placeholder = String(formatConfigDefault(collectionDefaults.chunkSize));
@@ -747,7 +748,6 @@ function syncConfigDefaultsPanel() {
     if (elements.editRetrievalK) elements.editRetrievalK.placeholder = String(formatConfigDefault(collectionDefaults.retrievalK));
     if (elements.editRetrievalDistanceThreshold) elements.editRetrievalDistanceThreshold.placeholder = String(formatConfigDefault(collectionDefaults.retrievalDistanceThreshold));
     if (elements.editEmbeddingModel) elements.editEmbeddingModel.placeholder = formatConfigDefault(modelDefaults.embeddingModel);
-    if (elements.editChatModel) elements.editChatModel.placeholder = formatConfigDefault(modelDefaults.chatModel);
 
     const placeholder = elements.editDistanceMetric?.querySelector('option[value=""]');
     if (placeholder) placeholder.textContent = `Use backend default (${formatConfigDefault(collectionDefaults.distanceMetric)})`;
@@ -770,7 +770,12 @@ async function loadConfigDefaults() {
             },
             modelDefaults: {
                 embeddingModel: typeof data?.modelDefaults?.embeddingModel === "string" ? data.modelDefaults.embeddingModel : "",
-                chatModel: typeof data?.modelDefaults?.chatModel === "string" ? data.modelDefaults.chatModel : "",
+            },
+            chat: {
+                enabled: data?.chat?.enabled === true,
+                baseUrl: typeof data?.chat?.baseUrl === "string" ? data.chat.baseUrl : "",
+                model: typeof data?.chat?.model === "string" ? data.chat.model : "",
+                apiKeyConfigured: data?.chat?.apiKeyConfigured === true,
             },
         };
     } catch (_error) {
@@ -779,10 +784,14 @@ async function loadConfigDefaults() {
             loaded: true,
             collectionDefaults: null,
             modelDefaults: null,
+            chat: null,
         };
     }
 
-    if (token === loadTokens.configDefaults) syncConfigDefaultsPanel();
+    if (token === loadTokens.configDefaults) {
+        syncConfigDefaultsPanel();
+        renderChatLlmStatus();
+    }
 }
 
 async function loadModelDiscovery() {
@@ -792,15 +801,12 @@ async function loadModelDiscovery() {
         if (token !== loadTokens.modelDiscovery) return;
         const models = normalizeModelList(data?.models);
         const embeddingModels = normalizeModelList(Array.isArray(data?.embeddingModels) ? data.embeddingModels : models);
-        const chatModels = normalizeModelList(Array.isArray(data?.chatModels) ? data.chatModels : models);
         state.modelDiscovery = {
             reachable: data?.reachable === true,
             models,
             embeddingModels,
-            chatModels,
             defaults: {
                 embeddingModel: typeof data?.defaults?.embeddingModel === "string" ? data.defaults.embeddingModel : "",
-                chatModel: typeof data?.defaults?.chatModel === "string" ? data.defaults.chatModel : "",
             },
         };
     } catch (_error) {
@@ -809,10 +815,8 @@ async function loadModelDiscovery() {
             reachable: false,
             models: [],
             embeddingModels: [],
-            chatModels: [],
             defaults: {
                 embeddingModel: "",
-                chatModel: "",
             },
         };
     }
@@ -1526,7 +1530,6 @@ const VALIDATION_FIELD_LABELS = {
     retrievalK: "Retrieval k",
     retrievalDistanceThreshold: "Retrieval distance threshold",
     embeddingModel: "Embedding model",
-    chatModel: "Chat model",
 };
 
 function formatValidationFieldLabel(field) {
@@ -2619,7 +2622,10 @@ function renderReadinessData(readiness) {
         createReadinessRow("Chroma readable", readiness.chromaReadable, Boolean(readiness.chromaReadable)),
         createReadinessRow("Chroma count", formatCount(readiness.chromaCount)),
         createReadinessRow(`Embedding model: ${availability.embeddingModel || "-"}`, availability.embeddingModelAvailable, Boolean(availability.embeddingModelAvailable)),
-        createReadinessRow(`Chat model: ${availability.chatModel || "-"}`, availability.chatModelAvailable, Boolean(availability.chatModelAvailable)),
+        // The chat LLM is global and optional; "not configured" is a valid retrieve-only setup, not a failure.
+        availability.chatModel
+            ? createReadinessRow(`Chat LLM: ${availability.chatModel}`, availability.chatModelAvailable, Boolean(availability.chatModelAvailable))
+            : createReadinessRow("Chat LLM", "not configured (retrieve-only)"),
         createReadinessRow("Retrieve capability", capabilities.retrieve, Boolean(capabilities.retrieve)),
         createReadinessRow("Query capability", capabilities.query, Boolean(capabilities.query)),
         createReadinessRow("Re-index capability", capabilities.reindex, Boolean(capabilities.reindex)),
@@ -2658,9 +2664,18 @@ function getCapabilityState(mode) {
     if (!state.selectedCollection) return { enabled: false, reason: "Select and save a collection first." };
     if (!state.selectedReadiness) return { enabled: false, reason: "Readiness is not available." };
     const enabled = state.selectedReadiness.capabilities?.[mode] === true;
+    if (enabled) return { enabled, reason: "" };
+    if (mode === "query") {
+        const issues = [...(state.selectedReadiness.blockers || []), ...(state.selectedReadiness.warnings || [])];
+        const chatIssue = issues.find((issue) => typeof issue?.code === "string" && issue.code.startsWith("CHAT_"));
+        if (chatIssue?.code === "CHAT_NOT_CONFIGURED") {
+            return { enabled, reason: "Query is disabled: no chat LLM is configured (retrieve-only). Use Retrieve, or set one with npm run onboard." };
+        }
+        if (chatIssue?.message) return { enabled, reason: chatIssue.message };
+    }
     return {
         enabled,
-        reason: enabled ? "" : `${mode === "query" ? "Query" : "Retrieve"} is not available for this collection.`,
+        reason: `${mode === "query" ? "Query" : "Retrieve"} is not available for this collection.`,
     };
 }
 
@@ -2714,7 +2729,6 @@ function setupEditorTab(collection) {
     elements.editRetrievalK.value = collection.retrievalK ?? "";
     elements.editRetrievalDistanceThreshold.value = collection.retrievalDistanceThreshold ?? "";
     elements.editEmbeddingModel.value = fieldValueFromCollection(collection, "embeddingModel");
-    elements.editChatModel.value = fieldValueFromCollection(collection, "chatModel");
     state.editorInitialSnapshot = readEditorValues();
     syncModelDiscoveryPanel();
     syncConfigDefaultsPanel();
@@ -2750,7 +2764,6 @@ function readEditorValues() {
         retrievalK: readOptionalInteger(EDIT_FIELD_IDS.retrievalK),
         retrievalDistanceThreshold: readOptionalNumber(EDIT_FIELD_IDS.retrievalDistanceThreshold),
         embeddingModel: readTrimmed(EDIT_FIELD_IDS.embeddingModel),
-        chatModel: readTrimmed(EDIT_FIELD_IDS.chatModel),
     };
 }
 
@@ -2800,7 +2813,6 @@ function buildCollectionPayload(mode) {
         addIfNumber(payload, "retrievalK", values.retrievalK);
         addIfNumber(payload, "retrievalDistanceThreshold", values.retrievalDistanceThreshold);
         addIfText(payload, "embeddingModel", values.embeddingModel);
-        addIfText(payload, "chatModel", values.chatModel);
         return payload;
     }
 
@@ -2812,7 +2824,7 @@ function buildCollectionPayload(mode) {
         else if (initial.description) payload.description = null;
     }
 
-    ["sourcePath", "embeddingModel", "chatModel"].forEach((key) => {
+    ["sourcePath", "embeddingModel"].forEach((key) => {
         if (values[key] && values[key] !== initial[key]) payload[key] = values[key];
     });
 
@@ -3037,6 +3049,9 @@ function friendlyRagMessage(code) {
         RATE_LIMIT_EXCEEDED: "The request was rate limited. Wait and try again.",
         EMPTY_MODEL_RESPONSE: "The chat model returned an empty response.",
         DISALLOWED_FALLBACK_ANSWER: "The model returned a fallback answer that was rejected.",
+        CHAT_NOT_CONFIGURED: "Answer generation is disabled because no chat LLM is configured. Use Retrieve, or set one with npm run onboard (or RAG_CHAT_BASE_URL / RAG_CHAT_MODEL).",
+        CHAT_PROVIDER_UNREACHABLE: "The chat LLM could not be reached. Check that it is running and that chat.baseUrl is correct.",
+        CHAT_PROVIDER_ERROR: "The chat LLM returned an error (for example a wrong API key or an unknown model). See the details below.",
     };
     return messages[code] || null;
 }
@@ -3966,6 +3981,8 @@ function renderHealthSummary(health, ready, details, options = {}) {
     readinessGrid.appendChild(createMetaItem("Status", ready?.status || details?.status || "-"));
     readinessGrid.appendChild(createMetaItem("Ready", formatBoolean(ready?.ready ?? details?.ready)));
     readinessGrid.appendChild(createMetaItem("Ready for", ready?.systemReadyFor ?? details?.systemReadyFor ?? "-"));
+    readinessGrid.appendChild(createMetaItem("Retrieve ready", formatBoolean(ready?.retrieveReady ?? details?.retrieveReady)));
+    readinessGrid.appendChild(createMetaItem("Query enabled", formatBoolean(ready?.queryEnabled ?? details?.queryEnabled)));
     readinessGrid.appendChild(createMetaItem("Query ready", formatBoolean(ready?.queryReady ?? details?.queryReady)));
     readinessGrid.appendChild(createMetaItem("Index ready", formatBoolean(ready?.indexReady ?? details?.indexReady)));
     readinessGrid.appendChild(createMetaItem("Summary", ready?.overallSummary ?? details?.overallSummary ?? "-", "sm:col-span-1"));
@@ -3976,10 +3993,12 @@ function renderHealthSummary(health, ready, details, options = {}) {
     depsCard.appendChild(createEl("h3", "mb-3 text-sm font-bold uppercase text-slate-500", "Dependencies"));
     const deps = details?.dependencies || ready?.dependencies || {};
     const depList = createEl("div", "space-y-2");
-    ["registry", "chroma", "ollama"].forEach((key) => {
+    ["registry", "chroma", "ollama", "chat"].forEach((key) => {
         const row = createEl("div", "flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 p-2 text-xs");
-        row.appendChild(createEl("span", "font-semibold capitalize text-slate-600", key));
-        row.appendChild(createBadge(dependencyStatus(deps[key]), getStatusColor(dependencyStatus(deps[key]))));
+        row.appendChild(createEl("span", "font-semibold capitalize text-slate-600", key === "chat" ? "chat LLM" : key));
+        // An unconfigured chat LLM is a valid retrieve-only setup, not a failure.
+        const status = key === "chat" && deps.chat && deps.chat.configured === false ? "disabled" : dependencyStatus(deps[key]);
+        row.appendChild(createBadge(status, getStatusColor(status)));
         depList.appendChild(row);
     });
     depsCard.appendChild(depList);
@@ -4083,7 +4102,7 @@ function renderReadinessDetail(ready, details, detailsError, options = {}) {
     const config = createEl("section", "mb-6");
     config.appendChild(createEl("h4", "mb-3 text-sm font-bold uppercase text-slate-500", "Configuration"));
     const configGrid = createEl("div", "grid grid-cols-1 gap-3 sm:grid-cols-2");
-    configGrid.appendChild(createMetaItem("Chat model", details?.chatModel ?? ready?.config?.chatModel ?? "-"));
+    configGrid.appendChild(createMetaItem("Chat LLM", details?.chatModel ?? ready?.config?.chatModel ?? "not configured (retrieve-only)"));
     configGrid.appendChild(createMetaItem("Embedding model", details?.embeddingModel ?? ready?.config?.embeddingModel ?? "-"));
     configGrid.appendChild(createMetaItem("Chroma URL", details?.chromaUrl ?? ready?.config?.chromaUrl ?? "-"));
     configGrid.appendChild(createMetaItem("Port", details?.port ?? ready?.config?.port ?? "-"));
@@ -4270,14 +4289,8 @@ function bindEvents() {
     if (elements.embeddingModelSelect) {
         elements.embeddingModelSelect.addEventListener("change", () => setModelFromSelect("embedding"));
     }
-    if (elements.chatModelSelect) {
-        elements.chatModelSelect.addEventListener("change", () => setModelFromSelect("chat"));
-    }
     if (elements.editEmbeddingModel) {
         elements.editEmbeddingModel.addEventListener("input", () => syncModelDiscoveryPanel());
-    }
-    if (elements.editChatModel) {
-        elements.editChatModel.addEventListener("input", () => syncModelDiscoveryPanel());
     }
     elements.btnCreateCollection.addEventListener("click", () => openInspector(null));
     elements.btnCloseInspector.addEventListener("click", closeInspector);

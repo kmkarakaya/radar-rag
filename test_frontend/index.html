@@ -589,7 +589,7 @@
                 </button>
                 <button id="invalid-button" class="danger action-button" disabled>
                   <span>Send Invalid Body</span>
-                  <small>POST /v1/rag/collections/:id/query</small>
+                  <small>POST /v1/rag/collections/:id/retrieve</small>
                 </button>
                 <button id="clear-button" class="secondary">Clear Output</button>
               </div>
@@ -870,10 +870,15 @@
         if (body && body.capabilities && body.modelAvailability) {
           const queryEnabled = Boolean(body.capabilities.query);
           const retrieveEnabled = Boolean(body.capabilities.retrieve);
+          // Answer generation is optional: without a chat LLM the backend is retrieve-only.
+          const chatNotConfigured = Array.isArray(body.warnings)
+            && body.warnings.some((issue) => issue && issue.code === "CHAT_NOT_CONFIGURED");
           answer.textContent = queryEnabled
             ? "Collection is ready for grounded question answering."
             : retrieveEnabled
-              ? "Collection can retrieve evidence, but answer generation is currently blocked."
+              ? chatNotConfigured
+                ? "Collection can retrieve evidence. Answer generation is disabled because no chat LLM is configured (retrieve-only)."
+                : "Collection can retrieve evidence, but answer generation is currently blocked."
               : "Collection is not ready for public query actions yet.";
 
           addMeta("Collection ID", body.id || "-");
@@ -882,7 +887,7 @@
           addMeta("Chroma Readable", String(Boolean(body.chromaReadable)));
           addMeta("Chroma Count", String(body.chromaCount ?? "-"));
           addMeta("Live Embedding", body.modelAvailability.embeddingModel || "-");
-          addMeta("Chat Model", body.modelAvailability.chatModel || "-");
+          addMeta("Chat Model", body.modelAvailability.chatModel || "not configured (retrieve-only)");
           if (body.modelAvailability.desiredEmbeddingModel) {
             addMeta("Desired Embedding", body.modelAvailability.desiredEmbeddingModel);
           }
@@ -1060,7 +1065,8 @@
 
         retrieveButton.disabled = !(id && readiness && readiness.capabilities && readiness.capabilities.retrieve === true);
         askButton.disabled = !(id && readiness && readiness.capabilities && readiness.capabilities.query === true);
-        invalidButton.disabled = !(id && readiness && readiness.capabilities && readiness.capabilities.query === true);
+        // The invalid-body demo targets /retrieve, so it also works when /query is disabled.
+        invalidButton.disabled = !(id && readiness && readiness.capabilities && readiness.capabilities.retrieve === true);
         collectionReadyButton.disabled = !id;
         collectionDetailButton.disabled = !id;
       }
@@ -1102,7 +1108,7 @@
 
         document.querySelector("#retrieve-button small").textContent = `POST ${collection.retrieveUrl || `/v1/rag/collections/${collection.id}/retrieve`}`;
         document.querySelector("#ask-button small").textContent = `POST ${collection.queryUrl || `/v1/rag/collections/${collection.id}/query`}`;
-        document.querySelector("#invalid-button small").textContent = `POST ${collection.queryUrl || `/v1/rag/collections/${collection.id}/query`}`;
+        document.querySelector("#invalid-button small").textContent = `POST ${collection.retrieveUrl || `/v1/rag/collections/${collection.id}/retrieve`}`;
 
         updateQueryButtons();
       }
@@ -1273,7 +1279,7 @@
         const collectionId = collection ? collection.id : "unknown";
 
         await sendRequest(
-          `/v1/rag/collections/${collectionId}/query`,
+          `/v1/rag/collections/${collectionId}/retrieve`,
           {
             method: "POST",
             headers: {

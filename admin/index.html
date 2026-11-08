@@ -471,17 +471,10 @@
                                 </div>
                                 <span id="modelDiscoveryStatus" class="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600">Loading</span>
                             </div>
-                            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <div class="space-y-2">
-                                    <label class="block text-xs font-medium text-slate-500">embeddingModels</label>
-                                    <select id="embeddingModelSelect" size="5" class="w-full rounded-lg border border-slate-200 bg-white p-2 text-sm"></select>
-                                    <p class="text-xs text-slate-400">Pick one from <code>embeddingModels</code>, or type manually below.</p>
-                                </div>
-                                <div class="space-y-2">
-                                    <label class="block text-xs font-medium text-slate-500">chatModels</label>
-                                    <select id="chatModelSelect" size="5" class="w-full rounded-lg border border-slate-200 bg-white p-2 text-sm"></select>
-                                    <p class="text-xs text-slate-400">Pick one from <code>chatModels</code>, or type manually below.</p>
-                                </div>
+                            <div class="mt-4 space-y-2">
+                                <label class="block text-xs font-medium text-slate-500">embeddingModels</label>
+                                <select id="embeddingModelSelect" size="5" class="w-full rounded-lg border border-slate-200 bg-white p-2 text-sm"></select>
+                                <p class="text-xs text-slate-400">Pick one from <code>embeddingModels</code>, or type manually below.</p>
                             </div>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -491,9 +484,9 @@
                                 <p class="mt-1 text-xs text-slate-400" data-default-for="embeddingModel"></p>
                             </div>
                             <div>
-                                <label class="block text-xs font-medium text-slate-500 mb-1">Chat Model</label>
-                                <input type="text" id="editChatModel" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
-                                <p class="mt-1 text-xs text-slate-400" data-default-for="chatModel"></p>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">Chat LLM (global, optional)</label>
+                                <p id="chatLlmStatus" class="rounded-lg border border-slate-200 bg-slate-50 p-2 text-sm text-slate-600">Loading GET /v1/admin/config/defaults...</p>
+                                <p class="mt-1 text-xs text-slate-400">Shared by all collections and used only by Query. Set it with <code>npm run onboard</code> or <code>RAG_CHAT_BASE_URL</code> / <code>RAG_CHAT_MODEL</code>.</p>
                             </div>
                         </div>
                         <p class="text-xs text-slate-400">Suggestions are loaded from <code>GET /v1/admin/models</code>; free text is still allowed.</p>

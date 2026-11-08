@@ -21,7 +21,7 @@ It demonstrates:
 - `GET /v1/rag/collections/:collectionId`
 - `GET /v1/rag/collections/:collectionId/ready`
 - `POST /v1/rag/collections/:collectionId/retrieve`
-- `POST /v1/rag/collections/:collectionId/query`
+- `POST /v1/rag/collections/:collectionId/query` (only when the backend has a chat LLM configured)
 
 It also demonstrates:
 
@@ -31,6 +31,7 @@ It also demonstrates:
 - rendering effective `embeddingModel` and `chatModel` metadata from query/retrieve responses
 - surfacing `requestId`, `Retry-After`, and `X-RateLimit-*` response headers
 - keeping `query` and `retrieve` as separate user actions
+- a retrieve-only backend: without a chat LLM, readiness reports `capabilities.query: false` with a `CHAT_NOT_CONFIGURED` warning and **Generate Answer** stays disabled
 
 ## Run It
 
@@ -93,6 +94,7 @@ These changes are usually safe:
 - Keep sending `x-tenant-id`, `x-user-id`, and `x-request-id`.
 - Handle `400`, `403`, `404`, `413`, `422`, `429`, `502`, and `503` distinctly.
 - Treat `Retry-After` as actionable on `429`.
+- Treat `503 CHAT_NOT_CONFIGURED` from `/query` as a configuration state (no chat LLM), not a transient error; it has no `Retry-After`.
 - Treat `query.sources` as generation-context output, not automatically as the full evidence set.
 - Treat `retrieve.embeddingModel` and `query.embeddingModel` / `query.chatModel` as part of the response contract.
 - If `desiredEmbeddingModel` appears in readiness, treat it as a pending post-reindex change.

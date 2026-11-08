@@ -36,6 +36,8 @@ Use `/ready` for environment or deployment diagnostics. For collection-specific 
 
 Answer generation is optional. Without a chat LLM (the shipped default) the summary reports `queryEnabled: false`, `queryReady: false`, `systemReadyFor: "retrieve-and-index"`, and still `ready: true`; `/retrieve` and indexing work, `/query` returns `503 CHAT_NOT_CONFIGURED`. With a chat LLM configured, `dependencies.chat` in `?details=true` shows the result of a cached `GET {chat.baseUrl}/models` check (never a generation).
 
+`dependencies.embedding` in `?details=true` checks the configured default embedding for new collections, without running an embedding. With the default `builtin` provider, `EMBEDDING_MODEL_NOT_DOWNLOADED` is a non-blocking warning until the first indexing downloads the model (about 346 MB, one time, into `embedding.cacheDir`). With `openai-compatible`, it is a cached `GET {embedding.baseUrl}/models` check; `EMBEDDING_PROVIDER_NOT_CONFIGURED`, `EMBEDDING_PROVIDER_UNREACHABLE`, `EMBEDDING_PROVIDER_AUTH_FAILED`, and `EMBEDDING_MODEL_MISSING` block retrieve, query, and index.
+
 ## 1. Public RAG Flow
 
 ### List visible collections
@@ -89,7 +91,14 @@ curl.exe -s `
   "$BASE_URL/v1/rag/collections/$COLLECTION_ID/retrieve"
 ```
 
-The response JSON includes the effective `embeddingModel` used for retrieval.
+The response JSON includes the effective `embeddingProvider` and `embeddingModel` used for retrieval (always the pair the collection's active index was built with).
+
+Embedding-specific failures (also possible on `/query`):
+
+- `503 EMBEDDING_PROVIDER_NOT_CONFIGURED`: the collection uses the `openai-compatible` provider but no `embedding.baseUrl` is configured.
+- `503 EMBEDDING_PROVIDER_UNREACHABLE`: the embedding service cannot be reached, or the built-in model could not be downloaded or loaded.
+- `502 EMBEDDING_PROVIDER_ERROR`: the embedding service returned an HTTP error; see `details.upstreamStatus` and `details.providerMessage`.
+- `409 EMBEDDING_DIMENSION_MISMATCH`: the query vector size differs from the index (`details.expectedDimensions`, `details.gotDimensions`); reindex the collection.
 
 ### Ask a grounded question
 
@@ -104,7 +113,7 @@ curl.exe -s `
   "$BASE_URL/v1/rag/collections/$COLLECTION_ID/query"
 ```
 
-The response JSON includes the effective `embeddingModel` used for retrieval and the global `chatModel` that generated the answer.
+The response JSON includes the effective `embeddingProvider` / `embeddingModel` used for retrieval and the global `chatModel` that generated the answer.
 
 This endpoint needs the optional chat LLM (any OpenAI-compatible chat completions API, configured with `npm run onboard` or `RAG_CHAT_BASE_URL` / `RAG_CHAT_MODEL`, plus `RAG_CHAT_API_KEY` if the provider needs a key). Chat-specific failures:
 
@@ -183,7 +192,7 @@ curl.exe -s `
   "$BASE_URL/v1/admin/models"
 ```
 
-Use this response to populate embedding model autocomplete or datalist suggestions while still allowing free text input. Ollama only serves embeddings; collections have no chat model field.
+Use this response to populate the embedding provider select and the embedding model autocomplete or datalist suggestions while still allowing free text input. The shape is `{ default: { provider, model }, providers: { builtin: { models, cacheDir }, "openai-compatible": { configured, baseUrl, reachable, models, error? } } }`: built-in models come from a fixed catalog, `openai-compatible` models from the configured service's `GET /models`. Collections have no chat model field.
 
 ### Create a collection
 
@@ -207,6 +216,8 @@ curl.exe -s `
   "$BASE_URL/v1/admin/collections"
 ```
 
+Omitted `embeddingProvider` / `embeddingModel` come from the configured default (`modelDefaults` in `GET /v1/admin/config/defaults`). To use another provider, send for example `"embeddingProvider":"openai-compatible","embeddingModel":"bge-m3"` (an `openai-compatible` collection needs an explicit model). The create preflight never downloads or embeds; it can fail with `422 UNAVAILABLE_MODEL`, `422 EMBEDDING_PROVIDER_NOT_CONFIGURED`, or `503 EMBEDDING_PROVIDER_UNREACHABLE`, and then creates nothing.
+
 ### Validate before saving or reindexing
 
 ```powershell
@@ -217,14 +228,14 @@ curl.exe -s `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
-  -d '{"chunkSize":512,"chunkOverlap":64,"embeddingModel":"bge-m3"}' `
+  -d '{"chunkSize":512,"chunkOverlap":64,"embeddingProvider":"openai-compatible","embeddingModel":"bge-m3"}' `
   "$BASE_URL/v1/admin/collections/$COLLECTION_ID/validate"
 ```
 
 Interpretation:
 
 - `impact.immediateFields` take effect without reindex.
-- `impact.reindexFields` require reindex before the active index matches the saved config.
+- `impact.reindexFields` require reindex before the active index matches the saved config. `embeddingProvider` and `embeddingModel` are reindex-bound: live reads keep using the active embedding until the reindex succeeds.
 
 ### Save a patch
 
@@ -288,6 +299,8 @@ Notes:
 - Success is `202 Accepted`.
 - The response includes a `job.id`.
 - If a reindex is already active, expect `409 COLLECTION_INDEX_ALREADY_RUNNING`.
+- The embedding preflight (no download, no embedding) can reject the request with `422 UNAVAILABLE_MODEL`, `422 EMBEDDING_PROVIDER_NOT_CONFIGURED`, or `503 EMBEDDING_PROVIDER_UNREACHABLE`; no job is started then.
+- With the `builtin` provider, the first job downloads the model once (about 346 MB) before embedding, so it takes longer than later jobs.
 - Rate-limit headers are present on success and on `429`.
 
 ### Poll job detail

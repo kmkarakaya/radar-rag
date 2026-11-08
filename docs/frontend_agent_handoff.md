@@ -69,8 +69,8 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 
 | Operation | Endpoint | Use when | Returns |
 | --- | --- | --- | --- |
-| `retrieve` | `POST /v1/rag/collections/:collectionId/retrieve` | The UI should show relevant source chunks without generating an answer | `sources`, `embeddingModel`, threshold, collection metadata, optional debug timings |
-| `query` | `POST /v1/rag/collections/:collectionId/query` | The UI should return a grounded answer generated from retrieved context | `answer`, `embeddingModel`, `chatModel`, generation-context `sources`, threshold, collection metadata, optional debug timings |
+| `retrieve` | `POST /v1/rag/collections/:collectionId/retrieve` | The UI should show relevant source chunks without generating an answer | `sources`, `embeddingProvider`, `embeddingModel`, threshold, collection metadata, optional debug timings |
+| `query` | `POST /v1/rag/collections/:collectionId/query` | The UI should return a grounded answer generated from retrieved context | `answer`, `embeddingProvider`, `embeddingModel`, `chatModel`, generation-context `sources`, threshold, collection metadata, optional debug timings |
 
 ## Readiness-Driven UI States
 
@@ -86,16 +86,18 @@ Use the readiness payload to drive the UI:
   Show progress or a pending state. A collection may still be queryable during rebuild if the active physical collection remains readable.
 - `recommendedActions`
   Render these directly in the UI; the backend already provides actionable text.
-- If the UI exposes a raw JSON or developer diagnostics panel, render `retrieve.embeddingModel` and `query.embeddingModel` / `query.chatModel` there instead of hiding them.
+- If `blockers` contains an embedding code (`EMBEDDING_MODEL_UNSUPPORTED`, `EMBEDDING_PROVIDER_NOT_CONFIGURED`, `EMBEDDING_PROVIDER_UNREACHABLE`, `EMBEDDING_PROVIDER_AUTH_FAILED`, `EMBEDDING_MODEL_MISSING`), both retrieve and query are blocked for that collection. `EMBEDDING_MODEL_NOT_DOWNLOADED` and `EMBEDDING_MODEL_UNVERIFIED` are only `warnings` and do not disable actions.
+- If the UI exposes a raw JSON or developer diagnostics panel, render `retrieve.embeddingProvider` / `retrieve.embeddingModel` and `query.embeddingProvider` / `query.embeddingModel` / `query.chatModel` there instead of hiding them.
 
 ## Snapshot Semantics
 
-- A collection can have a desired embedding model in admin configuration and a different active embedding model used by live RAG reads.
-- Until a new reindex completes, `query` and `retrieve` continue using `activeEmbeddingModel`.
+- Embeddings come from a provider (`builtin`, running inside the backend, or `openai-compatible`, an external `/v1/embeddings` API) plus a model. Each collection stores its own pair; the server's configured default only applies to new collections.
+- A collection can have a desired embedding provider/model in admin configuration and a different active pair used by live RAG reads.
+- Until a new reindex completes, `query` and `retrieve` continue using `activeEmbeddingProvider` / `activeEmbeddingModel`.
 - When those differ, `GET /v1/rag/collections/:collectionId/ready` exposes:
-  - `modelAvailability.embeddingModel`: the model used for live reads now
-  - `modelAvailability.desiredEmbeddingModel`: the configured future model that becomes active after reindex
-- Treat `desiredEmbeddingModel` as a pending-change indicator, not as the currently effective read model.
+  - `modelAvailability.embeddingProvider` / `modelAvailability.embeddingModel`: the embedding used for live reads now
+  - `modelAvailability.desiredEmbeddingProvider` / `modelAvailability.desiredEmbeddingModel`: the configured future embedding that becomes active after reindex
+- Treat `desiredEmbeddingProvider` / `desiredEmbeddingModel` as a pending-change indicator, not as the currently effective read embedding.
 
 ## Error Handling Rules
 
@@ -116,6 +118,11 @@ Use the readiness payload to drive the UI:
 | `CHAT_PROVIDER_ERROR` | `502` | `query` only: the chat LLM API returned an HTTP error (`details.upstreamStatus`, `details.providerMessage`) | Show provider failure and log the `requestId` |
 | `DISALLOWED_FALLBACK_ANSWER` | `502` | The model returned a blocked fallback string | Show transient backend failure |
 | `MODEL_BACKPRESSURE` | `503` | Retrieval or generation timed out, was aborted, waited too long in the generation/embedding queue, or backend dependencies are overloaded | Retry with backoff |
+| `EMBEDDING_PROVIDER_NOT_CONFIGURED` | `503` (`422` on admin create/reindex) | The collection's `openai-compatible` embedding service is not configured on the server | Show retrieval unavailable; this is a configuration issue, not transient |
+| `EMBEDDING_PROVIDER_UNREACHABLE` | `503` | The embedding service could not be reached, or the built-in model could not be downloaded/loaded | Show retrieval unavailable and retry later |
+| `EMBEDDING_PROVIDER_ERROR` | `502` | The embedding service returned an HTTP error (`details.upstreamStatus`, `details.providerMessage`) | Show provider failure and log the `requestId` |
+| `EMBEDDING_DIMENSION_MISMATCH` | `409` | The query embedding does not match the collection's index (`details.expectedDimensions`, `details.gotDimensions`) | Show that the collection needs a reindex |
+| `UNAVAILABLE_MODEL` | `422` | Admin create/reindex: the embedding model is not in the built-in catalog or not offered by the embedding service (`details.availableModels`) | Let the user pick another model |
 | `COLLECTION_STORAGE_INCONSISTENT` | `503` | Metadata says a physical collection exists, but storage does not | Show backend inconsistency and escalate |
 | `RATE_LIMIT_EXCEEDED` | `429` | Request limit was hit for tenant + user + collection + operation | Back off using `Retry-After` |
 | `COLLECTION_INDEX_ALREADY_RUNNING` | `409` | A reindex job is already active | Reuse the existing job state |
@@ -206,7 +213,7 @@ Rules:
 - Handle 202, 204, 409, 413, 422, 429, 502, and 503 correctly.
 - Do not invent endpoints or response fields.
 - If a response contains blockers, warnings, or recommendedActions, surface them in the UI instead of replacing them with guessed text.
-- If ready.modelAvailability.desiredEmbeddingModel exists, treat it as a pending post-reindex model change, not as the current live embedding model.
+- If ready.modelAvailability.desiredEmbeddingProvider or desiredEmbeddingModel exists, treat it as a pending post-reindex embedding change, not as the current live embedding.
 - If the UI shows job progress, use GET /v1/admin/jobs/:jobId/events for stage-aware updates.
 - If the UI shows operations history, use GET /v1/admin/audit-log and support repeated collectionId and operation filters.
 - If the UI needs admin login/logout or action-token flow, use the auth endpoints above instead of inventing client-side token logic.

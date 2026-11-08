@@ -17,3 +17,4 @@ config/*.bak
 .vscode
 .idea
 .claude
+models

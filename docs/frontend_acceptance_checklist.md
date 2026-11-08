@@ -11,8 +11,9 @@ Use this checklist to evaluate whether a frontend built against this backend is 
 - Uses `GET /v1/rag/collections/:collectionId/ready` before enabling query or retrieve actions.
 - Uses `ready.capabilities.query` and `ready.capabilities.retrieve` instead of inferring capability from `status` alone.
 - Treats `query.sources` as the generation context subset, not automatically as the full retrieval set.
-- Treats `ready.modelAvailability.desiredEmbeddingModel` as a pending post-reindex model change.
-- Preserves `retrieve.embeddingModel` and `query.embeddingModel` / `query.chatModel` in any raw JSON or diagnostics view.
+- Treats `ready.modelAvailability.desiredEmbeddingProvider` / `desiredEmbeddingModel` as a pending post-reindex embedding change.
+- Preserves `retrieve.embeddingProvider` / `retrieve.embeddingModel` and `query.embeddingProvider` / `query.embeddingModel` / `query.chatModel` in any raw JSON or diagnostics view.
+- Handles embedding errors on retrieve/query (`503 EMBEDDING_PROVIDER_NOT_CONFIGURED`, `503 EMBEDDING_PROVIDER_UNREACHABLE`, `502 EMBEDDING_PROVIDER_ERROR`, `409 EMBEDDING_DIMENSION_MISMATCH`) with a clear message instead of a generic failure.
 - Treats answer generation as optional: works in a retrieve-only deployment (no chat LLM, `capabilities.query` always `false`, `modelAvailability.chatModel` `null`) and explains why the answer action is unavailable instead of showing a generic error.
 
 ## Public UX Checks
@@ -53,7 +54,9 @@ Use this checklist to evaluate whether a frontend built against this backend is 
 - Enforces role-aware UI state: `viewer` read-only, `operator` can mutate non-destructive flows, `admin` can delete collections and jobs.
 - Can create collections with `POST /v1/admin/collections`.
 - Shows backend defaults for create forms with `GET /v1/admin/config/defaults`.
-- Shows runtime embedding model suggestions for create forms with `GET /v1/admin/models`.
+- Shows runtime embedding model suggestions for create forms with `GET /v1/admin/models` (per provider: `providers.builtin.models` and `providers["openai-compatible"].models`).
+- Lets the create/edit form choose `embeddingProvider` (`builtin` or `openai-compatible`) next to `embeddingModel`, defaulting to `modelDefaults` from `GET /v1/admin/config/defaults`, and requires a model when `openai-compatible` is not the default provider.
+- Handles create/reindex preflight failures `422 UNAVAILABLE_MODEL` (show `details.availableModels`), `422 EMBEDDING_PROVIDER_NOT_CONFIGURED`, and `503 EMBEDDING_PROVIDER_UNREACHABLE`.
 - Does not send `chatModel` in collection create/update/validate bodies (it is rejected with `400 INVALID_REQUEST_BODY`); shows the global chat LLM from `GET /v1/admin/config/defaults` (`chat`) as read-only information at most.
 - Uses validate endpoints before expensive saves or reindex actions.
 - Can patch collections with `PATCH /v1/admin/collections/:collectionId`.

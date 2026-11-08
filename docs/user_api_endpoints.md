@@ -92,13 +92,14 @@ Default summary response shape:
   "dependencies": {
     "registry": { "ok": true },
     "chroma": { "ok": true },
-    "ollama": { "ok": true },
+    "embedding": { "ok": true },
     "chat": { "ok": true, "configured": true }
   },
   "config": {
     "port": 3000,
     "chatModel": "gemma3:4b",
-    "embeddingModel": "embeddinggemma-2:270m",
+    "embeddingProvider": "builtin",
+    "embeddingModel": "onnx-community/embeddinggemma-2-ONNX",
     "chromaUrl": "http://127.0.0.1:8000"
   },
   "diagnostics": {
@@ -177,6 +178,8 @@ The example above has the optional chat LLM configured. Answer generation is opt
 
 The chat LLM check is a free, cached (30 s) `GET {chat.baseUrl}/models` request, never a generation. Its readiness codes (capability `query` only) are `CHAT_NOT_CONFIGURED` (skip), `CHAT_PROVIDER_UNREACHABLE`, `CHAT_PROVIDER_AUTH_FAILED`, `CHAT_MODEL_MISSING` (blocking failures for `query` only), `CHAT_MODEL_UNVERIFIED` (warning: the provider has no `GET /models` listing), and `CHAT_MODEL_AVAILABLE` (pass). `GET /ready?details=true` returns `capabilities: { retrieve: { ready, message }, query: { enabled, ready, message }, index: { ready, message } }` and `dependencies.chat: { configured, baseUrl, model, reachable, authOk, modelListed, ok, latencyMs, httpStatus?, availableModels?, error? }` (`modelListed` is `true`, `false`, or `"unknown"`; the API key is never returned).
 
+The embedding check covers the configured **default** embedding (`embedding.provider` / `embedding.model`, used for new collections); existing collections are checked individually by their collection `/ready`. It is cheap and never runs an embedding: for the `builtin` provider it checks the built-in model catalog and whether the model is already in `embedding.cacheDir`; for `openai-compatible` it is a free, cached `GET {embedding.baseUrl}/models`. Its readiness codes (capabilities `retrieve`, `query`, `index`) are `EMBEDDING_MODEL_READY` (pass), `EMBEDDING_MODEL_NOT_DOWNLOADED` (warning, non-blocking: the built-in model is downloaded once on the first indexing), `EMBEDDING_MODEL_UNVERIFIED` (warning: the service has no `GET /models` listing), and the blocking failures `EMBEDDING_MODEL_UNSUPPORTED` (built-in model not in the catalog), `EMBEDDING_PROVIDER_NOT_CONFIGURED`, `EMBEDDING_PROVIDER_UNREACHABLE`, `EMBEDDING_PROVIDER_AUTH_FAILED`, `EMBEDDING_MODEL_MISSING`. `GET /ready?details=true` returns `dependencies.embedding: { provider, model, configured, supported, ok, latencyMs, downloaded?, approxDownloadMb?, reachable?, authOk?, modelListed?, availableModels?, httpStatus?, error? }` (`downloaded` / `approxDownloadMb` for `builtin`, the rest for `openai-compatible`; the API key is never returned).
+
 Use `/ready` for deployment, operations, and environment diagnostics. `blockers` and `warnings` describe capability readiness, while `operationalAlerts` and `operations` provide aggregate queue, cleanup, and runtime context. For collection-specific frontend state, use `GET /v1/rag/collections/:collectionId/ready`.
 
 ## Public Collection DTO
@@ -200,14 +203,16 @@ Public collection list and detail responses use a sanitized DTO:
       "distanceMetric": "cosine",
       "chunkSize": 1000,
       "chunkOverlap": 200,
-      "embeddingModel": "embeddinggemma-2:270m"
+      "embeddingProvider": "builtin",
+      "embeddingModel": "onnx-community/embeddinggemma-2-ONNX"
     },
     "desiredSnapshot": {
       "sourcePath": "data",
       "distanceMetric": "cosine",
       "chunkSize": 1000,
       "chunkOverlap": 200,
-      "embeddingModel": "embeddinggemma-2:270m"
+      "embeddingProvider": "builtin",
+      "embeddingModel": "onnx-community/embeddinggemma-2-ONNX"
     },
     "changedFields": [],
     "note": "Saved settings are aligned with the active indexed snapshot."
@@ -220,7 +225,8 @@ Public collection list and detail responses use a sanitized DTO:
 
 Notes:
 
-- Public DTOs do not expose top-level `tenantId`, `sourcePath`, `embeddingModel`, `activePhysicalCollection`, or `activeEmbeddingModel`.
+- Public DTOs do not expose top-level `tenantId`, `sourcePath`, `embeddingProvider`, `embeddingModel`, `activePhysicalCollection`, `activeEmbeddingProvider`, or `activeEmbeddingModel`.
+- `indexState` snapshots include `embeddingProvider` and `embeddingModel`: changing either one in the admin configuration makes `indexState.status` `reindex_required` until a reindex completes.
 - Collections have no chat model of their own: the optional chat LLM used by `/query` is global (see `GET /ready`).
 - `description`, `chunkCount`, `activeVersion`, and `indexState` may be `null`.
 - `status` can be `creating`, `indexing`, `ready`, `failed`, or `archived`.
@@ -253,14 +259,16 @@ Example response:
           "distanceMetric": "cosine",
           "chunkSize": 1000,
           "chunkOverlap": 200,
-          "embeddingModel": "embeddinggemma-2:270m"
+          "embeddingProvider": "builtin",
+          "embeddingModel": "onnx-community/embeddinggemma-2-ONNX"
         },
         "desiredSnapshot": {
           "sourcePath": "data",
           "distanceMetric": "cosine",
           "chunkSize": 1000,
           "chunkOverlap": 200,
-          "embeddingModel": "embeddinggemma-2:270m"
+          "embeddingProvider": "builtin",
+          "embeddingModel": "onnx-community/embeddinggemma-2-ONNX"
         },
         "changedFields": [],
         "note": "Saved settings are aligned with the active indexed snapshot."
@@ -319,7 +327,8 @@ Example: collection has no active physical collection yet, but a job is queued:
   "chromaReadable": false,
   "chromaCount": -1,
   "modelAvailability": {
-    "embeddingModel": "embeddinggemma-2:270m",
+    "embeddingProvider": "builtin",
+    "embeddingModel": "onnx-community/embeddinggemma-2-ONNX",
     "embeddingModelAvailable": true,
     "chatModel": "gemma3:4b",
     "chatModelAvailable": true
@@ -365,10 +374,13 @@ Example: collection is rebuilding, but the previous active snapshot is still rea
   "chromaReadable": true,
   "chromaCount": 42,
   "modelAvailability": {
+    "embeddingProvider": "openai-compatible",
     "embeddingModel": "embed-collection-specific",
     "embeddingModelAvailable": true,
     "chatModel": "gemma3:4b",
-    "chatModelAvailable": true
+    "chatModelAvailable": true,
+    "desiredEmbeddingProvider": "builtin",
+    "desiredEmbeddingModel": "onnx-community/embeddinggemma-2-ONNX"
   },
   "capabilities": {
     "query": true,
@@ -391,9 +403,10 @@ Example: collection is rebuilding, but the previous active snapshot is still rea
 
 Embedding model nuance:
 
-- `modelAvailability.embeddingModel` is the model used by live reads right now.
-- If `modelAvailability.desiredEmbeddingModel` appears, the admin configuration was changed and a reindex is still needed before live reads switch to that future embedding model.
-- This matters after an admin updates `embeddingModel` but before reindex completes.
+- `modelAvailability.embeddingProvider` / `modelAvailability.embeddingModel` are the embedding the active index was built with, which is what live reads use right now. The configured default embedding (`embedding.*` in the server config) only applies to new collections and never changes an existing collection.
+- If `modelAvailability.desiredEmbeddingProvider` / `desiredEmbeddingModel` appear, the admin configuration was changed and a reindex is still needed before live reads switch to that future embedding. Both fields appear together whenever the saved provider or model differs from the active pair.
+- This matters after an admin updates `embeddingProvider` or `embeddingModel` but before reindex completes.
+- `embeddingModelAvailable` comes from a cheap check of the active pair that never runs an embedding: the built-in catalog for `builtin` (a not-yet-downloaded built-in model still counts as available; it downloads on first use), or the service's `GET /models` for `openai-compatible`.
 
 Chat model nuance:
 
@@ -402,8 +415,8 @@ Chat model nuance:
 
 Possible readiness codes (inside the `200 OK` payload — these are distinct from the HTTP error codes below):
 
-- Blockers: `COLLECTION_NO_ACTIVE_PHYSICAL_COLLECTION`, `COLLECTION_ACTIVE_PHYSICAL_UNREADABLE`, `OLLAMA_UNREACHABLE`, `EMBED_MODEL_MISSING`, `CHAT_PROVIDER_UNREACHABLE`, `CHAT_PROVIDER_AUTH_FAILED`, `CHAT_MODEL_MISSING` (the three `CHAT_*` blockers only block `query`; `retrieve` stays available).
-- Warnings: `COLLECTION_INDEX_JOB_ACTIVE`, `CHAT_NOT_CONFIGURED` (retrieve-only; `/query` is disabled), `CHAT_MODEL_UNVERIFIED` (the provider does not list its models).
+- Blockers: `COLLECTION_NO_ACTIVE_PHYSICAL_COLLECTION`, `COLLECTION_ACTIVE_PHYSICAL_UNREADABLE`, `EMBEDDING_MODEL_UNSUPPORTED`, `EMBEDDING_PROVIDER_NOT_CONFIGURED`, `EMBEDDING_PROVIDER_UNREACHABLE`, `EMBEDDING_PROVIDER_AUTH_FAILED`, `EMBEDDING_MODEL_MISSING`, `CHAT_PROVIDER_UNREACHABLE`, `CHAT_PROVIDER_AUTH_FAILED`, `CHAT_MODEL_MISSING` (the three `CHAT_*` blockers only block `query`; `retrieve` stays available).
+- Warnings: `COLLECTION_INDEX_JOB_ACTIVE`, `EMBEDDING_MODEL_NOT_DOWNLOADED` (the built-in model downloads on first use), `EMBEDDING_MODEL_UNVERIFIED` (the embedding service does not list its models), `CHAT_NOT_CONFIGURED` (retrieve-only; `/query` is disabled), `CHAT_MODEL_UNVERIFIED` (the provider does not list its models).
 
 Frontend rule:
 
@@ -442,7 +455,8 @@ Response body:
       "content": "Retrieved chunk text..."
     }
   ],
-  "embeddingModel": "embeddinggemma-2:270m",
+  "embeddingProvider": "builtin",
+  "embeddingModel": "onnx-community/embeddinggemma-2-ONNX",
   "collectionId": "col_123",
   "collectionDisplayName": "Tax Rulings 2026",
   "activeVersion": "v-2026-06-27"
@@ -454,7 +468,7 @@ Notes:
 - `k` is optional and defaults to the collection's configured `retrievalK`.
 - `sourceCount` equals `sources.length`.
 - `retrieve.sources` is the threshold-filtered retrieval result set returned by the backend for evidence browsing.
-- `retrieve.embeddingModel` is the effective embedding model used for the retrieval request.
+- `retrieve.embeddingProvider` / `retrieve.embeddingModel` are the effective embedding used for the retrieval request: always the pair the collection's active index was built with, never the configured default.
 - `debug.latency` appears only when server-side debug timings are enabled.
 
 ### `POST /v1/rag/collections/:collectionId/query`
@@ -487,7 +501,8 @@ Response body:
       "content": "Retrieved chunk text..."
     }
   ],
-  "embeddingModel": "embeddinggemma-2:270m",
+  "embeddingProvider": "builtin",
+  "embeddingModel": "onnx-community/embeddinggemma-2-ONNX",
   "chatModel": "gemma3:4b",
   "collectionId": "col_123",
   "collectionDisplayName": "Tax Rulings 2026",
@@ -499,7 +514,7 @@ Notes:
 
 - `query` internally performs retrieval first.
 - `query.sources` may be a subset of the broader retrieval result set because the backend trims context to fit generation limits.
-- `query.embeddingModel` is the effective embedding model used to retrieve the grounding context.
+- `query.embeddingProvider` / `query.embeddingModel` are the effective embedding (the collection's active pair) used to retrieve the grounding context.
 - `query.chatModel` is the global chat LLM model that generated the answer.
 - The answer is written in the language of the question and grounded only in the retrieved context.
 - The backend may return `422` even when the request is syntactically valid, because the model could not produce a grounded answer.
@@ -518,7 +533,11 @@ Notes:
 | `ANSWER_NOT_IN_RETRIEVED_CONTEXT` | `422` | Chunks were retrieved but cannot support a grounded answer |
 | `EMPTY_MODEL_RESPONSE` | `502` | Model returned an empty answer |
 | `DISALLOWED_FALLBACK_ANSWER` | `502` | Model returned a blocked fallback string |
-| `MODEL_BACKPRESSURE` | `503` | Timeout, overload (including a generation/embedding queue timeout), aborted work, or a network/connection error reaching Chroma or Ollama |
+| `MODEL_BACKPRESSURE` | `503` | Timeout, overload (including a generation/embedding queue timeout), aborted work, or a network/connection error reaching Chroma |
+| `EMBEDDING_PROVIDER_NOT_CONFIGURED` | `503` | The collection was indexed with the `openai-compatible` embedding provider, but no `embedding.baseUrl` is configured on this server |
+| `EMBEDDING_PROVIDER_UNREACHABLE` | `503` | The embedding service could not be reached, or the built-in embedding model could not be downloaded or loaded |
+| `EMBEDDING_PROVIDER_ERROR` | `502` | The embedding service returned an HTTP error (for example 401 bad API key, 404 unknown model, 429, 5xx). `details` includes `upstreamStatus`, `providerMessage` (API key redacted), `embeddingProvider`, `embeddingModel` |
+| `EMBEDDING_DIMENSION_MISMATCH` | `409` | The query embedding has a different vector size than the collection's index. `details` includes `expectedDimensions` and `gotDimensions`; reindex the collection |
 | `CHAT_NOT_CONFIGURED` | `503` | `/query` only: no chat LLM is configured, so answer generation is disabled (retrieve-only). No `Retry-After` header: this is a configuration state, not a transient error |
 | `CHAT_PROVIDER_UNREACHABLE` | `503` | `/query` only: the chat LLM API could not be reached |
 | `CHAT_PROVIDER_ERROR` | `502` | `/query` only: the chat LLM API returned an HTTP error (for example 401 bad API key, 404 unknown model, 429, 5xx). `details` includes `upstreamStatus`, `providerMessage` (API key redacted), `chatModel`, `embeddingModel` |
@@ -551,4 +570,4 @@ Example error envelope:
 
 - Error responses may include `requestId`. Preserve and log it.
 - Schema-validation failures commonly include `details.issues`, especially on `INVALID_REQUEST_BODY`.
-- Query/retrieve failures may also include the effective `embeddingModel` and (for query) the global `chatModel` in `details` for troubleshooting. The chat API key is never included.
+- Query/retrieve failures may also include the effective `embeddingProvider` / `embeddingModel` and (for query) the global `chatModel` in `details` for troubleshooting. The chat and embedding API keys are never included.

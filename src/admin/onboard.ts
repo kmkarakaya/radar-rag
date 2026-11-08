@@ -95,12 +95,8 @@ async function promptString(
   return answer.trim().length === 0 ? currentValue : answer.trim();
 }
 
-/** Like promptString, but "-" clears the value. */
-async function promptClearableString(rl: Interface, label: string, currentValue: string): Promise<string> {
-  const answer = (await rl.question(`${label} [${currentValue}]: `)).trim();
-  if (answer === "-") return "";
-  return answer.length === 0 ? currentValue : answer;
-}
+/** Suggested when no chat base URL is configured yet: a local Ollama's OpenAI-compatible API. */
+const SUGGESTED_CHAT_BASE_URL = "http://localhost:11434/v1";
 
 function isHttpUrl(value: string): boolean {
   try {
@@ -132,27 +128,37 @@ async function promptChat(
     ...(current?.maxContextTokens !== undefined ? { maxContextTokens: current.maxContextTokens } : {}),
   };
 
-  console.log("\nChat LLM for /query (optional). Leave the base URL empty for retrieve-only; type - to clear it.");
-  console.log("Any OpenAI-compatible API works, for example:");
-  console.log("  local Ollama: http://localhost:11434/v1");
+  const currentlyEnabled = Boolean(current?.baseUrl && current?.model);
+
+  // An explicit yes/no first, so Enter never turns answer generation on (or off) by accident:
+  // the default answer is always the current state.
+  console.log("\nAnswer generation (/query) is optional. Without a chat LLM the backend is retrieve-only:");
+  console.log("/retrieve and indexing work, and /query returns CHAT_NOT_CONFIGURED.");
+  console.log(currentlyEnabled
+    ? `Current: enabled (${current?.model} @ ${current?.baseUrl})`
+    : "Current: disabled (retrieve-only)");
+
+  const enable = await promptBoolean(rl, "Enable answer generation with a chat LLM?", currentlyEnabled);
+  if (!enable) {
+    console.log("Chat LLM disabled: retrieve-only. Run onboarding again to enable it later.");
+    return { ...advanced, baseUrl: "", model: "" };
+  }
+
+  console.log("Any OpenAI-compatible API works. Press Enter to accept the value in [brackets]. Examples:");
+  console.log(`  local Ollama: ${SUGGESTED_CHAT_BASE_URL}`);
   console.log("  OpenAI:       https://api.openai.com/v1");
   console.log("  OpenRouter:   https://openrouter.ai/api/v1");
 
   let baseUrl = "";
   while (true) {
-    baseUrl = await promptClearableString(rl, "chat.baseUrl", current?.baseUrl ?? "");
-    if (baseUrl === "" || isHttpUrl(baseUrl)) break;
-    console.log("Please enter an http(s) URL, or leave it empty for retrieve-only.");
-  }
-
-  if (baseUrl === "") {
-    console.log("Chat LLM disabled: /query will return CHAT_NOT_CONFIGURED; retrieval and indexing still work.");
-    return { ...advanced, baseUrl: "", model: "" };
+    baseUrl = await promptString(rl, "chat.baseUrl", current?.baseUrl || SUGGESTED_CHAT_BASE_URL);
+    if (isHttpUrl(baseUrl)) break;
+    console.log("Please enter an http(s) URL, for example http://localhost:11434/v1.");
   }
 
   const model = current?.model
     ? await promptString(rl, "chat.model", current.model)
-    : await promptRequiredString(rl, "chat.model");
+    : await promptRequiredString(rl, "chat.model (e.g. gemma3:4b for a local Ollama)");
 
   const keyAnswer = (await rl.question(
     `chat API key [${describeStoredChatApiKey(process.env)}] (Enter = keep, - = remove; not needed for a local Ollama): `,

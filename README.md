@@ -79,7 +79,7 @@ cd vanilla_rag_backend
 docker compose up -d
 ```
 
-- The first start downloads the Ollama models (`gemma3:4b` and `embeddinggemma-2:270m`, a few GB) before the backend starts; follow it with `docker compose logs -f ollama-init`.
+- The first start pulls the images (the Ollama image alone is several GB), builds the backend and downloads the models (`gemma3:4b` and `embeddinggemma-2:270m`). On a slow connection this can take an hour or more. `docker compose up -d` returns only after the models are pulled; to watch the download, run `docker compose logs -f ollama-init` in a second terminal. Later starts take seconds.
 - Put your documents in a folder under `./data` (for example `./data/my-docs`). The repo ships two sample folders, `data/dataset1` and `data/dataset2`.
 - Open `http://localhost:3010/admin` and follow [First collection and first question](#first-collection-and-first-question), using a source path such as `data/my-docs`.
 - Other models: create a `.env` file next to `docker-compose.yml` with `RAG_OLLAMA_CHAT_MODEL=...` and/or `RAG_OLLAMA_EMBEDDING_MODEL=...`, then `docker compose up -d` again.
@@ -116,7 +116,7 @@ What each command does:
 
 ### First collection and first question
 
-Onboarding only prepares the config; you create and index collections in the admin panel. With `npm.cmd run dev` running:
+Onboarding only prepares the config; you create and index collections in the admin panel. With the backend running (`npm.cmd run dev`, or `docker compose up -d`; with Docker, use your `BACKEND_HOST_PORT` if you changed it):
 
 1. Open `http://localhost:3010/ready`. Every check should pass; if not, see [Troubleshooting](#troubleshooting).
 2. Open the admin panel at `http://localhost:3010/admin` (if admin auth is enabled you land on the login page first).
@@ -184,8 +184,8 @@ Onboarding edits the YAML file itself; these variables are only applied when the
 | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `docker compose up -d chroma` fails with `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified` | Docker Desktop is not running                        | Start Docker Desktop, wait until it shows "Engine running", then run `docker compose up -d chroma` again                                                                                     |
 | Onboarding prints `Chroma: fail - Failed to connect to chromadb` under "Config saved; fix these before indexing"               | The Chroma container is not running                  | Start Chroma as above. Onboarding already saved the config and still prints the next steps, so you do not need to rerun it; start the server with `npm.cmd run dev` and check `GET /ready` |
-| Creating a collection or starting a reindex returns `422 UNAVAILABLE_MODEL`                                                    | The embedding or chat model is not pulled in Ollama  | Run the `ollama pull …` command listed in `details.recommendedActions`, or pick a model from `details.availableModels`                                                                  |
-| Creating a collection or starting a reindex returns `503 OLLAMA_UNREACHABLE`                                                   | Ollama is not running or `ollama.baseUrl` is wrong | Start Ollama (`ollama serve` or the desktop app) and check `ollama.baseUrl` in [config/rag.config.yaml](config/rag.config.yaml)                                                             |
+| Creating a collection or starting a reindex returns `422 UNAVAILABLE_MODEL`                                                    | The embedding or chat model is not pulled in Ollama  | Run the `ollama pull …` command listed in `details.recommendedActions`, or pick a model from `details.availableModels`. With Docker, run it inside the container: `docker compose exec ollama ollama pull <model>` |
+| Creating a collection or starting a reindex returns `503 OLLAMA_UNREACHABLE`                                                   | Ollama is not running or `ollama.baseUrl` is wrong | Start Ollama (`ollama serve` or the desktop app) and check `ollama.baseUrl` in [config/rag.config.yaml](config/rag.config.yaml). With Docker, check `docker compose ps` and `RAG_OLLAMA_BASE_URL` in `.env` |
 
 Quick health check: `GET http://localhost:3010/ready?details=true` reports Chroma, Ollama, model, and data source status with blockers and recommended actions.
 

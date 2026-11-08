@@ -75,7 +75,7 @@ Example response:
 ```json
 {
   "collectionDefaults": {
-    "sourcePath": "C:\\Codes\\Vanilla Rag Backend\\data",
+    "sourcePath": "data",
     "distanceMetric": "l2",
     "chunkSize": 500,
     "chunkOverlap": 200,

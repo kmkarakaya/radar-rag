@@ -5,6 +5,7 @@ import { ChromaClient, type ChromaClientArgs } from "chromadb";
 import { assertChromaCollectionReadable } from "./collections/chromaCollections.js";
 import { config, type DistanceMetric, type ResolvedConfig } from "./config.js";
 import { Semaphore } from "./http/semaphore.js";
+import { toPortablePath } from "./paths.js";
 import type { RequestContext } from "./http/requestContext.js";
 import {
   emitOperationalLog,
@@ -533,6 +534,12 @@ function summarizeSourcesForError(sources: RagSource[]): Array<{
   }));
 }
 
+// Chunks store the absolute file path seen at indexing time (e.g. /app/data/... in Docker).
+// Clients get it relative to the project root, like every other path the API returns.
+function portableSourcePath(value: unknown, projectRoot: string): string | undefined {
+  return typeof value === "string" ? toPortablePath(value, projectRoot) : undefined;
+}
+
 function contentToString(content: unknown): string {
   if (typeof content === "string") {
     return content;
@@ -552,6 +559,13 @@ function normalizeAnswerText(value: string): string {
 
 function isNoAnswerSignal(value: string): boolean {
   return normalizeAnswerText(value) === normalizeAnswerText(NO_ANSWER_SIGNAL);
+}
+
+// Matches __NO_ANSWER_FROM_CONTEXT__ and loose variants such as **NO_ANSWER_FROM_CONTEXT** or "NO ANSWER FROM CONTEXT".
+const NO_ANSWER_SIGNAL_PATTERN = /[*_`"'“”]*NO[_ ]ANSWER[_ ]FROM[_ ]CONTEXT[*_`"'“”]*\.?/gi;
+
+export function stripNoAnswerSignal(value: string): string {
+  return value.replace(NO_ANSWER_SIGNAL_PATTERN, "").trim();
 }
 
 function isLegacyFallbackAnswer(value: string): boolean {
@@ -632,7 +646,7 @@ export async function retrieveSources(
       .sort((left, right) => left[1] - right[1])
       .map(([doc, distanceScore]) => ({
         documentId: doc.metadata.documentId as string | undefined,
-        sourcePath: doc.metadata.sourcePath as string | undefined,
+        sourcePath: portableSourcePath(doc.metadata.sourcePath, options.runtimeConfig.projectRoot),
         sourceType: doc.metadata.sourceType as string | undefined,
         chunkIndex: doc.metadata.chunkIndex as number | undefined,
         distanceScore,
@@ -858,9 +872,9 @@ export async function answerQuestion(question: string, options: {
     const totalMs = Date.now() - startedAt;
     logStep(`ollama generation finished; totalElapsedMs=${totalMs}; retrievalMs=${retrievalElapsedMs}; generationMs=${generationElapsedMs}; reqId=${options.context?.requestId || "-"}`);
 
-    const answer = contentToString(response.content).trim();
+    const rawAnswer = contentToString(response.content).trim();
 
-    if (answer.length === 0) {
+    if (rawAnswer.length === 0) {
       throw new RagQueryError(
         "EMPTY_MODEL_RESPONSE",
         `Chat model ${settings.chatModel} returned an empty response.`,
@@ -874,7 +888,10 @@ export async function answerQuestion(question: string, options: {
       );
     }
 
-    if (isNoAnswerSignal(answer)) {
+    // Small models often decorate the signal (bold, missing underscores) or append it to an answer.
+    const answer = stripNoAnswerSignal(rawAnswer);
+
+    if (answer.length === 0 || isNoAnswerSignal(answer)) {
       throw new RagQueryError(
         "ANSWER_NOT_IN_RETRIEVED_CONTEXT",
         "Retrieved chunks were found, but they did not contain grounded evidence needed to answer the question.",

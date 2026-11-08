@@ -29,7 +29,7 @@ Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigi
 - **Recursive directory ingestion (eski #6'dan)** - `sourcePath` alt klasorleriyle taraniyor (gizli dosyalar ve `node_modules` atlaniyor); `test/recursive.ingestion.test.ts`.
 - **Ozelge JSON desteginin kaldirilmasi** - 2026-11-08. `ozelgeDataPath` / `indexSampleSize` config ve API alanlari, ozelge loader'i, `ozelgeId`/`sayi`/`tarih`/`konu` kaynak metadata'si, admin panel alanlari ve `data/dataset2/ozelge_veri.json` kaldirildi. Eski config dosyalarindaki bu anahtarlar sessizce yok sayiliyor; eski registry'lerdeki `ozelge_data_path` kolonu startup migration'i ile siliniyor. API'ye `ozelgeDataPath` gonderen istemciler artik `400 INVALID_REQUEST_BODY` aliyor.
 - **Tasinabilir config ve registry** - 2026-11-08. Proje icindeki yollar goreli saklaniyor (`src/paths.ts`): config'te `collectionDefaults.sourcePath: data`, onboarding goreli yaziyor, registry koleksiyon `sourcePath`'lerini goreli kaydediyor ve eski mutlak kayitlari (index snapshot'lari dahil) acilista bir defalik donusturuyor. `RAG_PORT`, `RAG_REGISTRY_PATH`, `RAG_CHROMA_URL`, `RAG_OLLAMA_BASE_URL`, `RAG_OLLAMA_CHAT_MODEL`, `RAG_OLLAMA_EMBEDDING_MODEL`, `RAG_SOURCE_PATH`, `RAG_CONFIG_PATH` YAML'i calisma aninda eziyor. Kalan: Chroma chunk metadata'sindaki `sourcePath` hala mutlak (sadece gosterim; reindex'te yeniden yazilir).
-- **All-in-one Docker** - 2026-11-08. `Dockerfile` (multi-stage, node:22-bookworm-slim) + `docker-compose.yml`: backend + Chroma `1.5.9` + Ollama `0.40.12` (host'a acilmiyor, yerel Ollama ile cakismaz) + `ollama-init` (modelleri cekip cikar; backend onu bekler). `./data` mount, modeller `.env` ile degistirilebilir, host Ollama icin `RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434`, GPU blogu yorumda. Imaj host Chroma/Ollama'ya karsi denendi (`/ready` ok, admin 200); bundled Ollama + model indirme ile tam yigin henuz uctan uca kosulmadi. `NODE_ENV=production` bilerek set edilmiyor (Secure cookie HTTP'de admin login'i bozar).
+- **All-in-one Docker** - 2026-11-08. `Dockerfile` (multi-stage, node:22-bookworm-slim) + `docker-compose.yml`: backend + Chroma `1.5.9` + Ollama `0.40.12` (host'a acilmiyor, yerel Ollama ile cakismaz) + `ollama-init` (modelleri cekip cikar; backend onu bekler). `./data` mount, modeller `.env` ile degistirilebilir, host Ollama icin `RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434`, GPU blogu yorumda. Imaj host Chroma/Ollama'ya karsi denendi (`/ready` ok, admin 200); Tam yigin (bundled Ollama, `bonsai-2:2b` + `embeddinggemma-2:270m`) temiz klonda uctan uca kosuldu: ilk kurulum ~79 dk (cogu Ollama imaji + model indirme), `/ready` ok, koleksiyon olustur -> reindex (10 sn) -> query calisti; `down`/`up` sonrasi koleksiyon, vektorler ve modeller korundu (yeniden baslatma 12 sn). Bu testte bulunan iki hata duzeltildi: kucuk modellerin bozuk yazdigi `NO_ANSWER_FROM_CONTEXT` isareti cevaba sizmiyor; kaynaklardaki `sourcePath` proje kokune gore goreli donuyor (`/app/data/...` yerine `data/...`). `NODE_ENV=production` bilerek set edilmiyor (Secure cookie HTTP'de admin login'i bozar).
 - **Onboarding hata akisi** - 2026-11-08. Bagimlilik/kaynak eksiklerinde durmuyor; "Config saved; fix these before indexing" altinda her eksik icin tek satir cozum yaziyor, "Next steps"i her zaman gosteriyor, exit code 0. `--skip-index` deprecated.
 
 ## P0 - Urun hedefi icin kritik eksikler
@@ -227,11 +227,10 @@ Kalanlar:
 
 1. Yeni dosya formatlari: HTML, CSV, JSONL, generic JSON mapping.
 2. CI pipeline (typecheck + typecheck:test + build + test + Docker build).
-3. Docker yiginini temiz bir makinede uctan uca dene (bundled Ollama + model indirme).
-4. README bilinen sinirlar + ilk kurulum deneyimi cilasi.
-5. Readiness icin gercek RAG smoke probe.
-6. Incremental / upsert indexing.
-7. Test coverage bosluklari, lint, opsiyonel degerlendirme araci.
+3. README bilinen sinirlar + ilk kurulum deneyimi cilasi.
+4. Readiness icin gercek RAG smoke probe.
+5. Incremental / upsert indexing.
+6. Test coverage bosluklari, lint, opsiyonel degerlendirme araci.
 
 ## Kapanis notu
 

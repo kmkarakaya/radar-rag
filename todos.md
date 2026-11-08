@@ -6,7 +6,7 @@ Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigi
 
 ## Mevcut durum (ozet)
 
-- TypeScript + Express 5 (ESM) backend; LangChain + Chroma (vector store) + Ollama (chat + embedding); SQLite registry (`data/registry.sqlite`).
+- TypeScript + Express 5 (ESM) backend; LangChain + Chroma (vector store) + Ollama (embedding) + istege bagli, OpenAI uyumlu herhangi bir chat LLM (`/query` icin; varsayilan kapali, retrieve-only); SQLite registry (`data/registry.sqlite`).
 - Multi-collection ve multi-tenant: public `/v1/rag/collections/:id/{ready,retrieve,query}`, admin `/v1/admin/**`. Legacy route'lar bilerek 404.
 - Indexing: async job runner, koleksiyon basina tek aktif job, blue/green fiziksel koleksiyon build + swap, retention TTL ile eski fiziksel koleksiyon temizligi.
 - Admin auth: scrypt parola hash, HMAC imzali session cookie, `viewer` / `operator` / `admin` RBAC, tek kullanimlik CSRF action token.
@@ -14,7 +14,7 @@ Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigi
 - Gozlemlenebilirlik: request id, `latencyMs`, `errorCode`, `retrievalMs` iceren yapisal operational log (+ `operational_logs` tablosu), audit log, opsiyonel `debug.latency` response alani.
 - `/health`, `/ready` (`?strict=true`, `?details=true`), koleksiyon bazli `/ready`.
 - Ingestion: `txt`, `md`, `pdf`, `doc`, `docx` (alt klasorler dahil, recursive; registry SQLite dosyasi atlanir); SHA-256 source hash; dosya bazli hata toleransi.
-- Testler: `node:test` ile 180 unit + acceptance testi, ayrica Ollama + Chroma isteyen integration testi; dokuman/statik contract testleri.
+- Testler: `node:test` ile 203 unit + acceptance testi, ayrica Ollama + Chroma isteyen integration testi; dokuman/statik contract testleri.
 - Dokumanlar: README, `docs/` (API, workflow, `openapi.yaml`), mimari dokumani; admin panel (`/admin`) ve ornek istemci (`/test-frontend`).
 
 ## Tamamlananlar (eski listeden kapatilanlar)
@@ -30,6 +30,7 @@ Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigi
 - **Ozelge JSON desteginin kaldirilmasi** - 2026-11-08. `ozelgeDataPath` / `indexSampleSize` config ve API alanlari, ozelge loader'i, `ozelgeId`/`sayi`/`tarih`/`konu` kaynak metadata'si, admin panel alanlari ve `data/dataset2/ozelge_veri.json` kaldirildi. Eski config dosyalarindaki bu anahtarlar sessizce yok sayiliyor; eski registry'lerdeki `ozelge_data_path` kolonu startup migration'i ile siliniyor. API'ye `ozelgeDataPath` gonderen istemciler artik `400 INVALID_REQUEST_BODY` aliyor.
 - **Tasinabilir config ve registry** - 2026-11-08. Proje icindeki yollar goreli saklaniyor (`src/paths.ts`): config'te `collectionDefaults.sourcePath: data`, onboarding goreli yaziyor, registry koleksiyon `sourcePath`'lerini goreli kaydediyor ve eski mutlak kayitlari (index snapshot'lari dahil) acilista bir defalik donusturuyor. `RAG_PORT`, `RAG_REGISTRY_PATH`, `RAG_CHROMA_URL`, `RAG_OLLAMA_BASE_URL`, `RAG_OLLAMA_CHAT_MODEL`, `RAG_OLLAMA_EMBEDDING_MODEL`, `RAG_SOURCE_PATH`, `RAG_CONFIG_PATH` YAML'i calisma aninda eziyor. Kalan: Chroma chunk metadata'sindaki `sourcePath` hala mutlak (sadece gosterim; reindex'te yeniden yazilir).
 - **All-in-one Docker** - 2026-11-08. `Dockerfile` (multi-stage, node:22-bookworm-slim) + `docker-compose.yml`: backend + Chroma `1.5.9` + Ollama `0.40.12` (host'a acilmiyor, yerel Ollama ile cakismaz) + `ollama-init` (modelleri cekip cikar; backend onu bekler). `./data` mount, modeller `.env` ile degistirilebilir, host Ollama icin `RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434`, GPU blogu yorumda. Imaj host Chroma/Ollama'ya karsi denendi (`/ready` ok, admin 200); Tam yigin (bundled Ollama, `bonsai-2:2b` + `embeddinggemma-2:270m`) temiz klonda uctan uca kosuldu: ilk kurulum ~79 dk (cogu Ollama imaji + model indirme), `/ready` ok, koleksiyon olustur -> reindex (10 sn) -> query calisti; `down`/`up` sonrasi koleksiyon, vektorler ve modeller korundu (yeniden baslatma 12 sn). Bu testte bulunan iki hata duzeltildi: kucuk modellerin bozuk yazdigi `NO_ANSWER_FROM_CONTEXT` isareti cevaba sizmiyor; kaynaklardaki `sourcePath` proje kokune gore goreli donuyor (`/app/data/...` yerine `data/...`). `NODE_ENV=production` bilerek set edilmiyor (Secure cookie HTTP'de admin login'i bozar).
+- **Chat LLM istege bagli ve saglayicidan bagimsiz (eski P0 #1)** - 2026-11-08. `/query` icin tek, global bir chat LLM: `chat.baseUrl` + `chat.model` (+ API anahtari), LangChain `ChatOpenAICompletions` ile OpenAI uyumlu herhangi bir API (Ollama `/v1`, LM Studio, vLLM, OpenAI, OpenRouter). Ayarlanmazsa `/query` 503 `CHAT_NOT_CONFIGURED`, `/retrieve` ve indexing tam calisir; repo ve Docker varsayilani retrieve-only. Anahtar `RAG_CHAT_API_KEY` ya da `.local/rag_chat_api_key.secret` (YAML'a hic yazilmaz, hatalardan maskelenir). Model parametreleri gonderilmez (saglayici varsayilanlari); `temperature` / `maxTokens` / `maxContextTokens` YAML'da elle verilebilir. Koleksiyon bazli `chatModel` kaldirildi (API 400, `chat_model` kolonu migration ile silindi). `/ready`: yeni `retrieve` yetenegi, retrieve-only kurulum `ready: true` (`retrieve-and-index`); chat kontrolu ucretsiz `GET /models` (30 sn onbellek), gercek uretim testi sadece onboarding'de. Saglayici hatalari `CHAT_PROVIDER_UNREACHABLE` (503) / `CHAT_PROVIDER_ERROR` (502). Onboarding sadece base URL, model ve anahtar soruyor. Docker'da chat modeli sadece gomulu Ollama'yi gosteriyorsa iniyor. Prompt alandan bagimsiz hale geldi (eski: Turkce vergi ozelgeleri). Semafor kuyruk zaman asimi artik 500 degil 503 `MODEL_BACKPRESSURE`. Eski `ollama.chatModel` / `numCtx` / `numPredict` ve `RAG_OLLAMA_CHAT_MODEL` yok sayiliyor (uyari basiliyor, chat kendiliginden acilmiyor).
 - **Onboarding hata akisi** - 2026-11-08. Bagimlilik/kaynak eksiklerinde durmuyor; "Config saved; fix these before indexing" altinda her eksik icin tek satir cozum yaziyor, "Next steps"i her zaman gosteriyor, exit code 0. `--skip-index` deprecated.
 
 ## Urun yonu ve hedef kitle
@@ -51,27 +52,16 @@ Yonetim tarafi kurumsal duzeyde (blue/green reindex, job kuyrugu, RBAC, CSRF, au
 - **Public API'de kimlik dogrulama yok.** `/v1/rag/**` herkese acik; tenant `x-tenant-id` header'indan okunuyor, yoksa `default` (`src/http/requestContext.ts`). Herkes header'i degistirerek baska bir tenant'in verisini sorgulayabilir; multi-tenant yapi bu haliyle guvenli degil. -> P0 #2
 - **CORS yok.** Baska bir adresteki web uygulamasi API'yi tarayicidan cagiramiyor (test frontend ayni adresten sunuldugu icin calisiyor). -> P0 #2
 - **Dokuman yukleme/silme yok.** Dokumanlar sunucu diskine (`./data/...`) elle konuyor; API veya panelden yukleme, silme, listeleme yok. Docker'da ve uzak sunucuda cok zahmetli. -> P0 #3
-- **Tek model saglayicisi ve zorunlu chat modeli.** Sadece Ollama; koleksiyon olusturma ve genel `/ready` chat modelini sart kosuyor, oysa indexing ve retrieve kullanmiyor. -> P0 #1, P0 #5
+- ~~**Zorunlu chat modeli.**~~ Kapatildi (P0 #1): chat LLM istege bagli ve saglayicidan bagimsiz. Kalan: embedding hala sadece Ollama. -> P0 #5
 - **Indexing hep tam.** Tek dosya degisse de butun koleksiyon yeniden isleniyor; dosya formatlari dar. -> P0 #6, P1 #5
 
 ## P0 - Urun hedefi icin kritik eksikler
 
 Hedef: baskalarinin repoyu GitHub'dan indirip kendi verisiyle kolayca kullanabilmesi (once A, C, D). Olcut: yeni bir kullanicinin kendi dokumanlarindan ilk sonucu almasi ne kadar zahmetsiz ve guvenli?
 
-### 1. Chat modelini opsiyonel yap
+### 1. Chat modelini opsiyonel yap (tamamlandi)
 
-Sorun:
-
-- `POST /v1/admin/collections` embedding ile birlikte chat modelinin de Ollama'da olmasini sart kosuyor (`src/http/adminRouter.ts`), indexing chat modelini hic kullanmadigi halde.
-- Genel `/ready` chat modeli eksikse blocker veriyor (`CHAT_MODEL_MISSING`, `src/app.ts`); retrieve-only kullanicida `ready: false` yaniltici.
-- Docker kurulumu, sadece retrieval isteyen biri icin de chat modelini indiriyor.
-
-Yapilacaklar:
-
-- Chat modeli config'de opsiyonel; yoksa `/query` kapali (anlasilir bir hata kodu ile), `/retrieve` tam calisir.
-- Koleksiyon olusturma ve genel `/ready` chat modelini sadece `/query` aciksa kontrol etsin.
-- Docker'da chat modeli indirmesi opsiyonel olsun.
-- README'de "retrieve-only" kullanimi ana yol olarak anlat.
+2026-11-08'de tamamlandi; ayrintilar "Tamamlananlar"da. Numaralar diger maddelere referans icin korunuyor.
 
 ### 2. Public API icin API anahtari ve CORS
 
@@ -305,7 +295,7 @@ Kalanlar:
 
 Urun yonune (A, C, D) gore:
 
-1. Chat modelini opsiyonel yap (P0 #1). Kucuk is; Docker kurulumu da hafifler.
+1. ~~Chat modelini opsiyonel yap (P0 #1).~~ Tamamlandi (2026-11-08).
 2. Public API'ye API anahtari ve CORS (P0 #2). Tenant anahtardan belirlenir; urun olarak dagitmadan once sart.
 3. Dokuman yonetimi: admin API ve panelden yukleme/silme/listeleme (P0 #3).
 4. MCP sunucusu: retrieve'i AI asistanlarina arac olarak ac (P0 #4).
@@ -320,4 +310,4 @@ Urun yonune (A, C, D) gore:
 ## Kapanis notu
 
 Repo artik "calisan bir baseline vanilla RAG backend" seviyesini gecti: multi-collection, multi-tenant, auth'lu admin API, guvenli blue/green reindex ve genis test kapsami var.
-Tek komutla kurulum (Docker) artik var; baskalarinin kendi verisiyle kullanabilmesi icin siradaki oncelik urun yonune gore (A, C, D): opsiyonel chat modeli, public API guvenligi (API anahtari + CORS), dokuman yonetimi ve MCP.
+Tek komutla kurulum (Docker) artik var; baskalarinin kendi verisiyle kullanabilmesi icin chat LLM artik istege bagli (retrieve-only varsayilan); siradaki oncelik urun yonune gore (A, C, D): public API guvenligi (API anahtari + CORS), dokuman yonetimi ve MCP.

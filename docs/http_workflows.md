@@ -34,6 +34,8 @@ curl.exe -i "$BASE_URL/ready?details=true&strict=true"
 
 Use `/ready` for environment or deployment diagnostics. For collection-specific UI behavior, use `GET /v1/rag/collections/:collectionId/ready`.
 
+Answer generation is optional. Without a chat LLM (the shipped default) the summary reports `queryEnabled: false`, `queryReady: false`, `systemReadyFor: "retrieve-and-index"`, and still `ready: true`; `/retrieve` and indexing work, `/query` returns `503 CHAT_NOT_CONFIGURED`. With a chat LLM configured, `dependencies.chat` in `?details=true` shows the result of a cached `GET {chat.baseUrl}/models` check (never a generation).
+
 ## 1. Public RAG Flow
 
 ### List visible collections
@@ -72,6 +74,7 @@ Important:
 
 - A `200` response does not automatically mean query is enabled.
 - Check `capabilities.query`, `capabilities.retrieve`, `blockers`, and `warnings`.
+- Without a chat LLM, `capabilities.query` is `false`, `modelAvailability.chatModel` is `null`, and `warnings` contains `CHAT_NOT_CONFIGURED`; `capabilities.retrieve` is unaffected.
 
 ### Retrieve evidence only
 
@@ -101,7 +104,13 @@ curl.exe -s `
   "$BASE_URL/v1/rag/collections/$COLLECTION_ID/query"
 ```
 
-The response JSON includes the effective `embeddingModel` used for retrieval and the `chatModel` that generated the answer.
+The response JSON includes the effective `embeddingModel` used for retrieval and the global `chatModel` that generated the answer.
+
+This endpoint needs the optional chat LLM (any OpenAI-compatible chat completions API, configured with `npm run onboard` or `RAG_CHAT_BASE_URL` / `RAG_CHAT_MODEL`, plus `RAG_CHAT_API_KEY` if the provider needs a key). Chat-specific failures:
+
+- `503 CHAT_NOT_CONFIGURED`: no chat LLM is configured (retrieve-only). Returned before body validation and collection lookup, without `Retry-After`. Use `/retrieve` instead.
+- `503 CHAT_PROVIDER_UNREACHABLE`: the chat API cannot be reached.
+- `502 CHAT_PROVIDER_ERROR`: the chat API returned an HTTP error (bad key, unknown model, 429, 5xx); see `details.upstreamStatus` and `details.providerMessage`.
 
 ## 2. Admin Auth Flow
 
@@ -161,7 +170,7 @@ curl.exe -s `
   "$BASE_URL/v1/admin/config/defaults"
 ```
 
-Use this response to show the backend defaults in the create form before the user saves anything.
+Use this response to show the backend defaults in the create form before the user saves anything. Its `chat` object (`enabled`, `baseUrl`, `model`, `apiKeyConfigured`) describes the global, optional chat LLM; it is read-only and not part of the collection form.
 
 ### Inspect model discovery for the create form
 
@@ -174,7 +183,7 @@ curl.exe -s `
   "$BASE_URL/v1/admin/models"
 ```
 
-Use this response to populate embedding/chat autocomplete or datalist suggestions while still allowing free text input.
+Use this response to populate embedding model autocomplete or datalist suggestions while still allowing free text input. Ollama only serves embeddings; collections have no chat model field.
 
 ### Create a collection
 

@@ -53,6 +53,7 @@ Non-negotiable backend rules:
 - If the UI includes a create form, load `GET /v1/admin/config/defaults` and `GET /v1/admin/models` so backend defaults and model suggestions stay visible.
 - Do not assume query.sources is the same full source set that retrieve would return.
 - If the UI exposes raw JSON or diagnostics, surface `retrieve.embeddingModel` and `query.embeddingModel` / `query.chatModel`.
+- Answer generation is optional: the backend may run retrieve-only (no chat LLM). Then `capabilities.query` is false and query returns `503 CHAT_NOT_CONFIGURED`; keep the retrieve flow usable and explain why answers are unavailable.
 - If ready.modelAvailability.desiredEmbeddingModel exists, treat it as a pending post-reindex model change, not as the current live embedding model.
 
 Deliverables:
@@ -99,6 +100,7 @@ Non-negotiable backend rules:
 - Use public RAG endpoints for end-user interactions and admin endpoints for editable settings.
 - Use GET /v1/rag/collections/:collectionId/ready as the capability gate for query and retrieve.
 - If the UI includes a create form, load `GET /v1/admin/config/defaults` and `GET /v1/admin/models` before rendering backend defaults or autocomplete suggestions.
+- Collections have no chat model field; the optional chat LLM is global and read-only (`chat` in `GET /v1/admin/config/defaults`).
 - Reindex is asynchronous and returns 202.
 - If admin auth is enabled, use cookie-backed admin sessions and short-lived action tokens for protected admin mutations.
 - Delete and cancel endpoints return 204 with no JSON body.
@@ -129,9 +131,9 @@ Goal:
 
 Important:
 - Use `POST /v1/rag/collections/:collectionId/retrieve` as the primary interaction.
-- `POST /v1/rag/collections/:collectionId/query` is secondary and should be optional.
+- `POST /v1/rag/collections/:collectionId/query` is secondary and should be optional; the deployment may be retrieve-only (no chat LLM, `503 CHAT_NOT_CONFIGURED`).
 - Show collection readiness before enabling actions.
-- Show retrieval metadata such as sourcePath, chunkIndex, konu, tarih, sayi, and distanceScore when available.
+- Show retrieval metadata such as documentId, sourcePath, sourceType, chunkIndex, and distanceScore when available.
 - Show `embeddingModel` for retrieve responses and both `embeddingModel` / `chatModel` for query responses when rendering raw JSON or diagnostics.
 - Handle NO_RELEVANT_CONTEXT and ANSWER_NOT_IN_RETRIEVED_CONTEXT cleanly.
 ```

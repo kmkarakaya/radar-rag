@@ -11,6 +11,7 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 - A **collection** is the unit that users query.
 - A collection may exist before it is queryable.
 - `query` and `retrieve` are collection-specific operations, not global operations.
+- Answer generation (`query`) is optional for the whole deployment: it needs the global chat LLM. Without one the backend is retrieve-only, `capabilities.query` is always `false`, and `query` returns `503 CHAT_NOT_CONFIGURED`. `retrieve` never needs the chat LLM.
 - `ready` is the backend's explicit answer to "what can the frontend do right now for this collection?"
 - Reindexing is asynchronous and produces jobs.
 - Jobs have both a coarse status view and a stage-aware event timeline.
@@ -78,7 +79,7 @@ Use the readiness payload to drive the UI:
 - `capabilities.query = true`
   The collection is ready for full question answering.
 - `capabilities.retrieve = true` and `capabilities.query = false`
-  Retrieval is available but answer generation is blocked, usually because the chat model is unavailable.
+  Retrieval is available but answer generation is blocked. If `warnings` contains `CHAT_NOT_CONFIGURED`, no chat LLM is configured (retrieve-only deployment, `modelAvailability.chatModel` is `null`): hide or disable the answer UI and explain why instead of showing an error. If `blockers` contains `CHAT_PROVIDER_UNREACHABLE`, `CHAT_PROVIDER_AUTH_FAILED`, or `CHAT_MODEL_MISSING`, the chat LLM is configured but not usable right now.
 - `hasActivePhysicalCollection = false`
   The collection has no active indexed snapshot yet. Show the blockers and avoid query actions.
 - `activeJob.status = queued` or `running`
@@ -110,8 +111,11 @@ Use the readiness payload to drive the UI:
 | `NO_RELEVANT_CONTEXT` | `422` | Retrieval found no acceptable context under the distance threshold | Show a grounded no-result state |
 | `ANSWER_NOT_IN_RETRIEVED_CONTEXT` | `422` | Chunks were retrieved but they do not support an answer | Show sources, but do not fabricate an answer |
 | `EMPTY_MODEL_RESPONSE` | `502` | The chat model returned an empty response | Show transient backend failure |
+| `CHAT_NOT_CONFIGURED` | `503` | `query` only: no chat LLM is configured, answer generation is disabled (no `Retry-After`) | Do not retry; offer `retrieve` instead |
+| `CHAT_PROVIDER_UNREACHABLE` | `503` | `query` only: the chat LLM API could not be reached | Show answer generation unavailable; retrieval may still work |
+| `CHAT_PROVIDER_ERROR` | `502` | `query` only: the chat LLM API returned an HTTP error (`details.upstreamStatus`, `details.providerMessage`) | Show provider failure and log the `requestId` |
 | `DISALLOWED_FALLBACK_ANSWER` | `502` | The model returned a blocked fallback string | Show transient backend failure |
-| `MODEL_BACKPRESSURE` | `503` | Retrieval or generation timed out, was aborted, or backend dependencies are overloaded | Retry with backoff |
+| `MODEL_BACKPRESSURE` | `503` | Retrieval or generation timed out, was aborted, waited too long in the generation/embedding queue, or backend dependencies are overloaded | Retry with backoff |
 | `COLLECTION_STORAGE_INCONSISTENT` | `503` | Metadata says a physical collection exists, but storage does not | Show backend inconsistency and escalate |
 | `RATE_LIMIT_EXCEEDED` | `429` | Request limit was hit for tenant + user + collection + operation | Back off using `Retry-After` |
 | `COLLECTION_INDEX_ALREADY_RUNNING` | `409` | A reindex job is already active | Reuse the existing job state |
@@ -174,6 +178,7 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T | void> {
 - Do not assume every collection in the list is queryable.
 - Do not assume `status: indexing` means query is blocked; the collection may still have a readable active version.
 - Do not assume `query` and `retrieve` fail for the same reasons.
+- Do not assume `query` is available at all; a deployment without a chat LLM is retrieve-only.
 - Do not assume `query.sources` is the same full source set that `retrieve` would return.
 - Do not assume raw query/retrieve JSON omits the effective model metadata.
 - Do not assume a public collection DTO contains admin-only configuration.

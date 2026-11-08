@@ -42,7 +42,8 @@ Bu repo Vanilla RAG'i backend olarak şu prensiplerle kuruyor:
 - İndeksleme akışı ile query akışı birbirinden ayrılıyor.
 - LangChain, retrieval ve model entegrasyon katmanı olarak kullanılıyor.
 - Chroma, vector store olarak kullanılıyor.
-- Ollama, hem embedding hem generation modeli sunan lokal model gateway'i olarak kullanılıyor.
+- Ollama yalnızca embedding modeli sunan lokal model gateway'i olarak kullanılıyor.
+- Cevap üretimi (generation) opsiyoneldir: tek bir global chat LLM, LangChain `ChatOpenAICompletions` (`@langchain/openai`) ile herhangi bir OpenAI uyumlu chat completions API'sine (Ollama `http://localhost:11434/v1`, LM Studio, vLLM, OpenAI, OpenRouter...) bağlanır. Chat LLM yapılandırılmamışsa backend retrieve-only çalışır: `/retrieve` ve indexing çalışır, `/query` kapalıdır. Varsayılan (shipped) config retrieve-only'dir.
 - Konfigürasyon merkezi bir `config` objesi ile yönetiliyor.
 
 Bu kararların sonucu olarak proje, minimal ama okunabilir bir backend omurgası elde ediyor.
@@ -60,7 +61,8 @@ flowchart TD
     ADMINAPI --> REG
     RAGAPI --> RAG[src/rag.ts]
     RAG --> CHROMA[(Chroma)]
-    RAG --> OLLAMA[(Ollama)]
+    RAG --> OLLAMA[(Ollama\nembedding)]
+    RAG -.opsiyonel.-> CHATLLM[(Chat LLM\nOpenAI uyumlu API)]
 
     ADMINAPI --> RUNNER[IndexJobRunner]
     RUNNER --> JOBS[src/indexing/jobs.ts]
@@ -90,7 +92,7 @@ Bu repodaki gerçek multi-collection davranışı aşağıdaki control-plane kur
 4. Job lifecycle açıkça `queued -> running -> succeeded|failed` state'leri ile izlenir. Job source of truth SQLite registry'dir; process içi runner sadece background promise lifecycle'ını yönetir.
 5. Başarılı build sonrası aktif pointer transaction içinde atomik olarak yeni physical collection'a çevrilir. Böylece aktif eski sürüm varsa rebuild sırasında query/retrieve kesilmez.
 6. Önceki aktif fiziksel collection hemen silinmez. Registry'de `delete_pending` durumuna alınır, `delete_after = now + cleanup.retentionMs` set edilir ve due cleanup aşamasında silinir. `cleanup_failed` kayıtları daha sonra yeniden denenebilir. Storage delete "not found" dönerse cleanup idempotent başarı kabul edilir ve kayıt `deleted` yapılır; build sırasında başarısız olan hedef fiziksel kayıt ise `failed_build` kalır ve retention cleanup'a girmez.
-7. `GET /ready` registry-aware'dir; ama collection-aware değildir. Registry, Chroma, Ollama, model availability ve indexing source erişimini kontrol eder. Default collection yok diye fail etmez.
+7. `GET /ready` registry-aware'dir; ama collection-aware değildir. Registry, Chroma, Ollama, embedding model availability, opsiyonel chat LLM ve indexing source erişimini kontrol eder. Default collection yok diye fail etmez.
 8. `GET /v1/rag/collections/:collectionId/ready` seçili logical collection'ın `activeJob`, `activeVersion`, `chromaReadable`, `chromaCount` ve capability alanlarını döndürür.
 9. Access kontrolünde `403/404` ayrımı vardır. Collection global olarak varsa ama request tenant'ı göremiyorsa `403 COLLECTION_FORBIDDEN`; hiç yoksa `404 COLLECTION_NOT_FOUND` döner.
 10. HTTP katmanında request rate limiter merkezi middleware olarak çalışır; limit anahtarı `tenantId`, `userId`, `collectionId` ve operation (`query`, `retrieve`, `reindex`) alanlarından oluşur. Model tarafında ayrıca `maxConcurrentEmbeddings` ve `maxConcurrentGenerations` ile backpressure uygulanır.
@@ -228,7 +230,7 @@ Bu ayrım önemlidir; çünkü liveness ile readiness aynı problem değildir.
 Maksat:
 
 - Sistemin gerçekten neye hazır olduğunu açıklamak
-- RAG query çalıştırma ve indexing başlatma hazırlığını ayrı ayrı raporlamak
+- Retrieve, RAG query çalıştırma ve indexing başlatma hazırlığını ayrı ayrı raporlamak
 - Operasyonel blocker, warning ve önerilen aksiyonları döndürmek
 
 Girdi:
@@ -245,8 +247,11 @@ Girdi:
     - `ready`
     - `systemReadyFor`
     - `overallSummary`
+    - `retrieveReady`
+    - `queryEnabled`
     - `queryReady`
     - `indexReady`
+    - `retrieveSummary`
     - `querySummary`
     - `indexSummary`
     - `blockerCodes`
@@ -255,26 +260,37 @@ Girdi:
     - `dependencies.registry.ok`
     - `dependencies.chroma.ok`
     - `dependencies.ollama.ok`
+    - `dependencies.chat.ok` / `dependencies.chat.configured`
+    - `config.chatModel` (chat LLM yoksa `null`)
     - `diagnostics`
 - `details=true` verildiğinde ayrıntılı payload açılır ve ayrıca şu alanlar görünür:
     - `checks`
     - `blockers`
     - `warnings`
-    - `dependencies`
+    - `capabilities.retrieve`, `capabilities.query` (`enabled` alanıyla), `capabilities.index`
+    - `dependencies` (`dependencies.chat`: `configured`, `baseUrl`, `model`, `reachable`, `authOk`, `modelListed`, `ok`, `latencyMs`, `httpStatus?`, `availableModels?`, `error?`; API key asla dönmez)
     - `dataSource`
 
 Kontrol ettiği başlıca şeyler:
 
 - Chroma erişilebilir mi
 - Ollama erişilebilir mi
-- Chat modeli mevcut mu
-- Embedding modeli mevcut mi
+- Embedding modeli mevcut mu ve embedding smoke test başarılı mı
+- Chat LLM yapılandırılmış mı; yapılandırılmışsa erişilebilir mi, API key kabul ediliyor mu ve model listede var mı
 - Veri dosyası okunabilir mi
 - Örneklem içinde indexlenebilir doküman var mı
 
+Chat LLM kontrolü ücretsiz ve 30 saniye cache'lenen bir `GET {chat.baseUrl}/models` isteğidir; `/ready` hiçbir zaman generation çalıştırmaz (gerçek generation smoke test'i yalnızca `npm run onboard` içinde koşar). Check kodları sadece `query` capability'sini etkiler: `CHAT_NOT_CONFIGURED` (skip, blocking değil), `CHAT_PROVIDER_UNREACHABLE`, `CHAT_PROVIDER_AUTH_FAILED`, `CHAT_MODEL_MISSING` (fail, sadece query'yi bloklar), `CHAT_MODEL_UNVERIFIED` (warn: provider model listesi sunmuyor), `CHAT_MODEL_AVAILABLE` (pass). Chroma, registry, Ollama ve embedding check'leri `retrieve`, `query` ve `index` capability'lerini birlikte etkiler.
+
+Readiness semantiği:
+
+- `ready = retrieveReady && indexReady && (!queryEnabled || queryReady)`. Chat LLM'siz (retrieve-only) bir kurulum da `ready: true` olabilir.
+- `queryReady`, chat LLM yapılandırılmamışsa her zaman `false`'tur; `querySummary` bu durumda `/query`'nin neden kapalı olduğunu açıklar.
+- `systemReadyFor` değerleri: `query-and-index`, `retrieve-and-index`, `query`, `index`, `neither`.
+
 HTTP durum semantiği:
 
-- Varsayılan `/ready` çağrısı her zaman `200` döner ve gerçek durumu JSON içindeki `ready`, `queryReady`, `indexReady` alanlarında bildirir.
+- Varsayılan `/ready` çağrısı her zaman `200` döner ve gerçek durumu JSON içindeki `ready`, `retrieveReady`, `queryReady`, `indexReady` alanlarında bildirir.
 - `strict=true` verildiğinde ve sistem hazır değilse `503` döner.
 
 Not: Eski mimaride varsayılan koleksiyon kontrol ediliyordu. Multi-collection sonrası bu genel `/ready` rotası *koleksiyondan bağımsız* sadece sistem bağımlılıklarını (Chroma, Ollama vb.) ölçer. Spesifik koleksiyon bazlı sağlık durumu için `GET /v1/rag/collections/:collectionId/ready` kullanılır.
@@ -293,15 +309,15 @@ Maksat:
 - `chromaCount`
 - `modelAvailability.embeddingModel`
 - `modelAvailability.embeddingModelAvailable`
-- `modelAvailability.chatModel`
-- `modelAvailability.chatModelAvailable`
+- `modelAvailability.chatModel` (global chat LLM modeli; yapılandırılmamışsa `null`)
+- `modelAvailability.chatModelAvailable` (chat provider kontrolünün sonucu)
 - `status`
 - `hasActivePhysicalCollection`
 - `capabilities.query`
 - `capabilities.retrieve`
 - `capabilities.reindex`
 
-Bu endpoint, sorgu yapmadan önce koleksiyonun endekslenip endekslenmediğini ya da "indexing" statüsünde olup olmadığını kullanıcıya bildirir. Aktif fiziksel koleksiyon okunabiliyorsa, koleksiyon statüsü `indexing` olsa bile `capabilities.query=true` ve `capabilities.retrieve=true` kalabilir; böylece rebuild sırasında eski aktif sürümden sorgu servis edilmeye devam eder. Ancak collection-specific `embeddingModel` veya `chatModel` Ollama'da yoksa bu durum `modelAvailability` alanında görünür ve capability bayrakları düşer.
+Bu endpoint, sorgu yapmadan önce koleksiyonun endekslenip endekslenmediğini ya da "indexing" statüsünde olup olmadığını kullanıcıya bildirir. Aktif fiziksel koleksiyon okunabiliyorsa, koleksiyon statüsü `indexing` olsa bile `capabilities.query=true` ve `capabilities.retrieve=true` kalabilir; böylece rebuild sırasında eski aktif sürümden sorgu servis edilmeye devam eder. Ancak koleksiyonun okuma için kullandığı `embeddingModel` Ollama'da yoksa bu durum `modelAvailability` alanında görünür ve `query`/`retrieve` capability bayrakları düşer. Chat modeli koleksiyona ait değildir; global ve opsiyonel chat LLM sadece `capabilities.query`'yi etkiler (`capabilities.query = retrieve && chat yapılandırılmış && provider ok`). `CHAT_NOT_CONFIGURED` ve `CHAT_MODEL_UNVERIFIED` `warnings` içinde, `CHAT_PROVIDER_UNREACHABLE` / `CHAT_PROVIDER_AUTH_FAILED` / `CHAT_MODEL_MISSING` ise `blockers` içinde görünür; bunlar retrieve'i etkilemez.
 
 #### `POST /v1/rag/collections/:collectionId/query`
 
@@ -309,6 +325,8 @@ Maksat:
 
 - Seçilen mantıksal (logical) koleksiyon üzerinden kullanıcı sorusunu alıp retrieval + generation akışını çalıştırmak
 - Sonucu answer + sources şeklinde JSON olarak döndürmek
+
+Bu endpoint opsiyoneldir: global chat LLM yapılandırılmamışsa (varsayılan) body doğrulamasından ve koleksiyon lookup'ından önce `503 CHAT_NOT_CONFIGURED` döner (`Retry-After` header'ı yoktur; bu geçici bir yük değil, bir konfigürasyon durumudur). Bu durumda istemci `/retrieve` kullanmalıdır.
 
 Girdi:
 
@@ -331,6 +349,8 @@ Başarılı çıktı:
 - `collectionId: string`
 - `collectionDisplayName: string`
 - `activeVersion: string`
+- `embeddingModel: string`
+- `chatModel: string` (cevabı üreten global chat LLM modeli)
 
 `observability.includeDebugTimings=false` iken query response bu alanlarla sınırlı kalır. Config `true` yapılırsa response'a `debug.latency.retrievalMs`, `debug.latency.generationMs` ve `debug.latency.totalMs` eklenir.
 
@@ -343,7 +363,9 @@ Başarılı çıktı:
 - `422`: retrieval eşiği altında chunk kalmazsa (`NO_RELEVANT_CONTEXT`) veya retrieved chunk'lar cevap üretmeye yetmezse (`ANSWER_NOT_IN_RETRIEVED_CONTEXT`)
 - `502`: model boş cevap dönerse (`EMPTY_MODEL_RESPONSE`) veya yasaklı fallback answer dönerse (`DISALLOWED_FALLBACK_ANSWER`)
 - `429`: request rate limiter tenant/user/collection/operation anahtarı için limiti aştığında (`RATE_LIMIT_EXCEEDED`)
-- `503`: Eşzamanlı istek limiti aşıldığında veya client timeout'a düştüğünde (`MODEL_BACKPRESSURE`)
+- `503`: Eşzamanlı istek limiti aşıldığında, generation kuyruğunda bekleme süresi dolduğunda veya client timeout'a düştüğünde (`MODEL_BACKPRESSURE`)
+- `503`: chat LLM yapılandırılmamışsa (`CHAT_NOT_CONFIGURED`) veya chat API'sine ulaşılamıyorsa (`CHAT_PROVIDER_UNREACHABLE`)
+- `502`: chat API HTTP hatası dönerse (`CHAT_PROVIDER_ERROR`; ör. geçersiz key 401, bilinmeyen model 404, 429, 5xx). `details` içinde `upstreamStatus`, `providerMessage` (API key redakte edilmiş), `chatModel`, `embeddingModel` bulunur
 - `500`: beklenmeyen başka backend hatası oluşursa
 
 Önemli not:
@@ -401,7 +423,9 @@ Bu endpoint ürün akışının zorunlu parçası değildir; esas görevi retrie
 Aşağıdaki API rotaları Çoklu-Koleksiyon (Multi-Collection) konsepti gereği koleksiyon yönetimi için kullanılır:
 
 - `POST /v1/admin/collections`: Zod doğrulamasından geçerek yeni bir logical koleksiyon metadata'sı yaratır (Henüz endekslemez).
-- `PATCH /v1/admin/collections/:collectionId`: Varolan bir koleksiyonun yapılandırmasını günceller (Model, metrikler vb.)
+- `PATCH /v1/admin/collections/:collectionId`: Varolan bir koleksiyonun yapılandırmasını günceller (embedding modeli, metrikler vb.). Koleksiyonların chat modeli yoktur; body'de `chatModel` gönderilirse `400 INVALID_REQUEST_BODY` döner. Create preflight'ı sadece embedding modelini kontrol eder.
+- `GET /v1/admin/config/defaults`: Create formu için default'ları (`modelDefaults.embeddingModel`) ve salt okunur global chat LLM durumunu (`chat: { enabled, baseUrl, model, apiKeyConfigured }`) döner; API key asla dönmez.
+- `GET /v1/admin/models`: Sadece embedding için Ollama model keşfi (`reachable`, `models`, `embeddingModels`, `defaults.embeddingModel`).
 - `POST /v1/admin/collections/:collectionId/reindex`: O koleksiyon için arka planda asenkron çalışacak, eski veriyi kesintiye uğratmadan yeni bir fiziksel tabloya (`rag_tenant_..._version`) data yazacak olan `Index Job`'u tetikler.
 - `GET /v1/admin/jobs/:jobId`: İlgili işin durumunu döner.
 
@@ -416,7 +440,7 @@ Teorik rol:
 Repodaki implementasyon:
 
 - Bu katman [src/rag.ts](src/rag.ts) içindedir.
-- `answerQuestion(question, { collectionName, retrievalK, runtimeConfig, embeddingModel, chatModel, retrievalDistanceThreshold, context, abortSignal })` bu mimarinin ana generation orkestrasyon fonksiyonudur.
+- `answerQuestion(question, { collectionName, retrievalK, runtimeConfig, embeddingModel, retrievalDistanceThreshold, context, abortSignal })` bu mimarinin ana generation orkestrasyon fonksiyonudur. Chat modeli parametre değildir; global `runtimeConfig.chat` kullanılır.
 - `retrieveSources(question, { collectionName, k, runtimeConfig, embeddingModel, retrievalDistanceThreshold, context, abortSignal })` retrieval katmanını ayrı yardımcı olarak açar.
 
 Bu katman sırayla şunları yapar:
@@ -424,9 +448,9 @@ Bu katman sırayla şunları yapar:
 1. HTTP katmanı collection resolve işini `resolveReadableCollection` ile tamamlar; Chroma readability doğrulanmadan RAG akışına girilmez.
 2. `retrieveSources(...)` collection'a bağlı vector store üzerinden `similaritySearchWithScore` çağırır ve collection'ın kendi `embeddingModel` ayarını kullanır.
 3. Sonuçlar artan `distanceScore` sırasına dizilir ve collection-specific `retrievalDistanceThreshold` üstündekiler elenir.
-4. Query tarafında model context bütçesine sığacak kadar chunk seçilir.
+4. Query tarafında, `chat.maxContextTokens` ayarlıysa bu bütçeye sığacak kadar chunk seçilir; ayarlı değilse retrieved chunk'ların tamamı gönderilir (`retrievalK x chunkSize` bağlamı zaten sınırlar).
 5. Retrieved chunk'lar system prompt içinde düzenlenir.
-6. Soruyu `HumanMessage`, bağlamı `SystemMessage` olarak modele verir; generation için collection'ın kendi `chatModel` ayarı kullanılır.
+6. Soruyu `HumanMessage`, bağlamı `SystemMessage` olarak modele verir; generation için global ve opsiyonel chat LLM kullanılır (koleksiyon bazlı chat modeli yoktur).
 7. Model cevabı backend kontratına göre doğrulanır; grounded cevap yoksa string fallback yerine typed hata üretilir.
 
 Burada retrieval ile answerability farklı problemler olarak ele alınır:
@@ -477,14 +501,18 @@ Teorik rol:
 
 Repodaki implementasyon:
 
-- Generation [src/rag.ts](src/rag.ts) içindeki `ChatOllama` istemcisi ile yapılır.
-- Model parametreleri collection kaydından gelir; [src/config.ts](src/config.ts) sadece varsayılan/fallback değerleri ve servis-seviyesi Ollama bağlantısını taşır.
-- `temperature=0` seçimi, sistemin daha deterministik cevap vermesini hedefler.
-- `think: false` seçimi, agentic veya think-mode odaklı bir model akışına gidilmediğini gösterir.
+- Generation opsiyoneldir ve provider-bağımsızdır. [src/chat.ts](src/chat.ts) LangChain `ChatOpenAICompletions` (`@langchain/openai`) istemcisini kurar; [src/rag.ts](src/rag.ts) bunu kullanır. `ChatOllama` artık kullanılmaz; Ollama sadece embedding için kullanılır.
+- Herhangi bir OpenAI uyumlu chat completions API'si çalışır: Ollama `http://localhost:11434/v1`, LM Studio, vLLM, OpenAI, OpenRouter vb.
+- Konfigürasyon tek ve globaldir: `chat.baseUrl` + `chat.model` (ikisi de doluysa `/query` açılır). Koleksiyon bazlı chat modeli yoktur.
+- Model parametreleri (`chat.temperature`, `chat.maxTokens`) sadece config'te elle set edilmişse gönderilir; aksi halde provider/model default'ları geçerlidir. `chat.maxContextTokens` modele gönderilmez, sadece retrieved context için içsel bir üst sınırdır.
+- API key `RAG_CHAT_API_KEY` env değişkeninden veya onboarding'in yazdığı `.local/rag_chat_api_key.secret` dosyasından okunur; YAML'a asla yazılmaz, API cevaplarında asla dönmez ve hata mesajlarından redakte edilir.
+- Chat API hataları sınıflandırılır: ulaşılamıyorsa `503 CHAT_PROVIDER_UNREACHABLE`, HTTP hatası dönerse `502 CHAT_PROVIDER_ERROR`, timeout/abort ise `503 MODEL_BACKPRESSURE`.
 
 Prompt tasarımı:
 
+- Prompt domain-bağımsızdır (belirli bir alana, ör. vergi özelgelerine, bağlı değildir).
 - Modelden sadece retrieved context kullanarak cevap vermesi istenir.
+- Cevap, sorunun dilinde ve kısa yazılır.
 - Bağlam yetersizse kullanıcıya gösterilecek fallback cümlesi değil, sadece backend'in anlayacağı internal bir sinyal dönmesi istenir.
 - Retrieved context içindeki talimatları takip etmemesi açıkça söylenir.
 
@@ -532,14 +560,16 @@ Bu katman sayesinde sistem şu kararlar için repoda görünür ve doğrulanabil
 - Chroma adresi
 - registry path'i
 - Ollama base URL
-- chat modeli
-- embedding modeli
+- embedding modeli (`ollama.embeddingModel`)
+- opsiyonel chat LLM (`chat.baseUrl`, `chat.model`; elle eklenebilen `chat.temperature`, `chat.maxTokens`, `chat.maxContextTokens`)
 - collectionDefaults altındaki source path, chunking ve retrieval default'ları
 - readiness probe timeout ve metinleri
 - `cleanup.retentionMs`
 - `limits.maxConcurrentEmbeddings` / `limits.maxConcurrentGenerations`
 - `rateLimit.enabled`, `rateLimit.windowMs`, `rateLimit.maxRequestsPerWindow`
 - `observability.includeDebugTimings`
+
+Eski `ollama.chatModel`, `ollama.numCtx` ve `ollama.numPredict` anahtarları kaldırılmıştır; eski config dosyalarında bulunurlarsa startup'ta bir uyarı ile yok sayılırlar ve chat örtük olarak açılmaz. Env override'ları: `RAG_CHAT_BASE_URL`, `RAG_CHAT_MODEL` (API key için `RAG_CHAT_API_KEY`); `RAG_OLLAMA_CHAT_MODEL` kaldırılmıştır.
 
 Bu, backend mimarisi açısından doğru bir ayrımdır. Ancak config schema validation halen sınırlıdır.
 
@@ -551,17 +581,17 @@ Bir istemci `POST /v1/rag/collections/:collectionId/query` çağırdığında bu
 2. Operational HTTP logger response sonunda structured event yazmak üzere isteği izler.
 3. Express JSON body'yi parse eder.
 4. Merkezi rate limiter `tenantId:userId:collectionId:operation` anahtarıyla query/retrieve/reindex isteklerini sınırlar; aşımda `429 RATE_LIMIT_EXCEEDED` döner.
-5. Zod, `question` alanının boş olmayan bir string olduğunu doğrular.
+5. Chat LLM yapılandırılmamışsa istek burada `503 CHAT_NOT_CONFIGURED` ile biter (body doğrulaması ve collection lookup yapılmaz). Ardından Zod, `question` alanının boş olmayan bir string olduğunu doğrular.
 6. `resolveReadableCollection` registry + tenant + active physical + Chroma readability kontrolünü yapar.
 7. Collection görünür ama yetkisizse `403 COLLECTION_FORBIDDEN`, hiç yoksa `404 COLLECTION_NOT_FOUND` döner.
 8. `answerQuestion(question, { collectionName, retrievalK, ... })` çağrılır.
 9. `assertChromaCollectionReadable` ve `similaritySearchWithScore(question, k)` timeout/abort koruması altında çalışır.
 7. Chunk'lar `distanceScore` alanı ile sıralanır ve collection threshold üstündekiler elenir.
 8. Hiç chunk kalmazsa `422 NO_RELEVANT_CONTEXT` hatası döner.
-9. Model context bütçesine sığacak kadar chunk prompt içinde birleştirilir.
-10. Soru + system prompt, `ChatOllama` modeline verilir.
+9. Chunk'lar prompt içinde birleştirilir (`chat.maxContextTokens` ayarlıysa bu bütçeye sığacak kadarı).
+10. Soru + system prompt, `ChatOpenAICompletions` üzerinden global chat LLM'e verilir.
 11. Model cevabı alınır ve boş cevap / yasaklı fallback / no-answer sinyali backend tarafından doğrulanır.
-12. Başarılıysa `{ answer, distanceScoreThreshold, sources, collectionId, collectionDisplayName, activeVersion }` JSON cevabı döner; başarısızsa typed hata üretilir.
+12. Başarılıysa `{ answer, distanceScoreThreshold, sources, collectionId, collectionDisplayName, activeVersion, chatModel, embeddingModel }` JSON cevabı döner; başarısızsa typed hata üretilir (chat API hataları `CHAT_PROVIDER_UNREACHABLE` / `CHAT_PROVIDER_ERROR`).
 
 Bu akışta backend'in görevi, retrieval ile LLM arasında bir bağlam kontratı oluşturmaktır.
 
@@ -746,9 +776,9 @@ Aşağıdaki temel backend noktalarının implement edildiğini söyleyebiliriz:
 - Chunking var.
 - Embedding var.
 - Chroma tabanlı vector retrieval var.
-- LLM generation var.
+- Opsiyonel, provider-bağımsız LLM generation var (OpenAI uyumlu herhangi bir chat API'si; chat LLM yoksa retrieve-only).
 - Retrieved source'ları API cevabına dahil etme var.
-- Query path genelinde Chroma readability/vector search ve Ollama generation için timeout/abort hardening var.
+- Query path genelinde Chroma readability/vector search ve chat LLM generation için timeout/abort hardening var.
 - Structured operational logging var.
 
 Bu nedenle sistem, "backend olarak çalışan bir Vanilla RAG" sınıfına girmektedir.
@@ -799,17 +829,18 @@ Repo artık ayrık bir readiness katmanına sahiptir ve şu kontrolleri yapar:
 - Chroma erişilebilir mi
 - Hedef collection var mı ve boş mu
 - Ollama erişilebilir mi
-- Chat ve embedding modeli mevcut mu
+- Embedding modeli mevcut mu
 - Embedding smoke test başarılı mı
-- Chat smoke test başarılı mı
+- Chat LLM yapılandırılmışsa: provider erişilebilir mi, API key kabul ediliyor mu, model `GET /models` listesinde var mı
 - Veri dosyası okunabilir mi
 
 Bu önemli bir olgunluk artışıdır. Ancak mevcut readiness katmanı yine de gerçek `POST /v1/rag/collections/:collectionId/query` akışını bire bir garanti etmez.
 
 Örneğin:
 
-- Kısa bir chat smoke test başarılı olabilir
-- Ama daha uzun, retrieved context içeren gerçek generation prompt'u farklı model davranışı gösterebilir
+- Chat LLM kontrolü maliyetsiz bir `GET /models` isteğidir; generation çalıştırmaz (ücretli API'lerde her `/ready` çağrısında maliyet oluşmaması için). Gerçek generation smoke test'i sadece `npm run onboard` içinde koşar.
+- Model listede görünse bile, retrieved context içeren gerçek generation prompt'u farklı model davranışı gösterebilir
+- Provider model listesi sunmuyorsa model adı doğrulanamaz (`CHAT_MODEL_UNVERIFIED`); hatalı bir model ilk `/query` çağrısında `CHAT_PROVIDER_ERROR` olarak görünür
 
 Dolayısıyla readiness implement edilmiştir; fakat gerçek RAG çağrısına daha yakın smoke testler eklenirse operasyonel güven daha da artar.
 
@@ -895,12 +926,13 @@ Kayıp:
 
 Seçilen yol:
 
-- Ollama ile lokal çalışma
+- Embedding için Ollama ile lokal çalışma
+- Generation için opsiyonel, OpenAI uyumlu herhangi bir chat API'si (lokal Ollama `/v1` veya bulut provider)
 
 Kazanç:
 
 - lokal geliştirme kolaylığı
-- harici SaaS bağımlılığı yok
+- varsayılan kurulumda harici SaaS bağımlılığı yok; chat LLM seçimi kullanıcıya bırakılır
 
 Kayıp:
 
@@ -911,7 +943,7 @@ Kayıp:
 
 Bu repo için en doğru tanım şu olur:
 
-"Bu proje, doküman tabanlı soru-cevap için LangChain + Chroma + Ollama kullanan, TypeScript/Express ile yazılmış bir Vanilla RAG backend implementasyonudur."
+"Bu proje, doküman tabanlı soru-cevap için LangChain + Chroma + Ollama (embedding) ve opsiyonel olarak OpenAI uyumlu bir chat LLM kullanan, TypeScript/Express ile yazılmış bir Vanilla RAG backend implementasyonudur."
 
 Bu tanım içinde şu iddialar doğrudur:
 

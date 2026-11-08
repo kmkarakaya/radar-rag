@@ -6,7 +6,8 @@ Agent brief for the Vanilla RAG Backend. Read this first, then see [AGENTS.md](A
 
 A TypeScript / Express 5 (ESM) **multi-collection, multi-tenant LangChain RAG** backend over local documents (TXT, MD, PDF, DOC, DOCX). Local-first:
 
-- **Ollama** for chat + embeddings (`localhost:11434`, default chat `gemma3:4b`, embeddings `embeddinggemma-2:270m`).
+- **Ollama** for embeddings (`localhost:11434`, default `embeddinggemma-2:270m`).
+- **Optional chat LLM** for `/query` only: any OpenAI-compatible API (`chat.baseUrl` + `chat.model` + optional key), called via LangChain `ChatOpenAICompletions` in [src/chat.ts](src/chat.ts). Not configured by default (retrieve-only: `/query` → 503 `CHAT_NOT_CONFIGURED`). Global, not per collection.
 - **Chroma** for the vector store (`localhost:8000`, via Docker).
 - **SQLite** (`better-sqlite3`) for the collection/job registry (`data/registry.sqlite`).
 
@@ -14,7 +15,7 @@ The server listens on **port 3010** in the shipped config. APIs are strictly ver
 
 ## Run / build / test
 
-All-in-one: `docker compose up -d` (backend + Chroma 1.5.9 + Ollama 0.40.12; `ollama-init` pulls the models; `./data` is mounted; see [Dockerfile](Dockerfile)). Local dev prereqs: `docker compose up -d chroma`, then Ollama (0.40.4+) running with `gemma3:4b` and `embeddinggemma-2:270m` pulled.
+All-in-one: `docker compose up -d` (backend + Chroma 1.5.9 + Ollama 0.40.12; `ollama-init` pulls the embedding model, plus the chat model only when `RAG_CHAT_BASE_URL` points at the bundled Ollama; `./data` is mounted; see [Dockerfile](Dockerfile)). Local dev prereqs: `docker compose up -d chroma`, then Ollama (0.40.4+) running with `embeddinggemma-2:270m` pulled (a chat model only if you enable `/query`).
 
 - `npm run dev` — start in watch mode (`tsx watch src/server.ts`).
 - `npm run build` — compile TypeScript to `dist/` (`tsc`); `npm start` — run compiled server.
@@ -26,7 +27,7 @@ All-in-one: `docker compose up -d` (backend + Chroma 1.5.9 + Ollama 0.40.12; `ol
 ## Architecture map
 
 - **Entry points**: [src/server.ts](src/server.ts) (HTTP server + graceful shutdown), [src/app.ts](src/app.ts) (Express app assembly + `/`, `/health`, `/ready`), [src/index.ts](src/index.ts) (CLI indexer).
-- **RAG pipeline**: ingestion [src/ingestion/pipeline.ts](src/ingestion/pipeline.ts) (loaders for PDF/DOC/DOCX/TXT/MD, recursive folder scan that skips the SQLite registry; SHA-256 source hashing; fault-tolerant per-file) → chunk + embed + index as a **blue/green physical build** [src/indexing/buildPhysicalCollection.ts](src/indexing/buildPhysicalCollection.ts) → retrieval + grounded generation [src/rag.ts](src/rag.ts) (distance-threshold filtering; `__NO_ANSWER_FROM_CONTEXT__` no-answer signal; context budgeted to `numCtx`).
+- **RAG pipeline**: ingestion [src/ingestion/pipeline.ts](src/ingestion/pipeline.ts) (loaders for PDF/DOC/DOCX/TXT/MD, recursive folder scan that skips the SQLite registry; SHA-256 source hashing; fault-tolerant per-file) → chunk + embed + index as a **blue/green physical build** [src/indexing/buildPhysicalCollection.ts](src/indexing/buildPhysicalCollection.ts) → retrieval + grounded generation [src/rag.ts](src/rag.ts) (distance-threshold filtering; `__NO_ANSWER_FROM_CONTEXT__` no-answer signal; domain-neutral prompt; optional context cap `chat.maxContextTokens`). Chat model creation, the free `GET /models` provider check (cached, used by `/ready`) and error classification live in [src/chat.ts](src/chat.ts).
 - **Indexing jobs**: async job runner + lifecycle in [src/indexing/](src/indexing/) (`jobRunner.ts`, `jobs.ts`, `cleanup.ts`); one active job per collection enforced by a partial unique index; blue/green swap retires old physical collections with a retention TTL.
 - **HTTP routers**: public `/v1/rag` [src/http/ragRouter.ts](src/http/ragRouter.ts) (list, get, ready, retrieve, query), admin `/v1/admin` [src/http/adminRouter.ts](src/http/adminRouter.ts) (auth, collections CRUD + validate + reindex, jobs, audit-log, config/defaults, models). Static admin panel at `/admin`, browser example at `/test-frontend`.
 - **Data layer**: hand-written prepared statements in [src/collections/sqliteRegistry.ts](src/collections/sqliteRegistry.ts) behind the `CollectionRegistry` interface ([src/collections/types.ts](src/collections/types.ts)). No ORM. Migrations are code-driven at startup (`ensureColumn` / `PRAGMA table_info`), no migration files.
@@ -53,10 +54,11 @@ Implemented in [src/http/adminAuth.ts](src/http/adminAuth.ts); config under `adm
 
 ## Config & secrets
 
-- Runtime config: [config/rag.config.yaml](config/rag.config.yaml), zod-validated with defaults resolved in [src/config.ts](src/config.ts). Key defaults: `chunkSize 500`, `chunkOverlap 200` (must be `< chunkSize`), `retrievalK 5`, `retrievalDistanceThreshold 1.2`, `distanceMetric l2`, `numCtx 4096`.
+- Runtime config: [config/rag.config.yaml](config/rag.config.yaml), zod-validated with defaults resolved in [src/config.ts](src/config.ts). Key defaults: `chunkSize 500`, `chunkOverlap 200` (must be `< chunkSize`), `retrievalK 5`, `retrievalDistanceThreshold 1.2`, `distanceMetric l2`. `chat` is empty (retrieve-only); model parameters (`temperature`, `maxTokens`) are only sent when set by hand, otherwise provider defaults apply.
 - `RAG_ADMIN_SESSION_SECRET` overrides the local secret file, keeping the runtime portable.
+- Chat API key: `RAG_CHAT_API_KEY`, else `.local/rag_chat_api_key.secret` (written by onboarding via [src/secrets.ts](src/secrets.ts)). Never in the YAML (the YAML and its `.bak` are tracked) and never returned by the API; redacted from errors.
 - Gitignored: `.env*`, `.local/`, `data/*.sqlite`, `chroma_data/`, `dist/`, `node_modules/`, `graphify-out/` (local only; rebuild with `graphify update .`).
-- Portability: paths inside the repo are stored relative (`src/paths.ts` `toPortablePath`) in the config (onboarding) and in the registry (collection `sourcePath`, migrated at startup when `projectRoot` is passed). `RAG_PORT`, `RAG_REGISTRY_PATH`, `RAG_CHROMA_URL`, `RAG_OLLAMA_BASE_URL`, `RAG_OLLAMA_CHAT_MODEL`, `RAG_OLLAMA_EMBEDDING_MODEL`, `RAG_SOURCE_PATH`, `RAG_CONFIG_PATH` override the YAML at runtime (`applyConfigEnvOverrides`).
+- Portability: paths inside the repo are stored relative (`src/paths.ts` `toPortablePath`) in the config (onboarding) and in the registry (collection `sourcePath`, migrated at startup when `projectRoot` is passed). `RAG_PORT`, `RAG_REGISTRY_PATH`, `RAG_CHROMA_URL`, `RAG_OLLAMA_BASE_URL`, `RAG_OLLAMA_EMBEDDING_MODEL`, `RAG_CHAT_BASE_URL`, `RAG_CHAT_MODEL`, `RAG_SOURCE_PATH`, `RAG_CONFIG_PATH` override the YAML at runtime (`applyConfigEnvOverrides`).
 
 ## Docs & knowledge graph
 

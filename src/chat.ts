@@ -256,7 +256,8 @@ export function classifyChatError(error: unknown, apiKey?: string): ChatErrorCla
   }
 
   const status = error && typeof error === "object" && "status" in error ? (error as { status?: unknown }).status : undefined;
-  const message = redactSecret(errorMessage(error), apiKey).slice(0, 500);
+  // LangChain appends its own "Troubleshooting URL" paragraph; keep only the provider's message.
+  const message = redactSecret(errorMessage(error), apiKey).split("\n\nTroubleshooting URL")[0].trim().slice(0, 500);
 
   if (typeof status === "number") {
     return { kind: "provider", message, upstreamStatus: status };

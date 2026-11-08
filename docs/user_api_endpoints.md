@@ -77,8 +77,11 @@ Default summary response shape:
   "ready": true,
   "systemReadyFor": "query-and-index",
   "overallSummary": "System is ready to serve RAG queries and to run indexing from the configured data source.",
+  "retrieveReady": true,
+  "queryEnabled": true,
   "queryReady": true,
   "indexReady": true,
+  "retrieveSummary": "Ready to retrieve evidence.",
   "querySummary": "Ready to serve RAG queries.",
   "indexSummary": "Ready to run indexing from the configured data source.",
   "blockerCodes": [],
@@ -89,7 +92,8 @@ Default summary response shape:
   "dependencies": {
     "registry": { "ok": true },
     "chroma": { "ok": true },
-    "ollama": { "ok": true }
+    "ollama": { "ok": true },
+    "chat": { "ok": true, "configured": true }
   },
   "config": {
     "port": 3000,
@@ -162,6 +166,17 @@ Default summary response shape:
 }
 ```
 
+The example above has the optional chat LLM configured. Answer generation is optional: without a chat LLM (the shipped default) the backend is retrieve-only, and `/ready` reports it like this:
+
+- `queryEnabled: false`, `queryReady: false`, `dependencies.chat: { "ok": false, "configured": false }`, `config.chatModel: null`.
+- `querySummary` explains that `/query` is disabled because no chat LLM is configured.
+- `systemReadyFor` is `retrieve-and-index` and `ready` is still `true`: `ready = retrieveReady && indexReady && (!queryEnabled || queryReady)`.
+- The `CHAT_NOT_CONFIGURED` check in `GET /ready?details=true` has status `skip` and is non-blocking, so it appears in neither `blockerCodes` nor `warningCodes`.
+
+`systemReadyFor` values: `query-and-index`, `retrieve-and-index`, `query`, `index`, `neither`. With a chat LLM configured but unreachable or misconfigured, `systemReadyFor` is `retrieve-and-index`, `queryReady` is `false`, and `ready` is `false`.
+
+The chat LLM check is a free, cached (30 s) `GET {chat.baseUrl}/models` request, never a generation. Its readiness codes (capability `query` only) are `CHAT_NOT_CONFIGURED` (skip), `CHAT_PROVIDER_UNREACHABLE`, `CHAT_PROVIDER_AUTH_FAILED`, `CHAT_MODEL_MISSING` (blocking failures for `query` only), `CHAT_MODEL_UNVERIFIED` (warning: the provider has no `GET /models` listing), and `CHAT_MODEL_AVAILABLE` (pass). `GET /ready?details=true` returns `capabilities: { retrieve: { ready, message }, query: { enabled, ready, message }, index: { ready, message } }` and `dependencies.chat: { configured, baseUrl, model, reachable, authOk, modelListed, ok, latencyMs, httpStatus?, availableModels?, error? }` (`modelListed` is `true`, `false`, or `"unknown"`; the API key is never returned).
+
 Use `/ready` for deployment, operations, and environment diagnostics. `blockers` and `warnings` describe capability readiness, while `operationalAlerts` and `operations` provide aggregate queue, cleanup, and runtime context. For collection-specific frontend state, use `GET /v1/rag/collections/:collectionId/ready`.
 
 ## Public Collection DTO
@@ -205,7 +220,8 @@ Public collection list and detail responses use a sanitized DTO:
 
 Notes:
 
-- Public DTOs do not expose top-level `tenantId`, `sourcePath`, `embeddingModel`, `chatModel`, `activePhysicalCollection`, or `activeEmbeddingModel`.
+- Public DTOs do not expose top-level `tenantId`, `sourcePath`, `embeddingModel`, `activePhysicalCollection`, or `activeEmbeddingModel`.
+- Collections have no chat model of their own: the optional chat LLM used by `/query` is global (see `GET /ready`).
 - `description`, `chunkCount`, `activeVersion`, and `indexState` may be `null`.
 - `status` can be `creating`, `indexing`, `ready`, `failed`, or `archived`.
 - If a collection has a real active indexed snapshot, `indexState.activeSnapshot` is typically present and should not be assumed to be `null`.
@@ -351,7 +367,7 @@ Example: collection is rebuilding, but the previous active snapshot is still rea
   "modelAvailability": {
     "embeddingModel": "embed-collection-specific",
     "embeddingModelAvailable": true,
-    "chatModel": "chat-collection-specific",
+    "chatModel": "gemma3:4b",
     "chatModelAvailable": true
   },
   "capabilities": {
@@ -379,10 +395,15 @@ Embedding model nuance:
 - If `modelAvailability.desiredEmbeddingModel` appears, the admin configuration was changed and a reindex is still needed before live reads switch to that future embedding model.
 - This matters after an admin updates `embeddingModel` but before reindex completes.
 
+Chat model nuance:
+
+- `modelAvailability.chatModel` is the global chat LLM model, or `null` when no chat LLM is configured (retrieve-only). `chatModelAvailable` comes from the chat provider check (`GET {chat.baseUrl}/models`).
+- `capabilities.query` is `true` only when `capabilities.retrieve` is `true`, a chat LLM is configured, and the provider check is ok. `capabilities.retrieve` never depends on the chat LLM.
+
 Possible readiness codes (inside the `200 OK` payload — these are distinct from the HTTP error codes below):
 
-- Blockers: `COLLECTION_NO_ACTIVE_PHYSICAL_COLLECTION`, `COLLECTION_ACTIVE_PHYSICAL_UNREADABLE`, `OLLAMA_UNREACHABLE`, `EMBED_MODEL_MISSING`, `CHAT_MODEL_MISSING`.
-- Warnings: `COLLECTION_INDEX_JOB_ACTIVE`.
+- Blockers: `COLLECTION_NO_ACTIVE_PHYSICAL_COLLECTION`, `COLLECTION_ACTIVE_PHYSICAL_UNREADABLE`, `OLLAMA_UNREACHABLE`, `EMBED_MODEL_MISSING`, `CHAT_PROVIDER_UNREACHABLE`, `CHAT_PROVIDER_AUTH_FAILED`, `CHAT_MODEL_MISSING` (the three `CHAT_*` blockers only block `query`; `retrieve` stays available).
+- Warnings: `COLLECTION_INDEX_JOB_ACTIVE`, `CHAT_NOT_CONFIGURED` (retrieve-only; `/query` is disabled), `CHAT_MODEL_UNVERIFIED` (the provider does not list its models).
 
 Frontend rule:
 
@@ -440,6 +461,8 @@ Notes:
 
 Use this when the frontend should return a grounded answer plus the supporting sources.
 
+Answer generation is optional. It needs the global chat LLM (any OpenAI-compatible chat completions API: Ollama `/v1`, LM Studio, vLLM, OpenAI, OpenRouter, ...). When no chat LLM is configured (the shipped default), this endpoint returns `503 CHAT_NOT_CONFIGURED` before the body is validated and before the collection is looked up; use `/retrieve` instead. Check `GET /ready` (`queryEnabled`) or `capabilities.query` in collection readiness before enabling a Query action.
+
 Request body:
 
 ```json
@@ -477,7 +500,8 @@ Notes:
 - `query` internally performs retrieval first.
 - `query.sources` may be a subset of the broader retrieval result set because the backend trims context to fit generation limits.
 - `query.embeddingModel` is the effective embedding model used to retrieve the grounding context.
-- `query.chatModel` is the effective chat model that generated the answer.
+- `query.chatModel` is the global chat LLM model that generated the answer.
+- The answer is written in the language of the question and grounded only in the retrieved context.
 - The backend may return `422` even when the request is syntactically valid, because the model could not produce a grounded answer.
 - `debug.latency` appears only when server-side debug timings are enabled.
 
@@ -494,7 +518,10 @@ Notes:
 | `ANSWER_NOT_IN_RETRIEVED_CONTEXT` | `422` | Chunks were retrieved but cannot support a grounded answer |
 | `EMPTY_MODEL_RESPONSE` | `502` | Model returned an empty answer |
 | `DISALLOWED_FALLBACK_ANSWER` | `502` | Model returned a blocked fallback string |
-| `MODEL_BACKPRESSURE` | `503` | Timeout, overload, aborted work, or a network/connection error reaching Chroma or Ollama |
+| `MODEL_BACKPRESSURE` | `503` | Timeout, overload (including a generation/embedding queue timeout), aborted work, or a network/connection error reaching Chroma or Ollama |
+| `CHAT_NOT_CONFIGURED` | `503` | `/query` only: no chat LLM is configured, so answer generation is disabled (retrieve-only). No `Retry-After` header: this is a configuration state, not a transient error |
+| `CHAT_PROVIDER_UNREACHABLE` | `503` | `/query` only: the chat LLM API could not be reached |
+| `CHAT_PROVIDER_ERROR` | `502` | `/query` only: the chat LLM API returned an HTTP error (for example 401 bad API key, 404 unknown model, 429, 5xx). `details` includes `upstreamStatus`, `providerMessage` (API key redacted), `chatModel`, `embeddingModel` |
 | `COLLECTION_STORAGE_INCONSISTENT` | `503` | Metadata and physical storage disagree |
 | `RATE_LIMIT_EXCEEDED` | `429` | Operation-specific rate limit hit |
 | `ROUTE_NOT_FOUND` | `404` | Wrong URL or legacy endpoint |
@@ -524,4 +551,4 @@ Example error envelope:
 
 - Error responses may include `requestId`. Preserve and log it.
 - Schema-validation failures commonly include `details.issues`, especially on `INVALID_REQUEST_BODY`.
-- Query/retrieve failures may also include the effective `embeddingModel` and `chatModel` in `details` for troubleshooting.
+- Query/retrieve failures may also include the effective `embeddingModel` and (for query) the global `chatModel` in `details` for troubleshooting. The chat API key is never included.

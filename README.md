@@ -4,8 +4,8 @@ TypeScript Express backend for multi-collection LangChain RAG over documents in 
 
 ## What it ships
 
-- Multi-collection RAG with per-collection embedding models, chat models, distance metrics, chunk sizes, overlaps, retrieval `k`, and distance thresholds.
-- Public read APIs for listing collections, loading collection details, checking readiness, retrieving evidence, and generating grounded answers.
+- Multi-collection RAG with per-collection embedding models, distance metrics, chunk sizes, overlaps, retrieval `k`, and distance thresholds.
+- Public read APIs for listing collections, loading collection details, checking readiness and retrieving evidence; plus optional grounded answers from any OpenAI-compatible chat LLM you configure (see [Answer generation (optional)](#answer-generation-optional)).
 - Optional cookie-backed admin auth with role-based access control and short-lived action tokens for protected mutations.
 - Asynchronous indexing and rebuild jobs so active queries keep working while a collection is being refreshed.
 - Operational guardrails including request IDs, tenant/user scoping, rate limiting, concurrency limits, 1 MB JSON bodies, and structured errors.
@@ -20,7 +20,7 @@ TypeScript Express backend for multi-collection LangChain RAG over documents in 
 - `GET /v1/rag/collections/:collectionId` to inspect one collection.
 - `GET /v1/rag/collections/:collectionId/ready` to gate query and retrieve UI state before enabling actions.
 - `POST /v1/rag/collections/:collectionId/retrieve` to fetch evidence chunks and the effective embedding model.
-- `POST /v1/rag/collections/:collectionId/query` to retrieve context, generate an answer, and return sources plus model metadata.
+- `POST /v1/rag/collections/:collectionId/query` to retrieve context, generate an answer, and return sources plus model metadata (only when a chat LLM is configured; otherwise `503 CHAT_NOT_CONFIGURED`).
 - Public responses include the effective model names actually used for the request.
 
 ### Admin and Operations
@@ -76,11 +76,12 @@ cd vanilla_rag_backend
 docker compose up -d
 ```
 
-- The first start pulls the images (the Ollama image alone is several GB), builds the backend and downloads the models (`gemma3:4b` and `embeddinggemma-2:270m`). On a slow connection this can take an hour or more. `docker compose up -d` returns only after the models are pulled; to watch the download, run `docker compose logs -f ollama-init` in a second terminal. Later starts take seconds.
+- The first start pulls the images (the Ollama image alone is several GB), builds the backend and downloads the embedding model (`embeddinggemma-2:270m`). On a slow connection this can take an hour or more. `docker compose up -d` returns only after the model is pulled; to watch the download, run `docker compose logs -f ollama-init` in a second terminal. Later starts take seconds.
+- The stack starts retrieve-only: retrieval and indexing work, answer generation is off. To get answers, add a chat LLM to `.env` (see [Answer generation (optional)](#answer-generation-optional)), for example the bundled Ollama with `RAG_CHAT_BASE_URL=http://ollama:11434/v1` and `RAG_CHAT_MODEL=gemma3:4b` (pulled automatically), then run `docker compose up -d` again.
 - Put your documents in a folder under `./data` (for example `./data/my-docs`). The repo ships two sample folders, `data/dataset1` and `data/dataset2`.
 - Open `http://localhost:3010/admin` and follow [First collection and first question](#first-collection-and-first-question), using a source path such as `data/my-docs`.
-- Other models: create a `.env` file next to `docker-compose.yml` with `RAG_OLLAMA_CHAT_MODEL=...` and/or `RAG_OLLAMA_EMBEDDING_MODEL=...`, then `docker compose up -d` again.
-- Already running Ollama on the host (with the models pulled)? Put `RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434` in `.env` and start only Chroma and the backend with `docker compose up -d --no-deps chroma backend`. Nothing is downloaded for Ollama, and Ollama cloud models (for example `RAG_OLLAMA_CHAT_MODEL=gpt-oss:120b-cloud`) work if the host Ollama is signed in.
+- Another embedding model: create a `.env` file next to `docker-compose.yml` with `RAG_OLLAMA_EMBEDDING_MODEL=...`, then `docker compose up -d` again.
+- Already running Ollama on the host (with the embedding model pulled)? Put `RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434` in `.env` and start only Chroma and the backend with `docker compose up -d --no-deps chroma backend`. Nothing is downloaded for Ollama. For answers from the same Ollama, add `RAG_CHAT_BASE_URL=http://host.docker.internal:11434/v1` and `RAG_CHAT_MODEL=...`; Ollama cloud models (for example `gpt-oss:120b-cloud`) work if the host Ollama is signed in.
 - Port already in use? Set `BACKEND_HOST_PORT` (default `3010`) and/or `CHROMA_HOST_PORT` (default `8000`) in `.env`. The backend still prints `localhost:3010` links at startup (its port inside the container); open the host port you chose instead.
 - GPU: uncomment the `deploy` block of the `ollama` service in [docker-compose.yml](docker-compose.yml) (needs the NVIDIA Container Toolkit). Without it, models run on the CPU.
 - Stop with `docker compose down`. Your documents, the registry (`data/registry.sqlite`), the vectors (`chroma_data/`) and the downloaded models (Docker volume `ollama_models`) are kept.
@@ -95,7 +96,6 @@ git clone https://github.com/kmkarakaya/vanilla_rag_backend.git
 cd vanilla_rag_backend
 docker compose up -d chroma
 npm.cmd install
-ollama pull gemma3:4b
 ollama pull embeddinggemma-2:270m
 npm.cmd run onboard
 npm.cmd run dev
@@ -106,9 +106,8 @@ What each command does:
 - `cd vanilla_rag_backend` changes the shell into the project root; run every command from there, because relative paths such as `data/...` resolve against it.
 - `docker compose up -d chroma` starts the Chroma vector database in the background. You need this before indexing or querying collections. Docker Desktop must be running first; see [Troubleshooting](#troubleshooting) if this command fails.
 - `npm.cmd install` installs the Node.js dependencies listed in `package.json`.
-- `ollama pull gemma3:4b` downloads the default chat model used by the backend (runs locally).
 - `ollama pull embeddinggemma-2:270m` downloads the default embedding model used for chunk indexing and retrieval. It needs Ollama 0.40.4 or newer; run `ollama --version` if the pull fails.
-- `npm.cmd run onboard` writes the runtime config ([config/rag.config.yaml](config/rag.config.yaml)) for this machine and checks that Chroma, Ollama, and the models are ready. It does not create, index, or edit collections.
+- `npm.cmd run onboard` writes the runtime config ([config/rag.config.yaml](config/rag.config.yaml)) for this machine and checks that Chroma, Ollama, and the embedding model are ready. It also asks for an optional chat LLM for answer generation; leave it empty for retrieve-only (see [Answer generation (optional)](#answer-generation-optional)). It does not create, index, or edit collections.
 - `npm.cmd run dev` starts the backend in watch mode and prints the admin panel, readiness, and test frontend links (Ctrl+click to open them from the terminal).
 
 ### First collection and first question
@@ -119,16 +118,36 @@ Onboarding only prepares the config; you create and index collections in the adm
 2. Open the admin panel at `http://localhost:3010/admin` (if admin auth is enabled you land on the login page first).
 3. In **Collections**, click **New Collection**. Give it a display name and a source path, for example `data/dataset1` (the sample TXT/PDF/DOC files). Leave the other fields empty to use the backend defaults, then click **Save Changes**.
 4. With the collection open (click it in the list if the panel closed), click **Re-index Collection**. Follow the job in **Job Monitor** until it is `succeeded`; if it fails, its error is shown there.
-5. Open the collection again and use the **Playground** tab to run **Query** (answer + sources) or **Retrieve** (sources only).
+5. Open the collection again and use the **Playground** tab to run **Retrieve** (sources only) or, if a chat LLM is configured, **Query** (answer + sources).
 6. Optional: `http://localhost:3010/test-frontend/` shows the same public `/v1/rag` API from a client's point of view.
 
 How to extend it:
 
-- Pull more chat models with `ollama pull <chat-model-name>` and then point `ollama.chatModel` or a collection-specific chat model setting at that model in [config/rag.config.yaml](config/rag.config.yaml).
+- Turn on answer generation, or switch to another chat LLM, by rerunning onboarding (see [Answer generation (optional)](#answer-generation-optional)). The chat LLM is shared by all collections.
 - Pull more embedding models with `ollama pull <embedding-model-name>` and then update `ollama.embeddingModel` or a collection-specific embedding model setting.
 - If you want to test a different vector store or service layout, adjust the Compose stack first, then update the config to match the new runtime target.
 - To index new data, create a collection in the admin panel with its own source path (for example `data/dataset1`) and run re-index. You do not need to rerun onboarding for new data.
 - If you want a different local workflow, keep `ollama pull` commands for the models you actually use and remove the rest.
+
+## Answer generation (optional)
+
+The backend is a retrieval service first: `/retrieve` and indexing only need Chroma and the Ollama embedding model. Generating answers (`POST /v1/rag/collections/:collectionId/query`) is optional and works with any OpenAI-compatible chat API, called through LangChain. Without one, `/query` returns `503 CHAT_NOT_CONFIGURED`, the Playground's **Query** button stays disabled, and your own app can pass the `/retrieve` results to the LLM of its choice.
+
+To enable it, give a base URL, a model and, if the provider needs one, an API key:
+
+| Provider                    | Base URL                         | Example model                                 | API key            |
+| --------------------------- | -------------------------------- | --------------------------------------------- | ------------------ |
+| Local Ollama                | `http://localhost:11434/v1`      | `gemma3:4b` (run `ollama pull gemma3:4b`)     | not needed         |
+| Bundled Ollama (Docker)     | `http://ollama:11434/v1`         | `gemma3:4b` (pulled by `ollama-init`)         | not needed         |
+| OpenAI                      | `https://api.openai.com/v1`      | `gpt-4o-mini`                                 | required           |
+| OpenRouter                  | `https://openrouter.ai/api/v1`   | any model id listed by OpenRouter             | required           |
+| LM Studio, vLLM, llama.cpp  | the server's `/v1` URL           | the model it serves                           | usually not needed |
+
+- Locally: run `npm.cmd run onboard`. It asks only for these three values (leave the base URL empty for retrieve-only, type `-` to clear a value). The key is stored in `.local/rag_chat_api_key.secret` (gitignored), never in the YAML. Onboarding then checks the endpoint and runs one test generation. To change your choice later, run onboarding again and restart the server.
+- Docker or CI: set `RAG_CHAT_BASE_URL`, `RAG_CHAT_MODEL` and, if needed, `RAG_CHAT_API_KEY` (in `.env` for Docker), then start again.
+- Model parameters such as temperature and max tokens are not sent, so the provider's defaults apply. To override them, add `temperature`, `maxTokens` or `maxContextTokens` (a cap on the retrieved context sent to the model) to the `chat` section of [config/rag.config.yaml](config/rag.config.yaml) by hand; onboarding keeps them.
+- `/ready` checks the chat LLM with a free `GET /models` request (cached for 30 seconds) and never runs a generation, so health checks do not cost anything on a paid API.
+- Ollama's `/v1` endpoint uses the model's own context length. If you raise `retrievalK` × `chunkSize` a lot, increase `OLLAMA_CONTEXT_LENGTH` on the Ollama server or set `chat.maxContextTokens`.
 
 ## What onboarding is for
 
@@ -136,10 +155,11 @@ Onboarding is the local setup step for the runtime config. It asks for each sett
 
 What `npm run onboard` does:
 
-- asks for the runtime settings (port, registry path, Chroma and Ollama URLs, chat and embedding models, defaults for new collections, limits, rate limiting, debug timings) and writes them to [config/rag.config.yaml](config/rag.config.yaml), keeping the previous version as `config/rag.config.yaml.bak`
+- asks for the runtime settings (port, registry path, Chroma and Ollama URLs, embedding model, defaults for new collections, limits, rate limiting, debug timings) and writes them to [config/rag.config.yaml](config/rag.config.yaml), keeping the previous version as `config/rag.config.yaml.bak`
+- asks for an optional chat LLM for answer generation (base URL, model, API key); leave it empty for retrieve-only. The API key goes to `.local/rag_chat_api_key.secret`, never into the YAML
 - optionally sets up admin auth: asks for the session secret and the first admin user (username, tenant, password), stores the secret in `.local/rag_admin_session.secret`, and saves only a scrypt hash of the password
 - analyzes the default source folder (`collectionDefaults.sourcePath`), the folder new collections use unless you give them their own path
-- checks that Chroma and Ollama are reachable and that the embedding and chat models are pulled and respond
+- checks that Chroma and Ollama are reachable and that the embedding model is pulled and responds; if a chat LLM is set, checks that it is reachable, accepts the key, offers the model, and answers one test prompt
 - if something is missing, prints `Config saved; fix these before indexing:` with a one-line fix for each problem, and still prints the next steps. The config is already saved, so after fixing the problem you do not need to run onboarding again
 
 What it does not do:
@@ -153,7 +173,7 @@ Flags:
 - `--dry-run` or `--no-write` asks the questions and runs the checks without writing the config
 - `--config <path>` uses a different config file
 
-Run onboarding again when you change machines, switch models, change ports or service URLs, change the default source folder, or want to turn admin auth on or off. Restart the server (`npm.cmd run dev`) afterwards, because the config is only read at startup. To index new data, use the admin panel instead.
+Run onboarding again when you change machines, switch models or the chat LLM, change ports or service URLs, change the default source folder, or want to turn admin auth on or off. Restart the server (`npm.cmd run dev`) afterwards, because the config is only read at startup. To index new data, use the admin panel instead.
 
 ## Running on another machine or in a container
 
@@ -168,7 +188,9 @@ These environment variables override [config/rag.config.yaml](config/rag.config.
 | `RAG_REGISTRY_PATH`          | `registry.path`                                                     |
 | `RAG_CHROMA_URL`             | `chroma.url` (e.g. `http://chroma:8000` in Docker)                |
 | `RAG_OLLAMA_BASE_URL`        | `ollama.baseUrl` (e.g. `http://ollama:11434` in Docker)           |
-| `RAG_OLLAMA_CHAT_MODEL`      | `ollama.chatModel`                                                  |
+| `RAG_CHAT_BASE_URL`          | `chat.baseUrl` (OpenAI-compatible chat API; empty = retrieve-only)  |
+| `RAG_CHAT_MODEL`             | `chat.model`                                                        |
+| `RAG_CHAT_API_KEY`           | Chat API key (instead of `.local/rag_chat_api_key.secret`)          |
 | `RAG_OLLAMA_EMBEDDING_MODEL` | `ollama.embeddingModel`                                             |
 | `RAG_SOURCE_PATH`            | `collectionDefaults.sourcePath`                                     |
 | `RAG_ADMIN_SESSION_SECRET`   | Admin session secret (instead of `.local/rag_admin_session.secret`) |
@@ -181,10 +203,13 @@ Onboarding edits the YAML file itself; these variables are only applied when the
 | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `docker compose up -d chroma` fails with `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified` | Docker Desktop is not running                        | Start Docker Desktop, wait until it shows "Engine running", then run `docker compose up -d chroma` again                                                                                                                  |
 | Onboarding prints `Chroma: fail - Failed to connect to chromadb` under "Config saved; fix these before indexing"               | The Chroma container is not running                  | Start Chroma as above. Onboarding already saved the config and still prints the next steps, so you do not need to rerun it; start the server with `npm.cmd run dev` and check `GET /ready`                              |
-| Creating a collection or starting a reindex returns `422 UNAVAILABLE_MODEL`                                                    | The embedding or chat model is not pulled in Ollama  | Run the `ollama pull …` command listed in `details.recommendedActions`, or pick a model from `details.availableModels`. With Docker, run it inside the container: `docker compose exec ollama ollama pull <model>` |
+| Creating a collection or starting a reindex returns `422 UNAVAILABLE_MODEL`                                                    | The embedding model is not pulled in Ollama          | Run the `ollama pull …` command listed in `details.recommendedActions`, or pick a model from `details.availableModels`. With Docker, run it inside the container: `docker compose exec ollama ollama pull <model>` |
 | Creating a collection or starting a reindex returns `503 OLLAMA_UNREACHABLE`                                                   | Ollama is not running or `ollama.baseUrl` is wrong | Start Ollama (`ollama serve` or the desktop app) and check `ollama.baseUrl` in [config/rag.config.yaml](config/rag.config.yaml). With Docker, check `docker compose ps` and `RAG_OLLAMA_BASE_URL` in `.env`        |
+| `/query` returns `503 CHAT_NOT_CONFIGURED`, or the Query button is disabled | No chat LLM is configured (retrieve-only, the default) | Use `/retrieve`, or enable answers as described in [Answer generation (optional)](#answer-generation-optional) |
+| `/query` returns `503 CHAT_PROVIDER_UNREACHABLE` | The chat API is down or `chat.baseUrl` is wrong | Start it and check the base URL; it must be the OpenAI-compatible URL, e.g. `http://localhost:11434/v1` for Ollama (note the `/v1`) |
+| `/query` returns `502 CHAT_PROVIDER_ERROR` | The chat API rejected the request: `details.upstreamStatus` 401/403 = wrong API key, 404 = unknown model, 429 = provider rate limit | Fix the key (rerun onboarding or set `RAG_CHAT_API_KEY`) or the model name; `GET /ready?details=true` lists the provider's models when it can |
 
-Quick health check: `GET http://localhost:3010/ready?details=true` reports Chroma, Ollama, model, and data source status with blockers and recommended actions.
+Quick health check: `GET http://localhost:3010/ready?details=true` reports Chroma, Ollama, model, chat LLM, and data source status with blockers and recommended actions.
 
 ## Güvenli admin quickstart
 
@@ -265,7 +290,7 @@ The panel surface is split across:
 1. List collections for the current tenant.
 2. Check `GET /v1/rag/collections/:collectionId/ready`.
 3. Use `POST /v1/rag/collections/:collectionId/retrieve` when you want evidence only.
-4. Use `POST /v1/rag/collections/:collectionId/query` when you want an answer plus sources.
+4. Use `POST /v1/rag/collections/:collectionId/query` when you want an answer plus sources (needs a configured chat LLM).
 
 ### Admin collection setup
 
@@ -312,7 +337,8 @@ The panel surface is split across:
 ## Stack
 
 - Node.js, TypeScript, Express
-- LangChain, Chroma, Ollama
+- LangChain, Chroma, Ollama (embeddings)
+- Optional chat LLM through any OpenAI-compatible API (LangChain `ChatOpenAICompletions`)
 - SQLite registry and job state
 - TXT, MD, PDF, DOC, and DOCX ingestion
 

@@ -83,8 +83,13 @@ Example response:
     "retrievalDistanceThreshold": 1.2
   },
   "modelDefaults": {
-    "embeddingModel": "embeddinggemma-2:270m",
-    "chatModel": "gemma3:4b"
+    "embeddingModel": "embeddinggemma-2:270m"
+  },
+  "chat": {
+    "enabled": false,
+    "baseUrl": null,
+    "model": null,
+    "apiKeyConfigured": false
   }
 }
 ```
@@ -92,12 +97,13 @@ Example response:
 Notes:
 
 - `collectionDefaults.sourcePath` is a resolved runtime path, so it may appear absolute.
+- `chat` describes the global, optional chat LLM used only by `/query`. It is not a collection setting. `enabled: false` means the backend is retrieve-only (`/query` returns `503 CHAT_NOT_CONFIGURED`). When enabled, `baseUrl` and `model` show the OpenAI-compatible endpoint and model (for example `http://localhost:11434/v1` and `gemma3:4b`). The API key itself is never returned; `apiKeyConfigured` only tells whether one is set (`RAG_CHAT_API_KEY` or `.local/rag_chat_api_key.secret`). The chat LLM is configured with `npm run onboard` or `RAG_CHAT_BASE_URL` / `RAG_CHAT_MODEL`, not through the admin API. The bundled admin panel (`/admin`) shows it as a read-only "Chat LLM (global, optional)" line in the collection form, which has no chat model field.
 - This endpoint is intended for create-form visibility only; it does not expose the full config file.
 - Use this together with `GET /v1/admin/models` so the create form can show both backend defaults and runtime model suggestions.
 
 ### `GET /v1/admin/models`
 
-Returns the current Ollama model inventory for admin autocomplete and validation hints.
+Returns the current Ollama model inventory for the embedding model autocomplete and validation hints. Ollama is only used for embeddings; the chat LLM is not discovered here.
 
 Example response:
 
@@ -106,21 +112,13 @@ Example response:
   "reachable": true,
   "models": [
     "gemma3:4b",
-    "gemma3:4b-cloud",
-    "gpt-oss:120b-cloud",
     "embeddinggemma-2:270m"
   ],
   "embeddingModels": [
     "embeddinggemma-2:270m"
   ],
-  "chatModels": [
-    "gemma3:4b",
-    "gemma3:4b-cloud",
-    "gpt-oss:120b-cloud"
-  ],
   "defaults": {
-    "embeddingModel": "embeddinggemma-2:270m",
-    "chatModel": "gemma3:4b"
+    "embeddingModel": "embeddinggemma-2:270m"
   }
 }
 ```
@@ -132,10 +130,8 @@ If Ollama discovery is unavailable, the endpoint still returns `200` with:
   "reachable": false,
   "models": [],
   "embeddingModels": [],
-  "chatModels": [],
   "defaults": {
-    "embeddingModel": "embeddinggemma-2:270m",
-    "chatModel": "gemma3:4b"
+    "embeddingModel": "embeddinggemma-2:270m"
   }
 }
 ```
@@ -143,7 +139,7 @@ If Ollama discovery is unavailable, the endpoint still returns `200` with:
 Notes:
 
 - `models` is the full runtime-discovered Ollama inventory.
-- `embeddingModels` and `chatModels` are role-specific subsets of that inventory for the two admin form fields.
+- `embeddingModels` is the subset of that inventory with the `embedding` capability, for the collection `embeddingModel` field.
 - The inventory depends on the local Ollama runtime, so the visible list can change without a code deploy.
 - Use this together with `GET /v1/admin/config/defaults` so the create form can show both autocomplete suggestions and backend defaults.
 
@@ -214,11 +210,11 @@ Optional:
 - `retrievalK`
 - `retrievalDistanceThreshold`
 - `embeddingModel`
-- `chatModel`
 
 Behavior:
 
 - Returns `201 Created` on success.
+- Collections have no chat model. Sending `chatModel` (or any other unknown field) returns `400 INVALID_REQUEST_BODY`. The chat LLM used by `/query` is global and optional (see `GET /v1/admin/config/defaults`).
 - Omitted create fields are filled from runtime configuration defaults and model defaults.
 - A newly created collection starts as a logical record; it is not queryable until indexing produces an active version.
 - Use `GET /v1/admin/config/defaults` to show backend defaults in the create form before save.
@@ -246,7 +242,6 @@ Immediate fields:
 - `description`
 - `retrievalK`
 - `retrievalDistanceThreshold`
-- `chatModel`
 
 Reindex-bound fields:
 
@@ -258,7 +253,7 @@ Reindex-bound fields:
 
 If any reindex-bound field changes, the backend persists the configuration but expects a reindex before the indexed snapshot fully matches the desired settings.
 
-This classification applies to `PATCH` (update). On **create**, only `displayName` and `description` are treated as immediate; every other field (including `chatModel`, `retrievalK`, `retrievalDistanceThreshold`, and `distanceMetric`) is reported under `impact.reindexFields`, because a new collection must be indexed before any indexed setting takes effect.
+This classification applies to `PATCH` (update). On **create**, only `displayName` and `description` are treated as immediate; every other field (including `retrievalK`, `retrievalDistanceThreshold`, and `distanceMetric`) is reported under `impact.reindexFields`, because a new collection must be indexed before any indexed setting takes effect.
 
 ## Live Read Model vs Desired Model
 
@@ -298,8 +293,8 @@ Example response:
 
 Notes:
 
-- Before saving, the backend asks Ollama (`/api/tags`) whether the resolved `embeddingModel` and `chatModel` are pulled. A `:latest` tag matches an untagged name.
-- If a model is missing it returns `422 UNAVAILABLE_MODEL` and creates nothing. If Ollama cannot be reached it returns `503 OLLAMA_UNREACHABLE`.
+- Before saving, the backend asks Ollama (`/api/tags`) whether the resolved `embeddingModel` is pulled. A `:latest` tag matches an untagged name. The optional chat LLM is not checked: collections can be created and indexed without it.
+- If the embedding model is missing it returns `422 UNAVAILABLE_MODEL` and creates nothing (`details.missingModels` entries only have role `embedding`). If Ollama cannot be reached it returns `503 OLLAMA_UNREACHABLE`.
 
 Example `422` response:
 
@@ -334,7 +329,6 @@ Example response:
     "activeVersion": "v-active-1",
     "sourcePath": "data/api-test-updated",
     "embeddingModel": "embed-patched-http",
-    "chatModel": "chat-patched-http",
     "distanceMetric": "ip",
     "chromaCollectionConfiguration": {
       "hnsw": {
@@ -512,8 +506,7 @@ Example request:
   "sourcePath": "missing/source/path",
   "chunkSize": 64,
   "chunkOverlap": 64,
-  "embeddingModel": "embeddinggemma-2:270m",
-  "chatModel": "gemma3:4b"
+  "embeddingModel": "embeddinggemma-2:270m"
 }
 ```
 
@@ -547,8 +540,7 @@ Example response:
       "sourcePath",
       "chunkSize",
       "chunkOverlap",
-      "embeddingModel",
-      "chatModel"
+      "embeddingModel"
     ],
     "note": "New collections must be re-indexed before indexed settings become active."
   }
@@ -578,7 +570,6 @@ Example request:
   "description": null,
   "sourcePath": "data/api-test-updated",
   "embeddingModel": "embed-patched-http",
-  "chatModel": "chat-patched-http",
   "distanceMetric": "ip",
   "chunkSize": 321,
   "chunkOverlap": 12,
@@ -589,7 +580,7 @@ Example request:
 
 Notes:
 
-- Unknown body keys are rejected with `400 INVALID_REQUEST_BODY`.
+- Unknown body keys are rejected with `400 INVALID_REQUEST_BODY`. This includes `chatModel`: collections no longer have a chat model (the optional chat LLM is global).
 - Patching reindex-bound fields usually changes `collection.indexState` to `reindex_required`.
 - After patching `embeddingModel`, public RAG reads keep using the snapshotted active embedding model until reindex succeeds.
 
@@ -623,7 +614,7 @@ Notes:
 
 - Returns `202 Accepted`.
 - If a reindex is already active, the backend returns `409 COLLECTION_INDEX_ALREADY_RUNNING` (`details.jobId`, `details.status`). This is checked before the model preflight.
-- Before queueing, the backend checks that the collection's `embeddingModel` is pulled in Ollama. If it is missing it returns `422 UNAVAILABLE_MODEL` and starts no job. If Ollama cannot be reached it returns `503 OLLAMA_UNREACHABLE`. The chat model is not required to reindex, so a retrieve-only collection can still be indexed.
+- Before queueing, the backend checks that the collection's `embeddingModel` is pulled in Ollama. If it is missing it returns `422 UNAVAILABLE_MODEL` and starts no job. If Ollama cannot be reached it returns `503 OLLAMA_UNREACHABLE`. The chat LLM is never involved in indexing, so a retrieve-only deployment can still index.
 - Reindex is one of the rate-limited operations.
 
 ## Job Endpoints
@@ -813,7 +804,7 @@ Rules:
 | `COLLECTION_NOT_FOUND` | `404` | Collection does not exist |
 | `COLLECTION_INDEX_ALREADY_RUNNING` | `409` | A reindex job is already active |
 | `INVALID_JOB_STATUS` | `400` | Job action was attempted in the wrong job state |
-| `UNAVAILABLE_MODEL` | `422` | Create or reindex needs an Ollama model that is not pulled; see `details.missingModels` and `details.recommendedActions` |
+| `UNAVAILABLE_MODEL` | `422` | Create or reindex needs an Ollama embedding model that is not pulled; see `details.missingModels` and `details.recommendedActions` |
 | `OLLAMA_UNREACHABLE` | `503` | Create or reindex could not reach Ollama to check its models |
 | `ROUTE_NOT_FOUND` | `404` | Job lookup failed tenant scoping or the route is wrong |
 | `RATE_LIMIT_EXCEEDED` | `429` | Reindex limit was hit |

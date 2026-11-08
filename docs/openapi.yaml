@@ -7,6 +7,9 @@ info:
     This spec covers the versioned public RAG API, admin API, job API, and the
     system health/readiness endpoints. Admin auth is opt-in and uses a signed
     session cookie plus short-lived action tokens for protected mutations.
+    Answer generation (/query) is optional: it needs a single global chat LLM reached through any
+    OpenAI-compatible chat completions API. Without one the backend is retrieve-only (retrieve and
+    indexing work, /query returns 503 CHAT_NOT_CONFIGURED). Ollama is used for embeddings only.
 servers:
   - url: http://localhost:3010
     description: Local development
@@ -189,6 +192,12 @@ paths:
       tags: [Public RAG]
       operationId: queryCollection
       summary: Retrieve context, generate a grounded answer, and return model metadata
+      description: >-
+        Answer generation is optional. It uses the single global chat LLM (any OpenAI-compatible chat
+        completions API, e.g. Ollama /v1, LM Studio, vLLM, OpenAI, OpenRouter). Without a configured chat LLM
+        the backend is retrieve-only and this endpoint returns 503 CHAT_NOT_CONFIGURED before validating the
+        body or looking up the collection. The answer is grounded only in the retrieved context and written in
+        the language of the question.
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
@@ -240,9 +249,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
         "502":
-          $ref: "#/components/responses/ApiError"
+          description: >-
+            EMPTY_MODEL_RESPONSE, DISALLOWED_FALLBACK_ANSWER, or CHAT_PROVIDER_ERROR. CHAT_PROVIDER_ERROR means
+            the chat LLM API returned an HTTP error (for example 401 bad API key, 404 unknown model, 429, 5xx);
+            details contains upstreamStatus, providerMessage (API key redacted), chatModel and embeddingModel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
         "503":
-          $ref: "#/components/responses/ApiError"
+          description: >-
+            CHAT_NOT_CONFIGURED (no chat LLM is configured, answer generation is disabled; no Retry-After header),
+            CHAT_PROVIDER_UNREACHABLE (the chat LLM API cannot be reached), MODEL_BACKPRESSURE (timeout, abort,
+            overload or generation queue timeout), COLLECTION_INDEXING, or COLLECTION_STORAGE_INCONSISTENT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
   /v1/admin/auth/login:
     post:
       tags: [Admin Auth]
@@ -421,7 +444,8 @@ paths:
           $ref: "#/components/responses/ApiError"
         "422":
           description: >-
-            UNAVAILABLE_MODEL. The embedding or chat model is not pulled in Ollama; nothing is created.
+            UNAVAILABLE_MODEL. The embedding model is not pulled in Ollama; nothing is created.
+            The optional chat LLM is not checked.
             details.missingModels, details.availableModels and details.recommendedActions explain the fix.
           content:
             application/json:
@@ -701,7 +725,7 @@ paths:
         "422":
           description: >-
             UNAVAILABLE_MODEL. The collection's embedding model is not pulled in Ollama; no job is started.
-            The chat model is not required to reindex.
+            The optional chat LLM is never involved in indexing.
           content:
             application/json:
               schema:
@@ -1118,6 +1142,9 @@ components:
             - UNAUTHORIZED
             - FORBIDDEN
             - EMPTY_MODEL_RESPONSE
+            - CHAT_NOT_CONFIGURED
+            - CHAT_PROVIDER_UNREACHABLE
+            - CHAT_PROVIDER_ERROR
             - ROUTE_NOT_FOUND
             - INTERNAL_ERROR
         message:
@@ -1189,8 +1216,11 @@ components:
         - ready
         - systemReadyFor
         - overallSummary
+        - retrieveReady
+        - queryEnabled
         - queryReady
         - indexReady
+        - retrieveSummary
         - querySummary
         - indexSummary
         - blockerCodes
@@ -1209,17 +1239,29 @@ components:
           enum: [ok, degraded]
         ready:
           type: boolean
+          description: >-
+            retrieveReady && indexReady && (!queryEnabled || queryReady). A retrieve-only deployment (no chat LLM)
+            can be ready.
         systemReadyFor:
           type: string
-          enum: [query-and-index, query, index, neither]
+          enum: [query-and-index, retrieve-and-index, query, index, neither]
         overallSummary:
           type: string
+        retrieveReady:
+          type: boolean
+        queryEnabled:
+          type: boolean
+          description: True when the optional chat LLM is configured. When false, /query returns 503 CHAT_NOT_CONFIGURED.
         queryReady:
           type: boolean
+          description: Always false when no chat LLM is configured.
         indexReady:
           type: boolean
+        retrieveSummary:
+          type: string
         querySummary:
           type: string
+          description: Explains that /query is disabled when no chat LLM is configured.
         indexSummary:
           type: string
         blockerCodes:
@@ -1244,7 +1286,7 @@ components:
             $ref: "#/components/schemas/ReadinessIssueSummary"
         dependencies:
           type: object
-          required: [registry, chroma, ollama]
+          required: [registry, chroma, ollama, chat]
           properties:
             registry:
               $ref: "#/components/schemas/DependencyAvailability"
@@ -1252,6 +1294,14 @@ components:
               $ref: "#/components/schemas/DependencyAvailability"
             ollama:
               $ref: "#/components/schemas/DependencyAvailability"
+            chat:
+              type: object
+              required: [ok, configured]
+              properties:
+                ok:
+                  type: boolean
+                configured:
+                  type: boolean
         config:
           type: object
           required: [port, chatModel, embeddingModel, chromaUrl]
@@ -1259,7 +1309,8 @@ components:
             port:
               type: integer
             chatModel:
-              type: string
+              type: [string, "null"]
+              description: Global chat LLM model, or null when no chat LLM is configured (retrieve-only).
             embeddingModel:
               type: string
             chromaUrl:
@@ -1287,8 +1338,11 @@ components:
         - ready
         - systemReadyFor
         - overallSummary
+        - retrieveReady
+        - queryEnabled
         - queryReady
         - indexReady
+        - retrieveSummary
         - querySummary
         - indexSummary
         - blockerCodes
@@ -1313,17 +1367,29 @@ components:
           enum: [ok, degraded]
         ready:
           type: boolean
+          description: >-
+            retrieveReady && indexReady && (!queryEnabled || queryReady). A retrieve-only deployment (no chat LLM)
+            can be ready.
         systemReadyFor:
           type: string
-          enum: [query-and-index, query, index, neither]
+          enum: [query-and-index, retrieve-and-index, query, index, neither]
         overallSummary:
           type: string
+        retrieveReady:
+          type: boolean
+        queryEnabled:
+          type: boolean
+          description: True when the optional chat LLM is configured. When false, /query returns 503 CHAT_NOT_CONFIGURED.
         queryReady:
           type: boolean
+          description: Always false when no chat LLM is configured.
         indexReady:
           type: boolean
+        retrieveSummary:
+          type: string
         querySummary:
           type: string
+          description: Explains that /query is disabled when no chat LLM is configured.
         indexSummary:
           type: string
         blockerCodes:
@@ -1341,7 +1407,8 @@ components:
         port:
           type: integer
         chatModel:
-          type: string
+          type: [string, "null"]
+          description: Global chat LLM model, or null when no chat LLM is configured (retrieve-only).
         embeddingModel:
           type: string
         chromaUrl:
@@ -1350,10 +1417,19 @@ components:
           type: integer
         capabilities:
           type: object
-          required: [query, index]
+          required: [retrieve, query, index]
           properties:
-            query:
+            retrieve:
               $ref: "#/components/schemas/SystemCapabilityState"
+            query:
+              allOf:
+                - $ref: "#/components/schemas/SystemCapabilityState"
+                - type: object
+                  required: [enabled]
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: False when no chat LLM is configured (/query disabled).
             index:
               $ref: "#/components/schemas/SystemCapabilityState"
         blockers:
@@ -1370,7 +1446,7 @@ components:
             $ref: "#/components/schemas/ReadinessCheck"
         dependencies:
           type: object
-          required: [chroma, registry, ollama, embeddings, chatGeneration]
+          required: [chroma, registry, ollama, embeddings, chat]
           properties:
             chroma:
               type: object
@@ -1380,13 +1456,13 @@ components:
               additionalProperties: true
             ollama:
               type: object
+              description: Ollama serves embeddings only (url, embeddingModel and health details).
               additionalProperties: true
             embeddings:
               type: object
               additionalProperties: true
-            chatGeneration:
-              type: object
-              additionalProperties: true
+            chat:
+              $ref: "#/components/schemas/ChatProviderStatus"
         dataSource:
           type: object
           additionalProperties: true
@@ -1552,6 +1628,44 @@ components:
       properties:
         ok:
           type: boolean
+    ChatProviderStatus:
+      type: object
+      description: >-
+        Result of the free, cached (30 s) GET {chat.baseUrl}/models check of the optional chat LLM. It never runs
+        a generation and never contains the API key. Readiness check codes derived from it (capability query):
+        CHAT_NOT_CONFIGURED (skip, non-blocking), CHAT_PROVIDER_UNREACHABLE, CHAT_PROVIDER_AUTH_FAILED and
+        CHAT_MODEL_MISSING (fail, block query only), CHAT_MODEL_UNVERIFIED (warn, the provider has no model
+        listing), CHAT_MODEL_AVAILABLE (pass).
+      required: [configured, baseUrl, model, reachable, authOk, modelListed, ok, latencyMs]
+      properties:
+        configured:
+          type: boolean
+        baseUrl:
+          type: [string, "null"]
+        model:
+          type: [string, "null"]
+        reachable:
+          type: boolean
+        authOk:
+          type: boolean
+        modelListed:
+          description: The string "unknown" when the provider has no usable GET /models listing.
+          oneOf:
+            - type: boolean
+            - type: string
+              const: unknown
+        ok:
+          type: boolean
+        latencyMs:
+          type: integer
+        httpStatus:
+          type: integer
+        availableModels:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
     SystemCapabilityState:
       type: object
       required: [ready, message]
@@ -1570,7 +1684,7 @@ components:
           type: array
           items:
             type: string
-            enum: [query, index]
+            enum: [retrieve, query, index]
         message:
           type: string
         details:
@@ -1595,7 +1709,7 @@ components:
           type: array
           items:
             type: string
-            enum: [query, index]
+            enum: [retrieve, query, index]
         message:
           type: string
         details:
@@ -1722,9 +1836,11 @@ components:
         embeddingModelAvailable:
           type: boolean
         chatModel:
-          type: string
+          type: [string, "null"]
+          description: Global chat LLM model (not per collection), or null when no chat LLM is configured (retrieve-only).
         chatModelAvailable:
           type: boolean
+          description: Result of the chat provider check (GET {chat.baseUrl}/models); only affects query.
         desiredEmbeddingModel:
           type: string
           description: >
@@ -1736,6 +1852,7 @@ components:
       properties:
         query:
           type: boolean
+          description: retrieve && a chat LLM is configured && the chat provider check is ok.
         retrieve:
           type: boolean
         reindex:
@@ -1745,6 +1862,9 @@ components:
       description: >
         Collection-specific readiness. This endpoint can return 200 even when
         query and retrieve are blocked; consult capabilities, blockers, and warnings.
+        Chat LLM codes: CHAT_NOT_CONFIGURED and CHAT_MODEL_UNVERIFIED appear in warnings;
+        CHAT_PROVIDER_UNREACHABLE, CHAT_PROVIDER_AUTH_FAILED and CHAT_MODEL_MISSING appear in
+        blockers and only affect query.
       required:
         - id
         - status
@@ -1914,7 +2034,7 @@ components:
           description: Embedding model used to retrieve the sources that grounded the answer.
         chatModel:
           type: string
-          description: Chat model that generated the answer.
+          description: Global chat LLM model that generated the answer.
         distanceScoreThreshold:
           type: number
         sources:
@@ -1936,6 +2056,8 @@ components:
       type: object
       required: [displayName]
       additionalProperties: false
+      description: >-
+        Collections have no chat model; unknown fields such as chatModel are rejected with 400 INVALID_REQUEST_BODY.
       properties:
         displayName:
           type: string
@@ -1962,12 +2084,11 @@ components:
         embeddingModel:
           type: string
           minLength: 1
-        chatModel:
-          type: string
-          minLength: 1
     UpdateCollectionRequest:
       type: object
       additionalProperties: false
+      description: >-
+        Collections have no chat model; unknown fields such as chatModel are rejected with 400 INVALID_REQUEST_BODY.
       properties:
         displayName:
           type: string
@@ -1992,9 +2113,6 @@ components:
           type: number
           minimum: 0
         embeddingModel:
-          type: string
-          minLength: 1
-        chatModel:
           type: string
           minLength: 1
     CollectionSummary:
@@ -2022,7 +2140,6 @@ components:
         - status
         - sourcePath
         - embeddingModel
-        - chatModel
         - distanceMetric
         - chromaCollectionConfiguration
         - chunkSize
@@ -2050,8 +2167,6 @@ components:
         sourcePath:
           type: string
         embeddingModel:
-          type: string
-        chatModel:
           type: string
         distanceMetric:
           $ref: "#/components/schemas/DistanceMetric"
@@ -2148,7 +2263,7 @@ components:
             $ref: "#/components/schemas/PhysicalCollectionRecord"
     AdminConfigDefaultsResponse:
       type: object
-      required: [collectionDefaults, modelDefaults]
+      required: [collectionDefaults, modelDefaults, chat]
       properties:
         collectionDefaults:
           type: object
@@ -2168,12 +2283,28 @@ components:
               type: number
         modelDefaults:
           type: object
-          required: [embeddingModel, chatModel]
+          required: [embeddingModel]
           properties:
             embeddingModel:
               type: string
-            chatModel:
-              type: string
+        chat:
+          type: object
+          description: >-
+            Global, optional chat LLM used only by /query (configured with npm run onboard or
+            RAG_CHAT_BASE_URL / RAG_CHAT_MODEL; not a collection setting). The API key is never returned.
+          required: [enabled, baseUrl, model, apiKeyConfigured]
+          properties:
+            enabled:
+              type: boolean
+              description: False means retrieve-only (/query returns 503 CHAT_NOT_CONFIGURED).
+            baseUrl:
+              type: [string, "null"]
+              description: OpenAI-compatible base URL, e.g. http://localhost:11434/v1.
+            model:
+              type: [string, "null"]
+            apiKeyConfigured:
+              type: boolean
+              description: Whether an API key is set (RAG_CHAT_API_KEY or .local/rag_chat_api_key.secret).
     CollectionValidationIssue:
       type: object
       required: [code, message]
@@ -2220,7 +2351,8 @@ components:
           $ref: "#/components/schemas/CollectionValidationImpact"
     AdminModelDiscoveryResponse:
       type: object
-      required: [reachable, models, embeddingModels, chatModels, defaults]
+      description: Ollama model discovery for the collection embedding model field. Ollama is used for embeddings only.
+      required: [reachable, models, embeddingModels, defaults]
       properties:
         reachable:
           type: boolean
@@ -2235,19 +2367,12 @@ components:
           description: Runtime subset suitable for the embedding field.
           items:
             type: string
-        chatModels:
-          type: array
-          description: Runtime subset suitable for the chat field.
-          items:
-            type: string
         defaults:
           type: object
-          required: [embeddingModel, chatModel]
+          required: [embeddingModel]
           description: Runtime default values used by the admin form.
           properties:
             embeddingModel:
-              type: string
-            chatModel:
               type: string
     ReindexAcceptedResponse:
       type: object

@@ -28,7 +28,7 @@ It also demonstrates:
 - sending `x-tenant-id`, `x-user-id`, and `x-request-id` on every request
 - readiness-driven UI enablement for `query` and `retrieve`
 - rendering `blockers`, `warnings`, and `recommendedActions`
-- rendering effective `embeddingModel` and `chatModel` metadata from query/retrieve responses
+- rendering effective `embeddingProvider`, `embeddingModel` and `chatModel` metadata from query/retrieve responses
 - surfacing `requestId`, `Retry-After`, and `X-RateLimit-*` response headers
 - keeping `query` and `retrieve` as separate user actions
 - a retrieve-only backend: without a chat LLM, readiness reports `capabilities.query: false` with a `CHAT_NOT_CONFIGURED` warning and **Generate Answer** stays disabled
@@ -96,7 +96,7 @@ These changes are usually safe:
 - Treat `Retry-After` as actionable on `429`.
 - Treat `503 CHAT_NOT_CONFIGURED` from `/query` as a configuration state (no chat LLM), not a transient error; it has no `Retry-After`.
 - Treat `query.sources` as generation-context output, not automatically as the full evidence set.
-- Treat `retrieve.embeddingModel` and `query.embeddingModel` / `query.chatModel` as part of the response contract.
+- Treat `retrieve.embeddingProvider` / `retrieve.embeddingModel` and `query.embeddingProvider` / `query.embeddingModel` / `query.chatModel` as part of the response contract.
 - If `desiredEmbeddingModel` appears in readiness, treat it as a pending post-reindex change.
 
 ## Related Docs

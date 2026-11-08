@@ -886,10 +886,10 @@
           addMeta("Retrieve Enabled", String(retrieveEnabled));
           addMeta("Chroma Readable", String(Boolean(body.chromaReadable)));
           addMeta("Chroma Count", String(body.chromaCount ?? "-"));
-          addMeta("Live Embedding", body.modelAvailability.embeddingModel || "-");
+          addMeta("Live Embedding", `${body.modelAvailability.embeddingProvider || "-"} / ${body.modelAvailability.embeddingModel || "-"}`);
           addMeta("Chat Model", body.modelAvailability.chatModel || "not configured (retrieve-only)");
           if (body.modelAvailability.desiredEmbeddingModel) {
-            addMeta("Desired Embedding", body.modelAvailability.desiredEmbeddingModel);
+            addMeta("Desired Embedding", `${body.modelAvailability.desiredEmbeddingProvider || body.modelAvailability.embeddingProvider || "-"} / ${body.modelAvailability.desiredEmbeddingModel}`);
           }
           if (body.activeJob) {
             addMeta("Active Job", `${body.activeJob.id} (${body.activeJob.status})`);
@@ -909,7 +909,7 @@
           answer.textContent = body.answer;
           addMeta("Collection", body.collectionDisplayName || body.collectionId || "-");
           addMeta("Response Type", "query");
-          addMeta("Embedding Model", body.embeddingModel || "-");
+          addMeta("Embedding", `${body.embeddingProvider || "-"} / ${body.embeddingModel || "-"}`);
           addMeta("Chat Model", body.chatModel || "-");
           addMeta("Generation Sources", String(Array.isArray(body.sources) ? body.sources.length : 0));
           addMeta("Source Note", "query.sources may be a trimmed generation-context subset.");
@@ -922,7 +922,7 @@
           addMeta("Collection", body.collectionDisplayName || body.collectionId || "-");
           addMeta("Question", body.question || "-");
           addMeta("Response Type", "retrieve");
-          addMeta("Embedding Model", body.embeddingModel || "-");
+          addMeta("Embedding", `${body.embeddingProvider || "-"} / ${body.embeddingModel || "-"}`);
           addMeta("Retrieval K", String(body.k ?? "-"));
           addMeta("Threshold", String(body.distanceScoreThreshold ?? "-"));
           renderSources(body.sources);

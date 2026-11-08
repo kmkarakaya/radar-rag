@@ -55,6 +55,44 @@ Yonetim tarafi kurumsal duzeyde (blue/green reindex, job kuyrugu, RBAC, CSRF, au
 - ~~**Zorunlu chat modeli.**~~ Kapatildi (P0 #1): chat LLM istege bagli ve saglayicidan bagimsiz. Kalan: embedding hala sadece Ollama. -> P0 #5
 - **Indexing hep tam.** Tek dosya degisse de butun koleksiyon yeniden isleniyor; dosya formatlari dar. -> P0 #6, P1 #5
 
+## Acik tartismalar (karar bekliyor)
+
+### Embedding modeli ve saglayicisi; Docker'daki gomulu Ollama
+
+Durum: tartisma acik, karar verilmedi (2026-11-08). P0 #5'e baslamadan once karara baglanmali.
+
+Neden onemli:
+
+- Chat artik istege bagli, ama embedding zorunlu: indexing ve `/retrieve` onsuz calismaz. Onboarding her zaman bir embedding modeli soracak; sadece bicimi degisebilir (`ollama.*` yerine `chat` gibi `embedding.baseUrl` / `embedding.model` / anahtar).
+- Docker'in varsayilan kurulumundaki asil agirlik Ollama imaji (~5 GB). Hedef paketi hafifletmek; ama Ollama kaldirilirsa Docker kullanicisinin embedding'i bir yerden gelmeli.
+- Embedding modeli degisince koleksiyonlar yeniden indekslenmeli (vektorler modeller arasinda karsilastirilamaz). Saglayici degisikligi icin de gecerli; onboarding bunu acikca soylemeli.
+
+Secenekler (Docker'da Ollama'nin yerine embedding nereden gelir):
+
+| Secenek | Paket | Kurulum | Gizlilik |
+|---|---|---|---|
+| Bulut embedding API'si (OpenAI vb., OpenAI uyumlu `/v1/embeddings`) | cok hafif | API anahtari sart, ucretli | dokumanlar disari gider |
+| Bilgisayardaki Ollama (`host.docker.internal`) | cok hafif | kullanici Ollama'yi ayrica kurar | yerel |
+| Surec ici embedding (backend icinde, ornegin transformers.js) | hafif: ayri servis yok, model ~100-450 MB | hicbir sey kurulmaz, tek komut | yerel |
+| Bugunku hali: gomulu Ollama | agir (~5 GB imaj) | tek komut | yerel |
+
+Ilk oneri (karar degil):
+
+1. Ollama varsayilan Docker kurulumundan ciksin: compose `profiles` ile dosyada kalir ama `docker compose up -d` indirmez; isteyen `--profile ollama` ile acar.
+2. Varsayilan embedding surec ici olsun; Ollama ve bulut API'leri config ile secilebilen diger saglayicilar olsun.
+
+Karar icin cevaplanmasi gerekenler:
+
+- Kalite: surec ici calisabilen kucuk, cok dilli modeller (ornegin multilingual-e5-small, paraphrase-multilingual-MiniLM) Turkce veride embeddinggemma-2 kadar iyi mi? Olcmeden bilinmiyor.
+- Hiz: Node.js icinde CPU'da embedding; buyuk koleksiyonlarda indexing ne kadar yavas? (Retrieve'de tek soru vektorlenir, fark beklenmiyor.)
+- Varsayilan model hangisi olmali, ilk acilista ne kadar indirme kabul edilebilir?
+- Gomulu Ollama tamamen mi kalkmali, yoksa istege bagli profil olarak mi kalmali?
+
+Karar icin yapilacak olcum:
+
+- `data/dataset1` (ve varsa kullanicinin kendi verisi) ile birkac surec ici modeli embeddinggemma-2 (Ollama) ile karsilastir: ayni soru setinde dogru kaynagin ilk K icinde gelme orani, indexing suresi, model boyutu, bellek kullanimi.
+- Sonuca gore varsayilan saglayici ve model secilir, P0 #5'in kapsami netlesir.
+
 ## P0 - Urun hedefi icin kritik eksikler
 
 Hedef: baskalarinin repoyu GitHub'dan indirip kendi verisiyle kolayca kullanabilmesi (once A, C, D). Olcut: yeni bir kullanicinin kendi dokumanlarindan ilk sonucu almasi ne kadar zahmetsiz ve guvenli?
@@ -103,6 +141,7 @@ Yapilacaklar:
 - Model kontrolu / readiness'i saglayiciya gore soyutla.
 - Koleksiyon embedding saglayicisini da saklasin (model degisince reindex gerekir mantigi korunur).
 - Embedding backend'de kalmali: indexing ve sorgu ayni modelle yapilmak zorunda.
+- Varsayilan saglayici/model ve Docker'daki gomulu Ollama'nin akibeti acik bir tartisma; once "Acik tartismalar" bolumundeki karar verilmeli.
 
 ### 6. Dosya formati destegi dar
 

@@ -39,6 +39,8 @@ COPY package.json ./
 COPY config/rag.config.yaml ./config/rag.config.yaml
 COPY admin ./admin
 COPY test_frontend ./test_frontend
+# Sample documents for the collection created on the first start. Outside data/, which is a bind mount.
+COPY data/sample ./samples
 
 # data/ (your documents + the SQLite registry) and models/ (built-in embedding models, downloaded on
 # first use) are mounted at runtime; see docker-compose.yml.

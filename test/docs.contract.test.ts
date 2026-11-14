@@ -65,7 +65,7 @@ describe('docs static contract', () => {
     assert.ok(readme.includes('.local/rag_admin_session.secret'), 'README should document the local secret file fallback');
     assert.ok(readme.includes('npm run admin:hash-password'), 'README should document password hash generation');
     assert.ok(readme.includes('/admin/login'), 'README should document the admin login redirect');
-    assert.ok(readme.includes('Güvenli admin quickstart'), 'README should distinguish secure admin onboarding');
+    assert.ok(readme.includes('Secure admin quickstart'), 'README should distinguish secure admin onboarding');
     assert.ok(docsReadme.includes('derive those values from the active session'), 'docs/README should explain session-derived admin tenant/user headers');
     assert.ok(handoff.includes('session-derived values for `/v1/admin/**`'), 'Frontend handoff should explain the admin header boundary');
     assert.ok(promptTemplate.includes('session-derived tenant/user context'), 'Prompt template should explain the admin header boundary');

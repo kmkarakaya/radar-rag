@@ -64,7 +64,7 @@ TypeScript Express backend for multi-collection LangChain RAG over documents in 
 - [docs/admin_api_endpoints.md](docs/admin_api_endpoints.md) for admin auth, roles, and collection management.
 - [docs/http_workflows.md](docs/http_workflows.md) for end-to-end curl examples.
 - [test_frontend/README.md](test_frontend/README.md) for the runnable public RAG example.
-- [vanilla_rag_backend_mimarisi.md](vanilla_rag_backend_mimarisi.md) for architecture and design rationale.
+- [vanilla_rag_backend_mimarisi.md](vanilla_rag_backend_mimarisi.md) for architecture and design rationale (in Turkish).
 
 ## Quick start with Docker (recommended)
 
@@ -86,7 +86,7 @@ docker compose up -d
 - Settings: [config/rag.config.yaml](config/rag.config.yaml) is mounted into the backend container. After editing it, run `docker compose restart backend` (no rebuild needed). `chroma.url` is always overridden for the container; for the embedding and chat services, prefer the `RAG_*` variables in `.env`, and remember that inside the container `localhost` is the container itself (use `host.docker.internal` for services on your computer).
 - Admin auth is off by default. To turn it on in Docker:
   1. Generate a password hash: `docker compose exec backend node dist/admin/passwordHash.js` (it asks for the password, so it does not end up in your shell history).
-  2. In [config/rag.config.yaml](config/rag.config.yaml) set `adminAuth.enabled: true` and add the user with that hash (see the example in [Güvenli admin quickstart](#güvenli-admin-quickstart)).
+  2. In [config/rag.config.yaml](config/rag.config.yaml) set `adminAuth.enabled: true` and add the user with that hash (see the example in [Secure admin quickstart](#secure-admin-quickstart)).
   3. Put `RAG_ADMIN_SESSION_SECRET=<a long random value>` in `.env`, then run `docker compose up -d` (it recreates the backend with the new secret and config).
   4. Behind HTTPS, also set `NODE_ENV=production` so the session cookie is marked Secure.
 
@@ -236,7 +236,7 @@ Onboarding edits the YAML file itself; these variables are only applied when the
 
 Quick health check: `GET http://localhost:3010/ready?details=true` reports Chroma, embedding, chat LLM, and data source status with blockers and recommended actions.
 
-## Güvenli admin quickstart
+## Secure admin quickstart
 
 Admin auth is opt-in: the shipped config has `adminAuth.enabled: false` and no users, so a fresh clone starts without a login. During onboarding, answer yes when asked whether admin auth is used. Onboarding will ask for a session secret and the first admin password, hash the password for you, write the admin user into `adminAuth.users[]`, and store the session secret locally in `.local/rag_admin_session.secret`.
 

@@ -1,5 +1,6 @@
 ﻿import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createInterface, type Interface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { hashPassword } from "./passwordHash.js";
@@ -41,6 +42,8 @@ type CliOptions = {
   /** @deprecated Onboarding no longer runs indexing; the flag only prints a notice. */
   skipIndex: boolean;
   noWrite: boolean;
+  /** Ask every setting (ports, Chroma URL, chunking, limits...). Without it only the main choices are asked. */
+  advanced: boolean;
 };
 
 /** What to do with an API key file under .local/ (chat or embedding); keys never go into the YAML. */
@@ -60,13 +63,14 @@ function apiKeyOverride(action: ApiKeyAction): string | null | undefined {
 
 const DISTANCE_METRICS = ["l2", "cosine", "ip"] as const;
 
-function parseArgs(argv: string[]): CliOptions {
+export function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     configPath: defaultConfigPath,
     dryRun: false,
     yes: false,
     skipIndex: false,
     noWrite: false,
+    advanced: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -92,6 +96,9 @@ function parseArgs(argv: string[]): CliOptions {
         break;
       case "--no-write":
         options.noWrite = true;
+        break;
+      case "--advanced":
+        options.advanced = true;
         break;
       default:
         throw new Error(`Unknown argument: ${arg}`);
@@ -394,7 +401,44 @@ async function promptAdminAuth(
   };
 }
 
-async function promptConfig(rawConfig: RawConfig): Promise<PromptedConfig> {
+/**
+ * Default mode: only the choices a new user makes (embedding, chat LLM, admin auth); every other setting
+ * is kept as it is. --advanced asks everything.
+ */
+async function promptConfig(rawConfig: RawConfig, advanced: boolean): Promise<PromptedConfig> {
+  return advanced ? promptAdvancedConfig(rawConfig) : promptMainChoices(rawConfig);
+}
+
+async function promptMainChoices(rawConfig: RawConfig): Promise<PromptedConfig> {
+  const rl = createInterface({ input, output });
+
+  try {
+    console.log("Press Enter to keep the current value.\n");
+    let chatApiKeyAction: ApiKeyAction = { kind: "keep" };
+    let embeddingApiKeyAction: ApiKeyAction = { kind: "keep" };
+    const embedding = await promptEmbedding(rl, rawConfig.embedding, (action) => {
+      embeddingApiKeyAction = action;
+    });
+    const chat = await promptChat(rl, rawConfig.chat, (action) => {
+      chatApiKeyAction = action;
+    });
+    console.log("");
+    const adminAuthResult = await promptAdminAuth(rl, rawConfig.adminAuth);
+    console.log("\nOther settings (port, Chroma URL, source folder, chunking, limits, rate limiting...) were kept.");
+    console.log("Run npm run onboard -- --advanced to change them.");
+
+    return {
+      rawConfig: { ...rawConfig, embedding, chat, adminAuth: adminAuthResult.adminAuth },
+      adminSessionSecretValue: adminAuthResult.adminSessionSecretValue,
+      chatApiKeyAction,
+      embeddingApiKeyAction,
+    };
+  } finally {
+    rl.close();
+  }
+}
+
+async function promptAdvancedConfig(rawConfig: RawConfig): Promise<PromptedConfig> {
   const rl = createInterface({ input, output });
 
   try {
@@ -564,7 +608,13 @@ function withPortablePaths(rawConfig: RawConfig): RawConfig {
 }
 
 async function writeConfigWithBackup(rawConfig: RawConfig, configPath: string): Promise<void> {
-  await fs.copyFile(configPath, `${configPath}.bak`);
+  // The config file is optional (defaults apply); back it up only when there is one.
+  const exists = await fs.access(configPath).then(() => true).catch(() => false);
+  if (exists) {
+    await fs.copyFile(configPath, `${configPath}.bak`);
+  } else {
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
+  }
   await writeConfigFile(withPortablePaths(rawConfig), configPath);
 }
 
@@ -755,7 +805,7 @@ async function main(): Promise<void> {
   const rawConfig = parseConfig(readConfigFile(options.configPath), options.configPath);
   const nextConfig: PromptedConfig = options.yes
     ? { rawConfig, adminSessionSecretValue: undefined, chatApiKeyAction: { kind: "keep" }, embeddingApiKeyAction: { kind: "keep" } }
-    : await promptConfig(rawConfig);
+    : await promptConfig(rawConfig, options.advanced);
   const keyAction = nextConfig.chatApiKeyAction;
   const embeddingKeyAction = nextConfig.embeddingApiKeyAction;
   const runtimeConfig = resolveConfig(parseConfig(nextConfig.rawConfig, options.configPath), options.configPath, process.cwd(), {
@@ -847,7 +897,10 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+// Run only as a script (npm run onboard), not when imported by tests.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { parse, stringify } from "yaml";
 import { z } from "zod";
@@ -90,32 +90,36 @@ const embeddingSchema = z.object({
   }
 });
 
+/**
+ * Every setting has a default, so the config file is optional: a missing file (for example the prebuilt
+ * Docker image without a mounted config) runs with these values. The shipped YAML repeats them.
+ */
 export const configSchema = z.object({
   server: z.object({
-    port: z.number().int().positive(),
-  }).strict(),
+    port: z.number().int().positive().default(3010),
+  }).strict().default({}),
   registry: z.object({
-    path: z.string().trim().min(1),
-  }).strict(),
+    path: z.string().trim().min(1).default("data/registry.sqlite"),
+  }).strict().default({}),
   chroma: z.object({
-    url: z.string().url(),
-  }).strict(),
+    url: z.string().url().default("http://localhost:8000"),
+  }).strict().default({}),
   embedding: embeddingSchema.default({}),
   chat: chatSchema.optional(),
   collectionDefaults: z.object({
-    sourcePath: z.string().trim().min(1),
-    distanceMetric: distanceMetricSchema,
-    chunkSize: z.number().int().positive(),
-    chunkOverlap: z.number().int().nonnegative(),
-    retrievalK: z.number().int().positive(),
-    retrievalDistanceThreshold: z.number().nonnegative(),
-    timeoutMs: z.number().int().positive(),
-  }).strict(),
+    sourcePath: z.string().trim().min(1).default("data"),
+    distanceMetric: distanceMetricSchema.default("l2"),
+    chunkSize: z.number().int().positive().default(500),
+    chunkOverlap: z.number().int().nonnegative().default(200),
+    retrievalK: z.number().int().positive().default(5),
+    retrievalDistanceThreshold: z.number().nonnegative().default(1.2),
+    timeoutMs: z.number().int().positive().default(180000),
+  }).strict().default({}),
   readiness: z.object({
-    timeoutMs: z.number().int().positive(),
-    embeddingProbeText: z.string().trim().min(1),
+    timeoutMs: z.number().int().positive().default(30000),
+    embeddingProbeText: z.string().trim().min(1).default("Hello"),
     chatProbeText: z.string().trim().min(1).default("Reply with one short sentence."),
-  }).strict(),
+  }).strict().default({}),
   cleanup: z.object({
     retentionMs: z.number().int().nonnegative().default(3600000),
   }).strict().optional(),
@@ -132,6 +136,10 @@ export const configSchema = z.object({
   observability: z.object({
     includeDebugTimings: z.boolean().default(false),
   }).strict().optional(),
+  /** On the very first start (no collection ever created), create and index a sample collection. */
+  sampleCollection: z.object({
+    enabled: z.boolean().default(true),
+  }).strict().default({}),
 }).strict().superRefine((value, ctx) => {
   if (value.collectionDefaults.chunkOverlap >= value.collectionDefaults.chunkSize) {
     ctx.addIssue({
@@ -145,7 +153,9 @@ export const configSchema = z.object({
 export type RawConfig = z.infer<typeof configSchema>;
 export type DistanceMetric = z.infer<typeof distanceMetricSchema>;
 
+/** Reads the YAML config. A missing file means "use the defaults" ({}); other read errors still throw. */
 export function readConfigFile(configPath = defaultConfigPath): unknown {
+  if (!existsSync(configPath)) return {};
   try {
     return parse(readFileSync(configPath, "utf8"));
   } catch (error) {
@@ -334,6 +344,7 @@ export function resolveConfig(
     rateLimitMaxRequestsPerWindow: rawConfig.rateLimit?.maxRequestsPerWindow ?? 60,
     adminAuth: rawConfig.adminAuth ?? defaultAdminAuthConfig,
     includeDebugTimings: rawConfig.observability?.includeDebugTimings ?? false,
+    sampleCollectionEnabled: rawConfig.sampleCollection.enabled,
   };
 }
 
@@ -354,6 +365,7 @@ export const CONFIG_ENV_OVERRIDES = [
   { env: "RAG_CHAT_BASE_URL", path: ["chat", "baseUrl"], type: "string" },
   { env: "RAG_CHAT_MODEL", path: ["chat", "model"], type: "string" },
   { env: "RAG_SOURCE_PATH", path: ["collectionDefaults", "sourcePath"], type: "string" },
+  { env: "RAG_SAMPLE_COLLECTION", path: ["sampleCollection", "enabled"], type: "boolean" },
 ] as const;
 
 export function applyConfigEnvOverrides(rawConfig: unknown, env: NodeJS.ProcessEnv = process.env): unknown {
@@ -370,6 +382,12 @@ export function applyConfigEnvOverrides(rawConfig: unknown, env: NodeJS.ProcessE
       if (!Number.isInteger(value)) {
         throw new Error(`Invalid ${override.env}: expected an integer, got "${rawValue}".`);
       }
+    } else if (override.type === "boolean") {
+      const normalized = rawValue.toLowerCase();
+      if (normalized !== "true" && normalized !== "false") {
+        throw new Error(`Invalid ${override.env}: expected true or false, got "${rawValue}".`);
+      }
+      value = normalized === "true";
     }
 
     const [section, key] = override.path;

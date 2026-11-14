@@ -524,6 +524,7 @@ async function promptConfig(rawConfig: RawConfig): Promise<PromptedConfig> {
             rawConfig.observability?.includeDebugTimings ?? false,
           ),
         },
+        sampleCollection: rawConfig.sampleCollection,
       },
       adminSessionSecretValue: adminAuthResult.adminSessionSecretValue,
       chatApiKeyAction,

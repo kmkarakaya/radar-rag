@@ -1,20 +1,40 @@
 # Repo Eksikleri ve TODO Listesi
 
-Son guncelleme: 2026-11-08. Oncelikler urun hedefine gore duzenlendi: repo, baskalarinin GitHub'dan indirip kendi verisiyle kullanacagi bir urun.
+Son guncelleme: 2026-11-14. Oncelikler urun hedefine gore duzenlendi: repo, baskalarinin GitHub'dan indirip kendi verisiyle kullanacagi bir urun.
 
 Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigini ve bunlarin hangi oncelikle ele alinmasi gerektigini toplar. Tamamlanan maddeler asagida ayri bir bolumde kisaca listelenir; ayrintilari git gecmisinde ve `docs/` altinda.
 
+## Kaldigimiz yer (2026-11-14)
+
+Durum:
+
+- Embedding saglayicisi isi (P0 #5) tamamlandi ve main'e merge edilip push edildi (2026-11-14). Plan kodla bolum bolum karsilastirildi, bulunan 5 eksik kapatildi; `npm test` 220/220.
+- Onboarding kullanici tarafindan etkilesimli denendi (2026-11-14): openai-compatible + Ollama `/v1` (`bge-m3:latest`) secildi, "sadece YENI koleksiyonlar" notu cikti, Chroma / embedding / chat smoke `ok`; `npm run dev` ile yeni koleksiyonda `/query` calisti.
+- Bu denemede bulunan iki kucuk sey duzeltildi: sunucu acilisindaki "Embedding" / "Chat LLM" satirlari "Models:" basligi altinda girintili; `app.foundation` testleri yerel YAML'daki embedding saglayicisina bagliydi (onboarding dis servise gecince 4 test kiriliyordu), artik builtin'e sabitlendi.
+- Yerel `config/rag.config.yaml` (+ `.bak`) kisisel ayarlarla degisik (embedding varsayilani `openai-compatible` / `bge-m3:latest`, chat `gemma3:4b`); commit'lenmemeli.
+
+Devam edilecekler (sirayla):
+
+1. Dev registry'deki eski (Ollama ile, saglayici alani olmadan indekslenmis) koleksiyonlar varsa: yeni kolon varsayilani `builtin` oldugu icin Ollama model adlariyla `EMBEDDING_MODEL_UNSUPPORTED` gorunurler. Ya silip yeniden olustur ya da admin panelden saglayiciyi `openai-compatible` yapip reindex et (geriye donuk uyumluluk bilerek yok).
+2. Istege bagli kucuk isler (karar bekliyor):
+   - **Genel `/ready` fazla karamsar:** varsayilan saglayici dis servisse ve o servis kapaliysa sistem `/ready` "neither" diyor; oysa builtin koleksiyonlar calismaya devam ediyor (koleksiyon `/ready` dogru). Varsayilan saglayici hatasi sadece `index` yetenegini (yeni koleksiyonlar) dusurebilir.
+   - **Docker imaji 1.12 GB** (once 578 MB): `onnxruntime-node` butun platformlarin ikili dosyalarini getiriyor (~250 MB Linux disi). Runtime asamasinda Linux disi `bin/` klasorleri silinerek kuculebilir.
+   - **builtin, Ollama'dan yavas:** ayni veri setinde reindex builtin 48 sn, Ollama 9 sn (CPU, olcum degil gozlem). README'de "buyuk veri icin dis servis onerilir" notu dusunulebilir.
+   - Testlerin geri kalaninda da yerel YAML'a bagimlilik olabilir (bu sefer sadece `app.foundation` kirildi); `config` yerine sabit bir test config'i kullanmak P1 #6 kapsaminda dusunulsun.
+   - Makinede artik kullanilmayan `ollama/ollama:0.40.12` Docker imaji (~5 GB) silinebilir: `docker image rm ollama/ollama:0.40.12`.
+3. Yol haritasindaki siradaki is: **P0 #2 Public API icin API anahtari ve CORS** (bkz. "Sonraki oncelikli uygulama sirasi").
+
 ## Mevcut durum (ozet)
 
-- TypeScript + Express 5 (ESM) backend; LangChain + Chroma (vector store) + Ollama (embedding) + istege bagli, OpenAI uyumlu herhangi bir chat LLM (`/query` icin; varsayilan kapali, retrieve-only); SQLite registry (`data/registry.sqlite`).
+- TypeScript + Express 5 (ESM) backend; LangChain + Chroma (vector store) + koleksiyon bazli embedding (varsayilan: backend icinde calisan `builtin` embeddinggemma-2; istege bagli OpenAI uyumlu dis servis, ornegin Ollama) + istege bagli, OpenAI uyumlu herhangi bir chat LLM (`/query` icin; varsayilan kapali, retrieve-only); SQLite registry (`data/registry.sqlite`).
 - Multi-collection ve multi-tenant: public `/v1/rag/collections/:id/{ready,retrieve,query}`, admin `/v1/admin/**`. Legacy route'lar bilerek 404.
 - Indexing: async job runner, koleksiyon basina tek aktif job, blue/green fiziksel koleksiyon build + swap, retention TTL ile eski fiziksel koleksiyon temizligi.
 - Admin auth: scrypt parola hash, HMAC imzali session cookie, `viewer` / `operator` / `admin` RBAC, tek kullanimlik CSRF action token.
-- Dayaniklilik: in-memory rate limit (`429` + `Retry-After`), embedding/generation semaphore'lari, timeout/abort, Ollama model preflight (`422 UNAVAILABLE_MODEL`, `503 OLLAMA_UNREACHABLE`).
+- Dayaniklilik: in-memory rate limit (`429` + `Retry-After`), embedding/generation semaphore'lari, timeout/abort, embedding preflight (`422 UNAVAILABLE_MODEL`, `422`/`503 EMBEDDING_PROVIDER_*`), Chroma boyut uyusmazliginda `409 EMBEDDING_DIMENSION_MISMATCH`.
 - Gozlemlenebilirlik: request id, `latencyMs`, `errorCode`, `retrievalMs` iceren yapisal operational log (+ `operational_logs` tablosu), audit log, opsiyonel `debug.latency` response alani.
 - `/health`, `/ready` (`?strict=true`, `?details=true`), koleksiyon bazli `/ready`.
 - Ingestion: `txt`, `md`, `pdf`, `doc`, `docx` (alt klasorler dahil, recursive; registry SQLite dosyasi atlanir); SHA-256 source hash; dosya bazli hata toleransi.
-- Testler: `node:test` ile 203 unit + acceptance testi, ayrica Ollama + Chroma isteyen integration testi; dokuman/statik contract testleri.
+- Testler: `node:test` ile 220 unit + acceptance testi, ayrica Chroma isteyen integration testi (gercek builtin model testi `RAG_TEST_BUILTIN=1` ile istege bagli); dokuman/statik contract testleri.
 - Dokumanlar: README, `docs/` (API, workflow, `openapi.yaml`), mimari dokumani; admin panel (`/admin`) ve ornek istemci (`/test-frontend`).
 
 ## Tamamlananlar (eski listeden kapatilanlar)
@@ -31,6 +51,12 @@ Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigi
 - **Tasinabilir config ve registry** - 2026-11-08. Proje icindeki yollar goreli saklaniyor (`src/paths.ts`): config'te `collectionDefaults.sourcePath: data`, onboarding goreli yaziyor, registry koleksiyon `sourcePath`'lerini goreli kaydediyor ve eski mutlak kayitlari (index snapshot'lari dahil) acilista bir defalik donusturuyor. `RAG_PORT`, `RAG_REGISTRY_PATH`, `RAG_CHROMA_URL`, `RAG_OLLAMA_BASE_URL`, `RAG_OLLAMA_CHAT_MODEL`, `RAG_OLLAMA_EMBEDDING_MODEL`, `RAG_SOURCE_PATH`, `RAG_CONFIG_PATH` YAML'i calisma aninda eziyor. Kalan: Chroma chunk metadata'sindaki `sourcePath` hala mutlak (sadece gosterim; reindex'te yeniden yazilir).
 - **All-in-one Docker** - 2026-11-08. `Dockerfile` (multi-stage, node:22-bookworm-slim) + `docker-compose.yml`: backend + Chroma `1.5.9` + Ollama `0.40.12` (host'a acilmiyor, yerel Ollama ile cakismaz) + `ollama-init` (modelleri cekip cikar; backend onu bekler). `./data` mount, modeller `.env` ile degistirilebilir, host Ollama icin `RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434`, GPU blogu yorumda. Imaj host Chroma/Ollama'ya karsi denendi (`/ready` ok, admin 200); Tam yigin (bundled Ollama, `bonsai-2:2b` + `embeddinggemma-2:270m`) temiz klonda uctan uca kosuldu: ilk kurulum ~79 dk (cogu Ollama imaji + model indirme), `/ready` ok, koleksiyon olustur -> reindex (10 sn) -> query calisti; `down`/`up` sonrasi koleksiyon, vektorler ve modeller korundu (yeniden baslatma 12 sn). Bu testte bulunan iki hata duzeltildi: kucuk modellerin bozuk yazdigi `NO_ANSWER_FROM_CONTEXT` isareti cevaba sizmiyor; kaynaklardaki `sourcePath` proje kokune gore goreli donuyor (`/app/data/...` yerine `data/...`). `NODE_ENV=production` bilerek set edilmiyor (Secure cookie HTTP'de admin login'i bozar).
 - **Chat LLM istege bagli ve saglayicidan bagimsiz (eski P0 #1)** - 2026-11-08. `/query` icin tek, global bir chat LLM: `chat.baseUrl` + `chat.model` (+ API anahtari), LangChain `ChatOpenAICompletions` ile OpenAI uyumlu herhangi bir API (Ollama `/v1`, LM Studio, vLLM, OpenAI, OpenRouter). Ayarlanmazsa `/query` 503 `CHAT_NOT_CONFIGURED`, `/retrieve` ve indexing tam calisir; repo ve Docker varsayilani retrieve-only. Anahtar `RAG_CHAT_API_KEY` ya da `.local/rag_chat_api_key.secret` (YAML'a hic yazilmaz, hatalardan maskelenir). Model parametreleri gonderilmez (saglayici varsayilanlari); `temperature` / `maxTokens` / `maxContextTokens` YAML'da elle verilebilir. Koleksiyon bazli `chatModel` kaldirildi (API 400, `chat_model` kolonu migration ile silindi). `/ready`: yeni `retrieve` yetenegi, retrieve-only kurulum `ready: true` (`retrieve-and-index`); chat kontrolu ucretsiz `GET /models` (30 sn onbellek), gercek uretim testi sadece onboarding'de. Saglayici hatalari `CHAT_PROVIDER_UNREACHABLE` (503) / `CHAT_PROVIDER_ERROR` (502). Onboarding sadece base URL, model ve anahtar soruyor. Docker'da chat modeli sadece gomulu Ollama'yi gosteriyorsa iniyor. Prompt alandan bagimsiz hale geldi (eski: Turkce vergi ozelgeleri). Semafor kuyruk zaman asimi artik 500 degil 503 `MODEL_BACKPRESSURE`. Eski `ollama.chatModel` / `numCtx` / `numPredict` ve `RAG_OLLAMA_CHAT_MODEL` yok sayiliyor (uyari basiliyor, chat kendiliginden acilmiyor).
+- **Embedding saglayicisi: builtin + OpenAI uyumlu; Ollama'nin kaldirilmasi (eski P0 #5)** - 2026-11-09. Kararlar (2026-11-08 tartismasi): kullanici secer; varsayilan `builtin`; yerel model ilk kullanimda iner (imaja gomulmez); koleksiyon bazli model kalir; "parmak izi" yok; gomulu Ollama Docker'dan kalkar; geriye donuk uyumluluk yok. Uygulama:
+  - `builtin`: `onnx-community/embeddinggemma-2-ONNX` (q8, ~346 MB) transformers.js v4 ile backend icinde CPU'da; kendi `BuiltinEmbeddings` sinifi (LangChain'in `HuggingFaceTransformersEmbeddings`'i transformers.js v3'e sabit, `batchSize`'i yok sayiyor, sorgu/dokuman oneki yok). Model ilk indekslemede `embedding.cacheDir`'a (`models/`) iner; dtype ve onekler katalogda sabit.
+  - `openai-compatible`: `OpenAIEmbeddings` (float encoding), tek global `embedding.baseUrl`; anahtar `RAG_EMBEDDING_API_KEY` ya da `.local/rag_embedding_api_key.secret`.
+  - Her koleksiyon `{embeddingProvider, embeddingModel}` (istenen + aktif) sakliyor; okumalar her zaman aktif cifti kullaniyor, global ayar sadece yeni koleksiyonlarin varsayilani. Saglayici degisikligi `reindex_required`.
+  - Config `ollama` -> `embedding` (provider, model, baseUrl, cacheDir), `RAG_EMBEDDING_*`; eski legacy kod silindi. `/ready`, preflight ve validation ucuz kontroller (katalog + onbellek ya da ucretsiz `GET /models`); inmemis builtin model sadece uyari. Yeni hata kodlari `EMBEDDING_PROVIDER_*`, `EMBEDDING_DIMENSION_MISMATCH` (409, eskiden 500). `/v1/admin/models` saglayici bazli katalog. Onboarding acik saglayici secimi soruyor, builtin'i indirmiyor. Docker: backend + Chroma, `./models` volume, `ONNXRUNTIME_NODE_INSTALL=skip`. Chat ve embedding `src/providers/openaiCompatible.ts`'i paylasiyor.
+  - Swap duzeltmesi: aktif embedding ve snapshot'taki embedding alanlari artik job'in gercekten kullandigi modelden geliyor (once snapshot koleksiyonun o anki istenen modelini yaziyordu).
 - **Onboarding hata akisi** - 2026-11-08. Bagimlilik/kaynak eksiklerinde durmuyor; "Config saved; fix these before indexing" altinda her eksik icin tek satir cozum yaziyor, "Next steps"i her zaman gosteriyor, exit code 0. `--skip-index` deprecated.
 
 ## Urun yonu ve hedef kitle
@@ -52,46 +78,14 @@ Yonetim tarafi kurumsal duzeyde (blue/green reindex, job kuyrugu, RBAC, CSRF, au
 - **Public API'de kimlik dogrulama yok.** `/v1/rag/**` herkese acik; tenant `x-tenant-id` header'indan okunuyor, yoksa `default` (`src/http/requestContext.ts`). Herkes header'i degistirerek baska bir tenant'in verisini sorgulayabilir; multi-tenant yapi bu haliyle guvenli degil. -> P0 #2
 - **CORS yok.** Baska bir adresteki web uygulamasi API'yi tarayicidan cagiramiyor (test frontend ayni adresten sunuldugu icin calisiyor). -> P0 #2
 - **Dokuman yukleme/silme yok.** Dokumanlar sunucu diskine (`./data/...`) elle konuyor; API veya panelden yukleme, silme, listeleme yok. Docker'da ve uzak sunucuda cok zahmetli. -> P0 #3
-- ~~**Zorunlu chat modeli.**~~ Kapatildi (P0 #1): chat LLM istege bagli ve saglayicidan bagimsiz. Kalan: embedding hala sadece Ollama. -> P0 #5
+- ~~**Zorunlu chat modeli.**~~ Kapatildi (P0 #1): chat LLM istege bagli ve saglayicidan bagimsiz. ~~Embedding sadece Ollama~~ da kapatildi (P0 #5).
+- **Builtin embedding indekslemesi semafor disinda.** `addDocuments` `maxConcurrentEmbeddings` semaforunun altinda degil; builtin model CPU'da calistigi icin buyuk bir indeksleme eszamanli sorgulari yavaslatabilir. Olcum yapilmadigi icin onceden cozum eklenmedi; gercek kullanimda gorulurse indeksleme batch'leri semafora alinmali. -> P1
+- **Index snapshot'inda kaynak yolu ve chunk alanlari job anindan alinmiyor.** Swap'ta embedding alanlari duzeltildi, ama `sourcePath`, `chunkSize`, `chunkOverlap`, `distanceMetric` hala koleksiyonun o anki degerinden yaziliyor; job bunlari saklamiyor. Job calisirken bu ayarlar degisirse snapshot yanlis olur. Cozum: job'a bu alanlarin hedef degerlerini eklemek. -> P1
 - **Indexing hep tam.** Tek dosya degisse de butun koleksiyon yeniden isleniyor; dosya formatlari dar. -> P0 #6, P1 #5
 
 ## Acik tartismalar (karar bekliyor)
 
-### Embedding modeli ve saglayicisi; Docker'daki gomulu Ollama
-
-Durum: tartisma acik, karar verilmedi (2026-11-08). P0 #5'e baslamadan once karara baglanmali.
-
-Neden onemli:
-
-- Chat artik istege bagli, ama embedding zorunlu: indexing ve `/retrieve` onsuz calismaz. Onboarding her zaman bir embedding modeli soracak; sadece bicimi degisebilir (`ollama.*` yerine `chat` gibi `embedding.baseUrl` / `embedding.model` / anahtar).
-- Docker'in varsayilan kurulumundaki asil agirlik Ollama imaji (~5 GB). Hedef paketi hafifletmek; ama Ollama kaldirilirsa Docker kullanicisinin embedding'i bir yerden gelmeli.
-- Embedding modeli degisince koleksiyonlar yeniden indekslenmeli (vektorler modeller arasinda karsilastirilamaz). Saglayici degisikligi icin de gecerli; onboarding bunu acikca soylemeli.
-
-Secenekler (Docker'da Ollama'nin yerine embedding nereden gelir):
-
-| Secenek | Paket | Kurulum | Gizlilik |
-|---|---|---|---|
-| Bulut embedding API'si (OpenAI vb., OpenAI uyumlu `/v1/embeddings`) | cok hafif | API anahtari sart, ucretli | dokumanlar disari gider |
-| Bilgisayardaki Ollama (`host.docker.internal`) | cok hafif | kullanici Ollama'yi ayrica kurar | yerel |
-| Surec ici embedding (backend icinde, ornegin transformers.js) | hafif: ayri servis yok, model ~100-450 MB | hicbir sey kurulmaz, tek komut | yerel |
-| Bugunku hali: gomulu Ollama | agir (~5 GB imaj) | tek komut | yerel |
-
-Ilk oneri (karar degil):
-
-1. Ollama varsayilan Docker kurulumundan ciksin: compose `profiles` ile dosyada kalir ama `docker compose up -d` indirmez; isteyen `--profile ollama` ile acar.
-2. Varsayilan embedding surec ici olsun; Ollama ve bulut API'leri config ile secilebilen diger saglayicilar olsun.
-
-Karar icin cevaplanmasi gerekenler:
-
-- Kalite: surec ici calisabilen kucuk, cok dilli modeller (ornegin multilingual-e5-small, paraphrase-multilingual-MiniLM) Turkce veride embeddinggemma-2 kadar iyi mi? Olcmeden bilinmiyor.
-- Hiz: Node.js icinde CPU'da embedding; buyuk koleksiyonlarda indexing ne kadar yavas? (Retrieve'de tek soru vektorlenir, fark beklenmiyor.)
-- Varsayilan model hangisi olmali, ilk acilista ne kadar indirme kabul edilebilir?
-- Gomulu Ollama tamamen mi kalkmali, yoksa istege bagli profil olarak mi kalmali?
-
-Karar icin yapilacak olcum:
-
-- `data/dataset1` (ve varsa kullanicinin kendi verisi) ile birkac surec ici modeli embeddinggemma-2 (Ollama) ile karsilastir: ayni soru setinde dogru kaynagin ilk K icinde gelme orani, indexing suresi, model boyutu, bellek kullanimi.
-- Sonuca gore varsayilan saglayici ve model secilir, P0 #5'in kapsami netlesir.
+Su an acik tartisma yok. Embedding saglayicisi ve gomulu Ollama konusu 2026-11-08'de karara baglandi ve uygulandi (bkz. "Tamamlananlar").
 
 ## P0 - Urun hedefi icin kritik eksikler
 
@@ -129,19 +123,9 @@ Yapilacaklar:
 - Claude Desktop / Claude Code / Cursor icin kurulum ornegi README'de.
 - API anahtari (P0 #2) ile kimlik dogrulama.
 
-### 5. Degistirilebilir embedding saglayicisi
+### 5. Degistirilebilir embedding saglayicisi (tamamlandi)
 
-Sorun:
-
-- Embedding tek bir fabrikadan geciyor (`createEmbeddings`, `src/rag.ts`) ve LangChain `Embeddings` arayuzu kullaniliyor; ama model kontrolleri, `/ready`, config (`ollama.*`), admin panel model listesi, onboarding ve Docker Ollama'ya ozel.
-
-Yapilacaklar:
-
-- Config'de saglayici secimi: `ollama`, surec ici (ornegin transformers.js, ayri sunucu gerektirmez), bulut API'leri (OpenAI vb.).
-- Model kontrolu / readiness'i saglayiciya gore soyutla.
-- Koleksiyon embedding saglayicisini da saklasin (model degisince reindex gerekir mantigi korunur).
-- Embedding backend'de kalmali: indexing ve sorgu ayni modelle yapilmak zorunda.
-- Varsayilan saglayici/model ve Docker'daki gomulu Ollama'nin akibeti acik bir tartisma; once "Acik tartismalar" bolumundeki karar verilmeli.
+2026-11-09'da tamamlandi; ayrintilar "Tamamlananlar"da. Numaralar diger maddelere referans icin korunuyor.
 
 ### 6. Dosya formati destegi dar
 
@@ -275,7 +259,7 @@ Kalanlar:
 
 Sorun:
 
-- `/ready`; Chroma, Ollama model varligi, embedding smoke, chat smoke ve veri kaynagi okunabilirligini raporluyor. Koleksiyon bazli `/v1/rag/collections/:id/ready` de var.
+- `/ready`; Chroma, embedding saglayicisi (builtin: katalog + onbellek; dis servis: ucretsiz `GET /models`), chat saglayicisi ve veri kaynagi okunabilirligini raporluyor; gercek embedding/chat testi sadece onboarding'de. Koleksiyon bazli `/v1/rag/collections/:id/ready` de var.
 - Retrieved context iceren gercek bir query probe'u yok. Bazi modeller kisa chat smoke'unda saglikli gorunup gercek RAG akisinda bos/kirik cevap verebiliyor (ozellikle model degisiminden sonra).
 - Startup fail-fast / warmup modu yok; sunucu bagimliliklar hazir olmasa da ayaga kalkiyor.
 
@@ -303,7 +287,7 @@ Yapilacaklar (istenirse):
 
 ### 3. Konfigurasyon dogrulamasi
 
-- `retrievalK` ve `numPredict` icin operasyonel ust sinirlar yok.
+- `retrievalK` ve `chat.maxTokens` icin operasyonel ust sinirlar yok.
 - Model degisikliginin restart / re-index etkisini config contract'ina bagla.
 
 ### 4. README: bilinen sinirlar bolumu yok
@@ -311,7 +295,8 @@ Yapilacaklar (istenirse):
 - "Known limitations" bolumu ekle:
   - retrieval kalitesi baseline (rerank / filtre yok)
   - incremental indexing yok
-  - gerekli Ollama modelleri zorunlu (create/reindex artik eksik modelde `422` donuyor)
+  - builtin embedding CPU'da calisir; buyuk veri setlerinde dis servis (Ollama, OpenAI) daha hizli
+  - saglayici veya model degisikligi reindex gerektirir
   - rate limit ve session store in-memory (tek instance varsayimi)
 - Gelistirme ve demo modunu ayir.
 
@@ -338,7 +323,7 @@ Urun yonune (A, C, D) gore:
 2. Public API'ye API anahtari ve CORS (P0 #2). Tenant anahtardan belirlenir; urun olarak dagitmadan once sart.
 3. Dokuman yonetimi: admin API ve panelden yukleme/silme/listeleme (P0 #3).
 4. MCP sunucusu: retrieve'i AI asistanlarina arac olarak ac (P0 #4).
-5. Degistirilebilir embedding saglayicisi (P0 #5).
+5. ~~Degistirilebilir embedding saglayicisi (P0 #5).~~ Tamamlandi (2026-11-09).
 6. Dosya formatlari (P0 #6) ve incremental / upsert indexing (P1 #5).
 7. CI pipeline (P0 #7; ucuz oldugu icin araya da alinabilir).
 8. README bilinen sinirlar + ilk kurulum deneyimi cilasi.

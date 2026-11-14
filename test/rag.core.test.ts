@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { ChromaClient } from "chromadb";
 import { ChatOpenAICompletions } from "@langchain/openai";
 import { config, type ResolvedConfig } from "../src/config.js";
+import { BuiltinEmbeddings } from "../src/embeddings/builtin.js";
 import path from "node:path";
 import {
   answerQuestion,
@@ -14,6 +15,10 @@ import {
   stripNoAnswerSignal,
   type RagSource,
 } from "../src/rag.js";
+
+// Query embedding is stubbed: these tests never download the built-in model.
+mock.method(BuiltinEmbeddings.prototype, "embedQuery", async () => [0.1, 0.2, 0.3]);
+const EMBEDDING = { embeddingProvider: "builtin" as const, embeddingModel: "onnx-community/embeddinggemma-2-ONNX" };
 
 const chatEnabledConfig: ResolvedConfig = {
   ...config,
@@ -41,7 +46,7 @@ describe("rag core", () => {
       count: async () => 1,
     }) as any);
 
-    t.mock.method(Chroma.prototype, "similaritySearchWithScore", async (_question: string, k: number) => {
+    t.mock.method(Chroma.prototype, "similaritySearchVectorWithScore", async (_vector: number[], k: number) => {
       assert.equal(k, 2);
 
       return [[
@@ -57,7 +62,7 @@ describe("rag core", () => {
 
     await assert.rejects(
       answerQuestion("thresholded question", {
-        collectionName: "test-core-collection",
+        collectionName: "test-core-collection", ...EMBEDDING,
         runtimeConfig,
         retrievalK: 2,
       }),
@@ -97,12 +102,12 @@ describe("retrieveSources", () => {
     t.mock.method(ChromaClient.prototype, "getCollection", async () => ({
       count: async () => 2,
     }) as any);
-    t.mock.method(Chroma.prototype, "similaritySearchWithScore", async () => [
+    t.mock.method(Chroma.prototype, "similaritySearchVectorWithScore", async () => [
       [{ metadata: { documentId: "a", sourcePath: path.join(projectRoot, "data", "docs", "a.txt") }, pageContent: "a" }, 0.1],
       [{ metadata: { documentId: "b", sourcePath: path.resolve("elsewhere", "b.txt") }, pageContent: "b" }, 0.2],
     ] as any);
 
-    const result = await retrieveSources("question", { collectionName: "test-core-collection", runtimeConfig });
+    const result = await retrieveSources("question", { collectionName: "test-core-collection", ...EMBEDDING, runtimeConfig });
 
     assert.deepEqual(result.sources.map((source) => source.sourcePath), [
       "data/docs/a.txt",
@@ -114,14 +119,14 @@ describe("retrieveSources", () => {
 describe("answer generation with the optional chat LLM", () => {
   function mockRetrieval(t: { mock: { method: (...args: any[]) => unknown } }) {
     t.mock.method(ChromaClient.prototype, "getCollection", async () => ({ count: async () => 1 }) as any);
-    t.mock.method(Chroma.prototype, "similaritySearchWithScore", async () => [
+    t.mock.method(Chroma.prototype, "similaritySearchVectorWithScore", async () => [
       [{ metadata: { documentId: "doc-1", sourcePath: "data/a.txt" }, pageContent: "Murat Karakaya is a professor." }, 0.1],
     ] as any);
   }
 
   it("rejects /query with CHAT_NOT_CONFIGURED when no chat LLM is configured", async () => {
     await assert.rejects(
-      answerQuestion("q", { collectionName: "c", runtimeConfig: { ...config, chat: { ...chatEnabledConfig.chat, enabled: false } } }),
+      answerQuestion("q", { collectionName: "c", ...EMBEDDING, runtimeConfig: { ...config, chat: { ...chatEnabledConfig.chat, enabled: false } } }),
       (error) => {
         assert.ok(error instanceof RagQueryError);
         assert.equal(error.code, "CHAT_NOT_CONFIGURED");
@@ -135,7 +140,7 @@ describe("answer generation with the optional chat LLM", () => {
     mockRetrieval(t);
     t.mock.method(ChatOpenAICompletions.prototype, "invoke", async () => ({ content: "He is a professor." }) as any);
 
-    const result = await answerQuestion("Who is Murat Karakaya?", { collectionName: "c", runtimeConfig: chatEnabledConfig });
+    const result = await answerQuestion("Who is Murat Karakaya?", { collectionName: "c", ...EMBEDDING, runtimeConfig: chatEnabledConfig });
     assert.equal(result.answer, "He is a professor.");
     assert.equal(result.chatModel, "test-model");
     assert.equal(result.sources.length, 1);
@@ -147,7 +152,7 @@ describe("answer generation with the optional chat LLM", () => {
       throw Object.assign(new Error("Incorrect API key provided: secret-key-123"), { status: 401 });
     });
 
-    await assert.rejects(answerQuestion("q", { collectionName: "c", runtimeConfig: chatEnabledConfig }), (error) => {
+    await assert.rejects(answerQuestion("q", { collectionName: "c", ...EMBEDDING, runtimeConfig: chatEnabledConfig }), (error) => {
       assert.ok(error instanceof RagQueryError);
       assert.equal(error.code, "CHAT_PROVIDER_ERROR");
       assert.equal(error.statusCode, 502);
@@ -159,7 +164,7 @@ describe("answer generation with the optional chat LLM", () => {
     invoke.mock.mockImplementation(async () => {
       throw Object.assign(new Error("Connection error."), { name: "APIConnectionError" });
     });
-    await assert.rejects(answerQuestion("q", { collectionName: "c", runtimeConfig: chatEnabledConfig }), (error) => {
+    await assert.rejects(answerQuestion("q", { collectionName: "c", ...EMBEDDING, runtimeConfig: chatEnabledConfig }), (error) => {
       assert.ok(error instanceof RagQueryError);
       assert.equal(error.code, "CHAT_PROVIDER_UNREACHABLE");
       assert.equal(error.statusCode, 503);

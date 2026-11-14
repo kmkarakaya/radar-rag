@@ -4,9 +4,11 @@ registry:
   path: data/registry.sqlite
 chroma:
   url: http://localhost:8000
-ollama:
-  baseUrl: http://localhost:11434
-  embeddingModel: embeddinggemma-2:270m
+embedding:
+  provider: builtin
+  model: onnx-community/embeddinggemma-2-ONNX
+  baseUrl: ""
+  cacheDir: models
 chat:
   baseUrl: ""
   model: ""

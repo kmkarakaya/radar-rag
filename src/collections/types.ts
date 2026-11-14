@@ -1,4 +1,5 @@
 import type { DistanceMetric } from "../config.js";
+import type { EmbeddingProvider } from "../embeddings/models.js";
 import type { OperationalLogEvent, OperationalLogStatus } from "../observability/logger.js";
 
 export type RequestContext = {
@@ -53,6 +54,7 @@ export type CollectionIndexSnapshot = {
   distanceMetric: DistanceMetric;
   chunkSize: number;
   chunkOverlap: number;
+  embeddingProvider: EmbeddingProvider;
   embeddingModel: string;
 };
 
@@ -74,6 +76,8 @@ export type RagCollection = {
   activePhysicalCollection?: string;
   activeVersion?: string;
   sourcePath: string;
+  /** Embedding for the next re-index (desired). Reads always use the active pair below. */
+  embeddingProvider: EmbeddingProvider;
   embeddingModel: string;
   distanceMetric: DistanceMetric;
   chromaCollectionConfiguration: Record<string, unknown>;
@@ -81,6 +85,8 @@ export type RagCollection = {
   chunkOverlap: number;
   retrievalK: number;
   retrievalDistanceThreshold: number;
+  /** Embedding the active index was built with; queries must use it. */
+  activeEmbeddingProvider?: EmbeddingProvider;
   activeEmbeddingModel?: string;
   documentCount?: number;
   chunkCount?: number;
@@ -98,6 +104,7 @@ export type IndexJob = {
   status: IndexJobStatus;
   targetPhysicalCollection: string;
   targetVersion: string;
+  targetEmbeddingProvider: EmbeddingProvider;
   targetEmbeddingModel: string;
   targetChromaConfiguration: Record<string, unknown>;
   startedAt?: string;
@@ -196,6 +203,8 @@ export type CreateCollectionInput = {
   displayName: string;
   description?: string;
   sourcePath: string;
+  /** Defaults to "builtin" when omitted (the HTTP API always fills it from the configured default). */
+  embeddingProvider?: EmbeddingProvider;
   embeddingModel: string;
   distanceMetric: DistanceMetric;
   chromaCollectionConfiguration?: Record<string, unknown>;
@@ -210,6 +219,7 @@ export type UpdateCollectionPatch = {
   description?: RagCollection["description"] | null;
   status?: RagCollection["status"];
   sourcePath?: RagCollection["sourcePath"];
+  embeddingProvider?: RagCollection["embeddingProvider"];
   embeddingModel?: RagCollection["embeddingModel"];
   distanceMetric?: RagCollection["distanceMetric"];
   chromaCollectionConfiguration?: RagCollection["chromaCollectionConfiguration"];
@@ -217,6 +227,7 @@ export type UpdateCollectionPatch = {
   chunkOverlap?: RagCollection["chunkOverlap"];
   retrievalK?: RagCollection["retrievalK"];
   retrievalDistanceThreshold?: RagCollection["retrievalDistanceThreshold"];
+  activeEmbeddingProvider?: RagCollection["activeEmbeddingProvider"] | null;
   activeEmbeddingModel?: RagCollection["activeEmbeddingModel"] | null;
   activePhysicalCollection?: RagCollection["activePhysicalCollection"] | null;
   activeVersion?: RagCollection["activeVersion"] | null;

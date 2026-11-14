@@ -52,9 +52,10 @@ Non-negotiable backend rules:
 - Handle 202, 204, 409, 413, 422, 429, 502, and 503 correctly.
 - If the UI includes a create form, load `GET /v1/admin/config/defaults` and `GET /v1/admin/models` so backend defaults and model suggestions stay visible.
 - Do not assume query.sources is the same full source set that retrieve would return.
-- If the UI exposes raw JSON or diagnostics, surface `retrieve.embeddingModel` and `query.embeddingModel` / `query.chatModel`.
+- If the UI exposes raw JSON or diagnostics, surface `retrieve.embeddingProvider` / `retrieve.embeddingModel` and `query.embeddingProvider` / `query.embeddingModel` / `query.chatModel`.
 - Answer generation is optional: the backend may run retrieve-only (no chat LLM). Then `capabilities.query` is false and query returns `503 CHAT_NOT_CONFIGURED`; keep the retrieve flow usable and explain why answers are unavailable.
-- If ready.modelAvailability.desiredEmbeddingModel exists, treat it as a pending post-reindex model change, not as the current live embedding model.
+- If ready.modelAvailability.desiredEmbeddingProvider or desiredEmbeddingModel exists, treat it as a pending post-reindex embedding change, not as the current live embedding.
+- Embedding failures on retrieve/query (`EMBEDDING_PROVIDER_NOT_CONFIGURED`, `EMBEDDING_PROVIDER_UNREACHABLE`, `EMBEDDING_PROVIDER_ERROR`, `EMBEDDING_DIMENSION_MISMATCH`) block retrieval too; show them clearly and keep the `requestId`.
 
 Deliverables:
 - Production-ready frontend code
@@ -134,7 +135,7 @@ Important:
 - `POST /v1/rag/collections/:collectionId/query` is secondary and should be optional; the deployment may be retrieve-only (no chat LLM, `503 CHAT_NOT_CONFIGURED`).
 - Show collection readiness before enabling actions.
 - Show retrieval metadata such as documentId, sourcePath, sourceType, chunkIndex, and distanceScore when available.
-- Show `embeddingModel` for retrieve responses and both `embeddingModel` / `chatModel` for query responses when rendering raw JSON or diagnostics.
+- Show `embeddingProvider` / `embeddingModel` for retrieve responses and `embeddingProvider` / `embeddingModel` / `chatModel` for query responses when rendering raw JSON or diagnostics.
 - Handle NO_RELEVANT_CONTEXT and ANSWER_NOT_IN_RETRIEVED_CONTEXT cleanly.
 ```
 

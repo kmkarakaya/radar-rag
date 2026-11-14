@@ -1,4 +1,5 @@
 import type { DistanceMetric } from "../config.js";
+import { isEmbeddingProvider } from "../embeddings/models.js";
 import type { CollectionIndexSnapshot, CollectionIndexState, RagCollection } from "./types.js";
 
 const INDEX_SNAPSHOT_FIELDS = [
@@ -6,18 +7,20 @@ const INDEX_SNAPSHOT_FIELDS = [
   "distanceMetric",
   "chunkSize",
   "chunkOverlap",
+  "embeddingProvider",
   "embeddingModel",
 ] as const satisfies Array<keyof CollectionIndexSnapshot>;
 
 export function buildCollectionIndexSnapshot(collection: Pick<
   RagCollection,
-  "sourcePath" | "distanceMetric" | "chunkSize" | "chunkOverlap" | "embeddingModel"
+  "sourcePath" | "distanceMetric" | "chunkSize" | "chunkOverlap" | "embeddingProvider" | "embeddingModel"
 >): CollectionIndexSnapshot {
   return {
     sourcePath: collection.sourcePath,
     distanceMetric: collection.distanceMetric,
     chunkSize: collection.chunkSize,
     chunkOverlap: collection.chunkOverlap,
+    embeddingProvider: collection.embeddingProvider,
     embeddingModel: collection.embeddingModel,
   };
 }
@@ -31,6 +34,7 @@ export function parseCollectionIndexSnapshot(input: unknown): CollectionIndexSna
     || !isDistanceMetric(value.distanceMetric)
     || typeof value.chunkSize !== "number"
     || typeof value.chunkOverlap !== "number"
+    || !isEmbeddingProvider(value.embeddingProvider)
     || typeof value.embeddingModel !== "string"
   ) {
     return null;
@@ -41,6 +45,7 @@ export function parseCollectionIndexSnapshot(input: unknown): CollectionIndexSna
     distanceMetric: value.distanceMetric,
     chunkSize: value.chunkSize,
     chunkOverlap: value.chunkOverlap,
+    embeddingProvider: value.embeddingProvider,
     embeddingModel: value.embeddingModel,
   };
 }
@@ -48,7 +53,7 @@ export function parseCollectionIndexSnapshot(input: unknown): CollectionIndexSna
 export function buildCollectionIndexState(
   collection: Pick<
     RagCollection,
-    "sourcePath" | "distanceMetric" | "chunkSize" | "chunkOverlap" | "embeddingModel" | "activePhysicalCollection"
+    "sourcePath" | "distanceMetric" | "chunkSize" | "chunkOverlap" | "embeddingProvider" | "embeddingModel" | "activePhysicalCollection"
   >,
   activeSnapshot: CollectionIndexSnapshot | null,
 ): CollectionIndexState {

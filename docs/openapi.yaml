@@ -9,7 +9,12 @@ info:
     session cookie plus short-lived action tokens for protected mutations.
     Answer generation (/query) is optional: it needs a single global chat LLM reached through any
     OpenAI-compatible chat completions API. Without one the backend is retrieve-only (retrieve and
-    indexing work, /query returns 503 CHAT_NOT_CONFIGURED). Ollama is used for embeddings only.
+    indexing work, /query returns 503 CHAT_NOT_CONFIGURED). Embeddings come from one of two
+    providers: builtin (default; an ONNX model running inside the backend on CPU, downloaded once on
+    first use) or openai-compatible (any OpenAI-compatible /v1/embeddings API such as Ollama, OpenAI,
+    LM Studio or vLLM). Each collection stores its own embedding provider and model; the configured
+    default only applies to new collections, and reads always use the pair the active index was
+    built with.
 servers:
   - url: http://localhost:3010
     description: Local development
@@ -136,7 +141,7 @@ paths:
     post:
       tags: [Public RAG]
       operationId: retrieveSources
-      summary: Retrieve source chunks and effective embedding model
+      summary: Retrieve source chunks and the effective embedding provider and model
       parameters:
         - $ref: "#/components/parameters/XTenantId"
         - $ref: "#/components/parameters/XUserId"
@@ -150,7 +155,7 @@ paths:
               $ref: "#/components/schemas/RetrieveRequest"
       responses:
         "200":
-          description: Retrieved source chunks and the effective embedding model
+          description: Retrieved source chunks and the effective embedding provider and model
           headers:
             X-RateLimit-Limit:
               $ref: "#/components/headers/XRateLimitLimit"
@@ -168,6 +173,14 @@ paths:
           $ref: "#/components/responses/ApiError"
         "404":
           $ref: "#/components/responses/ApiError"
+        "409":
+          description: >-
+            EMBEDDING_DIMENSION_MISMATCH. The query embedding has a different vector size than the collection's
+            index; details contains expectedDimensions and gotDimensions. Re-index the collection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
         "413":
           $ref: "#/components/responses/ApiError"
         "429":
@@ -185,8 +198,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          description: >-
+            EMBEDDING_PROVIDER_ERROR. The embedding service returned an HTTP error (for example 401 bad API key,
+            404 unknown model, 429, 5xx); details contains upstreamStatus, providerMessage (API key redacted),
+            embeddingProvider and embeddingModel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
         "503":
-          $ref: "#/components/responses/ApiError"
+          description: >-
+            EMBEDDING_PROVIDER_NOT_CONFIGURED (the collection uses the openai-compatible provider but
+            embedding.baseUrl is not configured), EMBEDDING_PROVIDER_UNREACHABLE (the embedding service cannot be
+            reached, or the built-in model cannot be downloaded or loaded), MODEL_BACKPRESSURE (timeout, abort,
+            overload or embedding queue timeout), COLLECTION_INDEXING, or COLLECTION_STORAGE_INCONSISTENT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
   /v1/rag/collections/{collectionId}/query:
     post:
       tags: [Public RAG]
@@ -229,6 +259,14 @@ paths:
           $ref: "#/components/responses/ApiError"
         "404":
           $ref: "#/components/responses/ApiError"
+        "409":
+          description: >-
+            EMBEDDING_DIMENSION_MISMATCH. The query embedding has a different vector size than the collection's
+            index; details contains expectedDimensions and gotDimensions. Re-index the collection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
         "413":
           $ref: "#/components/responses/ApiError"
         "422":
@@ -250,9 +288,12 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
         "502":
           description: >-
-            EMPTY_MODEL_RESPONSE, DISALLOWED_FALLBACK_ANSWER, or CHAT_PROVIDER_ERROR. CHAT_PROVIDER_ERROR means
-            the chat LLM API returned an HTTP error (for example 401 bad API key, 404 unknown model, 429, 5xx);
-            details contains upstreamStatus, providerMessage (API key redacted), chatModel and embeddingModel.
+            EMPTY_MODEL_RESPONSE, DISALLOWED_FALLBACK_ANSWER, CHAT_PROVIDER_ERROR, or EMBEDDING_PROVIDER_ERROR.
+            CHAT_PROVIDER_ERROR means the chat LLM API returned an HTTP error (for example 401 bad API key, 404
+            unknown model, 429, 5xx); details contains upstreamStatus, providerMessage (API key redacted),
+            chatModel and embeddingModel. EMBEDDING_PROVIDER_ERROR is the same for the embedding service used to
+            embed the question (details contains upstreamStatus, providerMessage, embeddingProvider and
+            embeddingModel).
           content:
             application/json:
               schema:
@@ -260,8 +301,11 @@ paths:
         "503":
           description: >-
             CHAT_NOT_CONFIGURED (no chat LLM is configured, answer generation is disabled; no Retry-After header),
-            CHAT_PROVIDER_UNREACHABLE (the chat LLM API cannot be reached), MODEL_BACKPRESSURE (timeout, abort,
-            overload or generation queue timeout), COLLECTION_INDEXING, or COLLECTION_STORAGE_INCONSISTENT.
+            CHAT_PROVIDER_UNREACHABLE (the chat LLM API cannot be reached), EMBEDDING_PROVIDER_NOT_CONFIGURED
+            (the collection uses the openai-compatible embedding provider but embedding.baseUrl is not configured),
+            EMBEDDING_PROVIDER_UNREACHABLE (the embedding service cannot be reached, or the built-in model cannot
+            be downloaded or loaded), MODEL_BACKPRESSURE (timeout, abort, overload or generation/embedding queue
+            timeout), COLLECTION_INDEXING, or COLLECTION_STORAGE_INCONSISTENT.
           content:
             application/json:
               schema:
@@ -444,15 +488,22 @@ paths:
           $ref: "#/components/responses/ApiError"
         "422":
           description: >-
-            UNAVAILABLE_MODEL. The embedding model is not pulled in Ollama; nothing is created.
-            The optional chat LLM is not checked.
-            details.missingModels, details.availableModels and details.recommendedActions explain the fix.
+            UNAVAILABLE_MODEL or EMBEDDING_PROVIDER_NOT_CONFIGURED; nothing is created. The embedding preflight
+            never downloads a model or runs an embedding, and the optional chat LLM is not checked.
+            UNAVAILABLE_MODEL: no embedding model for the openai-compatible provider, a built-in model outside the
+            built-in catalog (details.availableModels is the catalog), or a model the embedding service does not
+            offer (details.availableModels from its GET /models); details.recommendedActions explains the fix.
+            A built-in model that is not downloaded yet is accepted (it downloads on the first indexing).
+            EMBEDDING_PROVIDER_NOT_CONFIGURED: openai-compatible was chosen but embedding.baseUrl is not set.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
         "503":
-          description: OLLAMA_UNREACHABLE. Ollama could not be reached to verify the models; nothing is created.
+          description: >-
+            EMBEDDING_PROVIDER_UNREACHABLE. The openai-compatible embedding service could not be reached or
+            rejected the API key (free GET {embedding.baseUrl}/models check); details.embeddingBaseUrl and
+            optional details.httpStatus. Nothing is created.
           content:
             application/json:
               schema:
@@ -517,7 +568,7 @@ paths:
     get:
       tags: [Admin Collections]
       operationId: listAdminModels
-      summary: Discover Ollama models for admin autocomplete with soft-fail behavior
+      summary: List embedding model suggestions per embedding provider, with soft-fail behavior
       security:
         - AdminSessionCookie: []
       parameters:
@@ -526,7 +577,9 @@ paths:
         - $ref: "#/components/parameters/XRequestId"
       responses:
         "200":
-          description: Ollama model inventory; empty lists and reachable=false indicate discovery soft-fail
+          description: >-
+            Built-in model catalog and the openai-compatible service's model list; for the external service,
+            reachable=false with an empty list (and an error string) indicates discovery soft-fail
           content:
             application/json:
               schema:
@@ -724,14 +777,18 @@ paths:
           $ref: "#/components/responses/ApiError"
         "422":
           description: >-
-            UNAVAILABLE_MODEL. The collection's embedding model is not pulled in Ollama; no job is started.
-            The optional chat LLM is never involved in indexing.
+            UNAVAILABLE_MODEL or EMBEDDING_PROVIDER_NOT_CONFIGURED for the collection's saved embedding provider and
+            model (same preflight as create; never downloads or embeds); no job is started. A built-in model that
+            is not downloaded yet is accepted: the job downloads it once before embedding. The optional chat LLM is
+            never involved in indexing.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
         "503":
-          description: OLLAMA_UNREACHABLE. Ollama could not be reached to verify the embedding model; no job is started.
+          description: >-
+            EMBEDDING_PROVIDER_UNREACHABLE. The openai-compatible embedding service could not be reached or
+            rejected the API key; details.embeddingBaseUrl. No job is started.
           content:
             application/json:
               schema:
@@ -1137,7 +1194,10 @@ components:
             - MODEL_BACKPRESSURE
             - INVALID_JOB_STATUS
             - UNAVAILABLE_MODEL
-            - OLLAMA_UNREACHABLE
+            - EMBEDDING_PROVIDER_NOT_CONFIGURED
+            - EMBEDDING_PROVIDER_UNREACHABLE
+            - EMBEDDING_PROVIDER_ERROR
+            - EMBEDDING_DIMENSION_MISMATCH
             - RATE_LIMIT_EXCEEDED
             - UNAUTHORIZED
             - FORBIDDEN
@@ -1286,14 +1346,18 @@ components:
             $ref: "#/components/schemas/ReadinessIssueSummary"
         dependencies:
           type: object
-          required: [registry, chroma, ollama, chat]
+          required: [registry, chroma, embedding, chat]
           properties:
             registry:
               $ref: "#/components/schemas/DependencyAvailability"
             chroma:
               $ref: "#/components/schemas/DependencyAvailability"
-            ollama:
-              $ref: "#/components/schemas/DependencyAvailability"
+            embedding:
+              allOf:
+                - $ref: "#/components/schemas/DependencyAvailability"
+              description: >-
+                Configured default embedding for new collections. ok is true for a built-in model that is not
+                downloaded yet (it downloads on the first indexing).
             chat:
               type: object
               required: [ok, configured]
@@ -1304,15 +1368,18 @@ components:
                   type: boolean
         config:
           type: object
-          required: [port, chatModel, embeddingModel, chromaUrl]
+          required: [port, chatModel, embeddingProvider, embeddingModel, chromaUrl]
           properties:
             port:
               type: integer
             chatModel:
               type: [string, "null"]
               description: Global chat LLM model, or null when no chat LLM is configured (retrieve-only).
+            embeddingProvider:
+              $ref: "#/components/schemas/EmbeddingProvider"
             embeddingModel:
               type: string
+              description: Configured default embedding model for new collections.
             chromaUrl:
               type: string
         diagnostics:
@@ -1350,6 +1417,7 @@ components:
         - recommendedActions
         - port
         - chatModel
+        - embeddingProvider
         - embeddingModel
         - chromaUrl
         - chromaLatencyMs
@@ -1409,8 +1477,11 @@ components:
         chatModel:
           type: [string, "null"]
           description: Global chat LLM model, or null when no chat LLM is configured (retrieve-only).
+        embeddingProvider:
+          $ref: "#/components/schemas/EmbeddingProvider"
         embeddingModel:
           type: string
+          description: Configured default embedding model for new collections.
         chromaUrl:
           type: string
         chromaLatencyMs:
@@ -1446,7 +1517,7 @@ components:
             $ref: "#/components/schemas/ReadinessCheck"
         dependencies:
           type: object
-          required: [chroma, registry, ollama, embeddings, chat]
+          required: [chroma, registry, embedding, chat]
           properties:
             chroma:
               type: object
@@ -1454,13 +1525,8 @@ components:
             registry:
               type: object
               additionalProperties: true
-            ollama:
-              type: object
-              description: Ollama serves embeddings only (url, embeddingModel and health details).
-              additionalProperties: true
-            embeddings:
-              type: object
-              additionalProperties: true
+            embedding:
+              $ref: "#/components/schemas/EmbeddingTargetStatus"
             chat:
               $ref: "#/components/schemas/ChatProviderStatus"
         dataSource:
@@ -1666,6 +1732,67 @@ components:
             type: string
         error:
           type: string
+    EmbeddingProvider:
+      type: string
+      enum: [builtin, openai-compatible]
+      description: >-
+        builtin = an ONNX model from the fixed built-in catalog running inside the backend process (CPU), downloaded
+        once on first use into embedding.cacheDir. openai-compatible = any OpenAI-compatible /v1/embeddings API
+        configured once globally with embedding.baseUrl (API key from RAG_EMBEDDING_API_KEY or
+        .local/rag_embedding_api_key.secret, never returned).
+    EmbeddingTargetStatus:
+      type: object
+      description: >-
+        Cheap availability check of one embedding provider/model; it never downloads a model and never runs an
+        embedding. builtin = catalog + cache check; openai-compatible = free, cached (30 s) GET
+        {embedding.baseUrl}/models. Never contains the API key. Readiness check codes derived from it (capabilities
+        retrieve, query, index): EMBEDDING_MODEL_READY (pass), EMBEDDING_MODEL_NOT_DOWNLOADED (warn, non-blocking:
+        downloads on the first indexing), EMBEDDING_MODEL_UNVERIFIED (warn, the service has no model listing),
+        EMBEDDING_MODEL_UNSUPPORTED, EMBEDDING_PROVIDER_NOT_CONFIGURED, EMBEDDING_PROVIDER_UNREACHABLE,
+        EMBEDDING_PROVIDER_AUTH_FAILED and EMBEDDING_MODEL_MISSING (fail, blocking).
+      required: [provider, model, configured, supported, ok, latencyMs]
+      properties:
+        provider:
+          $ref: "#/components/schemas/EmbeddingProvider"
+        model:
+          type: string
+        configured:
+          type: boolean
+          description: Always true for builtin; for openai-compatible, whether embedding.baseUrl is set.
+        supported:
+          type: boolean
+          description: For builtin, whether the model is in the built-in catalog; always true for openai-compatible.
+        downloaded:
+          type: boolean
+          description: builtin only. Whether the model files are already in embedding.cacheDir.
+        approxDownloadMb:
+          type: integer
+          description: builtin only. Approximate one-time download size.
+        reachable:
+          type: boolean
+          description: openai-compatible only.
+        authOk:
+          type: boolean
+          description: openai-compatible only.
+        modelListed:
+          description: openai-compatible only. The string "unknown" when the service has no usable GET /models listing.
+          oneOf:
+            - type: boolean
+            - type: string
+              const: unknown
+        availableModels:
+          type: array
+          items:
+            type: string
+        httpStatus:
+          type: integer
+        ok:
+          type: boolean
+          description: Usable now. A built-in model that is not downloaded yet is still ok (it downloads on first use).
+        latencyMs:
+          type: integer
+        error:
+          type: string
     SystemCapabilityState:
       type: object
       required: [ready, message]
@@ -1729,7 +1856,7 @@ components:
       enum: [building, failed_build, active, retired, delete_pending, deleted, cleanup_failed]
     CollectionIndexSnapshot:
       type: object
-      required: [sourcePath, distanceMetric, chunkSize, chunkOverlap, embeddingModel]
+      required: [sourcePath, distanceMetric, chunkSize, chunkOverlap, embeddingProvider, embeddingModel]
       properties:
         sourcePath:
           type: string
@@ -1739,6 +1866,8 @@ components:
           type: integer
         chunkOverlap:
           type: integer
+        embeddingProvider:
+          $ref: "#/components/schemas/EmbeddingProvider"
         embeddingModel:
           type: string
     CollectionIndexState:
@@ -1828,24 +1957,34 @@ components:
           type: string
     CollectionReadinessModelAvailability:
       type: object
-      required: [embeddingModel, embeddingModelAvailable, chatModel, chatModelAvailable]
+      required: [embeddingProvider, embeddingModel, embeddingModelAvailable, chatModel, chatModelAvailable]
       properties:
+        embeddingProvider:
+          $ref: "#/components/schemas/EmbeddingProvider"
         embeddingModel:
           type: string
-          description: Model currently used by live retrieval and query reads.
+          description: >-
+            Model currently used by live retrieval and query reads (with embeddingProvider: the pair the active
+            index was built with).
         embeddingModelAvailable:
           type: boolean
+          description: >-
+            Result of the cheap embedding check of the active pair (never embeds). A built-in model that is not
+            downloaded yet still counts as available (EMBEDDING_MODEL_NOT_DOWNLOADED warning).
         chatModel:
           type: [string, "null"]
           description: Global chat LLM model (not per collection), or null when no chat LLM is configured (retrieve-only).
         chatModelAvailable:
           type: boolean
           description: Result of the chat provider check (GET {chat.baseUrl}/models); only affects query.
+        desiredEmbeddingProvider:
+          $ref: "#/components/schemas/EmbeddingProvider"
         desiredEmbeddingModel:
           type: string
           description: >
-            Future embedding model from saved admin configuration. Present when a
-            reindex is still needed before live reads switch models.
+            Future embedding provider/model from saved admin configuration. desiredEmbeddingProvider and
+            desiredEmbeddingModel are present together when the saved pair differs from the active one, i.e.
+            a reindex is still needed before live reads switch embeddings.
     CollectionReadinessCapabilities:
       type: object
       required: [query, retrieve, reindex]
@@ -1865,6 +2004,10 @@ components:
         Chat LLM codes: CHAT_NOT_CONFIGURED and CHAT_MODEL_UNVERIFIED appear in warnings;
         CHAT_PROVIDER_UNREACHABLE, CHAT_PROVIDER_AUTH_FAILED and CHAT_MODEL_MISSING appear in
         blockers and only affect query.
+        Embedding codes (checked for the collection's active embedding provider/model):
+        EMBEDDING_MODEL_UNSUPPORTED, EMBEDDING_PROVIDER_NOT_CONFIGURED, EMBEDDING_PROVIDER_UNREACHABLE,
+        EMBEDDING_PROVIDER_AUTH_FAILED and EMBEDDING_MODEL_MISSING appear in blockers and block retrieve and
+        query; EMBEDDING_MODEL_NOT_DOWNLOADED and EMBEDDING_MODEL_UNVERIFIED appear in warnings.
       required:
         - id
         - status
@@ -1981,6 +2124,7 @@ components:
         - collectionId
         - collectionDisplayName
         - activeVersion
+        - embeddingProvider
         - embeddingModel
       properties:
         question:
@@ -2002,9 +2146,13 @@ components:
           type: string
         activeVersion:
           type: [string, "null"]
+        embeddingProvider:
+          $ref: "#/components/schemas/EmbeddingProvider"
         embeddingModel:
           type: string
-          description: Embedding model used for retrieval.
+          description: >-
+            Embedding model used for retrieval (with embeddingProvider: the pair the collection's active index was
+            built with, never the configured default).
         debug:
           $ref: "#/components/schemas/RetrievalDebug"
     QueryRequest:
@@ -2019,6 +2167,7 @@ components:
       type: object
       required:
         - answer
+        - embeddingProvider
         - embeddingModel
         - chatModel
         - distanceScoreThreshold
@@ -2029,9 +2178,11 @@ components:
       properties:
         answer:
           type: string
+        embeddingProvider:
+          $ref: "#/components/schemas/EmbeddingProvider"
         embeddingModel:
           type: string
-          description: Embedding model used to retrieve the sources that grounded the answer.
+          description: Embedding model (collection's active pair, with embeddingProvider) used to retrieve the sources that grounded the answer.
         chatModel:
           type: string
           description: Global chat LLM model that generated the answer.
@@ -2081,9 +2232,19 @@ components:
         retrievalDistanceThreshold:
           type: number
           minimum: 0
+        embeddingProvider:
+          allOf:
+            - $ref: "#/components/schemas/EmbeddingProvider"
+          description: >-
+            Defaults to the configured default provider (modelDefaults.embeddingProvider). The configured default only
+            applies to new collections; the stored provider/model never change when the default changes.
         embeddingModel:
           type: string
           minLength: 1
+          description: >-
+            Defaults to the configured default model when the provider is the default provider. With a different
+            provider and no model, builtin gets its default built-in model and openai-compatible is rejected with
+            422 UNAVAILABLE_MODEL (an explicit model is required).
     UpdateCollectionRequest:
       type: object
       additionalProperties: false
@@ -2112,9 +2273,14 @@ components:
         retrievalDistanceThreshold:
           type: number
           minimum: 0
+        embeddingProvider:
+          allOf:
+            - $ref: "#/components/schemas/EmbeddingProvider"
+          description: Reindex-bound; live reads keep the active embedding until a reindex succeeds.
         embeddingModel:
           type: string
           minLength: 1
+          description: Reindex-bound; live reads keep the active embedding until a reindex succeeds.
     CollectionSummary:
       type: object
       required: [id, displayName, status]
@@ -2139,6 +2305,7 @@ components:
         - displayName
         - status
         - sourcePath
+        - embeddingProvider
         - embeddingModel
         - distanceMetric
         - chromaCollectionConfiguration
@@ -2166,8 +2333,13 @@ components:
           type: string
         sourcePath:
           type: string
+        embeddingProvider:
+          allOf:
+            - $ref: "#/components/schemas/EmbeddingProvider"
+          description: Desired embedding provider, used by the next reindex.
         embeddingModel:
           type: string
+          description: Desired embedding model, used by the next reindex.
         distanceMetric:
           $ref: "#/components/schemas/DistanceMetric"
         chromaCollectionConfiguration:
@@ -2181,8 +2353,13 @@ components:
           type: integer
         retrievalDistanceThreshold:
           type: number
+        activeEmbeddingProvider:
+          allOf:
+            - $ref: "#/components/schemas/EmbeddingProvider"
+          description: Embedding provider the active index was built with; reads use it. Absent before the first successful reindex.
         activeEmbeddingModel:
           type: string
+          description: Embedding model the active index was built with; reads use it. Absent before the first successful reindex.
         documentCount:
           type: integer
         chunkCount:
@@ -2283,8 +2460,13 @@ components:
               type: number
         modelDefaults:
           type: object
-          required: [embeddingModel]
+          description: >-
+            Configured default embedding (embedding.provider / embedding.model) for NEW collections. Existing
+            collections keep their own stored provider and model.
+          required: [embeddingProvider, embeddingModel]
           properties:
+            embeddingProvider:
+              $ref: "#/components/schemas/EmbeddingProvider"
             embeddingModel:
               type: string
         chat:
@@ -2351,29 +2533,58 @@ components:
           $ref: "#/components/schemas/CollectionValidationImpact"
     AdminModelDiscoveryResponse:
       type: object
-      description: Ollama model discovery for the collection embedding model field. Ollama is used for embeddings only.
-      required: [reachable, models, embeddingModels, defaults]
+      description: >-
+        Embedding model suggestions per provider for the collection embeddingProvider / embeddingModel fields.
+        The chat LLM is not discovered here.
+      required: [default, providers]
       properties:
-        reachable:
-          type: boolean
-          description: Whether the Ollama discovery source could be reached.
-        models:
-          type: array
-          description: Full runtime-discovered Ollama model inventory.
-          items:
-            type: string
-        embeddingModels:
-          type: array
-          description: Runtime subset suitable for the embedding field.
-          items:
-            type: string
-        defaults:
+        default:
           type: object
-          required: [embeddingModel]
-          description: Runtime default values used by the admin form.
+          description: Configured default embedding for new collections.
+          required: [provider, model]
           properties:
-            embeddingModel:
+            provider:
+              $ref: "#/components/schemas/EmbeddingProvider"
+            model:
               type: string
+        providers:
+          type: object
+          required: [builtin, openai-compatible]
+          properties:
+            builtin:
+              type: object
+              required: [models, cacheDir]
+              properties:
+                models:
+                  type: array
+                  description: The fixed built-in model catalog.
+                  items:
+                    type: string
+                cacheDir:
+                  type: string
+                  description: Where built-in models are downloaded on first use (embedding.cacheDir).
+            openai-compatible:
+              type: object
+              required: [configured, baseUrl, reachable, models]
+              properties:
+                configured:
+                  type: boolean
+                  description: Whether embedding.baseUrl is set.
+                baseUrl:
+                  type: [string, "null"]
+                  description: OpenAI-compatible base URL, e.g. http://localhost:11434/v1; null when not configured.
+                reachable:
+                  type: boolean
+                  description: Whether GET {baseUrl}/models succeeded with the configured API key.
+                models:
+                  type: array
+                  description: >-
+                    Models listed by the service's GET /models (all models it offers, not only embedding models);
+                    empty when not configured or unreachable.
+                  items:
+                    type: string
+                error:
+                  type: string
     ReindexAcceptedResponse:
       type: object
       required: [job]
@@ -2399,6 +2610,7 @@ components:
         - status
         - targetPhysicalCollection
         - targetVersion
+        - targetEmbeddingProvider
         - targetEmbeddingModel
         - targetChromaConfiguration
         - lockToken
@@ -2417,8 +2629,13 @@ components:
           type: string
         targetVersion:
           type: string
+        targetEmbeddingProvider:
+          allOf:
+            - $ref: "#/components/schemas/EmbeddingProvider"
+          description: Embedding provider the job builds with; becomes the collection's activeEmbeddingProvider on success.
         targetEmbeddingModel:
           type: string
+          description: Embedding model the job builds with; becomes the collection's activeEmbeddingModel on success.
         targetChromaConfiguration:
           type: object
           additionalProperties: true

@@ -1,8 +1,9 @@
 import type { CollectionRegistry, IndexJob, RagCollection, RequestContext } from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
 import { checkChatProvider } from "../chat.js";
-import { hasConfiguredModel, checkChromaHealth, checkOllamaHealth } from "../rag.js";
-import { describeChatReadiness, recommendedActionFor, unique } from "../readiness.js";
+import { activeEmbeddingTarget, checkEmbeddingTarget, type EmbeddingProvider } from "../embeddings/index.js";
+import { checkChromaHealth } from "../rag.js";
+import { describeChatReadiness, describeEmbeddingReadiness, recommendedActionFor, unique } from "../readiness.js";
 
 export type CollectionReadinessIssue = {
   code: string;
@@ -19,11 +20,15 @@ export type CollectionReadinessPayload = {
   chromaReadable: boolean;
   chromaCount: number;
   modelAvailability: {
+    /** The embedding the active index was built with (what reads use). */
+    embeddingProvider: EmbeddingProvider;
     embeddingModel: string;
     embeddingModelAvailable: boolean;
     /** The global chat LLM model, or null when no chat LLM is configured (retrieve-only). */
     chatModel: string | null;
     chatModelAvailable: boolean;
+    /** Set when the collection's saved embedding differs from the active one (takes effect after re-index). */
+    desiredEmbeddingProvider?: EmbeddingProvider;
     desiredEmbeddingModel?: string;
   };
   capabilities: {
@@ -38,7 +43,7 @@ export type CollectionReadinessPayload = {
 
 export type CollectionReadinessHealthChecks = {
   checkChromaHealth?: typeof checkChromaHealth;
-  checkOllamaHealth?: typeof checkOllamaHealth;
+  checkEmbeddingTarget?: typeof checkEmbeddingTarget;
   checkChatProvider?: typeof checkChatProvider;
 };
 
@@ -62,14 +67,11 @@ export async function buildCollectionReadinessPayload(
   healthChecks?: CollectionReadinessHealthChecks,
 ): Promise<CollectionReadinessPayload> {
   const activeJob = await registry.getActiveJobForCollection(context, collection.id);
-  const ollama = await (healthChecks?.checkOllamaHealth ?? checkOllamaHealth)(runtimeConfig);
-  const availableModels = Array.isArray(ollama.details?.availableModels)
-    ? ollama.details.availableModels.filter((value): value is string => typeof value === "string")
-    : [];
-
-  const readEmbeddingModel = collection.activeEmbeddingModel ?? collection.embeddingModel;
+  // Reads use the embedding the active index was built with, so that is what is checked here.
+  const readEmbedding = activeEmbeddingTarget(collection);
+  const embeddingStatus = await (healthChecks?.checkEmbeddingTarget ?? checkEmbeddingTarget)(runtimeConfig, readEmbedding);
   const hasActivePhysicalCollection = Boolean(collection.activePhysicalCollection);
-  const embeddingModelAvailable = ollama.ok && hasConfiguredModel(availableModels, readEmbeddingModel);
+  const embeddingModelAvailable = embeddingStatus.ok;
   // The chat LLM is global (not per collection) and optional; it only gates /query.
   const chatProvider = await (healthChecks?.checkChatProvider ?? checkChatProvider)(runtimeConfig);
   const chatModelAvailable = chatProvider.ok;
@@ -105,21 +107,11 @@ export async function buildCollectionReadinessPayload(
     ));
   }
 
-  if (!ollama.ok) {
-    blockers.push(makeIssue(
-      "OLLAMA_UNREACHABLE",
-      `Ollama is not reachable at ${runtimeConfig.ollamaBaseUrl}. ${ollama.error ?? ""}`.trim(),
-      runtimeConfig,
-    ));
-  } else {
-    if (!embeddingModelAvailable) {
-      blockers.push(makeIssue(
-        "EMBED_MODEL_MISSING",
-        `Embedding model ${readEmbeddingModel} is missing in Ollama, so retrieval and indexing embeddings cannot run.`,
-        runtimeConfig,
-        `Pull the embedding model with: ollama pull ${readEmbeddingModel}`,
-      ));
-    }
+  const embeddingReadiness = describeEmbeddingReadiness(embeddingStatus);
+  if (embeddingReadiness.status === "fail") {
+    blockers.push(makeIssue(embeddingReadiness.code, embeddingReadiness.message, runtimeConfig));
+  } else if (embeddingReadiness.status === "warn") {
+    warnings.push(makeIssue(embeddingReadiness.code, embeddingReadiness.message, runtimeConfig));
   }
 
   const chatReadiness = describeChatReadiness(chatProvider, runtimeConfig);
@@ -152,11 +144,14 @@ export async function buildCollectionReadinessPayload(
     chromaReadable,
     chromaCount,
     modelAvailability: {
-      embeddingModel: readEmbeddingModel,
+      embeddingProvider: readEmbedding.provider,
+      embeddingModel: readEmbedding.model,
       embeddingModelAvailable,
       chatModel: runtimeConfig.chat.enabled ? runtimeConfig.chat.model : null,
       chatModelAvailable,
-      desiredEmbeddingModel: collection.embeddingModel !== readEmbeddingModel ? collection.embeddingModel : undefined,
+      ...(collection.embeddingProvider !== readEmbedding.provider || collection.embeddingModel !== readEmbedding.model
+        ? { desiredEmbeddingProvider: collection.embeddingProvider, desiredEmbeddingModel: collection.embeddingModel }
+        : {}),
     },
     capabilities: {
       query: queryReady,

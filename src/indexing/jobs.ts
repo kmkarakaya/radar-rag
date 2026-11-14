@@ -141,6 +141,7 @@ export async function runIndexJob(input: {
     // Override collection settings with job snapshots to ensure consistency
     const collectionForBuild: RagCollection = {
       ...collection,
+      embeddingProvider: job.targetEmbeddingProvider,
       embeddingModel: job.targetEmbeddingModel,
       chromaCollectionConfiguration: job.targetChromaConfiguration,
     };

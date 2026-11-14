@@ -89,6 +89,7 @@ describe("registry source path portability", () => {
         distanceMetric: "l2",
         chunkSize: 500,
         chunkOverlap: 50,
+        embeddingProvider: "builtin",
         embeddingModel: "bge-m3",
       }), collection.id);
     raw.close();
@@ -110,10 +111,6 @@ describe("config environment overrides", () => {
     server: { port: 3010 },
     registry: { path: "data/registry.sqlite" },
     chroma: { url: "http://localhost:8000" },
-    ollama: {
-      baseUrl: "http://localhost:11434",
-      embeddingModel: "bge-m3",
-    },
     collectionDefaults: {
       sourcePath: "data",
       distanceMetric: "l2",
@@ -130,8 +127,10 @@ describe("config environment overrides", () => {
     const overridden = parseConfig(applyConfigEnvOverrides(raw, {
       RAG_PORT: "8080",
       RAG_CHROMA_URL: "http://chroma:8000",
-      RAG_OLLAMA_BASE_URL: "http://ollama:11434",
-      RAG_OLLAMA_EMBEDDING_MODEL: "nomic-embed-text",
+      RAG_EMBEDDING_PROVIDER: "openai-compatible",
+      RAG_EMBEDDING_BASE_URL: "http://host.docker.internal:11434/v1",
+      RAG_EMBEDDING_MODEL: "nomic-embed-text",
+      RAG_EMBEDDING_CACHE_DIR: "/models",
       RAG_SOURCE_PATH: "/data",
       RAG_CHAT_BASE_URL: "http://ollama:11434/v1",
       RAG_CHAT_MODEL: "gemma3:4b",
@@ -139,8 +138,13 @@ describe("config environment overrides", () => {
 
     assert.equal(overridden.server.port, 8080);
     assert.equal(overridden.chroma.url, "http://chroma:8000");
-    assert.equal(overridden.ollama.baseUrl, "http://ollama:11434");
-    assert.equal(overridden.ollama.embeddingModel, "nomic-embed-text");
+    // The embedding section does not exist in the file; the overrides create it.
+    assert.deepEqual(overridden.embedding, {
+      provider: "openai-compatible",
+      baseUrl: "http://host.docker.internal:11434/v1",
+      model: "nomic-embed-text",
+      cacheDir: "/models",
+    });
     // The chat section does not exist in the file; the override creates it.
     assert.deepEqual(overridden.chat, { baseUrl: "http://ollama:11434/v1", model: "gemma3:4b" });
     assert.equal(overridden.collectionDefaults.sourcePath, "/data");

@@ -83,7 +83,8 @@ Example response:
     "retrievalDistanceThreshold": 1.2
   },
   "modelDefaults": {
-    "embeddingModel": "embeddinggemma-2:270m"
+    "embeddingProvider": "builtin",
+    "embeddingModel": "onnx-community/embeddinggemma-2-ONNX"
   },
   "chat": {
     "enabled": false,
@@ -97,50 +98,51 @@ Example response:
 Notes:
 
 - `collectionDefaults.sourcePath` is a resolved runtime path, so it may appear absolute.
+- `modelDefaults` is the configured default embedding (`embedding.provider` / `embedding.model`). It applies to **new** collections only; every existing collection keeps its own stored provider and model, so changing this default never changes an existing collection.
 - `chat` describes the global, optional chat LLM used only by `/query`. It is not a collection setting. `enabled: false` means the backend is retrieve-only (`/query` returns `503 CHAT_NOT_CONFIGURED`). When enabled, `baseUrl` and `model` show the OpenAI-compatible endpoint and model (for example `http://localhost:11434/v1` and `gemma3:4b`). The API key itself is never returned; `apiKeyConfigured` only tells whether one is set (`RAG_CHAT_API_KEY` or `.local/rag_chat_api_key.secret`). The chat LLM is configured with `npm run onboard` or `RAG_CHAT_BASE_URL` / `RAG_CHAT_MODEL`, not through the admin API. The bundled admin panel (`/admin`) shows it as a read-only "Chat LLM (global, optional)" line in the collection form, which has no chat model field.
 - This endpoint is intended for create-form visibility only; it does not expose the full config file.
 - Use this together with `GET /v1/admin/models` so the create form can show both backend defaults and runtime model suggestions.
 
 ### `GET /v1/admin/models`
 
-Returns the current Ollama model inventory for the embedding model autocomplete and validation hints. Ollama is only used for embeddings; the chat LLM is not discovered here.
+Returns embedding model suggestions per embedding provider, for the collection `embeddingProvider` / `embeddingModel` fields. The chat LLM is not discovered here.
+
+There are two embedding providers:
+
+- `builtin` (default): an ONNX model that runs inside the backend process on CPU (transformers.js). Models come from a fixed built-in catalog (currently `onnx-community/embeddinggemma-2-ONNX`, q8, about 346 MB) and are downloaded once on first use into `embedding.cacheDir` (default `models/`). No external service is needed.
+- `openai-compatible`: any OpenAI-compatible `/v1/embeddings` API (Ollama `http://localhost:11434/v1`, OpenAI, LM Studio, vLLM, ...). The connection is configured once for the server (`embedding.baseUrl`; the API key comes from `RAG_EMBEDDING_API_KEY` or `.local/rag_embedding_api_key.secret` and is never returned).
 
 Example response:
 
 ```json
 {
-  "reachable": true,
-  "models": [
-    "gemma3:4b",
-    "embeddinggemma-2:270m"
-  ],
-  "embeddingModels": [
-    "embeddinggemma-2:270m"
-  ],
-  "defaults": {
-    "embeddingModel": "embeddinggemma-2:270m"
+  "default": {
+    "provider": "builtin",
+    "model": "onnx-community/embeddinggemma-2-ONNX"
+  },
+  "providers": {
+    "builtin": {
+      "models": ["onnx-community/embeddinggemma-2-ONNX"],
+      "cacheDir": "models"
+    },
+    "openai-compatible": {
+      "configured": true,
+      "baseUrl": "http://localhost:11434/v1",
+      "reachable": true,
+      "models": ["embeddinggemma-2:270m", "bge-m3"]
+    }
   }
 }
 ```
 
-If Ollama discovery is unavailable, the endpoint still returns `200` with:
-
-```json
-{
-  "reachable": false,
-  "models": [],
-  "embeddingModels": [],
-  "defaults": {
-    "embeddingModel": "embeddinggemma-2:270m"
-  }
-}
-```
+If no `embedding.baseUrl` is configured, the `openai-compatible` entry is `{ "configured": false, "baseUrl": null, "reachable": false, "models": [] }`. If the service is configured but unreachable or rejects the API key, the endpoint still returns `200` with `reachable: false`, `models: []`, and an `error` string.
 
 Notes:
 
-- `models` is the full runtime-discovered Ollama inventory.
-- `embeddingModels` is the subset of that inventory with the `embedding` capability, for the collection `embeddingModel` field.
-- The inventory depends on the local Ollama runtime, so the visible list can change without a code deploy.
+- `default` is the configured default embedding for new collections (same as `GET /v1/admin/config/defaults` `modelDefaults`).
+- The bundled admin panel (`/admin`) uses this for the Embedding Provider select and the model suggestions in the collection form; its collection health view shows the active embedding (`modelAvailability.embeddingProvider` / `embeddingModel`) from the collection readiness endpoint.
+- `providers.builtin.models` is the full built-in catalog; any other built-in model name is rejected with `422 UNAVAILABLE_MODEL`.
+- `providers["openai-compatible"].models` comes from a free, cached `GET {embedding.baseUrl}/models`. It lists every model the service offers (it cannot tell embedding models from chat models), so it can change without a code deploy.
 - Use this together with `GET /v1/admin/config/defaults` so the create form can show both autocomplete suggestions and backend defaults.
 
 ### `GET /v1/admin/auth/session`
@@ -209,11 +211,13 @@ Optional:
 - `chunkOverlap`
 - `retrievalK`
 - `retrievalDistanceThreshold`
+- `embeddingProvider`: `builtin` or `openai-compatible`
 - `embeddingModel`
 
 Behavior:
 
 - Returns `201 Created` on success.
+- Embedding: omitted `embeddingProvider` / `embeddingModel` come from the configured default (`modelDefaults`). If you pick a provider other than the default without a model, `builtin` gets its default built-in model, while `openai-compatible` needs an explicit `embeddingModel` (otherwise `422 UNAVAILABLE_MODEL`). The stored provider and model belong to the collection; later changes of the configured default never affect it.
 - Collections have no chat model. Sending `chatModel` (or any other unknown field) returns `400 INVALID_REQUEST_BODY`. The chat LLM used by `/query` is global and optional (see `GET /v1/admin/config/defaults`).
 - Omitted create fields are filled from runtime configuration defaults and model defaults.
 - A newly created collection starts as a logical record; it is not queryable until indexing produces an active version.
@@ -249,6 +253,7 @@ Reindex-bound fields:
 - `distanceMetric`
 - `chunkSize`
 - `chunkOverlap`
+- `embeddingProvider`
 - `embeddingModel`
 
 If any reindex-bound field changes, the backend persists the configuration but expects a reindex before the indexed snapshot fully matches the desired settings.
@@ -257,10 +262,11 @@ This classification applies to `PATCH` (update). On **create**, only `displayNam
 
 ## Live Read Model vs Desired Model
 
-- Updating `embeddingModel` does not immediately change the model used by public RAG reads.
-- Until the next successful reindex completes, `query` and `retrieve` keep using the collection's snapshotted `activeEmbeddingModel`.
-- This means an admin save can succeed while the public query path still runs on the previous embedding model.
-- The public readiness payload reflects this with `modelAvailability.embeddingModel` for the live read model and `modelAvailability.desiredEmbeddingModel` for the future post-reindex model when they differ.
+- A collection stores the desired `embeddingProvider` / `embeddingModel` and the `activeEmbeddingProvider` / `activeEmbeddingModel` its active index was built with.
+- Updating `embeddingProvider` or `embeddingModel` does not immediately change the embedding used by public RAG reads.
+- Until the next successful reindex completes, `query` and `retrieve` keep using the collection's snapshotted `activeEmbeddingProvider` / `activeEmbeddingModel`. Reads never fall back to the configured default embedding.
+- This means an admin save can succeed while the public query path still runs on the previous embedding.
+- The public readiness payload reflects this with `modelAvailability.embeddingProvider` / `embeddingModel` for the live read embedding and `modelAvailability.desiredEmbeddingProvider` / `desiredEmbeddingModel` for the future post-reindex embedding when they differ.
 
 ## Collection Endpoints
 
@@ -293,8 +299,13 @@ Example response:
 
 Notes:
 
-- Before saving, the backend asks Ollama (`/api/tags`) whether the resolved `embeddingModel` is pulled. A `:latest` tag matches an untagged name. The optional chat LLM is not checked: collections can be created and indexed without it.
-- If the embedding model is missing it returns `422 UNAVAILABLE_MODEL` and creates nothing (`details.missingModels` entries only have role `embedding`). If Ollama cannot be reached it returns `503 OLLAMA_UNREACHABLE`.
+- Before saving, the backend runs a cheap embedding preflight on the resolved `embeddingProvider` / `embeddingModel`. It never downloads a model or runs an embedding. The optional chat LLM is not checked: collections can be created and indexed without it.
+  - `builtin`: the model must be in the built-in catalog. A model that is not downloaded yet is fine; it is downloaded at the start of the first indexing.
+  - `openai-compatible`: `embedding.baseUrl` must be configured, and a free `GET {embedding.baseUrl}/models` must succeed and (when the service lists models) include the model.
+- On failure nothing is created:
+  - `422 UNAVAILABLE_MODEL`: no model for `openai-compatible`, a built-in model outside the catalog (`details.availableModels` is the catalog), or a model the embedding service does not offer (`details.availableModels` from its `GET /models`).
+  - `422 EMBEDDING_PROVIDER_NOT_CONFIGURED`: `openai-compatible` was chosen but `embedding.baseUrl` is not set.
+  - `503 EMBEDDING_PROVIDER_UNREACHABLE`: the embedding service cannot be reached or rejects the API key (`details.embeddingBaseUrl`, optional `details.httpStatus`).
 
 Example `422` response:
 
@@ -302,12 +313,13 @@ Example `422` response:
 {
   "error": "Request failed",
   "code": "UNAVAILABLE_MODEL",
-  "message": "Collection cannot be created. Embedding model 'embeddinggemma-2:270m' is not available in Ollama. Run: ollama pull embeddinggemma-2:270m",
+  "message": "Collection cannot be created. Embedding model 'bge-m3' is not offered by the embedding service.",
   "requestId": "req_123",
   "details": {
-    "missingModels": [{ "role": "embedding", "name": "embeddinggemma-2:270m" }],
-    "availableModels": ["gemma3:4b"],
-    "recommendedActions": ["ollama pull embeddinggemma-2:270m"]
+    "embeddingProvider": "openai-compatible",
+    "embeddingModel": "bge-m3",
+    "availableModels": ["embeddinggemma-2:270m", "gemma3:4b"],
+    "recommendedActions": ["Pick one of the available models, or pull it there (for Ollama: ollama pull bge-m3)."]
   }
 }
 ```
@@ -328,7 +340,10 @@ Example response:
     "activePhysicalCollection": "api-test-active-physical",
     "activeVersion": "v-active-1",
     "sourcePath": "data/api-test-updated",
+    "embeddingProvider": "openai-compatible",
     "embeddingModel": "embed-patched-http",
+    "activeEmbeddingProvider": "builtin",
+    "activeEmbeddingModel": "onnx-community/embeddinggemma-2-ONNX",
     "distanceMetric": "ip",
     "chromaCollectionConfiguration": {
       "hnsw": {
@@ -350,13 +365,15 @@ Example response:
         "distanceMetric": "cosine",
         "chunkSize": 1000,
         "chunkOverlap": 200,
-        "embeddingModel": "embeddinggemma-2:270m"
+        "embeddingProvider": "builtin",
+        "embeddingModel": "onnx-community/embeddinggemma-2-ONNX"
       },
       "desiredSnapshot": {
         "sourcePath": "data/api-test-updated",
         "distanceMetric": "ip",
         "chunkSize": 321,
         "chunkOverlap": 12,
+        "embeddingProvider": "openai-compatible",
         "embeddingModel": "embed-patched-http"
       },
       "changedFields": [
@@ -364,6 +381,7 @@ Example response:
         "distanceMetric",
         "chunkSize",
         "chunkOverlap",
+        "embeddingProvider",
         "embeddingModel"
       ],
       "note": "Saved indexing settings differ from the active indexed snapshot. Re-index required to apply them."
@@ -375,6 +393,7 @@ Example response:
 Notes:
 
 - This DTO is richer than the public RAG collection DTO.
+- `embeddingProvider` / `embeddingModel` are the saved (desired) embedding used by the next reindex; `activeEmbeddingProvider` / `activeEmbeddingModel` are what the active index was built with and what reads use. The active pair is absent until the first successful reindex.
 - Collection detail is tenant-scoped; another tenant receives `403 COLLECTION_FORBIDDEN`.
 
 ### `GET /v1/admin/collections/:collectionId/physical-collections`
@@ -506,7 +525,8 @@ Example request:
   "sourcePath": "missing/source/path",
   "chunkSize": 64,
   "chunkOverlap": 64,
-  "embeddingModel": "embeddinggemma-2:270m"
+  "embeddingProvider": "builtin",
+  "embeddingModel": "onnx-community/embeddinggemma-2-ONNX"
 }
 ```
 
@@ -526,10 +546,17 @@ Example response:
       "recommendedAction": "Reduce chunkOverlap so it stays smaller than chunkSize before saving or re-indexing."
     }
   ],
-  "warnings": [],
+  "warnings": [
+    {
+      "code": "EMBEDDING_MODEL_NOT_DOWNLOADED",
+      "message": "Built-in embedding model onnx-community/embeddinggemma-2-ONNX is not downloaded yet; it is downloaded on the first indexing (~346 MB).",
+      "recommendedAction": "No action needed: the built-in embedding model is downloaded automatically on the first indexing (one time)."
+    }
+  ],
   "recommendedActions": [
     "Verify config/rag.config.yaml collectionDefaults.sourcePath points to a readable file or directory.",
-    "Reduce chunkOverlap so it stays smaller than chunkSize before saving or re-indexing."
+    "Reduce chunkOverlap so it stays smaller than chunkSize before saving or re-indexing.",
+    "No action needed: the built-in embedding model is downloaded automatically on the first indexing (one time)."
   ],
   "impact": {
     "reindexRequired": true,
@@ -540,6 +567,7 @@ Example response:
       "sourcePath",
       "chunkSize",
       "chunkOverlap",
+      "embeddingProvider",
       "embeddingModel"
     ],
     "note": "New collections must be re-indexed before indexed settings become active."
@@ -569,6 +597,7 @@ Example request:
   "displayName": "API Patched Collection",
   "description": null,
   "sourcePath": "data/api-test-updated",
+  "embeddingProvider": "openai-compatible",
   "embeddingModel": "embed-patched-http",
   "distanceMetric": "ip",
   "chunkSize": 321,
@@ -582,7 +611,8 @@ Notes:
 
 - Unknown body keys are rejected with `400 INVALID_REQUEST_BODY`. This includes `chatModel`: collections no longer have a chat model (the optional chat LLM is global).
 - Patching reindex-bound fields usually changes `collection.indexState` to `reindex_required`.
-- After patching `embeddingModel`, public RAG reads keep using the snapshotted active embedding model until reindex succeeds.
+- After patching `embeddingProvider` or `embeddingModel`, public RAG reads keep using the snapshotted active embedding (`activeEmbeddingProvider` / `activeEmbeddingModel`) until reindex succeeds.
+- `PATCH` itself does not run the embedding preflight; use the validate endpoint to check a new embedding first (embedding readiness codes such as `EMBEDDING_MODEL_UNSUPPORTED`, `EMBEDDING_PROVIDER_NOT_CONFIGURED`, `EMBEDDING_PROVIDER_UNREACHABLE`, `EMBEDDING_MODEL_MISSING` appear as blockers, `EMBEDDING_MODEL_NOT_DOWNLOADED` / `EMBEDDING_MODEL_UNVERIFIED` as warnings). The reindex preflight checks it again before a job starts.
 
 ### `DELETE /v1/admin/collections/:collectionId`
 
@@ -614,7 +644,8 @@ Notes:
 
 - Returns `202 Accepted`.
 - If a reindex is already active, the backend returns `409 COLLECTION_INDEX_ALREADY_RUNNING` (`details.jobId`, `details.status`). This is checked before the model preflight.
-- Before queueing, the backend checks that the collection's `embeddingModel` is pulled in Ollama. If it is missing it returns `422 UNAVAILABLE_MODEL` and starts no job. If Ollama cannot be reached it returns `503 OLLAMA_UNREACHABLE`. The chat LLM is never involved in indexing, so a retrieve-only deployment can still index.
+- Before queueing, the backend runs the same cheap embedding preflight as create on the collection's saved `embeddingProvider` / `embeddingModel` (the job builds with that pair). It never downloads or embeds: a built-in model only has to be in the catalog (if it is not downloaded yet, the job downloads it once before embedding), and an `openai-compatible` model is checked with a free `GET {embedding.baseUrl}/models`. On failure no job starts: `422 UNAVAILABLE_MODEL`, `422 EMBEDDING_PROVIDER_NOT_CONFIGURED`, or `503 EMBEDDING_PROVIDER_UNREACHABLE`. The chat LLM is never involved in indexing, so a retrieve-only deployment can still index.
+- When the job succeeds, the collection's `activeEmbeddingProvider` / `activeEmbeddingModel` become the job's `targetEmbeddingProvider` / `targetEmbeddingModel`.
 - Reindex is one of the rate-limited operations.
 
 ## Job Endpoints
@@ -659,7 +690,8 @@ Example response:
         "status": "running",
         "targetPhysicalCollection": "col_123_v2",
         "targetVersion": "v2",
-        "targetEmbeddingModel": "embeddinggemma-2:270m",
+        "targetEmbeddingProvider": "builtin",
+        "targetEmbeddingModel": "onnx-community/embeddinggemma-2-ONNX",
         "targetChromaConfiguration": {
           "hnsw": {
             "space": "cosine"
@@ -804,8 +836,9 @@ Rules:
 | `COLLECTION_NOT_FOUND` | `404` | Collection does not exist |
 | `COLLECTION_INDEX_ALREADY_RUNNING` | `409` | A reindex job is already active |
 | `INVALID_JOB_STATUS` | `400` | Job action was attempted in the wrong job state |
-| `UNAVAILABLE_MODEL` | `422` | Create or reindex needs an Ollama embedding model that is not pulled; see `details.missingModels` and `details.recommendedActions` |
-| `OLLAMA_UNREACHABLE` | `503` | Create or reindex could not reach Ollama to check its models |
+| `UNAVAILABLE_MODEL` | `422` | Create or reindex preflight: no embedding model for `openai-compatible`, a built-in model outside the catalog, or a model the embedding service does not offer; see `details.availableModels` and `details.recommendedActions` |
+| `EMBEDDING_PROVIDER_NOT_CONFIGURED` | `422` | Create or reindex preflight: `openai-compatible` was chosen but `embedding.baseUrl` is not configured |
+| `EMBEDDING_PROVIDER_UNREACHABLE` | `503` | Create or reindex preflight could not reach the embedding service or the API key was rejected; see `details.embeddingBaseUrl` |
 | `ROUTE_NOT_FOUND` | `404` | Job lookup failed tenant scoping or the route is wrong |
 | `RATE_LIMIT_EXCEEDED` | `429` | Reindex limit was hit |
 | `INTERNAL_ERROR` | `500` | Required backend dependency is missing or another internal failure occurred |

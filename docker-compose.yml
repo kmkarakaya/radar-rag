@@ -1,22 +1,25 @@
-# All-in-one stack: backend + Chroma + Ollama (for embeddings).
+# Stack: backend + Chroma. Embeddings run inside the backend by default (built-in model, downloaded on
+# the first indexing into ./models); no Ollama is needed.
 #
-#   docker compose up -d          # everything; the first run downloads the images and the embedding model
+#   docker compose up -d          # everything
 #   docker compose up -d chroma   # only Chroma, for running the backend with `npm run dev`
 #
 # Put your documents under ./data, then open http://localhost:3010/admin.
 # Settings go in a .env file next to this file:
-#   RAG_OLLAMA_EMBEDDING_MODEL       embedding model (default embeddinggemma-2:270m)
 #   BACKEND_HOST_PORT / CHROMA_HOST_PORT   host ports (default 3010 / 8000)
+#
+# Embedding (default for NEW collections; each collection keeps the one it was indexed with):
+#   built-in (default):    nothing to set
+#   Ollama on the host:    RAG_EMBEDDING_PROVIDER=openai-compatible
+#                          RAG_EMBEDDING_BASE_URL=http://host.docker.internal:11434/v1
+#                          RAG_EMBEDDING_MODEL=embeddinggemma-2:270m
+#   cloud provider:        RAG_EMBEDDING_PROVIDER=openai-compatible  RAG_EMBEDDING_BASE_URL=https://api.openai.com/v1
+#                          RAG_EMBEDDING_MODEL=text-embedding-3-small  RAG_EMBEDDING_API_KEY=...
 #
 # Answer generation (/query) is optional; without it the backend is retrieve-only. To enable it,
 # point it at any OpenAI-compatible chat API:
-#   bundled Ollama:  RAG_CHAT_BASE_URL=http://ollama:11434/v1  RAG_CHAT_MODEL=gemma3:4b   (pulled automatically)
-#   host Ollama:     RAG_CHAT_BASE_URL=http://host.docker.internal:11434/v1  RAG_CHAT_MODEL=gemma3:4b
-#   cloud provider:  RAG_CHAT_BASE_URL=https://api.openai.com/v1  RAG_CHAT_MODEL=gpt-4o-mini  RAG_CHAT_API_KEY=...
-#
-# To use an Ollama already running on the host for embeddings instead of the bundled one:
-#   RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434 in .env, then
-#   docker compose up -d --no-deps chroma backend
+#   Ollama on the host:    RAG_CHAT_BASE_URL=http://host.docker.internal:11434/v1  RAG_CHAT_MODEL=gemma3:4b
+#   cloud provider:        RAG_CHAT_BASE_URL=https://api.openai.com/v1  RAG_CHAT_MODEL=gpt-4o-mini  RAG_CHAT_API_KEY=...
 
 services:
   chroma:
@@ -27,59 +30,17 @@ services:
       - ./chroma_data:/data
     restart: unless-stopped
 
-  ollama:
-    image: ollama/ollama:0.40.12
-    # Not published on the host, so it does not clash with an Ollama you already run locally.
-    volumes:
-      - ollama_models:/root/.ollama
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-    restart: unless-stopped
-    # NVIDIA GPU (optional, needs the NVIDIA Container Toolkit): uncomment below.
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-
-  # One-shot job: pulls the embedding model (and the chat model, only when /query uses the
-  # bundled Ollama) into the ollama volume, then exits.
-  ollama-init:
-    image: ollama/ollama:0.40.12
-    depends_on:
-      ollama:
-        condition: service_healthy
-    environment:
-      OLLAMA_HOST: http://ollama:11434
-      EMBEDDING_MODEL: ${RAG_OLLAMA_EMBEDDING_MODEL:-embeddinggemma-2:270m}
-      CHAT_BASE_URL: ${RAG_CHAT_BASE_URL:-}
-      CHAT_MODEL: ${RAG_CHAT_MODEL:-}
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        ollama pull "$$EMBEDDING_MODEL" || exit 1
-        case "$$CHAT_BASE_URL" in
-          http://ollama:11434*)
-            if [ -n "$$CHAT_MODEL" ]; then ollama pull "$$CHAT_MODEL" || exit 1; fi
-            ;;
-        esac
-        exit 0
-    restart: "no"
-
   backend:
     build: .
     ports:
       - "${BACKEND_HOST_PORT:-3010}:3010"
     environment:
       RAG_CHROMA_URL: http://chroma:8000
-      # http://host.docker.internal:11434 = Ollama on the host (start with --no-deps, see the top of this file).
-      RAG_OLLAMA_BASE_URL: ${RAG_OLLAMA_BASE_URL:-http://ollama:11434}
-      RAG_OLLAMA_EMBEDDING_MODEL: ${RAG_OLLAMA_EMBEDDING_MODEL:-embeddinggemma-2:270m}
+      # Embedding default for new collections (empty = the config file's default: built-in).
+      RAG_EMBEDDING_PROVIDER: ${RAG_EMBEDDING_PROVIDER:-}
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-}
+      RAG_EMBEDDING_BASE_URL: ${RAG_EMBEDDING_BASE_URL:-}
+      RAG_EMBEDDING_API_KEY: ${RAG_EMBEDDING_API_KEY:-}
       # Optional chat LLM for /query (any OpenAI-compatible API). Empty = retrieve-only.
       RAG_CHAT_BASE_URL: ${RAG_CHAT_BASE_URL:-}
       RAG_CHAT_MODEL: ${RAG_CHAT_MODEL:-}
@@ -89,14 +50,11 @@ services:
     volumes:
       # Your documents and the SQLite registry. Create collections with source paths like data/<folder>.
       - ./data:/app/data
+      # Built-in embedding models, downloaded once on the first indexing and kept across restarts.
+      - ./models:/app/models
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       chroma:
         condition: service_started
-      ollama-init:
-        condition: service_completed_successfully
     restart: unless-stopped
-
-volumes:
-  ollama_models:

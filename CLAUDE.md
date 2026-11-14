@@ -6,7 +6,7 @@ Agent brief for the Vanilla RAG Backend. Read this first, then see [AGENTS.md](A
 
 A TypeScript / Express 5 (ESM) **multi-collection, multi-tenant LangChain RAG** backend over local documents (TXT, MD, PDF, DOC, DOCX). Local-first:
 
-- **Ollama** for embeddings (`localhost:11434`, default `embeddinggemma-2:270m`).
+- **Embeddings** per collection, two LangChain providers in [src/embeddings/](src/embeddings/): `builtin` (default; `onnx-community/embeddinggemma-2-ONNX` q8 in-process via transformers.js v4, own `BuiltinEmbeddings` class, downloaded on first use into `models/`) and `openai-compatible` (`OpenAIEmbeddings` against any `/v1/embeddings` API, e.g. Ollama). Each collection stores provider+model (desired + active); reads always use the active pair; `embedding.*` config is only the default for new collections. No Ollama dependency.
 - **Optional chat LLM** for `/query` only: any OpenAI-compatible API (`chat.baseUrl` + `chat.model` + optional key), called via LangChain `ChatOpenAICompletions` in [src/chat.ts](src/chat.ts). Not configured by default (retrieve-only: `/query` → 503 `CHAT_NOT_CONFIGURED`). Global, not per collection.
 - **Chroma** for the vector store (`localhost:8000`, via Docker).
 - **SQLite** (`better-sqlite3`) for the collection/job registry (`data/registry.sqlite`).
@@ -15,12 +15,12 @@ The server listens on **port 3010** in the shipped config. APIs are strictly ver
 
 ## Run / build / test
 
-All-in-one: `docker compose up -d` (backend + Chroma 1.5.9 + Ollama 0.40.12; `ollama-init` pulls the embedding model, plus the chat model only when `RAG_CHAT_BASE_URL` points at the bundled Ollama; `./data` is mounted; see [Dockerfile](Dockerfile)). Local dev prereqs: `docker compose up -d chroma`, then Ollama (0.40.4+) running with `embeddinggemma-2:270m` pulled (a chat model only if you enable `/query`).
+All-in-one: `docker compose up -d` (backend + Chroma 1.5.9; the built-in embedding model downloads into `./models` on the first indexing; `./data` is mounted; see [Dockerfile](Dockerfile), which sets `ONNXRUNTIME_NODE_INSTALL=skip` and must stay glibc-based). Local dev prereqs: `docker compose up -d chroma`; nothing else for embeddings (Ollama only if you choose it as an external provider or chat LLM).
 
 - `npm run dev` — start in watch mode (`tsx watch src/server.ts`).
 - `npm run build` — compile TypeScript to `dist/` (`tsc`); `npm start` — run compiled server.
 - `npm test` — unit + acceptance (`node:test` via tsx).
-- `npm run test:integration` — integration tests (needs live Ollama + Chroma).
+- `npm run test:integration` — integration tests (needs live Chroma; the built-in embedding model downloads on first use).
 - `npm run typecheck` / `npm run typecheck:test` — type-check source / tests.
 - CLI: `npm run onboard` (bootstrap runtime config + optional admin auth), `npm run index -- --collection-id <id>` (reindex), `npm run admin:hash-password -- "<password>"` (scrypt hash for config users).
 
@@ -57,8 +57,9 @@ Implemented in [src/http/adminAuth.ts](src/http/adminAuth.ts); config under `adm
 - Runtime config: [config/rag.config.yaml](config/rag.config.yaml), zod-validated with defaults resolved in [src/config.ts](src/config.ts). Key defaults: `chunkSize 500`, `chunkOverlap 200` (must be `< chunkSize`), `retrievalK 5`, `retrievalDistanceThreshold 1.2`, `distanceMetric l2`. `chat` is empty (retrieve-only); model parameters (`temperature`, `maxTokens`) are only sent when set by hand, otherwise provider defaults apply.
 - `RAG_ADMIN_SESSION_SECRET` overrides the local secret file, keeping the runtime portable.
 - Chat API key: `RAG_CHAT_API_KEY`, else `.local/rag_chat_api_key.secret` (written by onboarding via [src/secrets.ts](src/secrets.ts)). Never in the YAML (the YAML and its `.bak` are tracked) and never returned by the API; redacted from errors.
+- Embedding API key (openai-compatible provider): `RAG_EMBEDDING_API_KEY`, else `.local/rag_embedding_api_key.secret`; same rules. Chat and embedding share [src/providers/openaiCompatible.ts](src/providers/openaiCompatible.ts) (free `GET /models` check, error classification, redaction).
 - Gitignored: `.env*`, `.local/`, `data/*.sqlite`, `chroma_data/`, `dist/`, `node_modules/`, `graphify-out/` (local only; rebuild with `graphify update .`).
-- Portability: paths inside the repo are stored relative (`src/paths.ts` `toPortablePath`) in the config (onboarding) and in the registry (collection `sourcePath`, migrated at startup when `projectRoot` is passed). `RAG_PORT`, `RAG_REGISTRY_PATH`, `RAG_CHROMA_URL`, `RAG_OLLAMA_BASE_URL`, `RAG_OLLAMA_EMBEDDING_MODEL`, `RAG_CHAT_BASE_URL`, `RAG_CHAT_MODEL`, `RAG_SOURCE_PATH`, `RAG_CONFIG_PATH` override the YAML at runtime (`applyConfigEnvOverrides`).
+- Portability: paths inside the repo are stored relative (`src/paths.ts` `toPortablePath`) in the config (onboarding) and in the registry (collection `sourcePath`, migrated at startup when `projectRoot` is passed). `RAG_PORT`, `RAG_REGISTRY_PATH`, `RAG_CHROMA_URL`, `RAG_EMBEDDING_PROVIDER`, `RAG_EMBEDDING_MODEL`, `RAG_EMBEDDING_BASE_URL`, `RAG_EMBEDDING_CACHE_DIR`, `RAG_CHAT_BASE_URL`, `RAG_CHAT_MODEL`, `RAG_SOURCE_PATH`, `RAG_CONFIG_PATH` override the YAML at runtime (`applyConfigEnvOverrides`).
 
 ## Docs & knowledge graph
 
@@ -68,6 +69,6 @@ Implemented in [src/http/adminAuth.ts](src/http/adminAuth.ts); config under `adm
 
 ## After changing code
 
-1. `npm run typecheck` and `npm test` must pass (add `npm run test:integration` when Ollama + Chroma are up).
+1. `npm run typecheck` and `npm test` must pass (add `npm run test:integration` when Chroma is up).
 2. Keep `.js` import extensions on all new relative imports.
 3. Run `graphify update .` to keep the knowledge graph current (AST-only, no API cost) — per [AGENTS.md](AGENTS.md).

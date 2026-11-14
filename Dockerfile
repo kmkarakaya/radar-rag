@@ -1,4 +1,5 @@
-# Vanilla RAG backend image. Used by docker-compose.yml together with Chroma and Ollama.
+# Vanilla RAG backend image. Used by docker-compose.yml together with Chroma.
+# Must stay glibc-based (Debian): onnxruntime-node, used by the built-in embedding model, has no musl/Alpine build.
 
 # ---- build: compile TypeScript and install production dependencies ----
 FROM node:22-bookworm-slim AS build
@@ -10,6 +11,8 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
+# onnxruntime-node would otherwise download CUDA/TensorRT libraries on linux-x64; the built-in model runs on CPU.
+ENV ONNXRUNTIME_NODE_INSTALL=skip
 RUN npm ci
 
 COPY tsconfig.json ./
@@ -27,8 +30,9 @@ COPY config/rag.config.yaml ./config/rag.config.yaml
 COPY admin ./admin
 COPY test_frontend ./test_frontend
 
-# data/ (your documents + the SQLite registry) is mounted at runtime; see docker-compose.yml.
-RUN mkdir -p data .local
+# data/ (your documents + the SQLite registry) and models/ (built-in embedding models, downloaded on
+# first use) are mounted at runtime; see docker-compose.yml.
+RUN mkdir -p data models .local
 
 # NODE_ENV is intentionally not set to "production": that marks the admin session cookie as
 # Secure, which breaks admin login over plain HTTP. Set NODE_ENV=production behind HTTPS.

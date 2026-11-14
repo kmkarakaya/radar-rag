@@ -20,6 +20,7 @@ import { checkChatProvider } from "./chat.js";
 import {
   capabilitySummary,
   describeChatReadiness,
+  describeEmbeddingReadiness,
   QUERY_DISABLED_SUMMARY,
   recommendedActionFor,
   unique,
@@ -29,13 +30,9 @@ import {
 import {
   answerQuestion,
   checkChromaHealth,
-  checkEmbeddingHealth,
-  checkOllamaHealth,
-  getOllamaModelDiscovery,
   retrieveSources,
-  type EmbeddingHealthDetails,
-  type OllamaHealthDetails,
 } from "./rag.js";
+import { checkEmbeddingTarget, defaultEmbeddingTarget, listEmbeddingModels } from "./embeddings/index.js";
 import type { IndexJobRunner } from "./indexing/jobRunner.js";
 
 export type AppDependencies = {
@@ -52,9 +49,10 @@ export type AppDependencies = {
   };
   healthChecks?: {
     checkChromaHealth?: typeof checkChromaHealth;
-    checkOllamaHealth?: typeof checkOllamaHealth;
-    checkOllamaModelDiscovery?: typeof getOllamaModelDiscovery;
-    checkEmbeddingHealth?: typeof checkEmbeddingHealth;
+    /** Cheap embedding availability check (builtin: catalog + cache; openai-compatible: free GET /models). */
+    checkEmbeddingTarget?: typeof checkEmbeddingTarget;
+    /** Model suggestions for GET /v1/admin/models. */
+    listEmbeddingModels?: typeof listEmbeddingModels;
     /** Free GET /models check of the optional chat LLM (never a generation). */
     checkChatProvider?: typeof checkChatProvider;
     checkIndexingSourceHealth?: typeof checkIndexingSourceHealth;
@@ -351,13 +349,13 @@ function configureApp(app: Express): void {
 async function getReadinessPayload(registry?: CollectionRegistry) {
   const healthChecks = deps.healthChecks;
   const observedAt = new Date().toISOString();
-  const [chroma, ollama, dataSource, registryHealth] = await Promise.all([
+  const defaultEmbedding = defaultEmbeddingTarget(runtimeConfig);
+  const [chroma, embeddingStatus, dataSource, registryHealth] = await Promise.all([
     (healthChecks?.checkChromaHealth ?? checkChromaHealth)(runtimeConfig),
-    (healthChecks?.checkOllamaHealth ?? checkOllamaHealth)(runtimeConfig),
+    (healthChecks?.checkEmbeddingTarget ?? checkEmbeddingTarget)(runtimeConfig, defaultEmbedding),
     (healthChecks?.checkIndexingSourceHealth ?? checkIndexingSourceHealth)(runtimeConfig),
     checkRegistryHealth(registry),
   ]);
-  const ollamaDetails = (ollama.details ?? {}) as Partial<OllamaHealthDetails>;
   const dataSourceDetails = (dataSource.details ?? {}) as Partial<IndexingSourceHealthDetails>;
   const chromaReachable = chroma.ok;
   const operationsAggregate = registry
@@ -366,12 +364,8 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
   const operations = buildReadyOperationsSummary(operationsAggregate, runtimeConfig);
   const operationalAlerts = buildOperationalAlerts(operations);
 
-  const embedding = ollama.ok && ollamaDetails.embeddingModelAvailable
-    ? await (healthChecks?.checkEmbeddingHealth ?? checkEmbeddingHealth)(runtimeConfig)
-    : null;
   const chatEnabled = runtimeConfig.chat.enabled;
   const chatProvider = await (healthChecks?.checkChatProvider ?? checkChatProvider)(runtimeConfig);
-  const embeddingDetails = (embedding?.details ?? {}) as Partial<EmbeddingHealthDetails>;
   const checks: ReadinessCheck[] = [];
 
   checks.push({
@@ -405,68 +399,13 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
     }
   });
 
+  // The configured default embedding (used by new collections). Existing collections are checked
+  // individually by GET /v1/rag/collections/:id/ready with their own provider/model.
   checks.push({
-    code: ollama.ok ? "OLLAMA_REACHABLE" : "OLLAMA_UNREACHABLE",
-    name: "Ollama reachability",
-    status: ollama.ok ? "pass" : "fail",
-    blocking: true,
+    name: "Embedding (default for new collections)",
     capabilities: ["retrieve", "query", "index"],
-    message: ollama.ok
-      ? `Ollama is reachable at ${runtimeConfig.ollamaBaseUrl}.`
-      : `Ollama is not reachable at ${runtimeConfig.ollamaBaseUrl}. ${ollama.error ?? ""}`.trim(),
-    details: {
-      url: runtimeConfig.ollamaBaseUrl,
-      latencyMs: ollama.latencyMs,
-      error: ollama.error,
-    },
+    ...describeEmbeddingReadiness(embeddingStatus),
   });
-
-  if (ollama.ok) {
-    checks.push({
-      code: ollamaDetails.embeddingModelAvailable ? "EMBED_MODEL_AVAILABLE" : "EMBED_MODEL_MISSING",
-      name: "Embedding model availability",
-      status: ollamaDetails.embeddingModelAvailable ? "pass" : "fail",
-      blocking: true,
-      capabilities: ["retrieve", "query", "index"],
-      message: ollamaDetails.embeddingModelAvailable
-        ? `Embedding model ${runtimeConfig.ollamaEmbeddingModel} is available in Ollama.`
-        : `Embedding model ${runtimeConfig.ollamaEmbeddingModel} is missing in Ollama, so retrieval and indexing embeddings cannot run.`,
-      details: {
-        model: runtimeConfig.ollamaEmbeddingModel,
-        availableModels: ollamaDetails.availableModels,
-      },
-    });
-  }
-
-  if (!ollama.ok || !ollamaDetails.embeddingModelAvailable) {
-    checks.push({
-      code: "EMBED_SMOKE_SKIPPED",
-      name: "Embedding smoke test",
-      status: "skip",
-      blocking: true,
-      capabilities: ["retrieve", "query", "index"],
-      message: "Embedding smoke test was skipped because Ollama or the embedding model is not ready.",
-      details: {
-        probeText: runtimeConfig.readyEmbedProbeText,
-      },
-    });
-  } else {
-    checks.push({
-      code: embedding?.ok ? "EMBED_SMOKE_PASSED" : "EMBED_SMOKE_FAILED",
-      name: "Embedding smoke test",
-      status: embedding?.ok ? "pass" : "fail",
-      blocking: true,
-      capabilities: ["retrieve", "query", "index"],
-      message: embedding?.ok
-        ? `Embedding smoke test succeeded with a vector length of ${embeddingDetails.vectorLength}.`
-        : `Embedding smoke test failed. ${embedding?.error ?? ""}`.trim(),
-      details: {
-        probeText: embeddingDetails.probeText ?? runtimeConfig.readyEmbedProbeText,
-        vectorLength: embeddingDetails.vectorLength,
-        finiteValues: embeddingDetails.finiteValues,
-      },
-    });
-  }
 
   checks.push({ name: "Chat LLM", capabilities: ["query"], ...describeChatReadiness(chatProvider, runtimeConfig) });
 
@@ -583,7 +522,8 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
       ),
       port: runtimeConfig.port,
       chatModel: chatEnabled ? runtimeConfig.chat.model : null,
-      embeddingModel: runtimeConfig.ollamaEmbeddingModel,
+      embeddingProvider: runtimeConfig.embedding.provider,
+      embeddingModel: runtimeConfig.embedding.model,
       chromaUrl: runtimeConfig.chromaUrl,
       chromaLatencyMs: chroma.latencyMs,
       capabilities: {
@@ -614,22 +554,8 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
           latencyMs: registryHealth.latencyMs,
           error: registryHealth.error,
         },
-        ollama: {
-          url: runtimeConfig.ollamaBaseUrl,
-          embeddingModel: runtimeConfig.ollamaEmbeddingModel,
-          ...ollama,
-        },
-        embeddings: embedding
-          ? {
-              model: runtimeConfig.ollamaEmbeddingModel,
-              ...embedding,
-            }
-          : {
-              model: runtimeConfig.ollamaEmbeddingModel,
-              ok: false,
-              latencyMs: 0,
-              skipped: true,
-            },
+        // Default embedding for new collections; never includes the API key.
+        embedding: embeddingStatus,
         // Never includes the API key.
         chat: chatProvider,
       },
@@ -678,12 +604,13 @@ function summarizeReadinessPayload(payload: ReadinessPayload) {
     dependencies: {
       registry: { ok: payload.dependencies.registry.ok },
       chroma: { ok: payload.dependencies.chroma.ok },
-      ollama: { ok: payload.dependencies.ollama.ok },
+      embedding: { ok: payload.dependencies.embedding.ok },
       chat: { ok: payload.dependencies.chat.ok, configured: payload.dependencies.chat.configured },
     },
     config: {
       port: payload.port,
       chatModel: payload.chatModel,
+      embeddingProvider: payload.embeddingProvider,
       embeddingModel: payload.embeddingModel,
       chromaUrl: payload.chromaUrl,
     },

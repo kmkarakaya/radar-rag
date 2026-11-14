@@ -39,6 +39,7 @@ const EDIT_FIELD_IDS = {
     chunkOverlap: "editChunkOverlap",
     retrievalK: "editRetrievalK",
     retrievalDistanceThreshold: "editRetrievalDistanceThreshold",
+    embeddingProvider: "editEmbeddingProvider",
     embeddingModel: "editEmbeddingModel",
 };
 
@@ -57,14 +58,8 @@ let state = {
     selectedReadiness: null,
     selectedPhysicalCollections: null,
     selectedPhysicalCollectionsError: null,
-    modelDiscovery: {
-        reachable: false,
-        models: [],
-        embeddingModels: [],
-        defaults: {
-            embeddingModel: "",
-        },
-    },
+    // GET /v1/admin/models: embedding model suggestions per provider.
+    modelDiscovery: emptyModelDiscovery(),
     configDefaults: {
         loaded: false,
         collectionDefaults: null,
@@ -225,6 +220,7 @@ const elements = {
     editRetrievalK: document.getElementById("editRetrievalK"),
     editRetrievalDistanceThreshold: document.getElementById("editRetrievalDistanceThreshold"),
     editEmbeddingModel: document.getElementById("editEmbeddingModel"),
+    editEmbeddingProvider: document.getElementById("editEmbeddingProvider"),
     chatLlmStatus: document.getElementById("chatLlmStatus"),
     modelDiscoveryPanel: document.getElementById("modelDiscoveryPanel"),
     modelDiscoverySummary: document.getElementById("modelDiscoverySummary"),
@@ -572,12 +568,28 @@ function normalizeModelList(models) {
     )];
 }
 
-// Only the embedding model is chosen per collection; the chat LLM is global (see renderChatLlmStatus).
+function emptyModelDiscovery() {
+    return {
+        loaded: false,
+        defaultProvider: "",
+        defaultModel: "",
+        builtinModels: [],
+        external: { configured: false, baseUrl: "", reachable: false, models: [], error: "" },
+    };
+}
+
+/** The provider the editor is about to use: the selected one, else the backend default. */
+function selectedEmbeddingProvider() {
+    return elements.editEmbeddingProvider?.value || state.modelDiscovery.defaultProvider || "builtin";
+}
+
+// Embedding provider and model are chosen per collection; the chat LLM is global (see renderChatLlmStatus).
 function getModelDiscoveryFieldConfig(_kind) {
+    const provider = selectedEmbeddingProvider();
     return {
         input: elements.editEmbeddingModel,
         select: elements.embeddingModelSelect,
-        models: state.modelDiscovery.embeddingModels,
+        models: provider === "builtin" ? state.modelDiscovery.builtinModels : state.modelDiscovery.external.models,
     };
 }
 
@@ -615,19 +627,33 @@ function setModelFromSelect(kind) {
 function syncModelDiscoveryPanel() {
     if (!elements.modelDiscoveryPanel) return;
 
+    const discovery = state.modelDiscovery;
+    const provider = selectedEmbeddingProvider();
+    const external = discovery.external;
+    const online = provider === "builtin" ? discovery.loaded : external.configured && external.reachable;
+
     if (elements.modelDiscoveryStatus) {
-        elements.modelDiscoveryStatus.textContent = state.modelDiscovery.reachable ? "Online" : "Offline";
-        elements.modelDiscoveryStatus.className = state.modelDiscovery.reachable
+        elements.modelDiscoveryStatus.textContent = online ? "Available" : provider === "builtin" ? "Loading" : external.configured ? "Offline" : "Not configured";
+        elements.modelDiscoveryStatus.className = online
             ? "rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-700"
             : "rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-700";
     }
 
     if (elements.modelDiscoverySummary) {
-        const allCount = normalizeModelList(state.modelDiscovery.models).length;
-        const embeddingCount = normalizeModelList(state.modelDiscovery.embeddingModels).length;
-        elements.modelDiscoverySummary.textContent = state.modelDiscovery.reachable
-            ? `GET /v1/admin/models returned ${allCount} Ollama models, ${embeddingCount} embeddingModels. Default embedding model: ${state.modelDiscovery.defaults.embeddingModel || "-"}.`
-            : `GET /v1/admin/models unavailable. Default embedding model: ${state.modelDiscovery.defaults.embeddingModel || "-"}.`;
+        const defaultText = discovery.defaultProvider
+            ? `Default for new collections: ${discovery.defaultProvider} / ${discovery.defaultModel}.`
+            : "";
+        let providerText;
+        if (provider === "builtin") {
+            providerText = `builtin: ${discovery.builtinModels.length} built-in model(s), run inside the backend and downloaded on first use.`;
+        } else if (!external.configured) {
+            providerText = "openai-compatible: no embedding service configured (set embedding.baseUrl with npm run onboard or RAG_EMBEDDING_BASE_URL).";
+        } else if (!external.reachable) {
+            providerText = `openai-compatible: ${external.baseUrl} is not reachable${external.error ? ` (${external.error})` : ""}.`;
+        } else {
+            providerText = `openai-compatible: ${external.models.length} model(s) at ${external.baseUrl}.`;
+        }
+        elements.modelDiscoverySummary.textContent = `${providerText} ${defaultText}`.trim();
     }
 
     syncModelSelect("embedding");
@@ -664,7 +690,7 @@ function syncConfigDefaultsPanel() {
     elements.configDefaultsPanel.classList.toggle("hidden", !isCreateMode);
 
     const clearHelpers = () => {
-        ["sourcePath", "distanceMetric", "chunkSize", "chunkOverlap", "retrievalK", "retrievalDistanceThreshold", "embeddingModel"].forEach((field) => {
+        ["sourcePath", "distanceMetric", "chunkSize", "chunkOverlap", "retrievalK", "retrievalDistanceThreshold", "embeddingProvider", "embeddingModel"].forEach((field) => {
             setCreateFieldDefault(field, "Backend default unavailable");
         });
         if (elements.editSourcePath) elements.editSourcePath.placeholder = "";
@@ -722,7 +748,7 @@ function syncConfigDefaultsPanel() {
         `Chunk size/overlap: ${formatConfigDefault(collectionDefaults.chunkSize)}/${formatConfigDefault(collectionDefaults.chunkOverlap)}`,
         `Retrieval K: ${formatConfigDefault(collectionDefaults.retrievalK)}`,
         `Threshold: ${formatConfigDefault(collectionDefaults.retrievalDistanceThreshold)}`,
-        `Embedding model: ${formatConfigDefault(modelDefaults.embeddingModel)}`,
+        `Embedding: ${formatConfigDefault(modelDefaults.embeddingProvider)} / ${formatConfigDefault(modelDefaults.embeddingModel)}`,
         `Chat LLM: ${describeChatLlm(state.configDefaults.chat)}`,
     ];
 
@@ -740,6 +766,7 @@ function syncConfigDefaultsPanel() {
     setCreateFieldDefault("chunkOverlap", `Backend default: ${formatConfigDefault(collectionDefaults.chunkOverlap)}`);
     setCreateFieldDefault("retrievalK", `Backend default: ${formatConfigDefault(collectionDefaults.retrievalK)}`);
     setCreateFieldDefault("retrievalDistanceThreshold", `Backend default: ${formatConfigDefault(collectionDefaults.retrievalDistanceThreshold)}`);
+    setCreateFieldDefault("embeddingProvider", `Backend default: ${formatConfigDefault(modelDefaults.embeddingProvider)}`);
     setCreateFieldDefault("embeddingModel", `Backend default: ${formatConfigDefault(modelDefaults.embeddingModel)}`);
 
     if (elements.editSourcePath) elements.editSourcePath.placeholder = formatConfigDefault(collectionDefaults.sourcePath);
@@ -769,6 +796,7 @@ async function loadConfigDefaults() {
                 retrievalDistanceThreshold: Number.isFinite(data?.collectionDefaults?.retrievalDistanceThreshold) ? data.collectionDefaults.retrievalDistanceThreshold : "",
             },
             modelDefaults: {
+                embeddingProvider: typeof data?.modelDefaults?.embeddingProvider === "string" ? data.modelDefaults.embeddingProvider : "",
                 embeddingModel: typeof data?.modelDefaults?.embeddingModel === "string" ? data.modelDefaults.embeddingModel : "",
             },
             chat: {
@@ -799,26 +827,23 @@ async function loadModelDiscovery() {
     try {
         const data = await apiRequest(`${API.admin}/models`);
         if (token !== loadTokens.modelDiscovery) return;
-        const models = normalizeModelList(data?.models);
-        const embeddingModels = normalizeModelList(Array.isArray(data?.embeddingModels) ? data.embeddingModels : models);
+        const external = data?.providers?.["openai-compatible"] || {};
         state.modelDiscovery = {
-            reachable: data?.reachable === true,
-            models,
-            embeddingModels,
-            defaults: {
-                embeddingModel: typeof data?.defaults?.embeddingModel === "string" ? data.defaults.embeddingModel : "",
+            loaded: true,
+            defaultProvider: typeof data?.default?.provider === "string" ? data.default.provider : "",
+            defaultModel: typeof data?.default?.model === "string" ? data.default.model : "",
+            builtinModels: normalizeModelList(data?.providers?.builtin?.models),
+            external: {
+                configured: external.configured === true,
+                baseUrl: typeof external.baseUrl === "string" ? external.baseUrl : "",
+                reachable: external.reachable === true,
+                models: normalizeModelList(external.models),
+                error: typeof external.error === "string" ? external.error : "",
             },
         };
     } catch (_error) {
         if (token !== loadTokens.modelDiscovery) return;
-        state.modelDiscovery = {
-            reachable: false,
-            models: [],
-            embeddingModels: [],
-            defaults: {
-                embeddingModel: "",
-            },
-        };
+        state.modelDiscovery = emptyModelDiscovery();
     }
 
     if (token === loadTokens.modelDiscovery) syncModelDiscoveryPanel();
@@ -1529,6 +1554,7 @@ const VALIDATION_FIELD_LABELS = {
     chunkOverlap: "Chunk overlap",
     retrievalK: "Retrieval k",
     retrievalDistanceThreshold: "Retrieval distance threshold",
+    embeddingProvider: "Embedding provider",
     embeddingModel: "Embedding model",
 };
 
@@ -1538,7 +1564,7 @@ function formatValidationFieldLabel(field) {
 
 const VALIDATION_DEPENDENCY_BLOCKERS = new Set([
     "CHROMA_UNREACHABLE",
-    "OLLAMA_UNREACHABLE",
+    "EMBEDDING_PROVIDER_UNREACHABLE",
     "COLLECTION_ACTIVE_PHYSICAL_UNREADABLE",
 ]);
 
@@ -1643,7 +1669,7 @@ function renderCollectionIndexStateBanner() {
         title = "Backend dependency down";
         badgeLabel = "DEPENDENCY DOWN";
         badgeTone = "fail";
-        summary = "Chroma or Ollama is unavailable. Re-index and playground actions should wait until the dependency is healthy.";
+        summary = "Chroma or the embedding service is unavailable. Re-index and playground actions should wait until the dependency is healthy.";
     } else if (isIndexing) {
         title = "Indexing in progress";
         badgeLabel = "INDEXING";
@@ -1690,7 +1716,10 @@ function renderCollectionIndexStateBanner() {
     snapshotGrid.appendChild(createMetaItem("Saved source path", indexState?.desiredSnapshot?.sourcePath ?? collection.sourcePath));
     snapshotGrid.appendChild(createMetaItem("Saved chunk size", indexState?.desiredSnapshot?.chunkSize ?? collection.chunkSize));
     snapshotGrid.appendChild(createMetaItem("Saved chunk overlap", indexState?.desiredSnapshot?.chunkOverlap ?? collection.chunkOverlap));
-    snapshotGrid.appendChild(createMetaItem("Saved embedding model", indexState?.desiredSnapshot?.embeddingModel ?? collection.embeddingModel));
+    snapshotGrid.appendChild(createMetaItem(
+        "Saved embedding",
+        `${indexState?.desiredSnapshot?.embeddingProvider ?? collection.embeddingProvider ?? "-"} / ${indexState?.desiredSnapshot?.embeddingModel ?? collection.embeddingModel}`,
+    ));
     snapshotGrid.appendChild(createMetaItem("Saved distance metric", indexState?.desiredSnapshot?.distanceMetric ?? collection.distanceMetric));
 
     detail.appendChild(snapshotGrid);
@@ -1702,7 +1731,7 @@ function renderCollectionIndexStateBanner() {
         activeGrid.appendChild(createMetaItem("Active source path", indexState.activeSnapshot.sourcePath));
         activeGrid.appendChild(createMetaItem("Active chunk size", indexState.activeSnapshot.chunkSize));
         activeGrid.appendChild(createMetaItem("Active chunk overlap", indexState.activeSnapshot.chunkOverlap));
-        activeGrid.appendChild(createMetaItem("Active embedding model", indexState.activeSnapshot.embeddingModel));
+        activeGrid.appendChild(createMetaItem("Active embedding", `${indexState.activeSnapshot.embeddingProvider} / ${indexState.activeSnapshot.embeddingModel}`));
         activeGrid.appendChild(createMetaItem("Active distance metric", indexState.activeSnapshot.distanceMetric));
         activeSection.appendChild(activeGrid);
         detail.appendChild(activeSection);
@@ -1791,7 +1820,7 @@ function renderCollectionValidation(validation, title) {
     if (dependencyDown) {
         const banner = createEl("div", "mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800");
         banner.appendChild(createEl("div", "font-semibold", "Backend dependency down"));
-        banner.appendChild(createEl("div", "mt-1 break-all-words", "Chroma or Ollama is not reachable. Validation can still report local issues, but backend-dependent actions should wait until the dependency is healthy."));
+        banner.appendChild(createEl("div", "mt-1 break-all-words", "Chroma or the embedding service is not reachable. Validation can still report local issues, but backend-dependent actions should wait until the dependency is healthy."));
         elements.collectionValidationContent.appendChild(banner);
     }
     if (recommendedActions.length > 0) {
@@ -2621,7 +2650,11 @@ function renderReadinessData(readiness) {
         createReadinessRow("Active version", readiness.activeVersion || "-"),
         createReadinessRow("Chroma readable", readiness.chromaReadable, Boolean(readiness.chromaReadable)),
         createReadinessRow("Chroma count", formatCount(readiness.chromaCount)),
-        createReadinessRow(`Embedding model: ${availability.embeddingModel || "-"}`, availability.embeddingModelAvailable, Boolean(availability.embeddingModelAvailable)),
+        createReadinessRow(
+            `Embedding: ${availability.embeddingProvider || "-"} / ${availability.embeddingModel || "-"}`,
+            availability.embeddingModelAvailable,
+            Boolean(availability.embeddingModelAvailable),
+        ),
         // The chat LLM is global and optional; "not configured" is a valid retrieve-only setup, not a failure.
         availability.chatModel
             ? createReadinessRow(`Chat LLM: ${availability.chatModel}`, availability.chatModelAvailable, Boolean(availability.chatModelAvailable))
@@ -2728,6 +2761,7 @@ function setupEditorTab(collection) {
     elements.editChunkOverlap.value = collection.chunkOverlap ?? "";
     elements.editRetrievalK.value = collection.retrievalK ?? "";
     elements.editRetrievalDistanceThreshold.value = collection.retrievalDistanceThreshold ?? "";
+    if (elements.editEmbeddingProvider) elements.editEmbeddingProvider.value = collection.embeddingProvider || "";
     elements.editEmbeddingModel.value = fieldValueFromCollection(collection, "embeddingModel");
     state.editorInitialSnapshot = readEditorValues();
     syncModelDiscoveryPanel();
@@ -2763,6 +2797,7 @@ function readEditorValues() {
         chunkOverlap: readOptionalInteger(EDIT_FIELD_IDS.chunkOverlap),
         retrievalK: readOptionalInteger(EDIT_FIELD_IDS.retrievalK),
         retrievalDistanceThreshold: readOptionalNumber(EDIT_FIELD_IDS.retrievalDistanceThreshold),
+        embeddingProvider: readTrimmed(EDIT_FIELD_IDS.embeddingProvider),
         embeddingModel: readTrimmed(EDIT_FIELD_IDS.embeddingModel),
     };
 }
@@ -2812,6 +2847,7 @@ function buildCollectionPayload(mode) {
         addIfNumber(payload, "chunkOverlap", values.chunkOverlap);
         addIfNumber(payload, "retrievalK", values.retrievalK);
         addIfNumber(payload, "retrievalDistanceThreshold", values.retrievalDistanceThreshold);
+        addIfText(payload, "embeddingProvider", values.embeddingProvider);
         addIfText(payload, "embeddingModel", values.embeddingModel);
         return payload;
     }
@@ -2824,7 +2860,7 @@ function buildCollectionPayload(mode) {
         else if (initial.description) payload.description = null;
     }
 
-    ["sourcePath", "embeddingModel"].forEach((key) => {
+    ["sourcePath", "embeddingProvider", "embeddingModel"].forEach((key) => {
         if (values[key] && values[key] !== initial[key]) payload[key] = values[key];
     });
 
@@ -3011,7 +3047,7 @@ function renderRetrieveResult(data) {
     meta.appendChild(createMetaItem("K", data?.k));
     meta.appendChild(createMetaItem("Source count", data?.sourceCount ?? data?.sources?.length ?? 0));
     meta.appendChild(createMetaItem("Threshold", formatMetric(data?.distanceScoreThreshold)));
-    meta.appendChild(createMetaItem("Embedding model", data?.embeddingModel || "-"));
+    meta.appendChild(createMetaItem("Embedding", `${data?.embeddingProvider || "-"} / ${data?.embeddingModel || "-"}`));
     meta.appendChild(createMetaItem("Collection", data?.collectionDisplayName || data?.collectionId || state.selectedCollection?.displayName));
     meta.appendChild(createMetaItem("Active version", data?.activeVersion));
     container.appendChild(meta);
@@ -3028,7 +3064,7 @@ function renderQueryResult(data) {
     container.appendChild(answer);
     const meta = createEl("div", "grid grid-cols-1 gap-3 sm:grid-cols-2");
     meta.appendChild(createMetaItem("Threshold", formatMetric(data?.distanceScoreThreshold)));
-    meta.appendChild(createMetaItem("Embedding model", data?.embeddingModel || "-"));
+    meta.appendChild(createMetaItem("Embedding", `${data?.embeddingProvider || "-"} / ${data?.embeddingModel || "-"}`));
     meta.appendChild(createMetaItem("Chat model", data?.chatModel || "-"));
     meta.appendChild(createMetaItem("Collection", data?.collectionDisplayName || data?.collectionId || state.selectedCollection?.displayName));
     meta.appendChild(createMetaItem("Active version", data?.activeVersion));
@@ -3052,6 +3088,10 @@ function friendlyRagMessage(code) {
         CHAT_NOT_CONFIGURED: "Answer generation is disabled because no chat LLM is configured. Use Retrieve, or set one with npm run onboard (or RAG_CHAT_BASE_URL / RAG_CHAT_MODEL).",
         CHAT_PROVIDER_UNREACHABLE: "The chat LLM could not be reached. Check that it is running and that chat.baseUrl is correct.",
         CHAT_PROVIDER_ERROR: "The chat LLM returned an error (for example a wrong API key or an unknown model). See the details below.",
+        EMBEDDING_PROVIDER_NOT_CONFIGURED: "This collection uses the openai-compatible embedding service, but none is configured (embedding.baseUrl).",
+        EMBEDDING_PROVIDER_UNREACHABLE: "The embedding service (or the built-in model download) is not reachable right now.",
+        EMBEDDING_PROVIDER_ERROR: "The embedding service returned an error (for example a wrong API key or an unknown model).",
+        EMBEDDING_DIMENSION_MISMATCH: "The collection was indexed with a different embedding model. Re-index the collection.",
     };
     return messages[code] || null;
 }
@@ -3222,6 +3262,7 @@ function buildJobRecord(job, collection, existing = {}) {
         status: job.status ?? existing.status ?? "queued",
         targetPhysicalCollection: job.targetPhysicalCollection ?? existing.targetPhysicalCollection ?? null,
         targetVersion: job.targetVersion ?? existing.targetVersion ?? null,
+        targetEmbeddingProvider: job.targetEmbeddingProvider ?? existing.targetEmbeddingProvider ?? null,
         targetEmbeddingModel: job.targetEmbeddingModel ?? existing.targetEmbeddingModel ?? null,
         startedAt: job.startedAt ?? existing.startedAt ?? null,
         finishedAt: job.finishedAt ?? existing.finishedAt ?? null,
@@ -3676,7 +3717,7 @@ function renderJobs() {
         const target = createEl("div", "space-y-1 break-all-words text-slate-600");
         target.appendChild(createEl("div", "", `Version: ${job.targetVersion || "-"}`));
         target.appendChild(createEl("div", "", `Physical: ${job.targetPhysicalCollection || "-"}`));
-        target.appendChild(createEl("div", "", `Embedding: ${job.targetEmbeddingModel || "-"}`));
+        target.appendChild(createEl("div", "", `Embedding: ${job.targetEmbeddingProvider || "-"} / ${job.targetEmbeddingModel || "-"}`));
         appendCell(row, "", target);
 
         const counts = createEl("div", "space-y-1 text-slate-600");
@@ -3993,7 +4034,7 @@ function renderHealthSummary(health, ready, details, options = {}) {
     depsCard.appendChild(createEl("h3", "mb-3 text-sm font-bold uppercase text-slate-500", "Dependencies"));
     const deps = details?.dependencies || ready?.dependencies || {};
     const depList = createEl("div", "space-y-2");
-    ["registry", "chroma", "ollama", "chat"].forEach((key) => {
+    ["registry", "chroma", "embedding", "chat"].forEach((key) => {
         const row = createEl("div", "flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 p-2 text-xs");
         row.appendChild(createEl("span", "font-semibold capitalize text-slate-600", key === "chat" ? "chat LLM" : key));
         // An unconfigured chat LLM is a valid retrieve-only setup, not a failure.
@@ -4103,7 +4144,10 @@ function renderReadinessDetail(ready, details, detailsError, options = {}) {
     config.appendChild(createEl("h4", "mb-3 text-sm font-bold uppercase text-slate-500", "Configuration"));
     const configGrid = createEl("div", "grid grid-cols-1 gap-3 sm:grid-cols-2");
     configGrid.appendChild(createMetaItem("Chat LLM", details?.chatModel ?? ready?.config?.chatModel ?? "not configured (retrieve-only)"));
-    configGrid.appendChild(createMetaItem("Embedding model", details?.embeddingModel ?? ready?.config?.embeddingModel ?? "-"));
+    configGrid.appendChild(createMetaItem(
+        "Embedding (new collections)",
+        `${details?.embeddingProvider ?? ready?.config?.embeddingProvider ?? "-"} / ${details?.embeddingModel ?? ready?.config?.embeddingModel ?? "-"}`,
+    ));
     configGrid.appendChild(createMetaItem("Chroma URL", details?.chromaUrl ?? ready?.config?.chromaUrl ?? "-"));
     configGrid.appendChild(createMetaItem("Port", details?.port ?? ready?.config?.port ?? "-"));
     config.appendChild(configGrid);
@@ -4291,6 +4335,9 @@ function bindEvents() {
     }
     if (elements.editEmbeddingModel) {
         elements.editEmbeddingModel.addEventListener("input", () => syncModelDiscoveryPanel());
+    }
+    if (elements.editEmbeddingProvider) {
+        elements.editEmbeddingProvider.addEventListener("change", () => syncModelDiscoveryPanel());
     }
     elements.btnCreateCollection.addEventListener("click", () => openInspector(null));
     elements.btnCloseInspector.addEventListener("click", closeInspector);

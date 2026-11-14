@@ -28,3 +28,6 @@ coverage/
 
 # graphify knowledge graph (regenerate locally: graphify update .)
 graphify-out/
+
+# Built-in embedding models (downloaded on first use)
+models/

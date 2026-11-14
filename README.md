@@ -76,18 +76,27 @@ cd vanilla_rag_backend
 docker compose up -d
 ```
 
-- The first start pulls the Chroma image and builds the backend. The built-in embedding model (~350 MB) is downloaded on the first indexing into `./models` and kept there; later starts take seconds.
+- The first start pulls the Chroma image and builds the backend. The built-in embedding model (~350 MB) is downloaded on the first indexing into `./models` and kept there; later starts take seconds. That first re-index can take several minutes while the model downloads (the job looks idle meanwhile); later re-indexes do not download again.
 - The stack starts retrieve-only: retrieval and indexing work, answer generation is off. To get answers, add a chat LLM to `.env` (see [Answer generation (optional)](#answer-generation-optional)), for example an Ollama on your computer with `RAG_CHAT_BASE_URL=http://host.docker.internal:11434/v1` and `RAG_CHAT_MODEL=gemma3:4b`, then run `docker compose up -d` again.
 - Put your documents in a folder under `./data` (for example `./data/my-docs`). The repo ships two sample folders, `data/dataset1` and `data/dataset2`.
 - Open `http://localhost:3010/admin` and follow [First collection and first question](#first-collection-and-first-question), using a source path such as `data/my-docs`.
 - Another embedding provider (for example an Ollama on your computer or a cloud API): set the `RAG_EMBEDDING_*` variables in `.env` (see [Embedding](#embedding)), then `docker compose up -d` again. This changes the default for new collections only.
 - Port already in use? Set `BACKEND_HOST_PORT` (default `3010`) and/or `CHROMA_HOST_PORT` (default `8000`) in `.env`. The backend still prints `localhost:3010` links at startup (its port inside the container); open the host port you chose instead.
 - Stop with `docker compose down`. Your documents, the registry (`data/registry.sqlite`), the vectors (`chroma_data/`) and the downloaded built-in models (`models/`) are kept.
-- Admin auth is off by default. To turn it on in Docker, set `adminAuth` in [config/rag.config.yaml](config/rag.config.yaml) (see [Güvenli admin quickstart](#güvenli-admin-quickstart)) and put `RAG_ADMIN_SESSION_SECRET=...` in `.env`. Behind HTTPS, also set `NODE_ENV=production` so the session cookie is marked Secure.
+- Settings: [config/rag.config.yaml](config/rag.config.yaml) is mounted into the backend container. After editing it, run `docker compose restart backend` (no rebuild needed). `chroma.url` is always overridden for the container; for the embedding and chat services, prefer the `RAG_*` variables in `.env`, and remember that inside the container `localhost` is the container itself (use `host.docker.internal` for services on your computer).
+- Admin auth is off by default. To turn it on in Docker:
+  1. Generate a password hash: `docker compose exec backend node dist/admin/passwordHash.js` (it asks for the password, so it does not end up in your shell history).
+  2. In [config/rag.config.yaml](config/rag.config.yaml) set `adminAuth.enabled: true` and add the user with that hash (see the example in [Güvenli admin quickstart](#güvenli-admin-quickstart)).
+  3. Put `RAG_ADMIN_SESSION_SECRET=<a long random value>` in `.env`, then run `docker compose up -d` (it recreates the backend with the new secret and config).
+  4. Behind HTTPS, also set `NODE_ENV=production` so the session cookie is marked Secure.
 
 Do not run the Docker backend and `npm run dev` at the same time: both use port 3010 and the same `data/registry.sqlite`.
 
 ## Quick start (local development)
+
+Prerequisites: Node.js 20 or newer (22 recommended, the version the Docker image uses), Git, and Docker for Chroma.
+
+The commands below are for Windows PowerShell, where `npm.cmd` avoids the PowerShell script-execution policy for `npm`. On macOS and Linux use `npm` instead (for example `npm install`, `npm run dev`).
 
 ```powershell
 git clone https://github.com/kmkarakaya/vanilla_rag_backend.git
@@ -102,15 +111,15 @@ What each command does:
 
 - `cd vanilla_rag_backend` changes the shell into the project root; run every command from there, because relative paths such as `data/...` resolve against it.
 - `docker compose up -d chroma` starts the Chroma vector database in the background. You need this before indexing or querying collections. Docker Desktop must be running first; see [Troubleshooting](#troubleshooting) if this command fails.
-- `npm.cmd install` installs the Node.js dependencies listed in `package.json`.
-- `npm.cmd run onboard` writes the runtime config ([config/rag.config.yaml](config/rag.config.yaml)) for this machine and checks that Chroma is ready. It asks which embedding provider new collections use (built-in by default, see [Embedding](#embedding)) and for an optional chat LLM for answer generation; leave that empty for retrieve-only (see [Answer generation (optional)](#answer-generation-optional)). It does not create, index, or edit collections.
+- `npm.cmd install` installs the Node.js dependencies listed in `package.json`. On Linux x64, the ONNX runtime used by the built-in embedding model also downloads CUDA GPU libraries (several hundred MB) by default; the built-in model runs on the CPU, so you can skip them with `ONNXRUNTIME_NODE_INSTALL=skip npm install`.
+- `npm.cmd run onboard` writes the runtime config ([config/rag.config.yaml](config/rag.config.yaml)) for this machine and checks that Chroma is ready. It asks which embedding provider new collections use (built-in by default, see [Embedding](#embedding)) and whether to enable a chat LLM for answer generation; answer `n` for retrieve-only (see [Answer generation (optional)](#answer-generation-optional)). It does not create, index, or edit collections.
 - `npm.cmd run dev` starts the backend in watch mode and prints the admin panel, readiness, and test frontend links (Ctrl+click to open them from the terminal).
 
 ### First collection and first question
 
 Onboarding only prepares the config; you create and index collections in the admin panel. With the backend running (`npm.cmd run dev`, or `docker compose up -d`; with Docker, use your `BACKEND_HOST_PORT` if you changed it):
 
-1. Open `http://localhost:3010/ready`. Every check should pass; if not, see [Troubleshooting](#troubleshooting).
+1. Open `http://localhost:3010/ready`. It should report `"ready": true`. On a fresh install with the built-in embedding, the warning `EMBEDDING_MODEL_NOT_DOWNLOADED` is expected: the model downloads on the first re-index. For any blocker, see [Troubleshooting](#troubleshooting).
 2. Open the admin panel at `http://localhost:3010/admin` (if admin auth is enabled you land on the login page first).
 3. In **Collections**, click **New Collection**. Give it a display name and a source path, for example `data/dataset1` (the sample TXT/PDF/DOC files). Leave the other fields empty to use the backend defaults, then click **Save Changes**.
 4. With the collection open (click it in the list if the panel closed), click **Re-index Collection**. Follow the job in **Job Monitor** until it is `succeeded`; if it fails, its error is shown there.
@@ -167,7 +176,7 @@ Onboarding is the local setup step for the runtime config. It asks for each sett
 What `npm run onboard` does:
 
 - asks for the runtime settings (port, registry path, Chroma URL, the embedding provider for new collections, defaults for new collections, limits, rate limiting, debug timings) and writes them to [config/rag.config.yaml](config/rag.config.yaml), keeping the previous version as `config/rag.config.yaml.bak`
-- asks for an optional chat LLM for answer generation (base URL, model, API key); leave it empty for retrieve-only. The API key goes to `.local/rag_chat_api_key.secret`, never into the YAML
+- asks whether to enable a chat LLM for answer generation (answer `n` for retrieve-only) and, if yes, its base URL, model and API key. The API key goes to `.local/rag_chat_api_key.secret`, never into the YAML
 - optionally sets up admin auth: asks for the session secret and the first admin user (username, tenant, password), stores the secret in `.local/rag_admin_session.secret`, and saves only a scrypt hash of the password
 - analyzes the default source folder (`collectionDefaults.sourcePath`), the folder new collections use unless you give them their own path
 - checks that Chroma is reachable and that the embedding works: a built-in model is only reported (it downloads on the first indexing), an external embedding service is checked and runs one test embedding; if a chat LLM is set, checks that it is reachable, accepts the key, offers the model, and answers one test prompt
@@ -275,7 +284,7 @@ If you prefer to configure admin auth by hand instead of using onboarding, keep 
 ## Collection discovery and cleanup notes
 
 - `GET /v1/admin/collections` is a registry-style discovery endpoint and does not return query/retrieve capability flags.
-- Discovery responses include `readyUrl`, `queryUrl`, and `retrieveUrl`; when a collection has no active index yet, `activeVersion` ve `chunkCount` alanlari `null` stay instead of disappearing from the response shape.
+- Discovery responses include `readyUrl`, `queryUrl`, and `retrieveUrl`; when a collection has no active index yet, the `activeVersion` and `chunkCount` fields stay `null` instead of disappearing from the response shape.
 - Physical collection cleanup uses `cleanup.retentionMs` and the retired lifecycle states `delete_pending`, `cleanup_failed`, and `failed_build`.
 - Storage delete handling is idempotent not-found cleanup behavior, and tenant access errors use `COLLECTION_FORBIDDEN`.
 - The application composition layer lives in [src/app.ts](src/app.ts).

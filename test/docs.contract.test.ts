@@ -17,7 +17,7 @@ describe('docs static contract', () => {
     assert.ok(content.includes('cleanup.retentionMs'), 'Should document retention cleanup config');
     assert.ok(content.includes('readyUrl'), 'Should document collection discovery readyUrl');
     assert.ok(content.includes('does not return query/retrieve capability flags'), 'Should document list endpoint capability boundary');
-    assert.ok(content.includes('activeVersion` ve `chunkCount` alanlari `null`'), 'Should document stable null fields for unindexed collection discovery');
+    assert.ok(content.includes('`activeVersion` and `chunkCount` fields stay `null`'), 'Should document stable null fields for unindexed collection discovery');
     assert.ok(content.includes('delete_pending'), 'Should document pending physical cleanup state');
     assert.ok(content.includes('cleanup_failed'), 'Should document retryable cleanup failure state');
     assert.ok(content.includes('failed_build'), 'Should document failed build physical state');

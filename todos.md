@@ -1,30 +1,28 @@
 # Repo Eksikleri ve TODO Listesi
 
-Son guncelleme: 2026-11-09. Oncelikler urun hedefine gore duzenlendi: repo, baskalarinin GitHub'dan indirip kendi verisiyle kullanacagi bir urun.
+Son guncelleme: 2026-11-14. Oncelikler urun hedefine gore duzenlendi: repo, baskalarinin GitHub'dan indirip kendi verisiyle kullanacagi bir urun.
 
 Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigini ve bunlarin hangi oncelikle ele alinmasi gerektigini toplar. Tamamlanan maddeler asagida ayri bir bolumde kisaca listelenir; ayrintilari git gecmisinde ve `docs/` altinda.
 
-## Kaldigimiz yer (2026-11-09, ara verildi)
+## Kaldigimiz yer (2026-11-14)
 
 Durum:
 
-- Embedding saglayicisi isi (P0 #5) `feat/embedding-providers` branch'inde bitti: 5 commit (`e1fb84f`, `3f4a36e`, `107b235`, `1f4e42d` + bu not). **main'e merge edilmedi, push edilmedi.**
-- Plan (`enchanted-imagining-storm.md`) bolum bolum kodla karsilastirildi. Bulunan 5 eksik `1f4e42d`'de kapatildi (builtin vektorlerin acik normalizasyonu, public DTO yasakli alan testi, "global varsayilan sadece yeni koleksiyonlari etkiler" ve "okuma aktif saglayiciyi kullanir" acceptance testleri, `RAG_TEST_BUILTIN=1` ile gercek model integration testi, onboarding kuru calistirma simulasyonu).
-- Plandan bilincli sapmalar (zararsiz): OpenAI uyumlu embedding ayri dosya yerine `src/embeddings/index.ts` icinde; resolved config'te `configured` alani yok; kontrol fonksiyonunun adi `checkEmbeddingTarget`.
-- Dogrulama: `npm run typecheck`, `typecheck:test` temiz; `npm test` 220/220. Yerel uctan uca (builtin: ilk reindex'te model iner, sonra inmez; Ollama `/v1` ile karisik kullanim; 503/422/409 hata yollari; `/query`) ve Docker uctan uca (sadece backend + Chroma, model `./models`'a bir kez iner) basarili.
-- Yerel `config/rag.config.yaml` (+ `.bak`) kisisel ayarlarla degisik ve commit'lenmedi; `ollama` bolumu `embedding`'e cevrildi. Commit'lenmemeli.
+- Embedding saglayicisi isi (P0 #5) tamamlandi ve main'e merge edilip push edildi (2026-11-14). Plan kodla bolum bolum karsilastirildi, bulunan 5 eksik kapatildi; `npm test` 220/220.
+- Onboarding kullanici tarafindan etkilesimli denendi (2026-11-14): openai-compatible + Ollama `/v1` (`bge-m3:latest`) secildi, "sadece YENI koleksiyonlar" notu cikti, Chroma / embedding / chat smoke `ok`; `npm run dev` ile yeni koleksiyonda `/query` calisti.
+- Bu denemede bulunan iki kucuk sey duzeltildi: sunucu acilisindaki "Embedding" / "Chat LLM" satirlari "Models:" basligi altinda girintili; `app.foundation` testleri yerel YAML'daki embedding saglayicisina bagliydi (onboarding dis servise gecince 4 test kiriliyordu), artik builtin'e sabitlendi.
+- Yerel `config/rag.config.yaml` (+ `.bak`) kisisel ayarlarla degisik (embedding varsayilani `openai-compatible` / `bge-m3:latest`, chat `gemma3:4b`); commit'lenmemeli.
 
 Devam edilecekler (sirayla):
 
-1. **Onboarding'i etkilesimli dene** (`npm run onboard`): her yerde Enter -> hicbir sey degismemeli; builtin -> "ilk indekslemede inecek / already downloaded" bilgisi; openai-compatible + Ollama (`http://localhost:11434/v1`) -> kontrol + embedding testi gecmeli ve "sadece YENI koleksiyonlar" notu cikmali.
-2. Sorun yoksa `feat/embedding-providers` -> main **merge + push**.
-3. Dev registry'deki eski (Ollama ile indekslenmis) koleksiyonlar: yeni kolon varsayilani `builtin` oldugu icin Ollama model adlariyla `EMBEDDING_MODEL_UNSUPPORTED` gorunurler. Ya silip yeniden olustur ya da admin panelden saglayiciyi `openai-compatible` yapip reindex et (geriye donuk uyumluluk bilerek yok).
-4. Istege bagli kucuk isler (karar bekliyor):
+1. Dev registry'deki eski (Ollama ile, saglayici alani olmadan indekslenmis) koleksiyonlar varsa: yeni kolon varsayilani `builtin` oldugu icin Ollama model adlariyla `EMBEDDING_MODEL_UNSUPPORTED` gorunurler. Ya silip yeniden olustur ya da admin panelden saglayiciyi `openai-compatible` yapip reindex et (geriye donuk uyumluluk bilerek yok).
+2. Istege bagli kucuk isler (karar bekliyor):
    - **Genel `/ready` fazla karamsar:** varsayilan saglayici dis servisse ve o servis kapaliysa sistem `/ready` "neither" diyor; oysa builtin koleksiyonlar calismaya devam ediyor (koleksiyon `/ready` dogru). Varsayilan saglayici hatasi sadece `index` yetenegini (yeni koleksiyonlar) dusurebilir.
    - **Docker imaji 1.12 GB** (once 578 MB): `onnxruntime-node` butun platformlarin ikili dosyalarini getiriyor (~250 MB Linux disi). Runtime asamasinda Linux disi `bin/` klasorleri silinerek kuculebilir.
    - **builtin, Ollama'dan yavas:** ayni veri setinde reindex builtin 48 sn, Ollama 9 sn (CPU, olcum degil gozlem). README'de "buyuk veri icin dis servis onerilir" notu dusunulebilir.
+   - Testlerin geri kalaninda da yerel YAML'a bagimlilik olabilir (bu sefer sadece `app.foundation` kirildi); `config` yerine sabit bir test config'i kullanmak P1 #6 kapsaminda dusunulsun.
    - Makinede artik kullanilmayan `ollama/ollama:0.40.12` Docker imaji (~5 GB) silinebilir: `docker image rm ollama/ollama:0.40.12`.
-5. Sonra yol haritasindaki siradaki is: **P0 #2 Public API icin API anahtari ve CORS** (bkz. "Sonraki oncelikli uygulama sirasi").
+3. Yol haritasindaki siradaki is: **P0 #2 Public API icin API anahtari ve CORS** (bkz. "Sonraki oncelikli uygulama sirasi").
 
 ## Mevcut durum (ozet)
 

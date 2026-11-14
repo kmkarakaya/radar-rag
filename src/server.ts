@@ -70,13 +70,13 @@ export function formatStartupLinks(runtimeConfig: Pick<ResolvedConfig, "port">):
 export function formatChatStatus(runtimeConfig: Pick<ResolvedConfig, "chat" | "embedding">): string {
   const embedding = runtimeConfig.embedding;
   const embeddingLine = embedding.provider === "builtin"
-    ? `Embedding:     builtin / ${embedding.model} (default for new collections; downloaded on first use)`
-    : `Embedding:     openai-compatible / ${embedding.model} @ ${embedding.baseUrl} (default for new collections)`;
+    ? `  Embedding:     builtin / ${embedding.model} (default for new collections; downloaded on first use)`
+    : `  Embedding:     openai-compatible / ${embedding.model} @ ${embedding.baseUrl} (default for new collections)`;
   const chat = runtimeConfig.chat;
   const chatLine = chat.enabled
-    ? `Chat LLM:      ${chat.model} @ ${chat.baseUrl} (/query enabled)`
-    : "Chat LLM:      not configured (/query disabled, retrieve-only). Enable it with npm run onboard or RAG_CHAT_BASE_URL + RAG_CHAT_MODEL.";
-  return [embeddingLine, chatLine].join("\n");
+    ? `  Chat LLM:      ${chat.model} @ ${chat.baseUrl} (/query enabled)`
+    : "  Chat LLM:      not configured (/query disabled, retrieve-only). Enable it with npm run onboard or RAG_CHAT_BASE_URL + RAG_CHAT_MODEL.";
+  return ["Models:", embeddingLine, chatLine].join("\n");
 }
 
 export async function startServer(input: {

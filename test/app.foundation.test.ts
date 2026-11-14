@@ -6,7 +6,15 @@ import { createApp, type AppDependencies } from "../src/app.js";
 import type { CollectionRegistry, RequestContext } from "../src/collections/types.js";
 import type { ChatProviderStatus } from "../src/chat.js";
 import type { EmbeddingTarget, EmbeddingTargetStatus } from "../src/embeddings/index.js";
-import { config, type ResolvedConfig } from "../src/config.js";
+import { config as loadedConfig, type ResolvedConfig } from "../src/config.js";
+import { DEFAULT_BUILTIN_EMBEDDING_MODEL } from "../src/embeddings/models.js";
+
+// Pin the embedding default to builtin: these tests must not depend on the operator's local YAML
+// (onboarding may have switched it to an external provider).
+const config: ResolvedConfig = {
+  ...loadedConfig,
+  embedding: { ...loadedConfig.embedding, provider: "builtin", model: DEFAULT_BUILTIN_EMBEDDING_MODEL, baseUrl: "" },
+};
 
 type HealthChecks = NonNullable<AppDependencies["healthChecks"]>;
 

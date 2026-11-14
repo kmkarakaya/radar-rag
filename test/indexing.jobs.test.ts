@@ -184,6 +184,7 @@ describe("indexing jobs", () => {
     let currentStatus: "queued" | "running" | "failed" = job.status;
     const fakeRegistry: CollectionRegistry = {
       listVisibleCollections: async () => [],
+      countAllCollections: async () => 0,
       getVisibleCollection: async () => ({
         id: "col-1",
         tenantId: "tenant-x",

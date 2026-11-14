@@ -2,6 +2,14 @@
 
 This documentation set is written for both humans and coding agents that need to build against this backend without reverse-engineering the source code.
 
+New here? Start with the step-by-step guide in the [project README](../README.md). Running and configuring the backend:
+
+- [configuration.md](./configuration.md): every setting with its default, environment variables, onboarding flags.
+- [admin_auth.md](./admin_auth.md): admin auth, roles, sessions and action tokens.
+- [operations.md](./operations.md): readiness, rate limits, debug timings, index lifecycle and cleanup, scripts.
+
+The rest of this folder is the API contract.
+
 ## Reading Order
 
 1. [frontend_agent_handoff.md](./frontend_agent_handoff.md)

@@ -360,6 +360,7 @@ describe("startup maintenance", () => {
         startupMaintenance: async () => {
           throw new Error("startup maintenance boom");
         },
+        startupSampleCollection: async () => undefined,
       });
       server = started.server;
 

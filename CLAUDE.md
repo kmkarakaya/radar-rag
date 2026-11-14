@@ -15,14 +15,14 @@ The server listens on **port 3010** in the shipped config. APIs are strictly ver
 
 ## Run / build / test
 
-All-in-one: `docker compose up -d` (backend + Chroma 1.5.9; the built-in embedding model downloads into `./models` on the first indexing; `./data` is mounted; see [Dockerfile](Dockerfile), which sets `ONNXRUNTIME_NODE_INSTALL=skip` and must stay glibc-based). Local dev prereqs: `docker compose up -d chroma`; nothing else for embeddings (Ollama only if you choose it as an external provider or chat LLM).
+All-in-one: `docker compose up -d` (backend + Chroma 1.5.9). The compose file pulls the prebuilt `ghcr.io/kmkarakaya/vanilla_rag_backend` image (published by [.github/workflows/ci.yml](.github/workflows/ci.yml) on main after the tests pass) and works on its own without a clone; `docker compose up -d --build` builds the working copy. `./data`, `./models` and an optional `./config` folder are mounted; on the very first start a "Sample documents" collection is created from `data/sample` (image: `/app/samples`) and indexed. See [Dockerfile](Dockerfile), which sets `ONNXRUNTIME_NODE_INSTALL=skip`, prunes non-Linux onnxruntime binaries and must stay glibc-based. Local dev prereqs: `docker compose up -d chroma`; nothing else for embeddings (Ollama only if you choose it as an external provider or chat LLM).
 
 - `npm run dev` — start in watch mode (`tsx watch src/server.ts`).
 - `npm run build` — compile TypeScript to `dist/` (`tsc`); `npm start` — run compiled server.
 - `npm test` — unit + acceptance (`node:test` via tsx).
 - `npm run test:integration` — integration tests (needs live Chroma; uses the configured default embedding, so with `builtin` the model downloads on first use). `RAG_TEST_BUILTIN=1` additionally runs the real built-in model test (opt-in, ~350 MB download).
 - `npm run typecheck` / `npm run typecheck:test` — type-check source / tests.
-- CLI: `npm run onboard` (bootstrap runtime config + optional admin auth), `npm run index -- --collection-id <id>` (reindex), `npm run admin:hash-password -- "<password>"` (scrypt hash for config users).
+- CLI: `npm run onboard` (asks only embedding, optional chat LLM and admin auth; `-- --advanced` asks every setting), `npm run index -- --collection-id <id>` (reindex), `npm run admin:hash-password -- "<password>"` (scrypt hash for config users).
 
 ## Architecture map
 
@@ -34,7 +34,7 @@ All-in-one: `docker compose up -d` (backend + Chroma 1.5.9; the built-in embeddi
 
 ## Auth / RBAC / CSRF
 
-Implemented in [src/http/adminAuth.ts](src/http/adminAuth.ts); config under `adminAuth` in the YAML (currently **enabled**).
+Implemented in [src/http/adminAuth.ts](src/http/adminAuth.ts); config under `adminAuth` in the YAML (**disabled** in the shipped config).
 
 - **Auth**: username/password with **scrypt** hashes; login sets an HMAC-signed, HttpOnly, `SameSite=Lax` session cookie (`rag_admin_session`, `Secure` in production). Session secret from `RAG_ADMIN_SESSION_SECRET` env var, else `.local/rag_admin_session.secret`.
 - **RBAC**: roles `viewer` (read) < `operator` (+create/validate/update/reindex/cancel) < `admin` (+delete/bulk). Enforced per-route via `requireCapability`; sessions carry `tenantId`.
@@ -54,12 +54,12 @@ Implemented in [src/http/adminAuth.ts](src/http/adminAuth.ts); config under `adm
 
 ## Config & secrets
 
-- Runtime config: [config/rag.config.yaml](config/rag.config.yaml), zod-validated with defaults resolved in [src/config.ts](src/config.ts). Key defaults: `chunkSize 500`, `chunkOverlap 200` (must be `< chunkSize`), `retrievalK 5`, `retrievalDistanceThreshold 1.2`, `distanceMetric l2`. `chat` is empty (retrieve-only); model parameters (`temperature`, `maxTokens`) are only sent when set by hand, otherwise provider defaults apply.
+- Runtime config: [config/rag.config.yaml](config/rag.config.yaml), zod-validated with defaults resolved in [src/config.ts](src/config.ts). Every setting has a schema default, so the file is optional (missing file = defaults); `sampleCollection.enabled` (default true) controls the first-run sample collection ([src/samples/sampleCollection.ts](src/samples/sampleCollection.ts), runs only when the registry has never had a collection). User-facing config docs: [docs/configuration.md](docs/configuration.md). Key defaults: `chunkSize 500`, `chunkOverlap 200` (must be `< chunkSize`), `retrievalK 5`, `retrievalDistanceThreshold 1.2`, `distanceMetric l2`. `chat` is empty (retrieve-only); model parameters (`temperature`, `maxTokens`) are only sent when set by hand, otherwise provider defaults apply.
 - `RAG_ADMIN_SESSION_SECRET` overrides the local secret file, keeping the runtime portable.
 - Chat API key: `RAG_CHAT_API_KEY`, else `.local/rag_chat_api_key.secret` (written by onboarding via [src/secrets.ts](src/secrets.ts)). Never in the YAML (the YAML and its `.bak` are tracked) and never returned by the API; redacted from errors.
 - Embedding API key (openai-compatible provider): `RAG_EMBEDDING_API_KEY`, else `.local/rag_embedding_api_key.secret`; same rules. Chat and embedding share [src/providers/openaiCompatible.ts](src/providers/openaiCompatible.ts) (free `GET /models` check, error classification, redaction).
 - Gitignored: `.env*`, `.local/`, `data/*.sqlite`, `chroma_data/`, `dist/`, `node_modules/`, `graphify-out/` (local only; rebuild with `graphify update .`).
-- Portability: paths inside the repo are stored relative (`src/paths.ts` `toPortablePath`) in the config (onboarding) and in the registry (collection `sourcePath`, migrated at startup when `projectRoot` is passed). `RAG_PORT`, `RAG_REGISTRY_PATH`, `RAG_CHROMA_URL`, `RAG_EMBEDDING_PROVIDER`, `RAG_EMBEDDING_MODEL`, `RAG_EMBEDDING_BASE_URL`, `RAG_EMBEDDING_CACHE_DIR`, `RAG_CHAT_BASE_URL`, `RAG_CHAT_MODEL`, `RAG_SOURCE_PATH`, `RAG_CONFIG_PATH` override the YAML at runtime (`applyConfigEnvOverrides`).
+- Portability: paths inside the repo are stored relative (`src/paths.ts` `toPortablePath`) in the config (onboarding) and in the registry (collection `sourcePath`, migrated at startup when `projectRoot` is passed). `RAG_PORT`, `RAG_REGISTRY_PATH`, `RAG_CHROMA_URL`, `RAG_EMBEDDING_PROVIDER`, `RAG_EMBEDDING_MODEL`, `RAG_EMBEDDING_BASE_URL`, `RAG_EMBEDDING_CACHE_DIR`, `RAG_CHAT_BASE_URL`, `RAG_CHAT_MODEL`, `RAG_SOURCE_PATH`, `RAG_SAMPLE_COLLECTION`, `RAG_CONFIG_PATH` override the YAML at runtime (`applyConfigEnvOverrides`).
 
 ## Docs & knowledge graph
 

@@ -1,374 +1,230 @@
 # Vanilla RAG Backend
 
-TypeScript Express backend for multi-collection LangChain RAG over documents in `data/`, with optional admin auth, background indexing, a browser-ready public API, and a built-in admin panel for collection management.
+A self-hosted, LLM-agnostic document retrieval service. Point it at a folder of documents (TXT, MD, PDF, DOC, DOCX); it indexes them, and your application, script or AI assistant asks it for the passages most relevant to a question. You choose the language model; the backend can also generate grounded answers with any OpenAI-compatible chat API, but that is optional.
 
-## What it ships
+Who it is for:
 
-- Multi-collection RAG with per-collection embedding provider and model (built-in or any OpenAI-compatible service), distance metrics, chunk sizes, overlaps, retrieval `k`, and distance thresholds.
-- Public read APIs for listing collections, loading collection details, checking readiness and retrieving evidence; plus optional grounded answers from any OpenAI-compatible chat LLM you configure (see [Answer generation (optional)](#answer-generation-optional)).
-- Optional cookie-backed admin auth with role-based access control and short-lived action tokens for protected mutations.
-- Asynchronous indexing and rebuild jobs so active queries keep working while a collection is being refreshed.
-- Operational guardrails including request IDs, tenant/user scoping, rate limiting, concurrency limits, 1 MB JSON bodies, and structured errors.
-- Full admin visibility for defaults, model discovery, job progress, physical collection lifecycle, and audit history.
-- Frontend-facing docs, OpenAPI, HTTP workflow examples, a runnable browser example, and a static admin panel in this repo.
+- **Developers** building a chatbot or internal tool who want retrieval over their own documents.
+- **People connecting documents to an AI assistant or agent.**
+- **Learners** who want a small, readable reference implementation of retrieval-augmented generation (RAG).
 
-## Feature Map
+The guide below goes from the quickest start to the more advanced setups. Stop at the level you need.
 
-### Public RAG
+- [Level 1 — Try it in 5 minutes](#level-1--try-it-in-5-minutes)
+- [Level 2 — Search your own documents](#level-2--search-your-own-documents)
+- [Level 3 — Use it from your app](#level-3--use-it-from-your-app)
+- [Level 4 — Get written answers (optional)](#level-4--get-written-answers-optional)
+- [Level 5 — Choose the embedding model](#level-5--choose-the-embedding-model)
+- [Level 6 — Protect the admin panel](#level-6--protect-the-admin-panel)
+- [Level 7 — How it works and developing locally](#level-7--how-it-works-and-developing-locally)
+- [Troubleshooting](#troubleshooting) · [Reference](#reference)
 
-- `GET /v1/rag/collections` to list collections visible to the current tenant.
-- `GET /v1/rag/collections/:collectionId` to inspect one collection.
-- `GET /v1/rag/collections/:collectionId/ready` to gate query and retrieve UI state before enabling actions.
-- `POST /v1/rag/collections/:collectionId/retrieve` to fetch evidence chunks and the effective embedding provider and model.
-- `POST /v1/rag/collections/:collectionId/query` to retrieve context, generate an answer, and return sources plus model metadata (only when a chat LLM is configured; otherwise `503 CHAT_NOT_CONFIGURED`).
-- Public responses include the effective model names actually used for the request.
+## Level 1 — Try it in 5 minutes
 
-### Admin and Operations
+You only need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/macOS) or Docker Engine (Linux).
 
-- A built-in admin panel at [admin/index.html](admin/index.html) for day-to-day collection management.
-- Optional admin auth with `viewer`, `operator`, and `admin` roles.
-- Login, session hydration, logout, and action-token minting under `/v1/admin/auth/*`.
-- Collection and job management live under `/v1/admin/collections` and `/v1/admin/jobs/`.
-- Collection create, update, validate, reindex, delete, and bulk delete flows.
-- Create-form defaults and model discovery so the panel can show backend defaults and model suggestions.
-- Index job status, stage events, cancel, delete, and recovery visibility.
-- Audit log for persisted operational history.
-- Physical collection visibility for rebuild, retention, cleanup, and failed target states.
+```bash
+mkdir vanilla-rag && cd vanilla-rag
+curl -O https://raw.githubusercontent.com/kmkarakaya/vanilla_rag_backend/main/docker-compose.yml
+docker compose up -d
+```
 
-### Reliability and Safety
+On Windows PowerShell, use `curl.exe -O ...` for the second line.
 
-- System endpoints for introspection, liveness, and readiness checks: `/`, `/health`, and `/ready`.
-- Zero-downtime rebuilds and stale job recovery on startup.
-- Cleanup of retired physical collections.
-- Concurrency protection and request rate limiting with `Retry-After` headers.
-- Request tracing via `x-request-id`.
-- Collection-level capability checks instead of blind UI enablement.
-- Strict versioned APIs; legacy routes intentionally return `404`.
+1. Open `http://localhost:3010/admin`. A collection called **Sample documents** is created and indexed on the first start. The first indexing downloads the built-in embedding model (about 350 MB, once), so it can take a few minutes; the **Job Monitor** shows the progress.
+2. When the collection is `ready`, open it, go to the **Playground** tab, type `What is a chunk?` and click **Retrieve**.
+3. You get the passages (chunks) closest in meaning to your question, each with its source file and a distance: the smaller the distance, the closer the match. This is retrieval, the core of RAG. The sample documents explain the rest of the concepts.
 
-### Frontend and Integration Assets
+Good to know:
 
-- Working public RAG example at [test_frontend/README.md](test_frontend/README.md).
-- Human-oriented docs index at [docs/README.md](docs/README.md).
-- Endpoint reference, HTTP workflows, OpenAPI spec, frontend handoff, and acceptance checklist.
+- Everything lives next to `docker-compose.yml`: your documents and the registry in `./data`, the vectors in `./chroma_data`, the downloaded model in `./models`. `docker compose down` stops the stack and keeps all of it; `docker compose up -d` starts it again in seconds.
+- Port already in use? Create a `.env` file next to `docker-compose.yml` with `BACKEND_HOST_PORT=3020` (and/or `CHROMA_HOST_PORT=8020`) and open that port instead. The startup log still prints `localhost:3010`, its port inside the container.
+- Prefer the source code? `git clone https://github.com/kmkarakaya/vanilla_rag_backend.git`, `cd vanilla_rag_backend`, `docker compose up -d`. The clone also contains `data/dataset1` and `data/dataset2`, two small Turkish sample folders. `docker compose up -d --build` builds the image from your working copy.
+- Don't want the sample collection? Delete it in the admin panel (it is not recreated), or put `RAG_SAMPLE_COLLECTION=false` in `.env` before the first start.
 
-### Data and Indexing
+## Level 2 — Search your own documents
 
-- Document ingestion for TXT, MD, PDF, DOC, and DOCX files, scanning the source folder recursively.
-- Chunking controls, retrieval thresholds, and distance-metric selection per collection.
-- Configurable source folder per collection (TXT, MD, PDF, DOC, DOCX, scanned recursively).
+1. Create a folder under `./data`, for example `./data/my-docs`, and copy your files into it. Supported: `.txt`, `.md`, `.pdf` (with a text layer), `.doc`, `.docx`; subfolders are included.
+2. In the admin panel, go to **Collections** → **New Collection**. Enter a display name and the source path `data/my-docs`. Leave the other fields empty to use the defaults, and click **Save Changes**.
+3. With the collection open, click **Re-index Collection** and wait until the job is `succeeded` in the **Job Monitor**. If it fails, the error is shown there.
+4. Use the **Playground** tab to search.
 
-## Start here
+After you add, change or delete files, click **Re-index Collection** again. Re-indexing builds a new index in the background, and searches keep using the old one until it is ready. Uploading files from the admin panel is planned; for now, documents go into the `./data` folder.
 
-- [CLAUDE.md](CLAUDE.md) for the agent/contributor brief: stack, commands, architecture map, and conventions.
-- [docs/README.md](docs/README.md) for the documentation index and reading order.
-- [docs/admin_api_endpoints.md](docs/admin_api_endpoints.md) for admin auth, roles, and collection management.
-- [docs/http_workflows.md](docs/http_workflows.md) for end-to-end curl examples.
-- [test_frontend/README.md](test_frontend/README.md) for the runnable public RAG example.
-- [vanilla_rag_backend_mimarisi.md](vanilla_rag_backend_mimarisi.md) for architecture and design rationale (in Turkish).
+## Level 3 — Use it from your app
 
-## Quick start with Docker (recommended)
+Everything the Playground does is available over HTTP. List the collections to get their ids:
 
-The backend and Chroma run in containers; embeddings run inside the backend (no Ollama needed). You only need Docker (Docker Desktop on Windows/macOS) and Git.
+```bash
+curl http://localhost:3010/v1/rag/collections
+```
+
+Retrieve passages for a question (`k` is optional; the collection's default is 5):
+
+```bash
+curl -X POST http://localhost:3010/v1/rag/collections/<collection-id>/retrieve \
+  -H "content-type: application/json" \
+  -d '{"question": "Which file formats can I index?", "k": 3}'
+```
+
+The response contains `sources`: each has the chunk text (`content`), its file (`sourcePath`) and its `distanceScore`. To answer with your own LLM, put those passages into the prompt:
+
+```js
+const res = await fetch(`http://localhost:3010/v1/rag/collections/${collectionId}/retrieve`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ question }),
+});
+const { sources } = await res.json();
+const context = sources.map((s) => `[${s.sourcePath}]\n${s.content}`).join("\n\n");
+const prompt = `Answer only from this context:\n\n${context}\n\nQuestion: ${question}`;
+// Send `prompt` to the LLM of your choice.
+```
+
+- Check `GET /v1/rag/collections/<collection-id>/ready` before searching: it tells you whether the collection can serve retrieval (and answers) right now.
+- Optional headers: `x-request-id` (echoed in logs and errors), `x-tenant-id` and `x-user-id` (default `default` / `local-dev`). Requests are rate-limited; a `429 RATE_LIMIT_EXCEEDED` response carries a `Retry-After` header.
+- A runnable browser example is at `http://localhost:3010/test-frontend/` (source in [test_frontend/](test_frontend/README.md)). The full API is in [docs/user_api_endpoints.md](docs/user_api_endpoints.md), [docs/http_workflows.md](docs/http_workflows.md) and [docs/openapi.yaml](docs/openapi.yaml).
+- AI assistants: an MCP server that exposes retrieval as a tool is planned.
+
+> **Security:** the public `/v1/rag` API has no authentication yet; anyone who can reach the port can read every collection. Run it on your own computer or a trusted network, and do not expose it to the internet. API keys are planned.
+
+## Level 4 — Get written answers (optional)
+
+The backend can also write an answer from the retrieved passages (`POST /v1/rag/collections/<collection-id>/query`, the **Query** button in the Playground). It needs a chat model behind any OpenAI-compatible API. Add it to `.env` next to `docker-compose.yml`, then run `docker compose up -d` again:
+
+```bash
+RAG_CHAT_BASE_URL=http://host.docker.internal:11434/v1
+RAG_CHAT_MODEL=gemma3:4b
+# RAG_CHAT_API_KEY=...   only for providers that need one
+```
+
+| Provider                     | Base URL                                 | Example model                        | API key            |
+| ---------------------------- | ---------------------------------------- | ------------------------------------ | ------------------ |
+| Ollama on your computer      | `http://host.docker.internal:11434/v1` | `gemma3:4b` (`ollama pull gemma3:4b`) | not needed         |
+| OpenAI                       | `https://api.openai.com/v1`            | `gpt-4o-mini`                        | required           |
+| OpenRouter                   | `https://openrouter.ai/api/v1`         | any model id listed by OpenRouter    | required           |
+| LM Studio, vLLM, llama.cpp   | the server's `/v1` URL                   | the model it serves                  | usually not needed |
+
+- Inside Docker, `localhost` is the container itself; use `host.docker.internal` for services on your computer. Without Docker, use `http://localhost:11434/v1`.
+- The answer only uses the retrieved context; when the context does not contain the answer, the model says so instead of guessing. The response lists the sources it used.
+- Model parameters (temperature, max tokens) are not sent, so the provider's defaults apply; see [docs/configuration.md](docs/configuration.md) to override them.
+- Without a chat model, `/query` returns `503 CHAT_NOT_CONFIGURED` and everything else works. The backend never needs a chat model for retrieval.
+
+## Level 5 — Choose the embedding model
+
+The embedding model turns text into vectors; indexing and retrieval need one. Two providers are available:
+
+| Provider            | What it is                                                                    | Setup |
+| ------------------- | ----------------------------------------------------------------------------- | ----- |
+| `builtin` (default) | `onnx-community/embeddinggemma-2-ONNX`, running inside the backend on the CPU | Nothing: downloaded (~350 MB) on the first indexing into `./models` |
+| `openai-compatible` | Any OpenAI-compatible `/v1/embeddings` API: Ollama, OpenAI, LM Studio, vLLM   | Base URL, model and, if needed, an API key |
+
+To make an external service the default for new collections, add to `.env` and run `docker compose up -d`:
+
+```bash
+RAG_EMBEDDING_PROVIDER=openai-compatible
+RAG_EMBEDDING_BASE_URL=http://host.docker.internal:11434/v1
+RAG_EMBEDDING_MODEL=embeddinggemma-2:270m
+# RAG_EMBEDDING_API_KEY=...   for cloud providers
+```
+
+- Each collection stores the provider and model it was indexed with and is always searched with them. The setting above is only the default for **new** collections; existing ones are never touched. You can also pick the provider and model per collection in the admin panel.
+- Changing a collection's provider or model marks it `reindex_required`; it keeps serving with the old embedding until the re-index finishes. Vectors from different models are not comparable, which is why a re-index is needed.
+- Speed: `builtin` runs on the backend's CPU. It is fine for small and medium document sets, but indexes noticeably slower than a dedicated embedding server, and a large indexing job can slow down concurrent searches. For large document sets, use Ollama (with a GPU if available) or a cloud API.
+- `/ready` checks the default embedding without running it. If an external default service is down, only indexing new collections is blocked; collections on another provider keep serving.
+
+## Level 6 — Protect the admin panel
+
+The admin panel and `/v1/admin` API are open by default, which is fine on your own computer. Before other people can reach the server, turn on admin auth (username/password, roles `viewer` < `operator` < `admin`). Unauthenticated users are sent to `/admin/login`.
+
+### Secure admin quickstart
+
+With Docker:
+
+1. Generate a password hash: `docker compose exec backend node dist/admin/passwordHash.js` (it asks for the password, so it does not end up in your shell history).
+2. Create `./config/rag.config.yaml` next to `docker-compose.yml` (in a clone it already exists) with:
+
+   ```yaml
+   adminAuth:
+     enabled: true
+     users:
+       - username: admin
+         passwordHash: "scrypt$16384$8$1$64$..."
+         role: admin
+         tenantId: default
+   ```
+
+3. Put `RAG_ADMIN_SESSION_SECRET=<a long random value>` in `.env`, then run `docker compose up -d`.
+4. Behind HTTPS, also set `NODE_ENV=production` in the backend's environment so the session cookie is marked Secure.
+
+Without Docker, run `npm run onboard` and answer yes at `adminAuth.enabled`: it hashes the first admin password for you and stores the session secret in `.local/rag_admin_session.secret` (`RAG_ADMIN_SESSION_SECRET` overrides it). To hash a password by hand, use `npm run admin:hash-password -- "your-password"`.
+
+Remember that admin auth protects the admin panel and `/v1/admin` only; the public `/v1/rag` API stays open (see the note in [Level 3](#level-3--use-it-from-your-app)). Login, session and action-token details are in [docs/admin_auth.md](docs/admin_auth.md).
+
+## Level 7 — How it works and developing locally
+
+### How it works
+
+```text
+Indexing (per collection, in the background)
+  source folder ──► load files ──► split into chunks ──► embed each chunk ──► store in Chroma
+  src/ingestion/pipeline.ts    src/indexing/buildPhysicalCollection.ts    src/embeddings/
+
+Retrieval (per question)
+  question ──► embed ──► nearest chunks in Chroma ──► drop those above the distance threshold ──► sources
+  src/rag.ts
+
+Answer generation (optional)
+  sources + question ──► prompt ──► chat model (OpenAI-compatible) ──► grounded answer + sources
+  src/rag.ts, src/chat.ts
+```
+
+- Each re-index builds a new Chroma collection and switches to it only when it succeeds (blue/green), so searches never see a half-built index: [src/indexing/](src/indexing/).
+- Collections, jobs and logs live in a small SQLite registry with hand-written queries: [src/collections/sqliteRegistry.ts](src/collections/sqliteRegistry.ts).
+- HTTP routes: [src/http/ragRouter.ts](src/http/ragRouter.ts) (public) and [src/http/adminRouter.ts](src/http/adminRouter.ts) (admin), assembled in [src/app.ts](src/app.ts).
+- Design rationale: [vanilla_rag_backend_mimarisi.md](vanilla_rag_backend_mimarisi.md) (in Turkish). Contributor brief: [CLAUDE.md](CLAUDE.md).
+
+### Developing locally
+
+Prerequisites: Node.js 20 or newer (22 recommended), Git, and Docker for Chroma.
 
 ```bash
 git clone https://github.com/kmkarakaya/vanilla_rag_backend.git
 cd vanilla_rag_backend
-docker compose up -d
-```
-
-- The first start pulls the Chroma image and builds the backend. The built-in embedding model (~350 MB) is downloaded on the first indexing into `./models` and kept there; later starts take seconds. That first re-index can take several minutes while the model downloads (the job looks idle meanwhile); later re-indexes do not download again.
-- The stack starts retrieve-only: retrieval and indexing work, answer generation is off. To get answers, add a chat LLM to `.env` (see [Answer generation (optional)](#answer-generation-optional)), for example an Ollama on your computer with `RAG_CHAT_BASE_URL=http://host.docker.internal:11434/v1` and `RAG_CHAT_MODEL=gemma3:4b`, then run `docker compose up -d` again.
-- Put your documents in a folder under `./data` (for example `./data/my-docs`). The repo ships two sample folders, `data/dataset1` and `data/dataset2`.
-- Open `http://localhost:3010/admin` and follow [First collection and first question](#first-collection-and-first-question), using a source path such as `data/my-docs`.
-- Another embedding provider (for example an Ollama on your computer or a cloud API): set the `RAG_EMBEDDING_*` variables in `.env` (see [Embedding](#embedding)), then `docker compose up -d` again. This changes the default for new collections only.
-- Port already in use? Set `BACKEND_HOST_PORT` (default `3010`) and/or `CHROMA_HOST_PORT` (default `8000`) in `.env`. The backend still prints `localhost:3010` links at startup (its port inside the container); open the host port you chose instead.
-- Stop with `docker compose down`. Your documents, the registry (`data/registry.sqlite`), the vectors (`chroma_data/`) and the downloaded built-in models (`models/`) are kept.
-- Settings: [config/rag.config.yaml](config/rag.config.yaml) is mounted into the backend container. After editing it, run `docker compose restart backend` (no rebuild needed). `chroma.url` is always overridden for the container; for the embedding and chat services, prefer the `RAG_*` variables in `.env`, and remember that inside the container `localhost` is the container itself (use `host.docker.internal` for services on your computer).
-- Admin auth is off by default. To turn it on in Docker:
-  1. Generate a password hash: `docker compose exec backend node dist/admin/passwordHash.js` (it asks for the password, so it does not end up in your shell history).
-  2. In [config/rag.config.yaml](config/rag.config.yaml) set `adminAuth.enabled: true` and add the user with that hash (see the example in [Secure admin quickstart](#secure-admin-quickstart)).
-  3. Put `RAG_ADMIN_SESSION_SECRET=<a long random value>` in `.env`, then run `docker compose up -d` (it recreates the backend with the new secret and config).
-  4. Behind HTTPS, also set `NODE_ENV=production` so the session cookie is marked Secure.
-
-Do not run the Docker backend and `npm run dev` at the same time: both use port 3010 and the same `data/registry.sqlite`.
-
-## Quick start (local development)
-
-Prerequisites: Node.js 20 or newer (22 recommended, the version the Docker image uses), Git, and Docker for Chroma.
-
-The commands below are for Windows PowerShell, where `npm.cmd` avoids the PowerShell script-execution policy for `npm`. On macOS and Linux use `npm` instead (for example `npm install`, `npm run dev`).
-
-```powershell
-git clone https://github.com/kmkarakaya/vanilla_rag_backend.git
-cd vanilla_rag_backend
 docker compose up -d chroma
-npm.cmd install
-npm.cmd run onboard
-npm.cmd run dev
+npm install
+npm run onboard
+npm run dev
 ```
 
-What each command does:
+- On Windows PowerShell, use `npm.cmd` instead of `npm` (it avoids PowerShell's script-execution policy).
+- On Linux x64, `npm install` also downloads CUDA libraries for the ONNX runtime (several hundred MB) that the CPU-only built-in model does not need; skip them with `ONNXRUNTIME_NODE_INSTALL=skip npm install`.
+- `npm run onboard` asks only the main choices: the embedding provider, an optional chat model, and admin auth. Press Enter to keep a value. `npm run onboard -- --advanced` asks every setting (port, Chroma URL, chunking, limits, rate limiting...). It writes [config/rag.config.yaml](config/rag.config.yaml) and keys go to `.local/` (never into the YAML). The config file is optional: every setting has a default.
+- `npm run dev` starts the backend in watch mode and prints the links. Don't run it together with the Docker backend: both use port 3010 and `data/registry.sqlite`.
+- Tests: `npm test` (unit + acceptance), `npm run test:integration` (needs Chroma), `npm run typecheck`. CI runs them on every push.
 
-- `cd vanilla_rag_backend` changes the shell into the project root; run every command from there, because relative paths such as `data/...` resolve against it.
-- `docker compose up -d chroma` starts the Chroma vector database in the background. You need this before indexing or querying collections. Docker Desktop must be running first; see [Troubleshooting](#troubleshooting) if this command fails.
-- `npm.cmd install` installs the Node.js dependencies listed in `package.json`. On Linux x64, the ONNX runtime used by the built-in embedding model also downloads CUDA GPU libraries (several hundred MB) by default; the built-in model runs on the CPU, so you can skip them with `ONNXRUNTIME_NODE_INSTALL=skip npm install`.
-- `npm.cmd run onboard` writes the runtime config ([config/rag.config.yaml](config/rag.config.yaml)) for this machine and checks that Chroma is ready. It asks which embedding provider new collections use (built-in by default, see [Embedding](#embedding)) and whether to enable a chat LLM for answer generation; answer `n` for retrieve-only (see [Answer generation (optional)](#answer-generation-optional)). It does not create, index, or edit collections.
-- `npm.cmd run dev` starts the backend in watch mode and prints the admin panel, readiness, and test frontend links (Ctrl+click to open them from the terminal).
-
-### First collection and first question
-
-Onboarding only prepares the config; you create and index collections in the admin panel. With the backend running (`npm.cmd run dev`, or `docker compose up -d`; with Docker, use your `BACKEND_HOST_PORT` if you changed it):
-
-1. Open `http://localhost:3010/ready`. It should report `"ready": true`. On a fresh install with the built-in embedding, the warning `EMBEDDING_MODEL_NOT_DOWNLOADED` is expected: the model downloads on the first re-index. For any blocker, see [Troubleshooting](#troubleshooting).
-2. Open the admin panel at `http://localhost:3010/admin` (if admin auth is enabled you land on the login page first).
-3. In **Collections**, click **New Collection**. Give it a display name and a source path, for example `data/dataset1` (the sample TXT/PDF/DOC files). Leave the other fields empty to use the backend defaults, then click **Save Changes**.
-4. With the collection open (click it in the list if the panel closed), click **Re-index Collection**. Follow the job in **Job Monitor** until it is `succeeded`; if it fails, its error is shown there.
-5. Open the collection again and use the **Playground** tab to run **Retrieve** (sources only) or, if a chat LLM is configured, **Query** (answer + sources).
-6. Optional: `http://localhost:3010/test-frontend/` shows the same public `/v1/rag` API from a client's point of view.
-
-How to extend it:
-
-- Turn on answer generation, or switch to another chat LLM, by rerunning onboarding (see [Answer generation (optional)](#answer-generation-optional)). The chat LLM is shared by all collections.
-- Use another embedding provider or model per collection in the admin panel (Embedding Provider / Embedding Model), or change the default for new collections by rerunning onboarding (see [Embedding](#embedding)).
-- If you want to test a different vector store or service layout, adjust the Compose stack first, then update the config to match the new runtime target.
-- To index new data, create a collection in the admin panel with its own source path (for example `data/dataset1`) and run re-index. You do not need to rerun onboarding for new data.
-
-## Embedding
-
-Embeddings turn your documents and questions into vectors; indexing and retrieval need them, so an embedding is always configured. Two providers are available:
-
-| Provider            | What it is                                                                                    | Setup |
-| ------------------- | --------------------------------------------------------------------------------------------- | ----- |
-| `builtin` (default) | `onnx-community/embeddinggemma-2-ONNX`, running inside the backend on the CPU                 | Nothing: downloaded (~350 MB) on the first indexing into `embedding.cacheDir` (`models/`) |
-| `openai-compatible` | Any OpenAI-compatible `/v1/embeddings` API: Ollama, OpenAI, LM Studio, vLLM...                | Base URL, model and, if needed, an API key |
-
-- Every collection stores the provider and model it was indexed with, and queries always use that pair. The configured provider and model are only the default for **new** collections; changing them never touches existing ones.
-- Changing a collection's provider or model (admin panel, Embedding Provider / Embedding Model) marks it `reindex_required`; it keeps serving with the old embedding until the re-index finishes.
-- Locally, `npm.cmd run onboard` asks `Embedding provider for new collections (builtin/openai-compatible)`. For `openai-compatible` it asks the base URL (for Ollama: `http://localhost:11434/v1`), the model (for example `embeddinggemma-2:270m` after `ollama pull embeddinggemma-2:270m`) and an API key, which is stored in `.local/rag_embedding_api_key.secret`, never in the YAML. One external service is configured at a time; if you point it at a different server, re-index the collections that use it.
-- In Docker or CI, use `RAG_EMBEDDING_PROVIDER`, `RAG_EMBEDDING_MODEL`, `RAG_EMBEDDING_BASE_URL` and `RAG_EMBEDDING_API_KEY` (see [docker-compose.yml](docker-compose.yml)).
-- `/ready` checks the default embedding without running it: a built-in model that is not downloaded yet is only a warning (`EMBEDDING_MODEL_NOT_DOWNLOADED`), and an external service is checked with a free `GET /models`. If the default external service is down, only indexing new collections is blocked; collections on another provider keep serving.
-- Speed: `builtin` runs on the backend's CPU, so it is fine for small and medium document sets but indexes noticeably slower than a dedicated embedding server, and a large indexing job can slow down concurrent queries. For large document sets, use `openai-compatible` with Ollama (GPU if available) or a cloud API.
-
-## Answer generation (optional)
-
-The backend is a retrieval service first: `/retrieve` and indexing only need Chroma and an embedding (built-in by default). Generating answers (`POST /v1/rag/collections/:collectionId/query`) is optional and works with any OpenAI-compatible chat API, called through LangChain. Without one, `/query` returns `503 CHAT_NOT_CONFIGURED`, the Playground's **Query** button stays disabled, and your own app can pass the `/retrieve` results to the LLM of its choice.
-
-To enable it, give a base URL, a model and, if the provider needs one, an API key:
-
-| Provider                   | Base URL                         | Example model                                 | API key            |
-| -------------------------- | -------------------------------- | --------------------------------------------- | ------------------ |
-| Local Ollama               | `http://localhost:11434/v1`    | `gemma3:4b` (run `ollama pull gemma3:4b`) | not needed         |
-| Ollama on the host (Docker) | `http://host.docker.internal:11434/v1` | `gemma3:4b` (run `ollama pull gemma3:4b`) | not needed |
-| OpenAI                     | `https://api.openai.com/v1`    | `gpt-4o-mini`                               | required           |
-| OpenRouter                 | `https://openrouter.ai/api/v1` | any model id listed by OpenRouter             | required           |
-| LM Studio, vLLM, llama.cpp | the server's `/v1` URL         | the model it serves                           | usually not needed |
-
-- Locally: run `npm.cmd run onboard`. It first asks `Enable answer generation with a chat LLM?` (the default is your current state, so pressing Enter never switches it on by accident; answer `n` for retrieve-only). If you answer yes, it asks for these three values; Enter accepts the value shown in brackets, and `-` removes a stored API key. The key is stored in `.local/rag_chat_api_key.secret` (gitignored), never in the YAML. Onboarding then checks the endpoint and runs one test generation. To change your choice later, run onboarding again and restart the server.
-- Docker or CI: set `RAG_CHAT_BASE_URL`, `RAG_CHAT_MODEL` and, if needed, `RAG_CHAT_API_KEY` (in `.env` for Docker), then start again.
-- Model parameters such as temperature and max tokens are not sent, so the provider's defaults apply. To override them, add `temperature`, `maxTokens` or `maxContextTokens` (a cap on the retrieved context sent to the model) to the `chat` section of [config/rag.config.yaml](config/rag.config.yaml) by hand; onboarding keeps them.
-- `/ready` checks the chat LLM with a free `GET /models` request (cached for 30 seconds) and never runs a generation, so health checks do not cost anything on a paid API.
-- Ollama's `/v1` endpoint uses the model's own context length. If you raise `retrievalK` × `chunkSize` a lot, increase `OLLAMA_CONTEXT_LENGTH` on the Ollama server or set `chat.maxContextTokens`.
-
-## What onboarding is for
-
-Onboarding is the local setup step for the runtime config. It asks for each setting (press Enter to keep the current value), saves the config, and then tells you what still has to be fixed before you can index.
-
-What `npm run onboard` does:
-
-- asks for the runtime settings (port, registry path, Chroma URL, the embedding provider for new collections, defaults for new collections, limits, rate limiting, debug timings) and writes them to [config/rag.config.yaml](config/rag.config.yaml), keeping the previous version as `config/rag.config.yaml.bak`
-- asks whether to enable a chat LLM for answer generation (answer `n` for retrieve-only) and, if yes, its base URL, model and API key. The API key goes to `.local/rag_chat_api_key.secret`, never into the YAML
-- optionally sets up admin auth: asks for the session secret and the first admin user (username, tenant, password), stores the secret in `.local/rag_admin_session.secret`, and saves only a scrypt hash of the password
-- analyzes the default source folder (`collectionDefaults.sourcePath`), the folder new collections use unless you give them their own path
-- checks that Chroma is reachable and that the embedding works: a built-in model is only reported (it downloads on the first indexing), an external embedding service is checked and runs one test embedding; if a chat LLM is set, checks that it is reachable, accepts the key, offers the model, and answers one test prompt
-- if something is missing, prints `Config saved; fix these before indexing:` with a one-line fix for each problem, and still prints the next steps. The config is already saved, so after fixing the problem you do not need to run onboarding again
-
-What it does not do:
-
-- create, edit, validate, index, or monitor collections (use the admin panel or the admin API)
-- create or migrate the SQLite registry (the server does that on startup)
-
-Flags:
-
-- `--yes` skips the questions and only runs the checks against the existing config
-- `--dry-run` or `--no-write` asks the questions and runs the checks without writing the config
-- `--config <path>` uses a different config file
-
-Run onboarding again when you change machines, switch models or the chat LLM, change ports or service URLs, change the default source folder, or want to turn admin auth on or off. Restart the server (`npm.cmd run dev`) afterwards, because the config is only read at startup. To index new data, use the admin panel instead.
-
-## Running on another machine or in a container
-
-Paths inside the project are kept relative (for example `collectionDefaults.sourcePath: data`, collection source paths such as `data/dataset1`), so you can clone or move the repo anywhere and run it from the project root. Collections created before this change that still point at an absolute path inside the project are rewritten to relative paths automatically when the server starts. Paths outside the project stay absolute.
-
-These environment variables override [config/rag.config.yaml](config/rag.config.yaml) at runtime without editing it (useful for Docker, CI, or a second machine):
-
-| Variable                       | Overrides                                                             |
-| ------------------------------ | --------------------------------------------------------------------- |
-| `RAG_CONFIG_PATH`            | Config file location (default `config/rag.config.yaml`)             |
-| `RAG_PORT`                   | `server.port`                                                       |
-| `RAG_REGISTRY_PATH`          | `registry.path`                                                     |
-| `RAG_CHROMA_URL`             | `chroma.url` (e.g. `http://chroma:8000` in Docker)                |
-| `RAG_EMBEDDING_PROVIDER`     | `embedding.provider` (`builtin` or `openai-compatible`; default for new collections) |
-| `RAG_CHAT_BASE_URL`          | `chat.baseUrl` (OpenAI-compatible chat API; empty = retrieve-only)  |
-| `RAG_CHAT_MODEL`             | `chat.model`                                                        |
-| `RAG_CHAT_API_KEY`           | Chat API key (instead of `.local/rag_chat_api_key.secret`)          |
-| `RAG_EMBEDDING_MODEL`        | `embedding.model` (default for new collections)                     |
-| `RAG_EMBEDDING_BASE_URL`     | `embedding.baseUrl` (OpenAI-compatible embedding API)               |
-| `RAG_EMBEDDING_CACHE_DIR`    | `embedding.cacheDir` (built-in model cache, default `models`)       |
-| `RAG_EMBEDDING_API_KEY`      | Embedding API key (instead of `.local/rag_embedding_api_key.secret`) |
-| `RAG_SOURCE_PATH`            | `collectionDefaults.sourcePath`                                     |
-| `RAG_ADMIN_SESSION_SECRET`   | Admin session secret (instead of `.local/rag_admin_session.secret`) |
-
-Onboarding edits the YAML file itself; these variables are only applied when the server or the CLI loads its config, and are never written back.
+All settings, environment variables and onboarding flags are described in [docs/configuration.md](docs/configuration.md).
 
 ## Troubleshooting
 
-| Symptom                                                                                                                          | Cause                                                                                                                                 | Fix                                                                                                                                                                                                                         |
-| -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docker compose up -d chroma` fails with `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified` | Docker Desktop is not running                                                                                                         | Start Docker Desktop, wait until it shows "Engine running", then run `docker compose up -d chroma` again                                                                                                                  |
-| Onboarding prints `Chroma: fail - Failed to connect to chromadb` under "Config saved; fix these before indexing"               | The Chroma container is not running                                                                                                   | Start Chroma as above. Onboarding already saved the config and still prints the next steps, so you do not need to rerun it; start the server with `npm.cmd run dev` and check `GET /ready`                              |
-| Creating a collection or starting a reindex returns `422 UNAVAILABLE_MODEL` | The built-in model is not in the catalog, or the external embedding service does not offer the model | Pick a model from `details.availableModels`; for Ollama, `ollama pull <model>` first |
-| Creating a collection or starting a reindex returns `503 EMBEDDING_PROVIDER_UNREACHABLE`, or `422 EMBEDDING_PROVIDER_NOT_CONFIGURED` | The external embedding service is down, its base URL is wrong, or none is configured | Start it and check `embedding.baseUrl` (for Ollama `http://localhost:11434/v1`, in Docker `http://host.docker.internal:11434/v1`), or use the `builtin` provider |
-| The first re-index takes long, or fails with `EMBEDDING_PROVIDER_UNREACHABLE` on a built-in model | The built-in model (~350 MB) is downloaded on the first indexing; the download needs internet access | Wait for the download (once), or check the network; the model is then kept in `models/` |
-| `/retrieve` or `/query` returns `409 EMBEDDING_DIMENSION_MISMATCH` | The collection's index was built with a different embedding model than the one used now | Re-index the collection |
-| `/query` returns `503 CHAT_NOT_CONFIGURED`, or the Query button is disabled                                                  | No chat LLM is configured (retrieve-only, the default)                                                                                | Use `/retrieve`, or enable answers as described in [Answer generation (optional)](#answer-generation-optional)                                                                                                             |
-| `/query` returns `503 CHAT_PROVIDER_UNREACHABLE`                                                                             | The chat API is down or `chat.baseUrl` is wrong                                                                                     | Start it and check the base URL; it must be the OpenAI-compatible URL, e.g. `http://localhost:11434/v1` for Ollama (note the `/v1`)                                                                                     |
-| `/query` returns `502 CHAT_PROVIDER_ERROR`                                                                                   | The chat API rejected the request: `details.upstreamStatus` 401/403 = wrong API key, 404 = unknown model, 429 = provider rate limit | Fix the key (rerun onboarding or set `RAG_CHAT_API_KEY`) or the model name; `GET /ready?details=true` lists the provider's models when it can                                                                           |
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| `docker compose up` fails with `open //./pipe/dockerDesktopLinuxEngine` | Docker Desktop is not running | Start Docker Desktop, wait for "Engine running", try again |
+| The first re-index takes minutes, or fails with `EMBEDDING_PROVIDER_UNREACHABLE` on the built-in model | The built-in model (~350 MB) downloads on the first indexing and needs internet access | Wait for the download (once), or check the network; the model is then kept in `./models` |
+| Creating a collection or re-indexing returns `422 UNAVAILABLE_MODEL` | The external embedding service does not offer that model | Pick a model from `details.availableModels`; for Ollama, `ollama pull <model>` first |
+| `503 EMBEDDING_PROVIDER_UNREACHABLE` or `422 EMBEDDING_PROVIDER_NOT_CONFIGURED` | The external embedding service is down, its URL is wrong, or none is set | Start it and check `RAG_EMBEDDING_BASE_URL` (in Docker use `host.docker.internal`, not `localhost`), or use `builtin` |
+| `/retrieve` or `/query` returns `409 EMBEDDING_DIMENSION_MISMATCH` | The index was built with a different embedding model | Re-index the collection |
+| `/query` returns `503 CHAT_NOT_CONFIGURED`, or the Query button is disabled | No chat model is configured (the default) | Use `/retrieve`, or see [Level 4](#level-4--get-written-answers-optional) |
+| `/query` returns `503 CHAT_PROVIDER_UNREACHABLE` | The chat API is down or its URL is wrong | Start it; the URL must end in `/v1` (Ollama: `http://localhost:11434/v1`, from Docker `http://host.docker.internal:11434/v1`) |
+| `/query` returns `502 CHAT_PROVIDER_ERROR` | The chat API rejected the request: `details.upstreamStatus` 401/403 = wrong key, 404 = unknown model, 429 = provider rate limit | Fix the key (`RAG_CHAT_API_KEY`) or the model name |
+| Onboarding prints `Chroma: fail` | The Chroma container is not running | `docker compose up -d chroma`; the config is already saved, no need to rerun onboarding |
 
-Quick health check: `GET http://localhost:3010/ready?details=true` reports Chroma, embedding, chat LLM, and data source status with blockers and recommended actions.
+`GET http://localhost:3010/ready?details=true` reports Chroma, embedding, chat model and data source status with blockers and recommended actions.
 
-## Secure admin quickstart
+## Reference
 
-Admin auth is opt-in: the shipped config has `adminAuth.enabled: false` and no users, so a fresh clone starts without a login. During onboarding, answer yes when asked whether admin auth is used. Onboarding will ask for a session secret and the first admin password, hash the password for you, write the admin user into `adminAuth.users[]`, and store the session secret locally in `.local/rag_admin_session.secret`.
-
-1. Run `npm.cmd run onboard`.
-2. Answer yes when the admin auth prompt appears.
-3. Enter the session secret value when prompted.
-4. Enter and confirm the first admin password.
-5. Restart the backend.
-6. Log in with `POST /v1/admin/auth/login`.
-7. For mutating admin requests, fetch a token from `POST /v1/admin/auth/action-token` and send it as `x-admin-action-token`.
-
-Example config:
-
-```yaml
-adminAuth:
-  enabled: true
-  cookieName: rag_admin_session
-  sessionTtlMs: 28800000
-  actionTokenTtlMs: 300000
-  sessionSecretEnvVar: RAG_ADMIN_SESSION_SECRET
-  users:
-    - username: admin
-      passwordHash: "scrypt$16384$8$1$64$..."
-      role: admin
-      tenantId: "default"
-```
-
-If `RAG_ADMIN_SESSION_SECRET` is set in the environment, it still overrides the local secret file. That keeps the runtime portable across operating systems without requiring a repo-tracked secrets file.
-
-The admin shell redirects to `/admin/login` when auth is enabled.
-
-### Manual admin setup
-
-If you prefer to configure admin auth by hand instead of using onboarding, keep the same runtime contract and set the pieces yourself:
-
-1. Set `adminAuth.enabled: true` in [config/rag.config.yaml](config/rag.config.yaml).
-2. Provide `adminAuth.sessionSecretEnvVar: RAG_ADMIN_SESSION_SECRET`.
-3. Set the secret in your shell, or write the value to `.local/rag_admin_session.secret` if you want to use the local file fallback.
-4. Run `npm run admin:hash-password -- "your-password"` to generate a scrypt password hash.
-5. Put that hash into `adminAuth.users[]` with `username`, `role`, and `tenantId`.
-6. Restart the backend.
-7. Log in with `POST /v1/admin/auth/login`.
-8. For mutating admin requests, fetch a token from `POST /v1/admin/auth/action-token` and send it as `x-admin-action-token`.
-
-## Collection discovery and cleanup notes
-
-- `GET /v1/admin/collections` is a registry-style discovery endpoint and does not return query/retrieve capability flags.
-- Discovery responses include `readyUrl`, `queryUrl`, and `retrieveUrl`; when a collection has no active index yet, the `activeVersion` and `chunkCount` fields stay `null` instead of disappearing from the response shape.
-- Physical collection cleanup uses `cleanup.retentionMs` and the retired lifecycle states `delete_pending`, `cleanup_failed`, and `failed_build`.
-- Storage delete handling is idempotent not-found cleanup behavior, and tenant access errors use `COLLECTION_FORBIDDEN`.
-- The application composition layer lives in [src/app.ts](src/app.ts).
-
-Session flow:
-
-1. `POST /v1/admin/auth/login` with `{ username, password }`
-2. The backend verifies the stored `passwordHash`
-3. The backend sets an `HttpOnly` `SameSite=Lax` cookie
-4. The frontend calls `GET /v1/admin/auth/session` on boot
-5. Mutating requests fetch `POST /v1/admin/auth/action-token`
-6. `POST /v1/admin/auth/logout` clears the cookie
-
-## Admin panel workflow
-
-After onboarding, use the admin panel for collection setup, validation, reindexing, job monitoring, and audit review. The panel is the normal human workflow; the raw `/v1/admin/**` POST examples exist for automation, scripting, and integration tests.
-
-The panel surface is split across:
-
-- [admin/index.html](admin/index.html) for collection management and operational workflows
-- [docs/admin_api_endpoints.md](docs/admin_api_endpoints.md) for the underlying admin contract
-- [docs/http_workflows.md](docs/http_workflows.md) for API examples when you need to automate the same actions
-
-## Typical workflows
-
-### Public question answering
-
-1. List collections for the current tenant.
-2. Check `GET /v1/rag/collections/:collectionId/ready`.
-3. Use `POST /v1/rag/collections/:collectionId/retrieve` when you want evidence only.
-4. Use `POST /v1/rag/collections/:collectionId/query` when you want an answer plus sources (needs a configured chat LLM).
-
-### Admin collection setup
-
-1. Open the admin panel at `http://localhost:3010/admin` while the server is running (the panel files live in [admin/](admin/), but they must be served by the backend).
-2. Create or edit the collection in the panel instead of hand-writing POSTs.
-3. Use the panel's validate and reindex actions to build the active index.
-4. Monitor job progress and physical collection state from the panel views.
-5. Use the admin API docs only when you need to automate the same actions outside the UI.
-
-## Docs map
-
-- [docs/user_api_endpoints.md](docs/user_api_endpoints.md) - Public `/v1/rag` query, retrieve, readiness, and list endpoints
-- [docs/admin_api_endpoints.md](docs/admin_api_endpoints.md) - Admin auth, collections, jobs, and audit endpoints
-- [docs/http_workflows.md](docs/http_workflows.md) - End-to-end HTTP examples
-- [docs/openapi.yaml](docs/openapi.yaml) - Machine-readable API contract
-- [docs/frontend_agent_handoff.md](docs/frontend_agent_handoff.md) - Hand-off for frontend builders and coding agents
-- [docs/frontend_acceptance_checklist.md](docs/frontend_acceptance_checklist.md) - Validation checklist for generated frontends
-- [docs/coding_agent_prompt_template.md](docs/coding_agent_prompt_template.md) - Prompt templates for coding agents
-- [test_frontend/README.md](test_frontend/README.md) - Reference public frontend guide
-- [config/rag.config.yaml](config/rag.config.yaml) - Runtime configuration
-
-## Key scripts
-
-- `npm run dev` - Start the backend in watch mode
-- `npm run onboard` - Create or refresh runtime config and registry state for the local runtime; does not manage collections
-- `npm run index` - Trigger indexing from the CLI
-- `npm run admin:hash-password` - Generate an admin password hash
-- `npm run build` - Compile TypeScript
-- `npm run test` - Run tests
-- `npm run typecheck` - Type-check the codebase
-- `npm start` - Run the compiled server
-
-## Public API reminders
-
-- Use only versioned `/v1` routes.
-- Send `x-request-id` on every request.
-- Send `x-tenant-id` and `x-user-id` on public `/v1/rag/**` requests.
-- Use `GET /v1/rag/collections/:collectionId/ready` as the capability gate before enabling query and retrieve actions.
-- Treat `POST /v1/rag/collections/:collectionId/query` and `POST /v1/rag/collections/:collectionId/retrieve` as separate flows.
-- `query.sources` may be only the subset used for answer generation.
-- Handle `429 RATE_LIMIT_EXCEEDED` with the returned `Retry-After` header.
-- Set `observability.includeDebugTimings: true` in the config to add `debug.latency` (`retrievalMs`, `generationMs`, `totalMs`) to query and retrieve responses; it is `false` by default.
-
-## Stack
-
-- Node.js, TypeScript, Express
-- LangChain, Chroma
-- Embeddings: built-in `embeddinggemma-2` (ONNX, transformers.js) or any OpenAI-compatible API
-- Optional chat LLM through any OpenAI-compatible API (LangChain `ChatOpenAICompletions`)
-- SQLite registry and job state
-- TXT, MD, PDF, DOC, and DOCX ingestion
-
-## Notes
-
-- The backend currently listens on port `3010` in the shipped config.
-- The docs under [docs/](docs/README.md) are the authoritative source for request/response examples and integration details.
+- [docs/configuration.md](docs/configuration.md) — every setting, environment variables, onboarding flags, running on another machine.
+- [docs/admin_auth.md](docs/admin_auth.md) — admin auth, roles, sessions and action tokens.
+- [docs/operations.md](docs/operations.md) — readiness, rate limits, debug timings, index cleanup, CLI scripts.
+- [docs/README.md](docs/README.md) — API documentation index: public and admin endpoints, HTTP workflows, OpenAPI, guides for building a frontend.
+- Stack: Node.js, TypeScript, Express 5, LangChain, Chroma, SQLite (`better-sqlite3`), transformers.js (built-in embeddings).

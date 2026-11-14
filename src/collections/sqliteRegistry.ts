@@ -419,6 +419,11 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     return rows.map(mapCollectionRow);
   }
 
+  async countAllCollections(): Promise<number> {
+    const row = this.db.prepare("SELECT COUNT(*) AS count FROM collections").get() as { count: number };
+    return row.count;
+  }
+
   async getVisibleCollection(context: RequestContext, collectionId: string): Promise<RagCollection | null> {
     const row = this.db
       .prepare("SELECT * FROM collections WHERE tenant_id = ? AND id = ? AND status != 'archived'")

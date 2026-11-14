@@ -42,3 +42,5 @@ adminAuth:
   users: []
 observability:
   includeDebugTimings: false
+sampleCollection:
+  enabled: true

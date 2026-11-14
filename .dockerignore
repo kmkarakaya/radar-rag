@@ -6,7 +6,9 @@ dist
 .env
 .env.*
 chroma_data
-data
+# Documents and the registry stay outside the image; only the English sample documents are shipped.
+data/*
+!data/sample
 graphify-out
 egitim
 notes

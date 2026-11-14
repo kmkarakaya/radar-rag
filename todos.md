@@ -8,21 +8,23 @@ Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigi
 
 Durum:
 
-- Embedding saglayicisi isi (P0 #5) tamamlandi ve main'e merge edilip push edildi (2026-11-14). Plan kodla bolum bolum karsilastirildi, bulunan 5 eksik kapatildi; `npm test` 220/220.
-- Onboarding kullanici tarafindan etkilesimli denendi (2026-11-14): openai-compatible + Ollama `/v1` (`bge-m3:latest`) secildi, "sadece YENI koleksiyonlar" notu cikti, Chroma / embedding / chat smoke `ok`; `npm run dev` ile yeni koleksiyonda `/query` calisti.
-- Bu denemede bulunan iki kucuk sey duzeltildi: sunucu acilisindaki "Embedding" / "Chat LLM" satirlari "Models:" basligi altinda girintili; `app.foundation` testleri yerel YAML'daki embedding saglayicisina bagliydi (onboarding dis servise gecince 4 test kiriliyordu), artik builtin'e sabitlendi.
-- Yerel `config/rag.config.yaml` (+ `.bak`) kisisel ayarlarla degisik (embedding varsayilani `openai-compatible` / `bge-m3:latest`, chat `gemma3:4b`); commit'lenmemeli.
+- **Kolay ilk calistirma** (`feat/easy-first-run`, plan: `enchanted-imagining-storm.md`) tamamlandi, main'e henuz merge/push edilmedi:
+  - Config dosyasi istege bagli: her ayarin semada varsayilani var; dosya yoksa varsayilanlar kullaniliyor.
+  - Ilk acilista "Sample documents" koleksiyonu (`data/sample`, Ingilizce: backend ve RAG kavramlari) olusturulup indeksleniyor; bir kez, silinirse geri gelmez; `RAG_SAMPLE_COLLECTION=false` ile kapanir.
+  - Onboarding varsayilan olarak sadece embedding, chat LLM ve admin auth soruyor; `--advanced` her seyi.
+  - GitHub Actions: test (her push/PR) + main'de `ghcr.io/kmkarakaya/vanilla_rag_backend` imaji (amd64 + arm64). Compose bu imaji cekiyor; tek basina (clone'suz) calisiyor, `./config` istege bagli klasor.
+  - README seviyeli yeniden yazildi (Level 1-7: dene, kendi dokumanlarin, uygulamadan kullan, cevap uretme, embedding, admin koruma, nasil calisir + yerel gelistirme). Referans icerik `docs/configuration.md`, `docs/admin_auth.md`, `docs/operations.md`'ye tasindi.
+  - Dogrulama: 231/231 test (Linux Node 22 konteynerinde de); clone'suz ve clone'lu Docker akislari uctan uca (ornek 6 sn'de indekslendi, "Which file formats can I index?" dogru dokumani ilk sirada getirdi, yeniden baslatma/silme sonrasi tekrar olusmadi); onboarding kisa/advanced kuru calistirma.
+- Yerel `config/rag.config.yaml` (+ `.bak`) kisisel ayarlarla degisik; commit'lenmemeli.
 
 Devam edilecekler (sirayla):
 
-1. Dev registry'deki eski (Ollama ile, saglayici alani olmadan indekslenmis) koleksiyonlar varsa: yeni kolon varsayilani `builtin` oldugu icin Ollama model adlariyla `EMBEDDING_MODEL_UNSUPPORTED` gorunurler. Ya silip yeniden olustur ya da admin panelden saglayiciyi `openai-compatible` yapip reindex et (geriye donuk uyumluluk bilerek yok).
-2. ~~Istege bagli kucuk isler~~ yapildi (2026-11-14):
-   - Genel `/ready`: varsayilan embedding hatasi artik sadece `index`'i (yeni koleksiyon indeksleme) blokluyor; mevcut koleksiyonlarda arama acik kaliyor. Yeni `systemReadyFor: "retrieve"` degeri (retrieve-only kurulumda arama calisiyor, indeksleme calismiyor; eskiden yanlislikla `neither`).
-   - Docker imaji 1.12 GB -> 866 MB: Dockerfile'da `onnxruntime-node`'un Windows, macOS ve diger Linux mimarisinin ikili dosyalari siliniyor; builtin model konteynerde dogrulandi.
-   - README "Embedding" bolumune hiz notu: builtin CPU'da, buyuk veri setleri icin dis servis onerilir.
-   - Kullanilmayan `ollama/ollama:0.40.12` imaji makineden silindi.
-   - Kalan: testlerin yerel YAML'a bagimliligi (bu sefer `app.foundation` kirildi); sabit bir test config'i P1 #6 kapsaminda dusunulsun.
-3. Yol haritasindaki siradaki is: **P0 #2 Public API icin API anahtari ve CORS** (bkz. "Sonraki oncelikli uygulama sirasi").
+1. `feat/easy-first-run` -> main merge + push (onay bekliyor). Push sonrasi ilk CI calismasini izle (`gh run watch`).
+2. **Sizin yapacaginiz tek seferlik adim:** ilk yayindan sonra ghcr paketini Public yap (GitHub -> Packages -> vanilla_rag_backend -> Package settings -> Change visibility). Sonra bos bir klasorde README Level 1'i birebir dene.
+3. **LICENSE yok.** Baskalarinin kullanacagi bir urun icin lisans secilmeli (ornegin MIT veya Apache-2.0); karar sizin.
+4. Dev registry'deki eski (Ollama ile, saglayici alani olmadan indekslenmis) koleksiyonlar: `EMBEDDING_MODEL_UNSUPPORTED` gorunurlerse silip yeniden olustur ya da saglayiciyi `openai-compatible` yapip reindex et.
+5. Testlerin yerel YAML'a bagimliligi: sabit bir test config'i P1 #6 kapsaminda dusunulsun.
+6. Yol haritasindaki siradaki is: **P0 #3 dosya yukleme** (README Level 2 bunu "planned" diye duyuruyor) ya da **P0 #2 API anahtari + CORS** (README Level 3'teki guvenlik uyarisini kaldirir).
 
 ## Mevcut durum (ozet)
 
@@ -34,7 +36,7 @@ Devam edilecekler (sirayla):
 - Gozlemlenebilirlik: request id, `latencyMs`, `errorCode`, `retrievalMs` iceren yapisal operational log (+ `operational_logs` tablosu), audit log, opsiyonel `debug.latency` response alani.
 - `/health`, `/ready` (`?strict=true`, `?details=true`), koleksiyon bazli `/ready`.
 - Ingestion: `txt`, `md`, `pdf`, `doc`, `docx` (alt klasorler dahil, recursive; registry SQLite dosyasi atlanir); SHA-256 source hash; dosya bazli hata toleransi.
-- Testler: `node:test` ile 220 unit + acceptance testi, ayrica Chroma isteyen integration testi (gercek builtin model testi `RAG_TEST_BUILTIN=1` ile istege bagli); dokuman/statik contract testleri.
+- Testler: `node:test` ile 231 unit + acceptance testi (CI'da her push'ta), ayrica Chroma isteyen integration testi (gercek builtin model testi `RAG_TEST_BUILTIN=1` ile istege bagli); dokuman/statik contract testleri.
 - Dokumanlar: README, `docs/` (API, workflow, `openapi.yaml`), mimari dokumani; admin panel (`/admin`) ve ornek istemci (`/test-frontend`).
 
 ## Tamamlananlar (eski listeden kapatilanlar)
@@ -141,9 +143,11 @@ Yapilacaklar:
 - Generic JSON mapping: `contentField`, `idField`, `metadataFields` benzeri koleksiyon ayarlari; nested alanlar icin JSON pointer/path; yanlis mapping'de anlasilir hata.
 - Desteklenen formatlari README'de ve admin panelde net goster.
 
-### 7. CI pipeline yok
+### 7. CI pipeline (cekirdegi tamamlandi)
 
-Sorun:
+2026-11-14: `.github/workflows/ci.yml` her push/PR'da `npm ci` + `typecheck` + `typecheck:test` + `npm test` kosuyor; main'de ve `v*` etiketlerinde Docker imajini (amd64 + arm64) ghcr.io'ya yayinliyor. Kalanlar: `npm run build` adimi, integration testleri icin ayri job, lint (P2 #1).
+
+Sorun (eski):
 
 - Repo degisikliklerinde otomatik dogrulama kosmuyor.
 - Somut kanit: 2026-07-02'deki Auth/RBAC + onboarding commit'lerinden sonra 46 test ve `typecheck:test` aylarca kirik kaldi ve fark edilmedi (2026-11-07'de duzeltildi).
@@ -325,8 +329,8 @@ Urun yonune (A, C, D) gore:
 4. MCP sunucusu: retrieve'i AI asistanlarina arac olarak ac (P0 #4).
 5. ~~Degistirilebilir embedding saglayicisi (P0 #5).~~ Tamamlandi (2026-11-09).
 6. Dosya formatlari (P0 #6) ve incremental / upsert indexing (P1 #5).
-7. CI pipeline (P0 #7; ucuz oldugu icin araya da alinabilir).
-8. README bilinen sinirlar + ilk kurulum deneyimi cilasi.
+7. ~~CI pipeline (P0 #7)~~ cekirdegi tamamlandi (2026-11-14); kalanlar P0 #7'de.
+8. ~~Ilk kurulum deneyimi~~ tamamlandi (2026-11-14: seviyeli README, ornek koleksiyon, hazir imaj, kisa onboarding). Kalan: README "bilinen sinirlar" ve LICENSE.
 9. Readiness icin gercek RAG smoke probe.
 10. Sohbet arayuzu (B kitlesi), API'nin ustune.
 11. Test coverage bosluklari, lint, opsiyonel degerlendirme araci.

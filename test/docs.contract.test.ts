@@ -17,7 +17,7 @@ describe('docs static contract', () => {
     assert.ok(content.includes('cleanup.retentionMs'), 'Should document retention cleanup config');
     assert.ok(content.includes('readyUrl'), 'Should document collection discovery readyUrl');
     assert.ok(content.includes('does not return query/retrieve capability flags'), 'Should document list endpoint capability boundary');
-    assert.ok(content.includes('activeVersion` ve `chunkCount` alanlari `null`'), 'Should document stable null fields for unindexed collection discovery');
+    assert.ok(content.includes('`activeVersion` and `chunkCount` fields stay `null`'), 'Should document stable null fields for unindexed collection discovery');
     assert.ok(content.includes('delete_pending'), 'Should document pending physical cleanup state');
     assert.ok(content.includes('cleanup_failed'), 'Should document retryable cleanup failure state');
     assert.ok(content.includes('failed_build'), 'Should document failed build physical state');
@@ -65,7 +65,7 @@ describe('docs static contract', () => {
     assert.ok(readme.includes('.local/rag_admin_session.secret'), 'README should document the local secret file fallback');
     assert.ok(readme.includes('npm run admin:hash-password'), 'README should document password hash generation');
     assert.ok(readme.includes('/admin/login'), 'README should document the admin login redirect');
-    assert.ok(readme.includes('Güvenli admin quickstart'), 'README should distinguish secure admin onboarding');
+    assert.ok(readme.includes('Secure admin quickstart'), 'README should distinguish secure admin onboarding');
     assert.ok(docsReadme.includes('derive those values from the active session'), 'docs/README should explain session-derived admin tenant/user headers');
     assert.ok(handoff.includes('session-derived values for `/v1/admin/**`'), 'Frontend handoff should explain the admin header boundary');
     assert.ok(promptTemplate.includes('session-derived tenant/user context'), 'Prompt template should explain the admin header boundary');

@@ -494,31 +494,49 @@ describe("app foundation", () => {
     }
   });
 
-  it("blocks retrieval and indexing when the default openai-compatible embedding service is unreachable", async () => {
-    const started = await startServer(createHealthyRegistryStub(), {
+  it("blocks only new indexing when the default openai-compatible embedding service is unreachable", async () => {
+    // Existing collections keep their own embedding (checked by the collection /ready), so retrieval stays up.
+    const unreachableEmbedding = {
       ...createHealthyHealthChecks(),
       checkEmbeddingTarget: async (_receivedConfig: ResolvedConfig, target: EmbeddingTarget) => ({
-        provider: "openai-compatible",
+        provider: "openai-compatible" as const,
         model: target.model,
         configured: true,
         supported: true,
         reachable: false,
         authOk: false,
-        modelListed: "unknown",
+        modelListed: "unknown" as const,
         ok: false,
         latencyMs: 1,
         error: "connect ECONNREFUSED",
       }),
-    });
+    };
 
+    const retrieveOnly = await startServer(createHealthyRegistryStub(), unreachableEmbedding, {
+      ...config,
+      chat: { ...config.chat, enabled: false, baseUrl: "", model: "" },
+    });
     try {
-      const body = await (await fetch(`${started.baseUrl}/ready?details=true`)).json() as any;
+      const body = await (await fetch(`${retrieveOnly.baseUrl}/ready?details=true`)).json() as any;
       assert.equal(body.ready, false);
-      assert.equal(body.retrieveReady, false);
+      assert.equal(body.retrieveReady, true);
       assert.equal(body.indexReady, false);
+      assert.equal(body.systemReadyFor, "retrieve");
       assert.ok(body.blockerCodes.includes("EMBEDDING_PROVIDER_UNREACHABLE"));
+      const blocker = body.blockers.find((issue: any) => issue.code === "EMBEDDING_PROVIDER_UNREACHABLE");
+      assert.deepEqual(blocker.capabilities, ["index"]);
     } finally {
-      await stopServer(started.server);
+      await stopServer(retrieveOnly.server);
+    }
+
+    const withChatLlm = await startServer(createHealthyRegistryStub(), unreachableEmbedding, withChat(config));
+    try {
+      const body = await (await fetch(`${withChatLlm.baseUrl}/ready?details=true`)).json() as any;
+      assert.equal(body.queryReady, true);
+      assert.equal(body.indexReady, false);
+      assert.equal(body.systemReadyFor, "query");
+    } finally {
+      await stopServer(withChatLlm.server);
     }
   });
 });

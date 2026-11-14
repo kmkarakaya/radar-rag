@@ -399,11 +399,12 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
     }
   });
 
-  // The configured default embedding (used by new collections). Existing collections are checked
-  // individually by GET /v1/rag/collections/:id/ready with their own provider/model.
+  // The configured default embedding is only used when indexing new collections, so it can only block
+  // `index`. Existing collections keep their own provider/model and are checked individually by
+  // GET /v1/rag/collections/:id/ready (a collection on another provider keeps working when this one is down).
   checks.push({
     name: "Embedding (default for new collections)",
-    capabilities: ["retrieve", "query", "index"],
+    capabilities: ["index"],
     ...describeEmbeddingReadiness(embeddingStatus),
   });
 
@@ -483,9 +484,11 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
       ? "retrieve-and-index"
       : queryReady
         ? "query"
-        : indexReady
-          ? "index"
-          : "neither";
+        : retrieveReady
+          ? "retrieve"
+          : indexReady
+            ? "index"
+            : "neither";
   const overallSummary = systemReadyFor === "query-and-index"
     ? "System is ready to serve RAG queries and to run indexing from the configured data source."
     : systemReadyFor === "retrieve-and-index"
@@ -493,7 +496,9 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
         ? "System can retrieve evidence and run indexing, but answer generation (/query) is not ready."
         : "System is ready to retrieve evidence and to run indexing (retrieve-only: no chat LLM configured)."
       : systemReadyFor === "query"
-        ? "System can serve RAG queries, but it is not ready to run indexing from the configured data source."
+        ? "System can serve RAG queries, but it is not ready to run indexing."
+        : systemReadyFor === "retrieve"
+          ? "System can retrieve evidence from existing collections, but it is not ready to run indexing."
         : systemReadyFor === "index"
           ? "System can run indexing, but it is not ready to serve retrieval or RAG queries yet."
           : "System is not ready for retrieval, RAG queries or indexing.";

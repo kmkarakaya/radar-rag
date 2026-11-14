@@ -5,6 +5,7 @@
 #   docker compose up -d chroma   # only Chroma, for running the backend with `npm run dev`
 #
 # Put your documents under ./data, then open http://localhost:3010/admin.
+# config/rag.config.yaml is mounted into the backend: after editing it, run `docker compose restart backend`.
 # Settings go in a .env file next to this file:
 #   BACKEND_HOST_PORT / CHROMA_HOST_PORT   host ports (default 3010 / 8000)
 #
@@ -52,6 +53,10 @@ services:
       - ./data:/app/data
       # Built-in embedding models, downloaded once on the first indexing and kept across restarts.
       - ./models:/app/models
+      # The runtime config, so edits apply after `docker compose restart backend` (no rebuild).
+      # chroma.url is always overridden above; non-empty RAG_EMBEDDING_* / RAG_CHAT_* values override the
+      # file too. Inside the container localhost is the container itself: use host.docker.internal.
+      - ./config/rag.config.yaml:/app/config/rag.config.yaml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

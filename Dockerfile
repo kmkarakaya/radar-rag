@@ -19,6 +19,16 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev
 
+# onnxruntime-node ships native binaries for every OS and CPU (~220 MB we never load here); keep only
+# the Linux build for this image's architecture.
+RUN set -e; \
+  ort=node_modules/onnxruntime-node/bin; \
+  case "$(uname -m)" in x86_64) keep=x64 ;; aarch64) keep=arm64 ;; *) keep= ;; esac; \
+  rm -rf "$ort"/napi-v*/darwin "$ort"/napi-v*/win32; \
+  if [ -n "$keep" ]; then \
+    for dir in "$ort"/napi-v*/linux/*; do [ "$(basename "$dir")" = "$keep" ] || rm -rf "$dir"; done; \
+  fi
+
 # ---- runtime ----
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app

@@ -567,6 +567,8 @@ Repodaki implementasyon:
 - Konfigürasyon [config/rag.config.yaml](config/rag.config.yaml) içinde tutulur.
 - [src/config.ts](src/config.ts) bu dosyayı startup sırasında okur.
 - Config şeması `zod` ile doğrulanır; hatalı config varsa backend ayağa kalkmaz.
+- Her ayarın şemada bir varsayılanı vardır; bu yüzden config dosyası isteğe bağlıdır. Dosya yoksa (ör. config bağlanmamış hazır Docker imajı) varsayılanlar ve `RAG_*` env değişkenleri kullanılır.
+- `sampleCollection.enabled` (varsayılan `true`, env `RAG_SAMPLE_COLLECTION`): registry'de hiç koleksiyon olmamışsa ilk açılışta `data/sample` (imajda `/app/samples`) klasöründen "Sample documents" koleksiyonu oluşturulur ve indekslenir ([src/samples/sampleCollection.ts](src/samples/sampleCollection.ts)). Silinen koleksiyonlar arşivde kaldığı için bu sadece bir kez olur.
 
 Bu katman sayesinde sistem şu kararlar için repoda görünür ve doğrulanabilir şekilde ayarlanabilir hale gelir:
 
@@ -584,7 +586,7 @@ Bu katman sayesinde sistem şu kararlar için repoda görünür ve doğrulanabil
 
 Eski `ollama` bölümü tamamen kaldırılmıştır ve geriye dönük uyumluluk yoktur: config'te `ollama` anahtarı bulunursa strict şema onu reddeder ve backend ayağa kalkmaz. Env override'ları: `RAG_EMBEDDING_PROVIDER`, `RAG_EMBEDDING_MODEL`, `RAG_EMBEDDING_BASE_URL`, `RAG_EMBEDDING_CACHE_DIR` (API key için `RAG_EMBEDDING_API_KEY`); `RAG_CHAT_BASE_URL`, `RAG_CHAT_MODEL` (API key için `RAG_CHAT_API_KEY`). `RAG_OLLAMA_BASE_URL`, `RAG_OLLAMA_EMBEDDING_MODEL` ve `RAG_OLLAMA_CHAT_MODEL` kaldırılmıştır.
 
-Yapılandırılmış varsayılan embedding sadece yeni koleksiyonlara uygulanır; her koleksiyon kendi `embeddingProvider` / `embeddingModel` değerlerini saklar, bu yüzden varsayılanı değiştirmek mevcut koleksiyonları etkilemez. `npm run onboard` "Embedding provider for new collections (builtin/openai-compatible)" sorusunu sorar: `builtin` seçilirse model onboarding sırasında indirilmez (ilk indexing'de iner); `openai-compatible` seçilirse base URL, model ve API key sorulur ve tek bir gerçek embedding testi çalıştırılır. Docker stack'i artık Ollama içermez (backend + Chroma); built-in model için `./models` volume'u kullanılır.
+Yapılandırılmış varsayılan embedding sadece yeni koleksiyonlara uygulanır; her koleksiyon kendi `embeddingProvider` / `embeddingModel` değerlerini saklar, bu yüzden varsayılanı değiştirmek mevcut koleksiyonları etkilemez. `npm run onboard` varsayılan olarak sadece ana seçimleri (embedding, opsiyonel chat LLM, admin auth) sorar; `--advanced` tüm ayarları sorar. "Embedding provider for new collections (builtin/openai-compatible)" sorusunda: `builtin` seçilirse model onboarding sırasında indirilmez (ilk indexing'de iner); `openai-compatible` seçilirse base URL, model ve API key sorulur ve tek bir gerçek embedding testi çalıştırılır. Docker stack'i artık Ollama içermez (backend + Chroma); built-in model için `./models` volume'u kullanılır.
 
 Bu, backend mimarisi açısından doğru bir ayrımdır. Ancak config schema validation halen sınırlıdır.
 
@@ -705,7 +707,8 @@ Mimari yorumu:
 
 Rol:
 
-- Chroma bağımlılığını ayağa kaldırmak
+- Chroma'yı ve backend'i birlikte ayağa kaldırmak. Backend için GitHub Actions'ın ([.github/workflows/ci.yml](.github/workflows/ci.yml)) testlerden sonra yayınladığı hazır `ghcr.io/kmkarakaya/vanilla_rag_backend` imajı çekilir; bu sayede compose dosyası tek başına (repo clone'lanmadan) çalışır. `docker compose up -d --build` çalışma kopyasından build eder.
+- `./data`, `./models` ve isteğe bağlı `./config` klasörlerini bağlamak.
 
 Mimari yorumu:
 

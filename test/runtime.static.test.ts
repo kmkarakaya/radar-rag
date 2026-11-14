@@ -62,13 +62,15 @@ describe("runtime static contract", () => {
 
   it("documents request rate limiting and debug latency contracts", async () => {
     const readme = await fs.readFile(path.resolve(process.cwd(), "README.md"), "utf8");
+    const operations = await fs.readFile(path.resolve(process.cwd(), "docs/operations.md"), "utf8");
     const architecture = await fs.readFile(
       path.resolve(process.cwd(), "vanilla_rag_backend_mimarisi.md"),
       "utf8",
     );
 
     assert.match(readme, /RATE_LIMIT_EXCEEDED/);
-    assert.match(readme, /includeDebugTimings/);
+    assert.match(operations, /RATE_LIMIT_EXCEEDED/);
+    assert.match(operations, /includeDebugTimings/);
     assert.match(architecture, /RATE_LIMIT_EXCEEDED/);
     assert.match(architecture, /includeDebugTimings/);
   });

@@ -12,6 +12,15 @@ describe('docs static contract', () => {
     assert.ok(!content.includes('/rag/retrieve'), 'Should not mention legacy /rag/retrieve route');
     assert.ok(!content.includes('chroma.collection'), 'Should not mention stale chroma.collection config');
     assert.ok(!content.includes('data.indexSampleSize'), 'Should not mention stale data.indexSampleSize config');
+    assert.ok(content.includes('[src/app.ts](src/app.ts)'), 'Should describe the app composition layer explicitly');
+    assert.ok(!content.includes('[src/server.ts](src/server.ts): HTTP API katmanı'), 'Should not misdescribe server.ts as the HTTP API layer');
+    assert.ok(content.includes('docs/operations.md'), 'Should link the operations guide');
+    assert.ok(content.includes('docs/configuration.md'), 'Should link the configuration guide');
+  });
+
+  it('documents the index lifecycle and discovery contract in docs/operations.md', async () => {
+    const content = await fs.readFile(path.resolve(process.cwd(), 'docs/operations.md'), 'utf8');
+
     assert.ok(content.includes('/v1/admin/collections'), 'Should mention admin collection endpoint');
     assert.ok(content.includes('/v1/admin/jobs/'), 'Should mention admin job endpoint');
     assert.ok(content.includes('cleanup.retentionMs'), 'Should document retention cleanup config');
@@ -23,8 +32,7 @@ describe('docs static contract', () => {
     assert.ok(content.includes('failed_build'), 'Should document failed build physical state');
     assert.ok(content.includes('idempotent not-found'), 'Should document idempotent not-found cleanup behavior');
     assert.ok(content.includes('COLLECTION_FORBIDDEN'), 'Should document 403 forbidden collection behavior');
-    assert.ok(content.includes('[src/app.ts](src/app.ts)'), 'Should describe the app composition layer explicitly');
-    assert.ok(!content.includes('[src/server.ts](src/server.ts): HTTP API katmanı'), 'Should not misdescribe server.ts as the HTTP API layer');
+    assert.ok(content.includes('[src/app.ts](../src/app.ts)'), 'Should describe the app composition layer explicitly');
   });
 
   it('does not contain old endpoints or stale config paths in architecture doc', async () => {

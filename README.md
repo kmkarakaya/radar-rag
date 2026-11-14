@@ -137,7 +137,8 @@ Embeddings turn your documents and questions into vectors; indexing and retrieva
 - Changing a collection's provider or model (admin panel, Embedding Provider / Embedding Model) marks it `reindex_required`; it keeps serving with the old embedding until the re-index finishes.
 - Locally, `npm.cmd run onboard` asks `Embedding provider for new collections (builtin/openai-compatible)`. For `openai-compatible` it asks the base URL (for Ollama: `http://localhost:11434/v1`), the model (for example `embeddinggemma-2:270m` after `ollama pull embeddinggemma-2:270m`) and an API key, which is stored in `.local/rag_embedding_api_key.secret`, never in the YAML. One external service is configured at a time; if you point it at a different server, re-index the collections that use it.
 - In Docker or CI, use `RAG_EMBEDDING_PROVIDER`, `RAG_EMBEDDING_MODEL`, `RAG_EMBEDDING_BASE_URL` and `RAG_EMBEDDING_API_KEY` (see [docker-compose.yml](docker-compose.yml)).
-- `/ready` checks the default embedding without running it: a built-in model that is not downloaded yet is only a warning (`EMBEDDING_MODEL_NOT_DOWNLOADED`), and an external service is checked with a free `GET /models`.
+- `/ready` checks the default embedding without running it: a built-in model that is not downloaded yet is only a warning (`EMBEDDING_MODEL_NOT_DOWNLOADED`), and an external service is checked with a free `GET /models`. If the default external service is down, only indexing new collections is blocked; collections on another provider keep serving.
+- Speed: `builtin` runs on the backend's CPU, so it is fine for small and medium document sets but indexes noticeably slower than a dedicated embedding server, and a large indexing job can slow down concurrent queries. For large document sets, use `openai-compatible` with Ollama (GPU if available) or a cloud API.
 
 ## Answer generation (optional)
 

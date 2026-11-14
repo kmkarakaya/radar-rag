@@ -16,12 +16,12 @@ Durum:
 Devam edilecekler (sirayla):
 
 1. Dev registry'deki eski (Ollama ile, saglayici alani olmadan indekslenmis) koleksiyonlar varsa: yeni kolon varsayilani `builtin` oldugu icin Ollama model adlariyla `EMBEDDING_MODEL_UNSUPPORTED` gorunurler. Ya silip yeniden olustur ya da admin panelden saglayiciyi `openai-compatible` yapip reindex et (geriye donuk uyumluluk bilerek yok).
-2. Istege bagli kucuk isler (karar bekliyor):
-   - **Genel `/ready` fazla karamsar:** varsayilan saglayici dis servisse ve o servis kapaliysa sistem `/ready` "neither" diyor; oysa builtin koleksiyonlar calismaya devam ediyor (koleksiyon `/ready` dogru). Varsayilan saglayici hatasi sadece `index` yetenegini (yeni koleksiyonlar) dusurebilir.
-   - **Docker imaji 1.12 GB** (once 578 MB): `onnxruntime-node` butun platformlarin ikili dosyalarini getiriyor (~250 MB Linux disi). Runtime asamasinda Linux disi `bin/` klasorleri silinerek kuculebilir.
-   - **builtin, Ollama'dan yavas:** ayni veri setinde reindex builtin 48 sn, Ollama 9 sn (CPU, olcum degil gozlem). README'de "buyuk veri icin dis servis onerilir" notu dusunulebilir.
-   - Testlerin geri kalaninda da yerel YAML'a bagimlilik olabilir (bu sefer sadece `app.foundation` kirildi); `config` yerine sabit bir test config'i kullanmak P1 #6 kapsaminda dusunulsun.
-   - Makinede artik kullanilmayan `ollama/ollama:0.40.12` Docker imaji (~5 GB) silinebilir: `docker image rm ollama/ollama:0.40.12`.
+2. ~~Istege bagli kucuk isler~~ yapildi (2026-11-14):
+   - Genel `/ready`: varsayilan embedding hatasi artik sadece `index`'i (yeni koleksiyon indeksleme) blokluyor; mevcut koleksiyonlarda arama acik kaliyor. Yeni `systemReadyFor: "retrieve"` degeri (retrieve-only kurulumda arama calisiyor, indeksleme calismiyor; eskiden yanlislikla `neither`).
+   - Docker imaji 1.12 GB -> 866 MB: Dockerfile'da `onnxruntime-node`'un Windows, macOS ve diger Linux mimarisinin ikili dosyalari siliniyor; builtin model konteynerde dogrulandi.
+   - README "Embedding" bolumune hiz notu: builtin CPU'da, buyuk veri setleri icin dis servis onerilir.
+   - Kullanilmayan `ollama/ollama:0.40.12` imaji makineden silindi.
+   - Kalan: testlerin yerel YAML'a bagimliligi (bu sefer `app.foundation` kirildi); sabit bir test config'i P1 #6 kapsaminda dusunulsun.
 3. Yol haritasindaki siradaki is: **P0 #2 Public API icin API anahtari ve CORS** (bkz. "Sonraki oncelikli uygulama sirasi").
 
 ## Mevcut durum (ozet)

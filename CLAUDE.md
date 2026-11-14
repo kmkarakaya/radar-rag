@@ -20,7 +20,7 @@ All-in-one: `docker compose up -d` (backend + Chroma 1.5.9; the built-in embeddi
 - `npm run dev` — start in watch mode (`tsx watch src/server.ts`).
 - `npm run build` — compile TypeScript to `dist/` (`tsc`); `npm start` — run compiled server.
 - `npm test` — unit + acceptance (`node:test` via tsx).
-- `npm run test:integration` — integration tests (needs live Chroma; the built-in embedding model downloads on first use).
+- `npm run test:integration` — integration tests (needs live Chroma; uses the configured default embedding, so with `builtin` the model downloads on first use). `RAG_TEST_BUILTIN=1` additionally runs the real built-in model test (opt-in, ~350 MB download).
 - `npm run typecheck` / `npm run typecheck:test` — type-check source / tests.
 - CLI: `npm run onboard` (bootstrap runtime config + optional admin auth), `npm run index -- --collection-id <id>` (reindex), `npm run admin:hash-password -- "<password>"` (scrypt hash for config users).
 

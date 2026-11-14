@@ -297,6 +297,8 @@ export type ListAuditLogResult = {
 
 export interface CollectionRegistry {
   listVisibleCollections(context: RequestContext): Promise<RagCollection[]>;
+  /** Every collection ever created, across tenants and including archived (deleted) ones. */
+  countAllCollections(): Promise<number>;
   getVisibleCollection(context: RequestContext, collectionId: string): Promise<RagCollection | null>;
   listPhysicalCollectionsForCollection(
     context: RequestContext,

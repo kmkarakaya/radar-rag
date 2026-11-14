@@ -21,6 +21,7 @@ type HealthChecks = NonNullable<AppDependencies["healthChecks"]>;
 function createHealthyRegistryStub(): CollectionRegistry {
   return {
     listVisibleCollections: async () => [],
+    countAllCollections: async () => 0,
     getVisibleCollection: async () => null,
     listPhysicalCollectionsForCollection: async () => [],
     listJobs: async () => ({ jobs: [], nextCursor: null }),

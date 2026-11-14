@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createApp } from "./app.js";
 import type { CollectionRegistry } from "./collections/types.js";
@@ -5,6 +6,7 @@ import { createSqliteCollectionRegistry } from "./collections/sqliteRegistry.js"
 import { createIndexJobRunner, type IndexJobRunner } from "./indexing/jobRunner.js";
 import { cleanupRetiredPhysicalCollections } from "./indexing/cleanup.js";
 import { config, type ResolvedConfig } from "./config.js";
+import { ensureSampleCollection } from "./samples/sampleCollection.js";
 import {
   createConsoleLogSink,
   createPersistentOperationalLogSink,
@@ -86,6 +88,8 @@ export async function startServer(input: {
   log?: StartupLogger;
   logEvent?: OperationalLogSink;
   startupMaintenance?: typeof runStartupMaintenance;
+  /** First-run sample collection; injectable so tests can turn it off. */
+  startupSampleCollection?: (input: Parameters<typeof ensureSampleCollection>[0]) => Promise<unknown>;
 } = {}) {
   const runtimeConfig = input.runtimeConfig ?? config;
   const registry = input.registry ?? createSqliteCollectionRegistry({ dbPath: runtimeConfig.registryPath, projectRoot: runtimeConfig.projectRoot });
@@ -99,6 +103,7 @@ export async function startServer(input: {
     logEvent,
   });
   const startupMaintenance = input.startupMaintenance ?? runStartupMaintenance;
+  const startupSampleCollection = input.startupSampleCollection ?? ensureSampleCollection;
 
   const app = createApp({ registry, jobRunner, runtimeConfig, logEvent: rawLogEvent });
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
@@ -106,14 +111,22 @@ export async function startServer(input: {
       log.log(`RAG backend listening on http://localhost:${runtimeConfig.port}`);
       log.log(formatStartupLinks(runtimeConfig));
       log.log(formatChatStatus(runtimeConfig));
+      if (!existsSync(runtimeConfig.configPath)) {
+        log.log(`No config file at ${runtimeConfig.configPath}; using the defaults (and any RAG_* environment variables).`);
+      }
       resolve(startedServer);
     });
   });
 
+  // Maintenance first (fails stale jobs), then the first-run sample collection. Neither blocks serving.
   const startupMaintenancePromise = Promise.resolve()
     .then(() => startupMaintenance({ registry, runtimeConfig, log, logEvent }))
     .catch((error) => {
       log.error("Startup maintenance crashed unexpectedly:", error);
+    })
+    .then(() => startupSampleCollection({ registry, jobRunner, runtimeConfig, log, logEvent }))
+    .catch((error) => {
+      log.error("Creating the sample collection failed:", error);
     });
 
   return { app, server, registry, jobRunner, startupMaintenancePromise };

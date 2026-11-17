@@ -1,4 +1,4 @@
-# Vanilla RAG Backend Documentation
+# Radar RAG Documentation
 
 This documentation set is written for both humans and coding agents that need to build against this backend without reverse-engineering the source code.
 

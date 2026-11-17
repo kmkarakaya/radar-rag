@@ -2,7 +2,7 @@
 
 ## Which file formats can I index?
 
-Vanilla RAG Backend indexes these file types:
+Radar RAG indexes these file types:
 
 - Plain text (.txt)
 - Markdown (.md)

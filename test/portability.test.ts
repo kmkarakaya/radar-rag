@@ -50,7 +50,7 @@ describe("registry source path portability", () => {
   let tempDir: string;
 
   before(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vanilla-rag-portable-"));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "radar-rag-portable-"));
   });
 
   after(async () => {

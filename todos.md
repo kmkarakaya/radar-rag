@@ -12,7 +12,7 @@ Durum:
   - Config dosyasi istege bagli: her ayarin semada varsayilani var; dosya yoksa varsayilanlar kullaniliyor.
   - Ilk acilista "Sample documents" koleksiyonu (`data/sample`, Ingilizce: backend ve RAG kavramlari) olusturulup indeksleniyor; bir kez, silinirse geri gelmez; `RAG_SAMPLE_COLLECTION=false` ile kapanir.
   - Onboarding varsayilan olarak sadece embedding, chat LLM ve admin auth soruyor; `--advanced` her seyi.
-  - GitHub Actions: test (her push/PR) + main'de `ghcr.io/kmkarakaya/vanilla_rag_backend` imaji (amd64 + arm64). Compose bu imaji cekiyor; tek basina (clone'suz) calisiyor, `./config` istege bagli klasor.
+  - GitHub Actions: test (her push/PR) + main'de `ghcr.io/kmkarakaya/radar-rag` imaji (amd64 + arm64). Compose bu imaji cekiyor; tek basina (clone'suz) calisiyor, `./config` istege bagli klasor.
   - README seviyeli yeniden yazildi (Level 1-7: dene, kendi dokumanlarin, uygulamadan kullan, cevap uretme, embedding, admin koruma, nasil calisir + yerel gelistirme). Referans icerik `docs/configuration.md`, `docs/admin_auth.md`, `docs/operations.md`'ye tasindi.
   - Dogrulama: 231/231 test (Linux Node 22 konteynerinde de); clone'suz ve clone'lu Docker akislari uctan uca (ornek 6 sn'de indekslendi, "Which file formats can I index?" dogru dokumani ilk sirada getirdi, yeniden baslatma/silme sonrasi tekrar olusmadi); onboarding kisa/advanced kuru calistirma.
 - Yerel `config/rag.config.yaml` (+ `.bak`) kisisel ayarlarla degisik; commit'lenmemeli.
@@ -20,7 +20,7 @@ Durum:
 Devam edilecekler (sirayla):
 
 1. `feat/easy-first-run` -> main merge + push (onay bekliyor). Push sonrasi ilk CI calismasini izle (`gh run watch`).
-2. **Sizin yapacaginiz tek seferlik adim:** ilk yayindan sonra ghcr paketini Public yap (GitHub -> Packages -> vanilla_rag_backend -> Package settings -> Change visibility). Sonra bos bir klasorde README Level 1'i birebir dene.
+2. **Sizin yapacaginiz tek seferlik adim:** ilk yayindan sonra ghcr paketini Public yap (GitHub -> Packages -> radar-rag -> Package settings -> Change visibility). Sonra bos bir klasorde README Level 1'i birebir dene.
 3. **LICENSE yok.** Baskalarinin kullanacagi bir urun icin lisans secilmeli (ornegin MIT veya Apache-2.0); karar sizin.
 4. Dev registry'deki eski (Ollama ile, saglayici alani olmadan indekslenmis) koleksiyonlar: `EMBEDDING_MODEL_UNSUPPORTED` gorunurlerse silip yeniden olustur ya da saglayiciyi `openai-compatible` yapip reindex et.
 5. Testlerin yerel YAML'a bagimliligi: sabit bir test config'i P1 #6 kapsaminda dusunulsun.

@@ -18,7 +18,7 @@ describe("recursive ingestion", () => {
   });
 
   it("skips the SQLite registry and its sidecar files when they live inside the source folder", async () => {
-    const sourcePath = await fs.mkdtemp(path.join(os.tmpdir(), "vanilla-rag-exclude-"));
+    const sourcePath = await fs.mkdtemp(path.join(os.tmpdir(), "radar-rag-exclude-"));
     try {
       const registryPath = path.join(sourcePath, "registry.sqlite");
       await fs.writeFile(path.join(sourcePath, "doc.txt"), "Merhaba dunya");

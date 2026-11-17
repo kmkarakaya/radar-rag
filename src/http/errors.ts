@@ -28,6 +28,11 @@ export type ApiErrorCode =
   | "CHAT_PROVIDER_UNREACHABLE"
   | "CHAT_PROVIDER_ERROR"
   | "ROUTE_NOT_FOUND"
+  | "COLLECTION_FILES_READ_ONLY"
+  | "FILE_TOO_LARGE"
+  | "TOO_MANY_FILES"
+  | "UNSUPPORTED_FILE"
+  | "DOCUMENT_NOT_FOUND"
   | "INTERNAL_ERROR";
 
 export type ApiErrorResponse = {

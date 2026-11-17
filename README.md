@@ -21,7 +21,12 @@ The guide below goes from the quickest start to the more advanced setups. Stop a
 
 ## Level 1 — Try it in 5 minutes
 
-You only need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/macOS) or Docker Engine (Linux).
+**Requirement: Docker.** Nothing else is needed: no Node.js, no Python, no separate database.
+
+- Windows / macOS: install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and start it. Wait until it shows that the engine is running; Docker commands fail while Docker Desktop is closed. On Windows, the installer also sets up WSL 2; accept it (a restart may be needed).
+- Linux: install [Docker Engine](https://docs.docker.com/engine/install/) with the Compose plugin.
+
+Check it in a terminal: `docker --version` and `docker compose version` must both print a version.
 
 macOS / Linux (Terminal):
 
@@ -226,7 +231,9 @@ All settings, environment variables and onboarding flags are described in [docs/
 
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
-| `docker compose up` fails with `open //./pipe/dockerDesktopLinuxEngine` | Docker Desktop is not running | Start Docker Desktop, wait for "Engine running", try again |
+| `docker` is "not recognized" / "command not found" | Docker is not installed | Install Docker (see [Level 1](#level-1--try-it-in-5-minutes)), then open a new terminal |
+| `docker compose up` fails with `open //./pipe/dockerDesktopLinuxEngine` or `Cannot connect to the Docker daemon` | Docker Desktop (or the Docker service) is not running | Start Docker Desktop, wait for "Engine running", try again |
+| `no configuration file provided: not found` | `docker compose` was run in a folder without `docker-compose.yml` | `cd` into the folder with the downloaded file (Level 1: `radar-rag`) |
 | The first re-index takes minutes, or fails with `EMBEDDING_PROVIDER_UNREACHABLE` on the built-in model | The built-in model (~350 MB) downloads on the first indexing and needs internet access | Wait for the download (once), or check the network; the model is then kept in `./models` |
 | Creating a collection or re-indexing returns `422 UNAVAILABLE_MODEL` | The external embedding service does not offer that model | Pick a model from `details.availableModels`; for Ollama, `ollama pull <model>` first |
 | `503 EMBEDDING_PROVIDER_UNREACHABLE` or `422 EMBEDDING_PROVIDER_NOT_CONFIGURED` | The external embedding service is down, its URL is wrong, or none is set | Start it and check `RAG_EMBEDDING_BASE_URL` (in Docker use `host.docker.internal`, not `localhost`), or use `builtin` |

@@ -44,7 +44,7 @@ const collectionInput: CreateCollectionInput = {
 };
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(path.join(os.tmpdir(), "vanilla-rag-cleanup-"));
+  tempDir = await mkdtemp(path.join(os.tmpdir(), "radar-rag-cleanup-"));
   dbPath = path.join(tempDir, "registry.sqlite");
   registry = createSqliteCollectionRegistry({ dbPath });
   rawDb = new Database(dbPath);

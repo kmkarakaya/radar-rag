@@ -1,4 +1,6 @@
-﻿# Vanilla RAG Backend Mimarisi
+﻿# Radar RAG Mimarisi
+
+> Radar RAG'in (eski adı Vanilla RAG Backend) mimari gerekçesi. Bu dokümanda "vanilla RAG", retrieval ve generation adımlarını doğrudan birbirine bağlayan temel (textbook) RAG akışının adı olarak kullanılıyor.
 
 ## 1. Amaç ve Kapsam
 
@@ -707,7 +709,7 @@ Mimari yorumu:
 
 Rol:
 
-- Chroma'yı ve backend'i birlikte ayağa kaldırmak. Backend için GitHub Actions'ın ([.github/workflows/ci.yml](.github/workflows/ci.yml)) testlerden sonra yayınladığı hazır `ghcr.io/kmkarakaya/vanilla_rag_backend` imajı çekilir; bu sayede compose dosyası tek başına (repo clone'lanmadan) çalışır. `docker compose up -d --build` çalışma kopyasından build eder.
+- Chroma'yı ve backend'i birlikte ayağa kaldırmak. Backend için GitHub Actions'ın ([.github/workflows/ci.yml](.github/workflows/ci.yml)) testlerden sonra yayınladığı hazır `ghcr.io/kmkarakaya/radar-rag` imajı çekilir; bu sayede compose dosyası tek başına (repo clone'lanmadan) çalışır. `docker compose up -d --build` çalışma kopyasından build eder.
 - `./data`, `./models` ve isteğe bağlı `./config` klasörlerini bağlamak.
 
 Mimari yorumu:

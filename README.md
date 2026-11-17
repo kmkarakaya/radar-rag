@@ -1,6 +1,6 @@
-# Vanilla RAG Backend
+# Radar RAG
 
-A self-hosted, LLM-agnostic document retrieval service. Point it at a folder of documents (TXT, MD, PDF, DOC, DOCX); it indexes them, and your application, script or AI assistant asks it for the passages most relevant to a question. You choose the language model; the backend can also generate grounded answers with any OpenAI-compatible chat API, but that is optional.
+An LLM-agnostic retrieval server that finds the evidence in your documents. Run it on your own computer or server and point it at a folder of documents (TXT, MD, PDF, DOC, DOCX); it indexes them, and your application, script or AI assistant asks it for the passages most relevant to a question. You choose the language model; Radar RAG can also generate grounded answers with any OpenAI-compatible chat API, but that is optional.
 
 Who it is for:
 
@@ -24,8 +24,8 @@ The guide below goes from the quickest start to the more advanced setups. Stop a
 You only need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/macOS) or Docker Engine (Linux).
 
 ```bash
-mkdir vanilla-rag && cd vanilla-rag
-curl -O https://raw.githubusercontent.com/kmkarakaya/vanilla_rag_backend/main/docker-compose.yml
+mkdir radar-rag && cd radar-rag
+curl -O https://raw.githubusercontent.com/kmkarakaya/radar-rag/main/docker-compose.yml
 docker compose up -d
 ```
 
@@ -39,7 +39,7 @@ Good to know:
 
 - Everything lives next to `docker-compose.yml`: your documents and the registry in `./data`, the vectors in `./chroma_data`, the downloaded model in `./models`. `docker compose down` stops the stack and keeps all of it; `docker compose up -d` starts it again in seconds.
 - Port already in use? Create a `.env` file next to `docker-compose.yml` with `BACKEND_HOST_PORT=3020` (and/or `CHROMA_HOST_PORT=8020`) and open that port instead. The startup log still prints `localhost:3010`, its port inside the container.
-- Prefer the source code? `git clone https://github.com/kmkarakaya/vanilla_rag_backend.git`, `cd vanilla_rag_backend`, `docker compose up -d`. The clone also contains `data/dataset1` and `data/dataset2`, two small Turkish sample folders. `docker compose up -d --build` builds the image from your working copy.
+- Prefer the source code? `git clone https://github.com/kmkarakaya/radar-rag.git`, `cd radar-rag`, `docker compose up -d`. The clone also contains `data/dataset1` and `data/dataset2`, two small Turkish sample folders. `docker compose up -d --build` builds the image from your working copy.
 - Don't want the sample collection? Delete it in the admin panel (it is not recreated), or put `RAG_SAMPLE_COLLECTION=false` in `.env` before the first start.
 
 ## Level 2 — Search your own documents
@@ -182,15 +182,15 @@ Answer generation (optional)
 - Each re-index builds a new Chroma collection and switches to it only when it succeeds (blue/green), so searches never see a half-built index: [src/indexing/](src/indexing/).
 - Collections, jobs and logs live in a small SQLite registry with hand-written queries: [src/collections/sqliteRegistry.ts](src/collections/sqliteRegistry.ts).
 - HTTP routes: [src/http/ragRouter.ts](src/http/ragRouter.ts) (public) and [src/http/adminRouter.ts](src/http/adminRouter.ts) (admin), assembled in [src/app.ts](src/app.ts).
-- Design rationale: [vanilla_rag_backend_mimarisi.md](vanilla_rag_backend_mimarisi.md) (in Turkish). Contributor brief: [CLAUDE.md](CLAUDE.md).
+- Design rationale: [radar_rag_mimarisi.md](radar_rag_mimarisi.md) (in Turkish). Contributor brief: [CLAUDE.md](CLAUDE.md).
 
 ### Developing locally
 
 Prerequisites: Node.js 20 or newer (22 recommended), Git, and Docker for Chroma.
 
 ```bash
-git clone https://github.com/kmkarakaya/vanilla_rag_backend.git
-cd vanilla_rag_backend
+git clone https://github.com/kmkarakaya/radar-rag.git
+cd radar-rag
 docker compose up -d chroma
 npm install
 npm run onboard

@@ -1,5 +1,5 @@
 /**
- * RAG Ops Dashboard - static admin panel.
+ * Radar RAG admin panel (static).
  */
 
 const API = {

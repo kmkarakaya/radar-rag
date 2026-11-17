@@ -27,7 +27,7 @@ describe("runtime static contract", () => {
     const productFiles = [
       ...srcFiles,
       path.resolve(process.cwd(), "README.md"),
-      path.resolve(process.cwd(), "vanilla_rag_backend_mimarisi.md"),
+      path.resolve(process.cwd(), "radar_rag_mimarisi.md"),
       path.resolve(process.cwd(), "test_frontend/index.html"),
       path.resolve(process.cwd(), "config/rag.config.yaml"),
     ];
@@ -64,7 +64,7 @@ describe("runtime static contract", () => {
     const readme = await fs.readFile(path.resolve(process.cwd(), "README.md"), "utf8");
     const operations = await fs.readFile(path.resolve(process.cwd(), "docs/operations.md"), "utf8");
     const architecture = await fs.readFile(
-      path.resolve(process.cwd(), "vanilla_rag_backend_mimarisi.md"),
+      path.resolve(process.cwd(), "radar_rag_mimarisi.md"),
       "utf8",
     );
 

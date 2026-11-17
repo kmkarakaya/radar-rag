@@ -23,13 +23,23 @@ The guide below goes from the quickest start to the more advanced setups. Stop a
 
 You only need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/macOS) or Docker Engine (Linux).
 
+macOS / Linux (Terminal):
+
 ```bash
 mkdir radar-rag && cd radar-rag
 curl -O https://raw.githubusercontent.com/kmkarakaya/radar-rag/main/docker-compose.yml
 docker compose up -d
 ```
 
-On Windows PowerShell, use `curl.exe -O ...` for the second line.
+Windows (PowerShell):
+
+```powershell
+mkdir radar-rag; cd radar-rag
+curl.exe -O https://raw.githubusercontent.com/kmkarakaya/radar-rag/main/docker-compose.yml
+docker compose up -d
+```
+
+In Windows PowerShell, `curl` (without `.exe`) is a different command and `&&` does not work, so use the PowerShell block as written.
 
 1. Open `http://localhost:3010/admin`. A collection called **Sample documents** is created and indexed on the first start. The first indexing downloads the built-in embedding model (about 350 MB, once), so it can take a few minutes; the **Job Monitor** shows the progress.
 2. When the collection is `ready`, open it, go to the **Playground** tab, type `What is a chunk?` and click **Retrieve**.
@@ -65,6 +75,13 @@ Retrieve passages for a question (`k` is optional; the collection's default is 5
 curl -X POST http://localhost:3010/v1/rag/collections/<collection-id>/retrieve \
   -H "content-type: application/json" \
   -d '{"question": "Which file formats can I index?", "k": 3}'
+```
+
+The same two requests in Windows PowerShell:
+
+```powershell
+Invoke-RestMethod http://localhost:3010/v1/rag/collections | ConvertTo-Json -Depth 5
+Invoke-RestMethod -Method Post -Uri "http://localhost:3010/v1/rag/collections/<collection-id>/retrieve" -ContentType "application/json" -Body '{"question": "Which file formats can I index?", "k": 3}' | ConvertTo-Json -Depth 5
 ```
 
 The response contains `sources`: each has the chunk text (`content`), its file (`sourcePath`) and its `distanceScore`. To answer with your own LLM, put those passages into the prompt:

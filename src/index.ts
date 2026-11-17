@@ -5,7 +5,7 @@ import { startReindexJob, runIndexJob } from "./indexing/jobs.js";
 import { createSqliteCollectionRegistry } from "./collections/sqliteRegistry.js";
 import {
   analyzeIndexingSource as analyzeMixedIndexingSource,
-  registryExcludePaths,
+  sourceScanExcludes,
   type UnsupportedSourceFile,
 } from "./ingestion/pipeline.js";
 import {
@@ -31,7 +31,7 @@ export type IndexingRunResult = {
 export async function analyzeIndexingSource(runtimeConfig = config) {
   return analyzeMixedIndexingSource({
     sourcePath: runtimeConfig.sourcePath,
-    excludePaths: registryExcludePaths(runtimeConfig.registryPath),
+    ...sourceScanExcludes(runtimeConfig),
   });
 }
 

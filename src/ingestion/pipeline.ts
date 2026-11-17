@@ -35,11 +35,31 @@ export type AnalyzeIndexingSourceOptions = {
   logEvent?: OperationalLogSink;
   /** Files to skip entirely (not counted, not reported as unsupported), e.g. the SQLite registry. */
   excludePaths?: string[];
+  /** Folders to skip entirely, e.g. the uploads root (other collections' documents) when scanning `data/`. */
+  excludeDirs?: string[];
 };
+
+/** File extensions the ingestion pipeline can index. */
+export const SUPPORTED_EXTENSIONS = [".txt", ".md", ".pdf", ".doc", ".docx"] as const;
 
 /** The SQLite registry file and its sidecar files; they can live inside a source folder (default `data/`). */
 export function registryExcludePaths(registryPath: string): string[] {
   return ["", "-wal", "-shm", "-journal"].map((suffix) => `${registryPath}${suffix}`);
+}
+
+/**
+ * What every scan of a collection source skips: the SQLite registry, and the uploads root, so a folder
+ * collection such as `data` never picks up other collections' (or other tenants') uploaded documents.
+ * A collection inside the uploads root starts below it, so its own folder is still scanned.
+ */
+export function sourceScanExcludes(runtimeConfig: { registryPath: string; uploadsDir?: string }): {
+  excludePaths: string[];
+  excludeDirs: string[];
+} {
+  return {
+    excludePaths: registryExcludePaths(runtimeConfig.registryPath),
+    excludeDirs: runtimeConfig.uploadsDir ? [runtimeConfig.uploadsDir] : [],
+  };
 }
 
 function normalizeComparablePath(filePath: string): string {
@@ -51,9 +71,7 @@ export async function analyzeIndexingSource(
   options: AnalyzeIndexingSourceOptions,
 ): Promise<IndexingSourceAnalysis> {
   const sourcePath = path.resolve(options.sourcePath);
-  const excluded = new Set((options.excludePaths ?? []).map(normalizeComparablePath));
-  const sourceFilePaths = (await collectSourceFiles(sourcePath))
-    .filter((filePath) => !excluded.has(normalizeComparablePath(filePath)));
+  const sourceFilePaths = await listSourceFilePaths(sourcePath, options);
   const sourceFiles: SourceFileSummary[] = [];
   const unsupportedFiles: UnsupportedSourceFile[] = [];
   const loadedDocuments: Document[] = [];
@@ -116,7 +134,23 @@ export async function loadSourceDocuments(
   return analysis.documents;
 }
 
-async function collectSourceFiles(sourcePath: string): Promise<string[]> {
+/**
+ * Every file an index of `sourcePath` would look at, without reading them: hidden entries and
+ * node_modules are skipped, as are `excludePaths` files and everything below `excludeDirs`.
+ * Throws when the source does not exist.
+ */
+export async function listSourceFilePaths(
+  sourcePath: string,
+  options: Pick<AnalyzeIndexingSourceOptions, "excludePaths" | "excludeDirs"> = {},
+): Promise<string[]> {
+  const resolved = path.resolve(sourcePath);
+  const excludedFiles = new Set((options.excludePaths ?? []).map(normalizeComparablePath));
+  const excludedDirs = new Set((options.excludeDirs ?? []).map(normalizeComparablePath));
+  return (await collectSourceFiles(resolved, excludedDirs))
+    .filter((filePath) => !excludedFiles.has(normalizeComparablePath(filePath)));
+}
+
+async function collectSourceFiles(sourcePath: string, excludedDirs: Set<string>): Promise<string[]> {
   const stats = await fs.stat(sourcePath);
 
   if (stats.isFile()) {
@@ -127,10 +161,10 @@ async function collectSourceFiles(sourcePath: string): Promise<string[]> {
     throw new Error(`Indexing source path is neither a file nor a directory: ${sourcePath}`);
   }
 
-  return walkDirectory(sourcePath);
+  return walkDirectory(sourcePath, excludedDirs);
 }
 
-async function walkDirectory(dir: string): Promise<string[]> {
+async function walkDirectory(dir: string, excludedDirs: Set<string>): Promise<string[]> {
   let files: string[] = [];
   const entries = await fs.readdir(dir, { withFileTypes: true });
 
@@ -140,7 +174,8 @@ async function walkDirectory(dir: string): Promise<string[]> {
 
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      files = files.concat(await walkDirectory(fullPath));
+      if (excludedDirs.has(normalizeComparablePath(fullPath))) continue;
+      files = files.concat(await walkDirectory(fullPath, excludedDirs));
     } else if (entry.isFile()) {
       files.push(fullPath);
     }
@@ -149,7 +184,7 @@ async function walkDirectory(dir: string): Promise<string[]> {
   return files.sort((left, right) => left.localeCompare(right));
 }
 
-function sourceTypeForExtension(extension: string): string | null {
+export function sourceTypeForExtension(extension: string): string | null {
   switch (extension) {
     case ".txt":
       return "text";

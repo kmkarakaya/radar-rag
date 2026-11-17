@@ -12,6 +12,7 @@ import type {
   AuditLogRecord,
   BeginIndexJobInput,
   CollectionRegistry,
+  CollectionSourceKind,
   CollectionStatus,
   CompleteIndexJobResult,
   CreateIndexJobEventInput,
@@ -53,6 +54,7 @@ type CollectionRow = {
   status: CollectionStatus;
   active_physical_collection: string | null;
   active_version: string | null;
+  source_kind: CollectionSourceKind;
   source_path: string;
   embedding_provider: EmbeddingProvider;
   embedding_model: string;
@@ -71,6 +73,7 @@ type CollectionRow = {
   updated_at: string;
   last_indexed_at: string | null;
   indexed_snapshot_json: string | null;
+  documents_changed: number;
 };
 
 type IndexJobRow = {
@@ -303,6 +306,9 @@ function migrateSchema(db: SqliteDatabase): void {
   ensureColumn(db, "collections", "active_embedding_provider", "TEXT");
   ensureColumn(db, "index_jobs", "target_embedding_provider", "TEXT NOT NULL DEFAULT 'builtin'");
   ensureColumn(db, "collections", "indexed_snapshot_json", "TEXT");
+  // Document management: existing collections read a folder on the server.
+  ensureColumn(db, "collections", "source_kind", "TEXT NOT NULL DEFAULT 'folder'");
+  ensureColumn(db, "collections", "documents_changed", "INTEGER NOT NULL DEFAULT 0");
   // Ozelge JSON support was removed; older registries still have this NOT NULL column, which would break inserts.
   dropColumnIfExists(db, "collections", "ozelge_data_path");
   // The chat LLM is now global and optional (config `chat` section); older registries have a NOT NULL chat_model column.
@@ -417,6 +423,14 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       .all(context.tenantId) as CollectionRow[];
 
     return rows.map(mapCollectionRow);
+  }
+
+  async markDocumentsChanged(context: RequestContext, collectionId: string): Promise<void> {
+    this.db.prepare(`
+      UPDATE collections
+      SET documents_changed = 1, updated_at = @updatedAt
+      WHERE tenant_id = @tenantId AND id = @collectionId AND status != 'archived'
+    `).run({ tenantId: context.tenantId, collectionId, updatedAt: new Date().toISOString() });
   }
 
   async countAllCollections(): Promise<number> {
@@ -797,6 +811,9 @@ class SqliteCollectionRegistry implements CollectionRegistry {
   async createCollection(context: RequestContext, input: CreateCollectionInput): Promise<RagCollection> {
     const now = new Date().toISOString();
     const id = this.createUniqueCollectionId(input.displayName);
+    const sourceKind = input.sourceKind ?? "folder";
+    // Uploads collections get their own folder under the uploads root, named after the collection id.
+    const sourcePath = sourceKind === "uploads" ? path.join(input.sourcePath, id) : input.sourcePath;
     const chromaConfiguration = normalizeChromaCollectionConfiguration(
       input.distanceMetric,
       input.chromaCollectionConfiguration,
@@ -809,6 +826,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         display_name,
         description,
         status,
+        source_kind,
         source_path,
         embedding_provider,
         embedding_model,
@@ -827,6 +845,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         @displayName,
         @description,
         'creating',
+        @sourceKind,
         @sourcePath,
         @embeddingProvider,
         @embeddingModel,
@@ -845,7 +864,8 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       tenantId: context.tenantId,
       displayName: input.displayName,
       description: input.description ?? null,
-      sourcePath: this.storedSourcePath(input.sourcePath),
+      sourceKind,
+      sourcePath: this.storedSourcePath(sourcePath),
       embeddingProvider: input.embeddingProvider ?? "builtin",
       embeddingModel: input.embeddingModel,
       distanceMetric: input.distanceMetric,
@@ -1354,6 +1374,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           chunk_count = @chunkCount,
           last_indexed_at = @lastIndexedAt,
           indexed_snapshot_json = @indexedSnapshotJson,
+          documents_changed = 0,
           updated_at = @updatedAt
         WHERE tenant_id = @tenantId AND id = @collectionId AND status != 'archived'
       `).run({
@@ -1924,6 +1945,7 @@ function mapCollectionRow(row: CollectionRow): RagCollection {
     status: row.status,
     activePhysicalCollection: row.active_physical_collection ?? undefined,
     activeVersion: row.active_version ?? undefined,
+    sourceKind: row.source_kind === "uploads" ? "uploads" : "folder",
     sourcePath: row.source_path,
     embeddingProvider: row.embedding_provider,
     embeddingModel: row.embedding_model,
@@ -1941,6 +1963,7 @@ function mapCollectionRow(row: CollectionRow): RagCollection {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastIndexedAt: row.last_indexed_at ?? undefined,
+    documentsChanged: row.documents_changed === 1,
   };
 
   return {

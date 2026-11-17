@@ -64,8 +64,17 @@ export type CollectionIndexState = {
   activeSnapshot: CollectionIndexSnapshot | null;
   desiredSnapshot: CollectionIndexSnapshot;
   changedFields: Array<keyof CollectionIndexSnapshot>;
+  /** Documents were uploaded or deleted through the API since the last successful index. */
+  documentsChanged: boolean;
   note: string;
 };
+
+/**
+ * Where a collection's documents come from:
+ * - "uploads": its own folder (`data/collections/<id>`), managed through the files API.
+ * - "folder": a folder on the server chosen by path; the API only lists its files.
+ */
+export type CollectionSourceKind = "uploads" | "folder";
 
 export type RagCollection = {
   id: string;
@@ -75,6 +84,7 @@ export type RagCollection = {
   status: CollectionStatus;
   activePhysicalCollection?: string;
   activeVersion?: string;
+  sourceKind: CollectionSourceKind;
   sourcePath: string;
   /** Embedding for the next re-index (desired). Reads always use the active pair below. */
   embeddingProvider: EmbeddingProvider;
@@ -94,6 +104,8 @@ export type RagCollection = {
   createdAt: string;
   updatedAt: string;
   lastIndexedAt?: string;
+  /** Documents were uploaded or deleted through the API since the last successful index. */
+  documentsChanged: boolean;
   indexState?: CollectionIndexState;
 };
 
@@ -202,6 +214,12 @@ export type SystemOperationsAggregateSummary = {
 export type CreateCollectionInput = {
   displayName: string;
   description?: string;
+  /** Defaults to "folder". */
+  sourceKind?: CollectionSourceKind;
+  /**
+   * For "folder": the folder to index. For "uploads": the uploads root (e.g. `data/collections`);
+   * the registry stores `<uploads root>/<collection id>` once the id is generated.
+   */
   sourcePath: string;
   /** Defaults to "builtin" when omitted (the HTTP API always fills it from the configured default). */
   embeddingProvider?: EmbeddingProvider;
@@ -315,6 +333,8 @@ export interface CollectionRegistry {
   deleteJobs(context: RequestContext, jobIds: string[]): Promise<void>;
   getActiveJobForCollection(context: RequestContext, collectionId: string): Promise<IndexJob | null>;
   createCollection(context: RequestContext, input: CreateCollectionInput): Promise<RagCollection>;
+  /** Records that documents were uploaded or deleted; cleared when the next index job succeeds. */
+  markDocumentsChanged(context: RequestContext, collectionId: string): Promise<void>;
   updateCollection(
     context: RequestContext,
     collectionId: string,

@@ -185,12 +185,15 @@ describe("indexing jobs", () => {
     const fakeRegistry: CollectionRegistry = {
       listVisibleCollections: async () => [],
       countAllCollections: async () => 0,
+      markDocumentsChanged: async () => {},
       getVisibleCollection: async () => ({
         id: "col-1",
         tenantId: "tenant-x",
         displayName: "Test",
         status: "indexing",
+        sourceKind: "folder" as const,
         sourcePath: "data",
+        documentsChanged: false,
         embeddingProvider: "builtin",
         embeddingModel: "embed",
         distanceMetric: "l2",

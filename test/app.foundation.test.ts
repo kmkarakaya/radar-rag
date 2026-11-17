@@ -22,6 +22,7 @@ function createHealthyRegistryStub(): CollectionRegistry {
   return {
     listVisibleCollections: async () => [],
     countAllCollections: async () => 0,
+    markDocumentsChanged: async () => {},
     getVisibleCollection: async () => null,
     listPhysicalCollectionsForCollection: async () => [],
     listJobs: async () => ({ jobs: [], nextCursor: null }),

@@ -26,7 +26,8 @@ Devam edilecekler (sirayla):
 3. CI uyarilari: Node 20 tabanli action surumleri (checkout, setup-node, docker/*) eskiyor; yeni ana surumlere gecilsin.
 4. Dev registry'deki eski (Ollama ile, saglayici alani olmadan indekslenmis) koleksiyonlar: `EMBEDDING_MODEL_UNSUPPORTED` gorunurlerse silip yeniden olustur ya da saglayiciyi `openai-compatible` yapip reindex et.
 5. Testlerin yerel YAML'a bagimliligi: sabit bir test config'i P1 #6 kapsaminda dusunulsun.
-6. Yol haritasindaki siradaki is: **P0 #3 dosya yukleme** (README Level 2 bunu "planned" diye duyuruyor) ya da **P0 #2 API anahtari + CORS** (README Level 3'teki guvenlik uyarisini kaldirir). Ileride: gelismis RAG teknikleri (reranking, hybrid search, query rewriting).
+6. **Uzak Windows makinede (Lenovo ThinkPad) Level 1 yarim kaldi (2026-11-18):** Docker Desktop (AMD64) kurulu, `D:\radar-rag` ve compose dosyasi hazir; ama BIOS/UEFI'de donanim sanallastirmasi kapali ("Virtualization is disabled in firmware"). Sanallastirma acilinca: yonetici PowerShell'de `wsl --install --no-distribution` + yeniden baslatma, Docker Desktop'u ac, `docker compose up -d`. Acilamazsa Docker'siz yol (Node.js + conda ile `pip install chromadb` / `chroma run`) denenip README'ye "Without Docker" bolumu olarak eklenebilir.
+7. Yol haritasindaki siradaki is: **P0 #3 dosya yukleme** (README Level 2 bunu "planned" diye duyuruyor) ya da **P0 #2 API anahtari + CORS** (README Level 3'teki guvenlik uyarisini kaldirir). Ileride: gelismis RAG teknikleri (reranking, hybrid search, query rewriting).
 
 ## Mevcut durum (ozet)
 

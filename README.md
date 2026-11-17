@@ -24,6 +24,7 @@ The guide below goes from the quickest start to the more advanced setups. Stop a
 **Requirement: Docker.** Nothing else is needed: no Node.js, no Python, no separate database.
 
 - Windows / macOS: install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and start it. Wait until it shows that the engine is running; Docker commands fail while Docker Desktop is closed. On Windows, the installer also sets up WSL 2; accept it (a restart may be needed).
+- On Windows, pick the **AMD64** installer (also for Intel processors) unless your PC has an ARM processor; `$env:PROCESSOR_ARCHITECTURE` in PowerShell tells you which. Docker Desktop also needs hardware virtualization turned on in the BIOS/UEFI (Task Manager → Performance → CPU shows "Virtualization: Enabled").
 - Linux: install [Docker Engine](https://docs.docker.com/engine/install/) with the Compose plugin.
 
 Check it in a terminal: `docker --version` and `docker compose version` must both print a version.
@@ -232,7 +233,9 @@ All settings, environment variables and onboarding flags are described in [docs/
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
 | `docker` is "not recognized" / "command not found" | Docker is not installed | Install Docker (see [Level 1](#level-1--try-it-in-5-minutes)), then open a new terminal |
-| `docker compose up` fails with `open //./pipe/dockerDesktopLinuxEngine` or `Cannot connect to the Docker daemon` | Docker Desktop (or the Docker service) is not running | Start Docker Desktop, wait for "Engine running", try again |
+| Installing Docker Desktop on Windows shows "This app can't run on your PC" | The ARM64 installer was downloaded for an Intel/AMD PC | Download the AMD64 installer |
+| `docker compose up` fails with `open //./pipe/dockerDesktopLinuxEngine`, `open //./pipe/docker_engine` or `Cannot connect to the Docker daemon` | Docker Desktop (or the Docker service) is not running | Start Docker Desktop, wait for "Engine running", try again |
+| Docker Desktop says "Virtualization is disabled in firmware" | Hardware virtualization is off in the BIOS/UEFI | Turn on Intel Virtualization Technology (VT-x) or AMD-V/SVM in the BIOS/UEFI and restart; on a managed computer, ask your IT administrator |
 | `no configuration file provided: not found` | `docker compose` was run in a folder without `docker-compose.yml` | `cd` into the folder with the downloaded file (Level 1: `radar-rag`) |
 | The first re-index takes minutes, or fails with `EMBEDDING_PROVIDER_UNREACHABLE` on the built-in model | The built-in model (~350 MB) downloads on the first indexing and needs internet access | Wait for the download (once), or check the network; the model is then kept in `./models` |
 | Creating a collection or re-indexing returns `422 UNAVAILABLE_MODEL` | The external embedding service does not offer that model | Pick a model from `details.availableModels`; for Ollama, `ollama pull <model>` first |

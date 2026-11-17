@@ -1,30 +1,32 @@
 # Repo Eksikleri ve TODO Listesi
 
-Son guncelleme: 2026-11-14. Oncelikler urun hedefine gore duzenlendi: repo, baskalarinin GitHub'dan indirip kendi verisiyle kullanacagi bir urun.
+Son guncelleme: 2026-11-17. Oncelikler urun hedefine gore duzenlendi: repo, baskalarinin GitHub'dan indirip kendi verisiyle kullanacagi bir urun.
 
 Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigini ve bunlarin hangi oncelikle ele alinmasi gerektigini toplar. Tamamlanan maddeler asagida ayri bir bolumde kisaca listelenir; ayrintilari git gecmisinde ve `docs/` altinda.
 
-## Kaldigimiz yer (2026-11-14)
+## Kaldigimiz yer (2026-11-17)
 
 Durum:
 
-- **Kolay ilk calistirma** (`feat/easy-first-run`, plan: `enchanted-imagining-storm.md`) tamamlandi, main'e henuz merge/push edilmedi:
+- **Proje adi: Radar RAG** ("an LLM-agnostic retrieval server that finds the evidence in your documents"). Repo `kmkarakaya/radar-rag` (eski adi `vanilla_rag_backend`; GitHub eski adresleri yonlendiriyor), imaj `ghcr.io/kmkarakaya/radar-rag`, npm paket adi `radar-rag`, mimari dokumani `radar_rag_mimarisi.md`. `notes/` altindaki eski kayitlar eski adla kaldi.
+- **Repo ve ghcr paketi public.** Eski `vanilla_rag_backend` paketi silindi.
+- **Kolay ilk calistirma** main'de:
   - Config dosyasi istege bagli: her ayarin semada varsayilani var; dosya yoksa varsayilanlar kullaniliyor.
-  - Ilk acilista "Sample documents" koleksiyonu (`data/sample`, Ingilizce: backend ve RAG kavramlari) olusturulup indeksleniyor; bir kez, silinirse geri gelmez; `RAG_SAMPLE_COLLECTION=false` ile kapanir.
+  - Ilk acilista "Sample documents" koleksiyonu (`data/sample`, Ingilizce: Radar RAG ve RAG kavramlari) olusturulup indeksleniyor; bir kez, silinirse geri gelmez; `RAG_SAMPLE_COLLECTION=false` ile kapanir.
   - Onboarding varsayilan olarak sadece embedding, chat LLM ve admin auth soruyor; `--advanced` her seyi.
-  - GitHub Actions: test (her push/PR) + main'de `ghcr.io/kmkarakaya/radar-rag` imaji (amd64 + arm64). Compose bu imaji cekiyor; tek basina (clone'suz) calisiyor, `./config` istege bagli klasor.
-  - README seviyeli yeniden yazildi (Level 1-7: dene, kendi dokumanlarin, uygulamadan kullan, cevap uretme, embedding, admin koruma, nasil calisir + yerel gelistirme). Referans icerik `docs/configuration.md`, `docs/admin_auth.md`, `docs/operations.md`'ye tasindi.
-  - Dogrulama: 231/231 test (Linux Node 22 konteynerinde de); clone'suz ve clone'lu Docker akislari uctan uca (ornek 6 sn'de indekslendi, "Which file formats can I index?" dogru dokumani ilk sirada getirdi, yeniden baslatma/silme sonrasi tekrar olusmadi); onboarding kisa/advanced kuru calistirma.
+  - GitHub Actions: test (her push/PR) + main'de imaj yayini (amd64 + arm64). Compose bu imaji cekiyor; tek basina (clone'suz) calisiyor, `./config` istege bagli klasor.
+  - README seviyeli (Level 1-7). Referans icerik `docs/configuration.md`, `docs/admin_auth.md`, `docs/operations.md`'de.
+- **Dogrulama (2026-11-17):** 231/231 test; CI (test + publish) yesil; README Level 1 dis kullanici gibi bos bir klasorde birebir denendi: `curl` ile compose indi, imaj girissiz cekildi, config'siz acildi, ornek koleksiyon indekslendi (3 dokuman, 15 parca), "What is Radar RAG?" dogru dokumani ilk sirada getirdi.
 - Yerel `config/rag.config.yaml` (+ `.bak`) kisisel ayarlarla degisik; commit'lenmemeli.
 
 Devam edilecekler (sirayla):
 
-1. `feat/easy-first-run` -> main merge + push (onay bekliyor). Push sonrasi ilk CI calismasini izle (`gh run watch`).
-2. **Sizin yapacaginiz tek seferlik adim:** ilk yayindan sonra ghcr paketini Public yap (GitHub -> Packages -> radar-rag -> Package settings -> Change visibility). Sonra bos bir klasorde README Level 1'i birebir dene.
-3. **LICENSE yok.** Baskalarinin kullanacagi bir urun icin lisans secilmeli (ornegin MIT veya Apache-2.0); karar sizin.
+1. **LICENSE yok.** Repo artik public; lisans olmadan baskalari kodu yasal olarak kullanamaz. Lisans secilmeli (ornegin MIT veya Apache-2.0); karar sizin.
+2. GitHub repo sayfasi: aciklama (alt baslik), topics (rag, retrieval, langchain, chroma, self-hosted, mcp...) eklensin.
+3. CI uyarilari: Node 20 tabanli action surumleri (checkout, setup-node, docker/*) eskiyor; yeni ana surumlere gecilsin.
 4. Dev registry'deki eski (Ollama ile, saglayici alani olmadan indekslenmis) koleksiyonlar: `EMBEDDING_MODEL_UNSUPPORTED` gorunurlerse silip yeniden olustur ya da saglayiciyi `openai-compatible` yapip reindex et.
 5. Testlerin yerel YAML'a bagimliligi: sabit bir test config'i P1 #6 kapsaminda dusunulsun.
-6. Yol haritasindaki siradaki is: **P0 #3 dosya yukleme** (README Level 2 bunu "planned" diye duyuruyor) ya da **P0 #2 API anahtari + CORS** (README Level 3'teki guvenlik uyarisini kaldirir).
+6. Yol haritasindaki siradaki is: **P0 #3 dosya yukleme** (README Level 2 bunu "planned" diye duyuruyor) ya da **P0 #2 API anahtari + CORS** (README Level 3'teki guvenlik uyarisini kaldirir). Ileride: gelismis RAG teknikleri (reranking, hybrid search, query rewriting).
 
 ## Mevcut durum (ozet)
 

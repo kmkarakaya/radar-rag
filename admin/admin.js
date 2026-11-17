@@ -46,6 +46,7 @@ const EDIT_FIELD_IDS = {
 let state = {
     currentView: "collections",
     activeTab: "ready",
+    files: { collectionId: null, data: null, loading: false, uploading: false, error: null, rejected: [] },
     auth: {
         enabled: false,
         authenticated: false,
@@ -190,6 +191,7 @@ const elements = {
     tabContents: document.querySelectorAll(".tab-content"),
     readyTabBtn: document.querySelector('.tab-btn[data-tab="ready"]'),
     playgroundTabBtn: document.querySelector('.tab-btn[data-tab="playground"]'),
+    filesTabBtn: document.querySelector('.tab-btn[data-tab="files"]'),
 
     readinessStatusGrid: document.getElementById("readinessStatusGrid"),
     readinessRefreshNotice: document.getElementById("readinessRefreshNotice"),
@@ -236,6 +238,20 @@ const elements = {
     tabReady: document.getElementById("tab-ready"),
     tabPlayground: document.getElementById("tab-playground"),
     tabEditor: document.getElementById("tab-editor"),
+    tabFiles: document.getElementById("tab-files"),
+    filesIntro: document.getElementById("filesIntro"),
+    filesChangedBanner: document.getElementById("filesChangedBanner"),
+    filesChangedText: document.getElementById("filesChangedText"),
+    btnFilesReindex: document.getElementById("btnFilesReindex"),
+    filesDropZone: document.getElementById("filesDropZone"),
+    filesDropHint: document.getElementById("filesDropHint"),
+    filesInput: document.getElementById("filesInput"),
+    filesUploadStatus: document.getElementById("filesUploadStatus"),
+    filesRejected: document.getElementById("filesRejected"),
+    filesList: document.getElementById("filesList"),
+    sourceKindChoice: document.getElementById("sourceKindChoice"),
+    sourceKindReadonly: document.getElementById("sourceKindReadonly"),
+    sourcePathField: document.getElementById("sourcePathField"),
     toastContainer: document.getElementById("toastContainer"),
 };
 
@@ -253,6 +269,11 @@ function collectionRetrieveUrl(collection) {
 
 function adminCollectionUrl(id) {
     return `${API.admin}/collections/${id}`;
+}
+
+function adminCollectionFilesUrl(id, fileName) {
+    const base = `${API.admin}/collections/${id}/files`;
+    return fileName === undefined ? base : `${base}/${encodeURIComponent(fileName)}`;
 }
 
 function adminCollectionValidateUrl(id) {
@@ -1299,8 +1320,8 @@ function canAdminAction(capability) {
     }
     const permissions = {
         viewer: ["read"],
-        operator: ["read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob"],
-        admin: ["read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob", "deleteCollection", "deleteJob", "bulkDeleteJobs"],
+        operator: ["read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob", "manageDocuments"],
+        admin: ["read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob", "manageDocuments", "deleteCollection", "deleteJob", "bulkDeleteJobs"],
     };
     return (permissions[role] || []).includes(capability);
 }
@@ -1438,6 +1459,7 @@ function startDashboardPolling() {
 
     dashboardPollingHandles.push(setInterval(() => {
         if (!document.hidden && state.selectedCollection) updateReadinessTab();
+        if (!document.hidden && state.selectedCollection && state.activeTab === "files") loadCollectionFiles({ quiet: true });
     }, 10000));
 
     dashboardPollingHandles.push(setInterval(() => {
@@ -2005,6 +2027,7 @@ async function openInspector(id) {
         clearCollectionIndexStateBanner();
         clearCollectionValidation();
         clearEditorForm();
+        resetFilesTab();
         elements.inspectorTitle.textContent = "Create Collection";
         clearNode(elements.inspectorStatusBadge);
         elements.inspectorStatusBadge.classList.add("hidden");
@@ -2026,6 +2049,7 @@ async function openInspector(id) {
 
     state.selectedCollection = collection;
     state.editorInitialSnapshot = null;
+    resetFilesTab();
     resetReadinessAndPlayground("Readiness has not been loaded yet.");
     resetPhysicalCollectionsSection({ message: "Loading physical collection lifecycle..." });
     renderCollectionIndexStateBanner();
@@ -2092,7 +2116,7 @@ function switchTab(tabName) {
 }
 
 function setCollectionTabsEnabled(enabled) {
-    [elements.readyTabBtn, elements.playgroundTabBtn].forEach((button) => {
+    [elements.readyTabBtn, elements.filesTabBtn, elements.playgroundTabBtn].forEach((button) => {
         if (!button) return;
         button.classList.toggle("hidden", !enabled);
         button.disabled = !enabled;
@@ -2736,6 +2760,9 @@ function clearEditorForm() {
         if (element) element.value = "";
     });
     elements.editId.value = "";
+    const uploadsRadio = document.querySelector('input[name="sourceKind"][value="uploads"]');
+    if (uploadsRadio) uploadsRadio.checked = true;
+    syncSourceKindFields(null);
     syncModelDiscoveryPanel();
     syncConfigDefaultsPanel();
 }
@@ -2763,6 +2790,7 @@ function setupEditorTab(collection) {
     elements.editRetrievalDistanceThreshold.value = collection.retrievalDistanceThreshold ?? "";
     if (elements.editEmbeddingProvider) elements.editEmbeddingProvider.value = collection.embeddingProvider || "";
     elements.editEmbeddingModel.value = fieldValueFromCollection(collection, "embeddingModel");
+    syncSourceKindFields(collection);
     state.editorInitialSnapshot = readEditorValues();
     syncModelDiscoveryPanel();
     syncConfigDefaultsPanel();
@@ -2806,6 +2834,9 @@ function validateCollectionForm(mode) {
     const values = readEditorValues();
     const errors = [];
     if (mode === "create" && !values.displayName) errors.push("displayName is required for new collections.");
+    if (mode === "create" && getSelectedSourceKind() === "folder" && !values.sourcePath) {
+        errors.push("Enter the server folder path (for example data/my-docs), or choose Upload files.");
+    }
     if (mode === "update" && !values.displayName) errors.push("displayName cannot be empty.");
     if (values.chunkSize !== undefined && (!Number.isInteger(values.chunkSize) || values.chunkSize <= 0)) errors.push("chunkSize must be a positive integer.");
     if (values.chunkOverlap !== undefined && (!Number.isInteger(values.chunkOverlap) || values.chunkOverlap < 0)) errors.push("chunkOverlap must be a nonnegative integer.");
@@ -2841,7 +2872,8 @@ function buildCollectionPayload(mode) {
     if (mode === "create") {
         payload.displayName = values.displayName;
         addIfText(payload, "description", values.description);
-        addIfText(payload, "sourcePath", values.sourcePath);
+        // No sourcePath = the collection gets its own folder for uploaded documents.
+        if (getSelectedSourceKind() === "folder") addIfText(payload, "sourcePath", values.sourcePath);
         if (values.distanceMetric) payload.distanceMetric = values.distanceMetric;
         addIfNumber(payload, "chunkSize", values.chunkSize);
         addIfNumber(payload, "chunkOverlap", values.chunkOverlap);
@@ -2949,8 +2981,14 @@ async function saveCollection() {
                     setupEditorTab(refreshed);
                 }
                 renderCollectionValidation(validation, getValidationTitle(mode));
+                if (!payload.sourcePath && createdId) {
+                    switchTab("files");
+                    await loadCollectionFiles();
+                    showToast("Collection created. Add documents in the Documents tab, then re-index.", "info");
+                    return;
+                }
                 showToast(
-                    validation.impact.reindexRequired
+                    validation.impact?.reindexRequired
                         ? "Collection saved. Initial re-index is required before it can be used."
                         : "Collection saved. Review the validation warnings.",
                     "info",
@@ -2972,7 +3010,7 @@ async function saveCollection() {
                 setCollectionTabsEnabled(true);
                 setupEditorTab(refreshed);
                 renderCollectionValidation(validation, getValidationTitle(mode));
-                showToast(validation.impact.reindexRequired
+                showToast(validation.impact?.reindexRequired
                     ? "Collection saved. Re-index is required to apply indexed settings."
                     : "Collection saved. Immediate settings are now active. Review warnings if present.", "info");
                 return;
@@ -3210,13 +3248,291 @@ async function reindexCollection() {
     }
 }
 
+// ---- Documents tab (a client of the files API) ----
+
+const MAX_FILES_PER_UPLOAD = 20;
+
+function formatBytes(bytes) {
+    if (!Number.isFinite(bytes)) return "-";
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ["KB", "MB", "GB"];
+    let value = bytes / 1024;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit += 1;
+    }
+    return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
+}
+
+function getSelectedSourceKind() {
+    const checked = document.querySelector('input[name="sourceKind"]:checked');
+    return checked?.value === "folder" ? "folder" : "uploads";
+}
+
+/** collection === null: create mode (choose uploads or a server folder). */
+function syncSourceKindFields(collection) {
+    if (!collection) {
+        elements.sourceKindChoice?.classList.remove("hidden");
+        elements.sourceKindReadonly?.classList.add("hidden");
+        elements.sourcePathField?.classList.toggle("hidden", getSelectedSourceKind() !== "folder");
+        return;
+    }
+    const uploads = collection.sourceKind === "uploads";
+    elements.sourceKindChoice?.classList.add("hidden");
+    elements.sourcePathField?.classList.toggle("hidden", uploads);
+    if (elements.sourceKindReadonly) {
+        elements.sourceKindReadonly.classList.toggle("hidden", !uploads);
+        elements.sourceKindReadonly.textContent = uploads
+            ? `Documents: uploaded files, stored in ${collection.sourcePath}. Manage them in the Documents tab.`
+            : "";
+    }
+}
+
+function resetFilesTab() {
+    state.files = { collectionId: null, data: null, loading: false, uploading: false, error: null, rejected: [] };
+    renderCollectionFiles();
+}
+
+function setFilesUploadStatus(text) {
+    if (!elements.filesUploadStatus) return;
+    elements.filesUploadStatus.textContent = text || "";
+    elements.filesUploadStatus.classList.toggle("hidden", !text);
+}
+
+async function loadCollectionFiles({ quiet = false } = {}) {
+    const id = state.selectedCollection?.id;
+    if (!id) return;
+    if (!quiet) {
+        state.files.loading = true;
+        renderCollectionFiles();
+    }
+    try {
+        const data = await apiRequest(adminCollectionFilesUrl(id));
+        if (state.selectedCollection?.id !== id) return;
+        state.files.collectionId = id;
+        state.files.data = data;
+        state.files.error = null;
+    } catch (error) {
+        if (state.selectedCollection?.id !== id) return;
+        state.files.error = error;
+        if (!quiet) showErrorToast(error, "Failed to load documents");
+    } finally {
+        if (state.selectedCollection?.id === id) {
+            state.files.loading = false;
+            renderCollectionFiles();
+        }
+    }
+}
+
+function renderCollectionFiles() {
+    if (!elements.tabFiles) return;
+    const files = state.files || {};
+    const data = files.data;
+    const canManage = canAdminAction("manageDocuments");
+    const writable = Boolean(data?.writable);
+    clearNode(elements.filesList);
+    clearNode(elements.filesRejected);
+    elements.filesRejected.classList.add("hidden");
+
+    if (!data) {
+        elements.filesIntro.textContent = files.loading
+            ? "Loading documents..."
+            : files.error ? "The documents could not be loaded." : "";
+        elements.filesDropZone.classList.add("hidden");
+        elements.filesChangedBanner.classList.add("hidden");
+        return;
+    }
+
+    elements.filesIntro.textContent = writable
+        ? "Documents of this collection. Uploading a file with an existing name replaces it. Re-index after changes to make them searchable."
+        : `This collection reads a folder on the server (${state.selectedCollection?.sourcePath || "its source path"}). Manage its files there, then re-index; this list is read-only.`;
+
+    elements.filesDropZone.classList.toggle("hidden", !writable || !canManage);
+    elements.filesDropZone.classList.toggle("opacity-50", Boolean(files.uploading));
+    elements.filesDropZone.classList.toggle("pointer-events-none", Boolean(files.uploading));
+    elements.filesDropHint.textContent = `.txt, .md, .pdf, .doc, .docx · up to ${MAX_FILES_PER_UPLOAD} files at a time`;
+
+    const indexState = data.indexState || state.selectedCollection?.indexState;
+    const fileCount = Array.isArray(data.files) ? data.files.length : 0;
+    const needsIndex = fileCount > 0 && (indexState?.documentsChanged || indexState?.status === "no_active_index");
+    elements.filesChangedBanner.classList.toggle("hidden", !needsIndex);
+    if (needsIndex) {
+        elements.filesChangedText.textContent = indexState?.status === "no_active_index"
+            ? "These documents are not indexed yet. Re-index to make them searchable."
+            : "Documents changed since the last index. Re-index to search the current documents.";
+        const canReindex = canAdminAction("reindexCollection");
+        elements.btnFilesReindex.disabled = !canReindex;
+        elements.btnFilesReindex.classList.toggle("opacity-50", !canReindex);
+        if (!canReindex) elements.btnFilesReindex.title = "Re-index requires operator access.";
+        else elements.btnFilesReindex.removeAttribute("title");
+    }
+
+    if (files.rejected?.length) {
+        elements.filesRejected.classList.remove("hidden");
+        elements.filesRejected.appendChild(createEl("p", "font-semibold mb-1", "Not uploaded:"));
+        const list = createEl("ul", "list-disc pl-4 space-y-1");
+        files.rejected.forEach((item) => list.appendChild(createEl("li", "", `${item.name}: ${item.reason}`)));
+        elements.filesRejected.appendChild(list);
+    }
+
+    if (fileCount === 0) {
+        elements.filesList.appendChild(createEl(
+            "p",
+            "text-sm text-slate-400 italic",
+            writable ? "No documents yet. Drop files above to upload them." : "No files were found in this folder.",
+        ));
+        return;
+    }
+
+    elements.filesList.appendChild(createEl("p", "text-xs text-slate-500", `${formatCount(fileCount)} files · ${formatBytes(data.totalBytes)}`));
+    const wrapper = createEl("div", "overflow-x-auto rounded-lg border border-slate-200");
+    const table = createEl("table", "w-full text-sm");
+    const head = createEl("thead", "bg-slate-50 text-xs uppercase text-slate-500");
+    const headRow = createEl("tr");
+    ["Name", "Size", "Modified", ""].forEach((label) => headRow.appendChild(createEl("th", "px-3 py-2 text-left font-semibold", label)));
+    head.appendChild(headRow);
+    table.appendChild(head);
+    const body = createEl("tbody", "divide-y divide-slate-100");
+    data.files.forEach((file) => {
+        const row = createEl("tr", "hover:bg-slate-50");
+        const nameCell = createEl("td", "px-3 py-2 text-slate-800 break-all");
+        appendText(nameCell, file.name);
+        if (!file.supported) nameCell.appendChild(createEl("span", "ml-2 text-xs text-amber-600", "(not indexed)"));
+        row.appendChild(nameCell);
+        row.appendChild(createEl("td", "px-3 py-2 text-slate-500 whitespace-nowrap", formatBytes(file.sizeBytes)));
+        row.appendChild(createEl("td", "px-3 py-2 text-slate-500 whitespace-nowrap", formatDateTime(file.modifiedAt)));
+        const actionCell = createEl("td", "px-3 py-2 text-right");
+        if (writable && canManage) {
+            actionCell.appendChild(createButton(
+                "Delete",
+                "text-red-500 hover:text-red-700 text-xs font-bold",
+                () => deleteCollectionDocument(file.name),
+                { title: `Delete ${file.name}` },
+            ));
+        }
+        row.appendChild(actionCell);
+        body.appendChild(row);
+    });
+    table.appendChild(body);
+    wrapper.appendChild(table);
+    elements.filesList.appendChild(wrapper);
+}
+
+async function refreshSelectedCollectionAfterFileChange() {
+    const id = state.selectedCollection?.id;
+    if (!id) return;
+    try {
+        const detail = await loadAdminCollectionDetail(id);
+        if (state.selectedCollection?.id === id) {
+            state.selectedCollection = mergeCollectionIntoState(detail);
+            renderCollectionIndexStateBanner();
+        }
+    } catch (error) {
+        console.warn("Failed to refresh the collection after a document change", error);
+    }
+    await loadCollectionFiles({ quiet: true });
+}
+
+async function uploadCollectionDocuments(fileList) {
+    const collection = state.selectedCollection;
+    const files = Array.from(fileList || []);
+    if (!collection || files.length === 0) return;
+    if (!canAdminAction("manageDocuments")) {
+        showToast("Uploading documents requires operator access.", "error");
+        return;
+    }
+    if (state.files.uploading) return;
+    state.files.uploading = true;
+    state.files.rejected = [];
+    renderCollectionFiles();
+    const uploaded = [];
+    try {
+        // One request per batch; each mutation gets its own action token.
+        for (let start = 0; start < files.length; start += MAX_FILES_PER_UPLOAD) {
+            const batch = files.slice(start, start + MAX_FILES_PER_UPLOAD);
+            setFilesUploadStatus(`Uploading ${start + 1}-${start + batch.length} of ${files.length}...`);
+            const form = new FormData();
+            batch.forEach((file) => form.append("files", file, file.name));
+            try {
+                const result = await adminMutationRequest(adminCollectionFilesUrl(collection.id), { method: "POST", body: form });
+                uploaded.push(...(result?.uploaded || []));
+                state.files.rejected.push(...(result?.rejected || []));
+            } catch (error) {
+                if (Array.isArray(error?.details?.rejected)) state.files.rejected.push(...error.details.rejected);
+                else throw error;
+            }
+        }
+        if (uploaded.length > 0) {
+            showToast(`Uploaded ${uploaded.length} document${uploaded.length === 1 ? "" : "s"}. Re-index to make them searchable.`, "success");
+        }
+        if (state.files.rejected.length > 0) {
+            showToast(`${state.files.rejected.length} file(s) were not uploaded. See the Documents tab.`, "error");
+        }
+    } catch (error) {
+        showErrorToast(error, "Upload failed");
+    } finally {
+        state.files.uploading = false;
+        setFilesUploadStatus("");
+        await refreshSelectedCollectionAfterFileChange();
+    }
+}
+
+async function deleteCollectionDocument(fileName) {
+    const collection = state.selectedCollection;
+    if (!collection) return;
+    if (!canAdminAction("manageDocuments")) {
+        showToast("Deleting documents requires operator access.", "error");
+        return;
+    }
+    if (!confirm(`Delete "${fileName}" from this collection? The file is removed from the server.`)) return;
+    try {
+        await adminMutationRequest(adminCollectionFilesUrl(collection.id, fileName), { method: "DELETE" });
+        showToast(`Deleted ${fileName}. Re-index to remove it from search results.`, "success");
+    } catch (error) {
+        showErrorToast(error, "Delete failed");
+    } finally {
+        await refreshSelectedCollectionAfterFileChange();
+    }
+}
+
+function bindDocumentsTabEvents() {
+    const zone = elements.filesDropZone;
+    if (zone) {
+        ["dragenter", "dragover"].forEach((type) => zone.addEventListener(type, (event) => {
+            event.preventDefault();
+            zone.classList.add("border-indigo-500", "bg-indigo-50");
+        }));
+        ["dragleave", "drop"].forEach((type) => zone.addEventListener(type, () => {
+            zone.classList.remove("border-indigo-500", "bg-indigo-50");
+        }));
+        zone.addEventListener("drop", (event) => {
+            event.preventDefault();
+            uploadCollectionDocuments(event.dataTransfer?.files);
+        });
+    }
+    elements.filesInput?.addEventListener("change", (event) => {
+        const input = event.target;
+        uploadCollectionDocuments(input.files).finally(() => {
+            input.value = "";
+        });
+    });
+    elements.btnFilesReindex?.addEventListener("click", () => reindexCollection());
+    document.querySelectorAll('input[name="sourceKind"]').forEach((radio) => {
+        radio.addEventListener("change", () => syncSourceKindFields(null));
+    });
+}
+
 async function deleteCollection() {
     if (!state.selectedCollection) return;
     if (!canAdminAction("deleteCollection")) {
         showToast("Delete collection requires admin access.", "error");
         return;
     }
-    if (!confirm(`Delete collection "${state.selectedCollection.displayName || state.selectedCollection.id}"? This is a soft delete.`)) return;
+    const deleteNote = state.selectedCollection.sourceKind === "uploads"
+        ? "Its uploaded documents are deleted too."
+        : "This is a soft delete; the files in its folder are not touched.";
+    if (!confirm(`Delete collection "${state.selectedCollection.displayName || state.selectedCollection.id}"? ${deleteNote}`)) return;
 
     try {
         setButtonLoading(elements.btnDeleteCol, true, "Deleting...");
@@ -4361,9 +4677,12 @@ function bindEvents() {
             if (button.disabled) return;
             switchTab(button.dataset.tab);
             if (button.dataset.tab === "ready" && state.selectedCollection) updateReadinessTab();
+            if (button.dataset.tab === "files" && state.selectedCollection) loadCollectionFiles();
             if (button.dataset.tab === "playground") updatePlaygroundCapabilityState();
         });
     });
+
+    bindDocumentsTabEvents();
 
     elements.pgModeBtns.forEach((button) => {
         button.addEventListener("click", () => {

@@ -22,7 +22,7 @@ Role matrix:
 | Role | Allowed admin surface |
 | --- | --- |
 | `viewer` | Read-only `GET /v1/admin/**` plus auth session endpoints |
-| `operator` | Viewer access plus create, validate, update, reindex, and job cancel |
+| `operator` | Viewer access plus create, validate, update, reindex, job cancel, and document upload/delete (`manageDocuments`) |
 | `admin` | Operator access plus collection delete, job delete, and bulk delete |
 
 Operational notes:
@@ -205,7 +205,7 @@ Required:
 Optional:
 
 - `description`
-- `sourcePath`
+- `sourcePath`: omit it to get an uploads collection (see below); give it to index a folder on the server
 - `distanceMetric`: `l2`, `cosine`, or `ip`
 - `chunkSize`
 - `chunkOverlap`
@@ -217,6 +217,11 @@ Optional:
 Behavior:
 
 - Returns `201 Created` on success.
+- Documents (`sourceKind`):
+  - Without `sourcePath` the collection is an **uploads** collection (`sourceKind: "uploads"`): it gets its own folder, `data/collections/<collection id>`, and its documents are managed with the [files endpoints](#documents-of-a-collection). This is what the admin panel creates by default.
+  - With `sourcePath` it is a **folder** collection (`sourceKind: "folder"`): it indexes that file or folder on the server (relative to the project root, for example `data/handbook`; with Docker, inside the `./data` mount). The files endpoints list its files read-only. Before this release, an omitted `sourcePath` meant the whole `collectionDefaults.sourcePath` folder; send `"sourcePath": "data"` for that behavior.
+  - Folder collections never see the `data/collections` folder, so a folder collection on `data` does not pick up other collections' uploads.
+  - The `sourcePath` of an uploads collection cannot be changed (`PATCH` returns `400 INVALID_REQUEST_BODY`; validation reports `COLLECTION_SOURCE_FIXED`).
 - Embedding: omitted `embeddingProvider` / `embeddingModel` come from the configured default (`modelDefaults`). If you pick a provider other than the default without a model, `builtin` gets its default built-in model, while `openai-compatible` needs an explicit `embeddingModel` (otherwise `422 UNAVAILABLE_MODEL`). The stored provider and model belong to the collection; later changes of the configured default never affect it.
 - Collections have no chat model. Sending `chatModel` (or any other unknown field) returns `400 INVALID_REQUEST_BODY`. The chat LLM used by `/query` is global and optional (see `GET /v1/admin/config/defaults`).
 - Omitted create fields are filled from runtime configuration defaults and model defaults.
@@ -622,6 +627,7 @@ Behavior:
 
 - The collection disappears from subsequent public and admin lookups.
 - Any running jobs associated with the collection are aborted.
+- An uploads collection's folder (`data/collections/<collection id>`) and its documents are deleted. A folder collection's files are never touched.
 
 ### `POST /v1/admin/collections/:collectionId/reindex`
 
@@ -647,6 +653,72 @@ Notes:
 - Before queueing, the backend runs the same cheap embedding preflight as create on the collection's saved `embeddingProvider` / `embeddingModel` (the job builds with that pair). It never downloads or embeds: a built-in model only has to be in the catalog (if it is not downloaded yet, the job downloads it once before embedding), and an `openai-compatible` model is checked with a free `GET {embedding.baseUrl}/models`. On failure no job starts: `422 UNAVAILABLE_MODEL`, `422 EMBEDDING_PROVIDER_NOT_CONFIGURED`, or `503 EMBEDDING_PROVIDER_UNREACHABLE`. The chat LLM is never involved in indexing, so a retrieve-only deployment can still index.
 - When the job succeeds, the collection's `activeEmbeddingProvider` / `activeEmbeddingModel` become the job's `targetEmbeddingProvider` / `targetEmbeddingModel`.
 - Reindex is one of the rate-limited operations.
+
+## Documents of a collection
+
+Upload, list, replace and delete the documents of an **uploads** collection (created without `sourcePath`). The admin panel's Documents tab uses exactly these endpoints. After a change, the collection's `indexState` becomes `reindex_required` with `documentsChanged: true` until the next successful reindex; reindex with `POST /v1/admin/collections/:collectionId/reindex`.
+
+Rules for every upload and delete:
+
+- Only uploads collections are writable; a folder collection returns `409 COLLECTION_FILES_READ_ONLY`.
+- While a reindex job of the collection is queued or running, uploads and deletes return `409 COLLECTION_INDEX_ALREADY_RUNNING` (`details.jobId`, `details.status`).
+- Supported types: `.txt`, `.md`, `.pdf`, `.doc`, `.docx`. File names are plain names (no paths), may not start with a dot, and may not contain `< > : " | ? *` or control characters. UTF-8 names (for example Turkish characters) are kept.
+- Each file may be at most `uploads.maxFileSizeMb` (default 50 MB; larger files return `413 FILE_TOO_LARGE`), at most 20 files per request (`400 TOO_MANY_FILES`).
+- With admin auth on, uploads and deletes need the `manageDocuments` capability (operator, admin) and an action token for the exact path, like other mutations.
+- Files are written next to a temporary name and then renamed, so an interrupted upload never replaces an existing document.
+
+### `GET /v1/admin/collections/:collectionId/files`
+
+Lists the documents of any collection (read capability).
+
+Example response:
+
+```json
+{
+  "collectionId": "my-docs-1a2b3c4d5e",
+  "sourceKind": "uploads",
+  "writable": true,
+  "files": [
+    { "name": "handbook.pdf", "sizeBytes": 248331, "modifiedAt": "2026-11-18T10:12:03.000Z", "supported": true }
+  ],
+  "fileCount": 1,
+  "totalBytes": 248331,
+  "indexState": { "status": "reindex_required", "reindexRequired": true, "documentsChanged": true, "note": "Documents were added or removed since the last index. Re-index to search them." }
+}
+```
+
+`indexState` is abbreviated here; it has the same shape as in `GET /v1/admin/collections/:collectionId`. For a folder collection, `name` is the path relative to the folder and `supported: false` marks files the indexer skips.
+
+### `POST /v1/admin/collections/:collectionId/files`
+
+Uploads one or more documents as `multipart/form-data`, each in a part named `files`. A file with the name of an existing document replaces it.
+
+```bash
+curl -F "files=@handbook.pdf" -F "files=@notes.md" \
+  http://localhost:3010/v1/admin/collections/my-docs-1a2b3c4d5e/files
+```
+
+Example response (`201 Created`):
+
+```json
+{
+  "collectionId": "my-docs-1a2b3c4d5e",
+  "uploaded": [
+    { "name": "handbook.pdf", "sizeBytes": 248331, "replaced": false },
+    { "name": "notes.md", "sizeBytes": 1520, "replaced": true }
+  ],
+  "rejected": [
+    { "name": "budget.xlsx", "code": "UNSUPPORTED_FILE", "reason": "Unsupported file type. Supported: .txt, .md, .pdf, .doc, .docx." }
+  ],
+  "indexState": { "status": "reindex_required", "reindexRequired": true, "documentsChanged": true }
+}
+```
+
+Files that cannot be accepted are listed in `rejected` (`UNSUPPORTED_FILE` or `INVALID_FILE_NAME`) while the others are stored. If no file can be accepted, the response is `400 UNSUPPORTED_FILE` with the list in `details.rejected`. A request without files returns `400 INVALID_REQUEST_BODY`.
+
+### `DELETE /v1/admin/collections/:collectionId/files/:fileName`
+
+Deletes one document and returns `204 No Content`. URL-encode the name (for example `my%20notes.md`). An unknown name returns `404 DOCUMENT_NOT_FOUND`.
 
 ## Job Endpoints
 
@@ -834,7 +906,12 @@ Rules:
 | `FORBIDDEN` | `403` | The current admin role cannot perform this action, or the action token is missing/invalid for a protected mutation |
 | `COLLECTION_FORBIDDEN` | `403` | Another tenant owns the collection |
 | `COLLECTION_NOT_FOUND` | `404` | Collection does not exist |
-| `COLLECTION_INDEX_ALREADY_RUNNING` | `409` | A reindex job is already active |
+| `COLLECTION_INDEX_ALREADY_RUNNING` | `409` | A reindex job is already active (also returned by document uploads and deletes while it runs) |
+| `COLLECTION_FILES_READ_ONLY` | `409` | Document upload or delete on a folder collection; manage its files on the server |
+| `FILE_TOO_LARGE` | `413` | An uploaded file is larger than `uploads.maxFileSizeMb` |
+| `TOO_MANY_FILES` | `400` | More than 20 files in one upload request |
+| `UNSUPPORTED_FILE` | `400` | None of the uploaded files has a supported type and a valid name; see `details.rejected` |
+| `DOCUMENT_NOT_FOUND` | `404` | The document to delete does not exist in the collection |
 | `INVALID_JOB_STATUS` | `400` | Job action was attempted in the wrong job state |
 | `UNAVAILABLE_MODEL` | `422` | Create or reindex preflight: no embedding model for `openai-compatible`, a built-in model outside the catalog, or a model the embedding service does not offer; see `details.availableModels` and `details.recommendedActions` |
 | `EMBEDDING_PROVIDER_NOT_CONFIGURED` | `422` | Create or reindex preflight: `openai-compatible` was chosen but `embedding.baseUrl` is not configured |

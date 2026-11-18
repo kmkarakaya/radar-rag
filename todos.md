@@ -27,7 +27,11 @@ Devam edilecekler (sirayla):
 4. Dev registry'deki eski (Ollama ile, saglayici alani olmadan indekslenmis) koleksiyonlar: `EMBEDDING_MODEL_UNSUPPORTED` gorunurlerse silip yeniden olustur ya da saglayiciyi `openai-compatible` yapip reindex et.
 5. Testlerin yerel YAML'a bagimliligi: sabit bir test config'i P1 #6 kapsaminda dusunulsun.
 6. **Uzak Windows makinede (Lenovo ThinkPad) Level 1 yarim kaldi (2026-11-18):** Docker Desktop (AMD64) kurulu, `D:\radar-rag` ve compose dosyasi hazir; ama BIOS/UEFI'de donanim sanallastirmasi kapali ("Virtualization is disabled in firmware"). Sanallastirma acilinca: yonetici PowerShell'de `wsl --install --no-distribution` + yeniden baslatma, Docker Desktop'u ac, `docker compose up -d`. Acilamazsa Docker'siz yol (Node.js + conda ile `pip install chromadb` / `chroma run`) denenip README'ye "Without Docker" bolumu olarak eklenebilir.
-7. Yol haritasindaki siradaki is: **P0 #3 dosya yukleme** (README Level 2 bunu "planned" diye duyuruyor) ya da **P0 #2 API anahtari + CORS** (README Level 3'teki guvenlik uyarisini kaldirir). Ileride: gelismis RAG teknikleri (reranking, hybrid search, query rewriting).
+7. **P0 #3 dokuman yonetimi tamamlandi (2026-11-18, `feat/document-management`).** Kalanlar: tarayicida panel denemesi (Documents sekmesi; tarayici eklentisi bagli degildi), push + CI + dis kullanici gibi Level 2 denemesi.
+8. `npm audit`: 18 bulgu (2 critical: handlebars, proxy-addr; high: body-parser, axios, form-data, js-yaml, zod...). Hepsi multer'dan once de vardi; cogu dolayli (LangChain/ibm-cloud). Express (body-parser, proxy-addr) guncellemesi ve kalanlarin degerlendirilmesi ayri bir is.
+9. Dosya adi kodlamasi: tarayici, macOS/Linux curl ve Windows `curl.exe` (System32) adi UTF-8 gonderiyor; Git Bash/MSYS curl (mingw) Windows kod sayfasinda (CP1254) gonderiyor ve Turkce ad sunucuda "�" olarak kaydediliyor (dosya yine indekslenir, API/panelden silinebilir). Istenirse: gecersiz UTF-8 adi acik bir mesajla reddet ya da bilinen kod sayfasindan cevir.
+10. `docs/http_workflows.md` PowerShell orneklerinde JSON'u `curl.exe`'ye tek tirnakla / `""` ile veriyor; Windows PowerShell 5.1 ic tirnaklari bozabiliyor. Ornekler PowerShell 5.1'de denenip gerekirse `Invoke-RestMethod`'a cevrilsin.
+11. Yol haritasindaki siradaki is: **P0 #2 API anahtari + CORS** (README Level 3'teki guvenlik uyarisini kaldirir; makineler admin API'yi de oturum + action token olmadan kullanabilsin) ya da **P0 #4 MCP**. Ileride: gelismis RAG teknikleri (reranking, hybrid search, query rewriting).
 
 ## Mevcut durum (ozet)
 
@@ -82,7 +86,7 @@ Yonetim tarafi kurumsal duzeyde (blue/green reindex, job kuyrugu, RBAC, CSRF, au
 
 - **Public API'de kimlik dogrulama yok.** `/v1/rag/**` herkese acik; tenant `x-tenant-id` header'indan okunuyor, yoksa `default` (`src/http/requestContext.ts`). Herkes header'i degistirerek baska bir tenant'in verisini sorgulayabilir; multi-tenant yapi bu haliyle guvenli degil. -> P0 #2
 - **CORS yok.** Baska bir adresteki web uygulamasi API'yi tarayicidan cagiramiyor (test frontend ayni adresten sunuldugu icin calisiyor). -> P0 #2
-- **Dokuman yukleme/silme yok.** Dokumanlar sunucu diskine (`./data/...`) elle konuyor; API veya panelden yukleme, silme, listeleme yok. Docker'da ve uzak sunucuda cok zahmetli. -> P0 #3
+- ~~**Dokuman yukleme/silme yok.**~~ Tamamlandi (2026-11-18, P0 #3): files API + panelde Documents sekmesi.
 - ~~**Zorunlu chat modeli.**~~ Kapatildi (P0 #1): chat LLM istege bagli ve saglayicidan bagimsiz. ~~Embedding sadece Ollama~~ da kapatildi (P0 #5).
 - **Builtin embedding indekslemesi semafor disinda.** `addDocuments` `maxConcurrentEmbeddings` semaforunun altinda degil; builtin model CPU'da calistigi icin buyuk bir indeksleme eszamanli sorgulari yavaslatabilir. Olcum yapilmadigi icin onceden cozum eklenmedi; gercek kullanimda gorulurse indeksleme batch'leri semafora alinmali. -> P1
 - **Index snapshot'inda kaynak yolu ve chunk alanlari job anindan alinmiyor.** Swap'ta embedding alanlari duzeltildi, ama `sourcePath`, `chunkSize`, `chunkOverlap`, `distanceMetric` hala koleksiyonun o anki degerinden yaziliyor; job bunlari saklamiyor. Job calisirken bu ayarlar degisirse snapshot yanlis olur. Cozum: job'a bu alanlarin hedef degerlerini eklemek. -> P1
@@ -110,9 +114,19 @@ Yapilacaklar:
 - Config ile CORS izinli origin listesi.
 - Anahtarsiz kullanim sadece acikca izin verilirse (lokal gelistirme) mumkun olsun.
 
-### 3. Dokuman yonetimi: yukleme, silme, listeleme
+### 3. Dokuman yonetimi: yukleme, silme, listeleme (tamamlandi)
 
-Yapilacaklar:
+2026-11-18'de tamamlandi:
+
+- `sourcePath`'siz olusturulan koleksiyon `sourceKind: "uploads"` olur ve kendi klasorunu alir (`data/collections/<id>`); `sourcePath` verilirse `folder` (eski davranis; dosyalari salt okunur listelenir).
+- API: `GET/POST /v1/admin/collections/:id/files` (multipart, alan `files`, en cok 20 dosya, `uploads.maxFileSizeMb` = 50), `DELETE .../files/:fileName`. Ayni ad = degistirme (gizli gecici dosya + rename). Desteklenmeyen/gizli/yol iceren adlar dosya bazinda reddedilir. Aktif job varken 409. Yetki: `manageDocuments` (operator, admin) + action token.
+- `documents_changed` bayragi: yukleme/silmede kalkar, basarili reindex'te sifirlanir; `indexState.reindex_required` + `documentsChanged`.
+- Yan etki onlemi: her kaynak taramasi `data/collections`'a inmez (klasor koleksiyonu baska koleksiyonlarin/tenant'larin yuklemelerini gormez).
+- Uploads koleksiyonu silinince klasoru de silinir; folder koleksiyonuna dokunulmaz.
+- Panel: New Collection varsayilan "Upload files"; Documents sekmesi (surukle-birak, liste, silme, reddedilenler, "Re-index now"). Panel ayni API'nin istemcisi.
+- Dokuman: README Level 2 (panel + curl + PowerShell), admin_api_endpoints, openapi, http_workflows, configuration, operations.
+
+Ileride (ilk plandan kalanlar):
 
 - Admin API: bir koleksiyona dosya yukleme (multipart), dosyalari listeleme, silme, degistirme.
 - Admin panelde ayni islemler (surukle-birak yukleme, dosya listesi, silme).
@@ -328,7 +342,7 @@ Urun yonune (A, C, D) gore:
 
 1. ~~Chat modelini opsiyonel yap (P0 #1).~~ Tamamlandi (2026-11-08).
 2. Public API'ye API anahtari ve CORS (P0 #2). Tenant anahtardan belirlenir; urun olarak dagitmadan once sart.
-3. Dokuman yonetimi: admin API ve panelden yukleme/silme/listeleme (P0 #3).
+3. ~~Dokuman yonetimi: admin API ve panelden yukleme/silme/listeleme (P0 #3).~~ Tamamlandi (2026-11-18).
 4. MCP sunucusu: retrieve'i AI asistanlarina arac olarak ac (P0 #4).
 5. ~~Degistirilebilir embedding saglayicisi (P0 #5).~~ Tamamlandi (2026-11-09).
 6. Dosya formatlari (P0 #6) ve incremental / upsert indexing (P1 #5).

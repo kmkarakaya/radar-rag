@@ -13,13 +13,20 @@ Running the backend day to day: health checks, limits, logs, index lifecycle and
 
 - Rate limiting (on by default): `rateLimit.windowMs` / `rateLimit.maxRequestsPerWindow` per tenant, user, collection and operation, for query, retrieve and re-index. Over the limit the API returns `429 RATE_LIMIT_EXCEEDED` with `Retry-After` and `X-RateLimit-*` headers.
 - Concurrency: `limits.maxConcurrentEmbeddings` and `limits.maxConcurrentGenerations` cap parallel embedding and chat calls; requests that wait too long return `503 MODEL_BACKPRESSURE`.
-- JSON request bodies are limited to 1 MB.
+- JSON request bodies are limited to 1 MB. Document uploads (`POST /v1/admin/collections/:id/files`) are multipart: each file up to `uploads.maxFileSizeMb` (default 50 MB), at most 20 files per request; files are streamed to disk, not held in memory.
 - Rate limits and admin sessions are kept in memory, so they assume a single backend instance.
 
 ## Logs and debug timings
 
 - Every request gets a request id (`x-request-id`, generated if missing), returned in errors and written to the structured operational log, which is also stored in the registry (`operational_logs`). The admin panel's audit log shows the persisted history.
 - Set `observability.includeDebugTimings: true` to add `debug.latency` (`retrievalMs`, `generationMs`, `totalMs`) to query and retrieve responses; it is `false` by default.
+
+## Documents on disk
+
+- Uploads collections keep their documents in `data/collections/<collection id>` (with Docker: `./data/collections` next to `docker-compose.yml`). Deleting the collection deletes that folder. Back up `./data` to keep both the documents and the registry.
+- Folder collections read their `sourcePath` directly; nothing in the API changes those files. Scans of a folder never descend into `data/collections`, so a folder collection on `data` does not index other collections' uploads.
+- Uploads and deletes are refused while the collection's index job is queued or running, so a job always reads a stable set of files.
+- The Docker image runs as root, so on a Linux host the files it writes into `./data` (registry and uploads) belong to root; use `sudo` to remove them by hand.
 
 ## Index lifecycle and cleanup
 

@@ -212,9 +212,11 @@ curl.exe -s `
   -H "x-tenant-id: $TENANT_ID" `
   -H "x-user-id: $USER_ID" `
   -H "x-request-id: $REQUEST_ID" `
-  -d '{"displayName":"Example Collection","sourcePath":"data"}' `
+  -d '{"displayName":"Example Collection"}' `
   "$BASE_URL/v1/admin/collections"
 ```
+
+Without `sourcePath` this is an uploads collection: it gets its own folder and you add its documents with the files endpoints (see "Upload documents to an uploads collection" below). To index a folder on the server instead, add for example `"sourcePath":"data/handbook"` (a folder collection; its files are managed on the server).
 
 Omitted `embeddingProvider` / `embeddingModel` come from the configured default (`modelDefaults` in `GET /v1/admin/config/defaults`). To use another provider, send for example `"embeddingProvider":"openai-compatible","embeddingModel":"bge-m3"` (an `openai-compatible` collection needs an explicit model). The create preflight never downloads or embeds; it can fail with `422 UNAVAILABLE_MODEL`, `422 EMBEDDING_PROVIDER_NOT_CONFIGURED`, or `503 EMBEDDING_PROVIDER_UNREACHABLE`, and then creates nothing.
 
@@ -271,6 +273,71 @@ curl.exe -s `
 ```
 
 Use this response to inspect which physical collection is currently active, which older rebuilds are waiting for cleanup, and whether any target build failed before activation.
+
+### Upload documents to an uploads collection
+
+A collection created without `sourcePath` is an uploads collection with its own folder. Upload its documents as `multipart/form-data`, one `files` part per document (at most 20 per request). A file with an existing name replaces it.
+
+```powershell
+$UPLOAD_PATH = "/v1/admin/collections/$COLLECTION_ID/files"
+$ACTION_TOKEN = ((curl.exe -s `
+  -b "$COOKIE_JAR" `
+  -X POST `
+  -H "content-type: application/json" `
+  -d "{""method"":""POST"",""path"":""$UPLOAD_PATH""}" `
+  "$BASE_URL/v1/admin/auth/action-token" | ConvertFrom-Json).actionToken)
+
+curl.exe -s `
+  -b "$COOKIE_JAR" `
+  -H "x-admin-action-token: $ACTION_TOKEN" `
+  -H "x-tenant-id: $TENANT_ID" `
+  -H "x-user-id: $USER_ID" `
+  -F "files=@handbook.pdf" `
+  -F "files=@notes.md" `
+  "$BASE_URL$UPLOAD_PATH"
+```
+
+Notes:
+
+- Without admin auth (the default), skip the cookie and the action token: `curl.exe -F "files=@handbook.pdf" "$BASE_URL$UPLOAD_PATH"`.
+- Success is `201 Created` with `uploaded`, `rejected` (unsupported type or invalid name, per file) and the collection's `indexState` (`documentsChanged: true`).
+- `409 COLLECTION_FILES_READ_ONLY`: the collection reads a folder on the server. `409 COLLECTION_INDEX_ALREADY_RUNNING`: wait for the running job. `413 FILE_TOO_LARGE`: the file is above `uploads.maxFileSizeMb`.
+- Then trigger a reindex (section 4); searches use the new documents once the job succeeds.
+
+### List documents
+
+```powershell
+curl.exe -s `
+  -b "$COOKIE_JAR" `
+  -H "x-tenant-id: $TENANT_ID" `
+  -H "x-user-id: $USER_ID" `
+  "$BASE_URL/v1/admin/collections/$COLLECTION_ID/files"
+```
+
+Works for every collection; `writable` is `false` for a folder collection.
+
+### Delete a document
+
+```powershell
+$FILE_NAME = [uri]::EscapeDataString("notes.md")
+$DELETE_PATH = "/v1/admin/collections/$COLLECTION_ID/files/$FILE_NAME"
+$ACTION_TOKEN = ((curl.exe -s `
+  -b "$COOKIE_JAR" `
+  -X POST `
+  -H "content-type: application/json" `
+  -d "{""method"":""DELETE"",""path"":""$DELETE_PATH""}" `
+  "$BASE_URL/v1/admin/auth/action-token" | ConvertFrom-Json).actionToken)
+
+curl.exe -i `
+  -b "$COOKIE_JAR" `
+  -X DELETE `
+  -H "x-admin-action-token: $ACTION_TOKEN" `
+  -H "x-tenant-id: $TENANT_ID" `
+  -H "x-user-id: $USER_ID" `
+  "$BASE_URL$DELETE_PATH"
+```
+
+Success is `204 No Content`; an unknown name returns `404 DOCUMENT_NOT_FOUND`. Reindex afterwards to remove the document from search results.
 
 ## 4. Reindex Flow
 

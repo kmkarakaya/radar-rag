@@ -723,6 +723,24 @@ function setCreateFieldDefault(field, value) {
     if (helper) helper.textContent = value;
 }
 
+/**
+ * The empty option of the provider and metric selects means "let the server pick its default" and only
+ * exists when creating: name the default ("Server default (builtin)"). A saved collection always has a
+ * concrete value, so in edit mode the option is hidden.
+ */
+function syncDefaultSelectOptions(isCreateMode, collectionDefaults, modelDefaults) {
+    [
+        [elements.editEmbeddingProvider, modelDefaults?.embeddingProvider],
+        [elements.editDistanceMetric, collectionDefaults?.distanceMetric],
+    ].forEach(([select, defaultValue]) => {
+        const option = select?.querySelector('option[value=""]');
+        if (!option) return;
+        option.hidden = !isCreateMode;
+        option.disabled = !isCreateMode;
+        option.textContent = defaultValue ? `Server default (${defaultValue})` : "Server default";
+    });
+}
+
 function syncConfigDefaultsPanel() {
     renderChatLlmStatus();
     if (!elements.configDefaultsPanel) return;
@@ -730,9 +748,10 @@ function syncConfigDefaultsPanel() {
     const isCreateMode = !elements.editId.value;
     elements.configDefaultsPanel.classList.toggle("hidden", !isCreateMode);
 
-    const clearHelpers = () => {
+    // Edit mode: a saved collection has concrete values, so there is no "default" to show.
+    const clearHelpers = (text = "Server default unavailable") => {
         ["sourcePath", "distanceMetric", "chunkSize", "chunkOverlap", "retrievalK", "retrievalDistanceThreshold", "embeddingProvider", "embeddingModel"].forEach((field) => {
-            setCreateFieldDefault(field, "Backend default unavailable");
+            setCreateFieldDefault(field, text);
         });
         if (elements.editSourcePath) elements.editSourcePath.placeholder = "";
         if (elements.editChunkSize) elements.editChunkSize.placeholder = "";
@@ -740,8 +759,7 @@ function syncConfigDefaultsPanel() {
         if (elements.editRetrievalK) elements.editRetrievalK.placeholder = "";
         if (elements.editRetrievalDistanceThreshold) elements.editRetrievalDistanceThreshold.placeholder = "";
         if (elements.editEmbeddingModel) elements.editEmbeddingModel.placeholder = "";
-        const placeholder = elements.editDistanceMetric?.querySelector('option[value=""]');
-        if (placeholder) placeholder.textContent = "Use backend default";
+        syncDefaultSelectOptions(isCreateMode, null, null);
     };
 
     if (!isCreateMode) {
@@ -752,7 +770,7 @@ function syncConfigDefaultsPanel() {
         if (elements.configDefaultsSummary) {
             elements.configDefaultsSummary.textContent = "";
         }
-        clearHelpers();
+        clearHelpers("");
         return;
     }
 
@@ -767,7 +785,7 @@ function syncConfigDefaultsPanel() {
         if (elements.configDefaultsSummary) {
             elements.configDefaultsSummary.textContent = "Loading GET /v1/admin/config/defaults...";
         }
-        clearHelpers();
+        clearHelpers("Loading server default...");
         return;
     }
 
@@ -801,24 +819,24 @@ function syncConfigDefaultsPanel() {
         elements.configDefaultsSummary.textContent = summaryParts.join(" | ");
     }
 
-    setCreateFieldDefault("sourcePath", `Backend default: ${formatConfigDefault(collectionDefaults.sourcePath)}`);
-    setCreateFieldDefault("distanceMetric", `Backend default: ${formatConfigDefault(collectionDefaults.distanceMetric)}`);
-    setCreateFieldDefault("chunkSize", `Backend default: ${formatConfigDefault(collectionDefaults.chunkSize)}`);
-    setCreateFieldDefault("chunkOverlap", `Backend default: ${formatConfigDefault(collectionDefaults.chunkOverlap)}`);
-    setCreateFieldDefault("retrievalK", `Backend default: ${formatConfigDefault(collectionDefaults.retrievalK)}`);
-    setCreateFieldDefault("retrievalDistanceThreshold", `Backend default: ${formatConfigDefault(collectionDefaults.retrievalDistanceThreshold)}`);
-    setCreateFieldDefault("embeddingProvider", `Backend default: ${formatConfigDefault(modelDefaults.embeddingProvider)}`);
-    setCreateFieldDefault("embeddingModel", `Backend default: ${formatConfigDefault(modelDefaults.embeddingModel)}`);
+    // A server folder has no default: without a source path the collection gets its own uploads folder.
+    setCreateFieldDefault("sourcePath", "");
+    setCreateFieldDefault("distanceMetric", `Server default: ${formatConfigDefault(collectionDefaults.distanceMetric)}`);
+    setCreateFieldDefault("chunkSize", `Server default: ${formatConfigDefault(collectionDefaults.chunkSize)}`);
+    setCreateFieldDefault("chunkOverlap", `Server default: ${formatConfigDefault(collectionDefaults.chunkOverlap)}`);
+    setCreateFieldDefault("retrievalK", `Server default: ${formatConfigDefault(collectionDefaults.retrievalK)}`);
+    setCreateFieldDefault("retrievalDistanceThreshold", `Server default: ${formatConfigDefault(collectionDefaults.retrievalDistanceThreshold)}`);
+    setCreateFieldDefault("embeddingProvider", "Leave it on the server default unless this collection needs another provider.");
+    setCreateFieldDefault("embeddingModel", `Server default: ${formatConfigDefault(modelDefaults.embeddingModel)}`);
 
-    if (elements.editSourcePath) elements.editSourcePath.placeholder = formatConfigDefault(collectionDefaults.sourcePath);
+    if (elements.editSourcePath) elements.editSourcePath.placeholder = "data/my-docs";
     if (elements.editChunkSize) elements.editChunkSize.placeholder = String(formatConfigDefault(collectionDefaults.chunkSize));
     if (elements.editChunkOverlap) elements.editChunkOverlap.placeholder = String(formatConfigDefault(collectionDefaults.chunkOverlap));
     if (elements.editRetrievalK) elements.editRetrievalK.placeholder = String(formatConfigDefault(collectionDefaults.retrievalK));
     if (elements.editRetrievalDistanceThreshold) elements.editRetrievalDistanceThreshold.placeholder = String(formatConfigDefault(collectionDefaults.retrievalDistanceThreshold));
     if (elements.editEmbeddingModel) elements.editEmbeddingModel.placeholder = formatConfigDefault(modelDefaults.embeddingModel);
 
-    const placeholder = elements.editDistanceMetric?.querySelector('option[value=""]');
-    if (placeholder) placeholder.textContent = `Use backend default (${formatConfigDefault(collectionDefaults.distanceMetric)})`;
+    syncDefaultSelectOptions(isCreateMode, collectionDefaults, modelDefaults);
 }
 
 async function loadConfigDefaults() {

@@ -43,7 +43,30 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes('"cancelJob", "manageDocuments"'));
     // The external embedding provider is only selectable once the server has a service configured.
     assert.ok(js.includes("function syncExternalProviderOption()"));
-    assert.ok(js.includes("RAG_EMBEDDING_BASE_URL (and RAG_EMBEDDING_API_KEY if it needs a key)"));
+    assert.ok(js.includes("Add one under Embedding services in the left menu"));
+  });
+
+  it("manages embedding services through the embedding services API in their own view", async () => {
+    const [html, js] = await Promise.all([
+      readAdminFile("index.html"),
+      readAdminFile("admin.js"),
+    ]);
+
+    assert.ok(html.includes('data-view="embedding-services"'));
+    assert.ok(html.includes('id="view-embedding-services"'));
+    assert.ok(html.includes('id="editEmbeddingService"'));
+    assert.ok(html.includes('id="esApiKey" autocomplete="new-password"'));
+    // The panel is a client of the API: list, test, create/update/delete with action tokens.
+    assert.ok(js.includes("const base = `${API.admin}/embedding-services`;"));
+    assert.ok(js.includes('apiRequest(`${embeddingServicesUrl()}/test`, { method: "POST", body: JSON.stringify(body) })'));
+    assert.ok(js.includes('await adminMutationRequest(id ? embeddingServicesUrl(id) : embeddingServicesUrl(), {'));
+    assert.ok(js.includes('await adminMutationRequest(embeddingServicesUrl(service.id), { method: "DELETE" });'));
+    // Only admins manage services (mirrors src/http/adminAuth.ts); the warning comes from the API response.
+    assert.ok(js.includes('"bulkDeleteJobs", "manageEmbeddingServices"]'));
+    assert.ok(js.includes("services.warnings = Array.isArray(data?.warnings) ? data.warnings : [];"));
+    // Collections send the chosen service; the model list comes from that service.
+    assert.ok(js.includes('addIfText(payload, "embeddingServiceId", values.embeddingServiceId)'));
+    assert.ok(!js.includes("modelDiscovery.external"));
   });
 
   it("loads full editable settings through the admin collection detail endpoint", async () => {

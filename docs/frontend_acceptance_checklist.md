@@ -63,6 +63,11 @@ Use this checklist to evaluate whether a frontend built against this backend is 
 - Understands `impact.immediateFields` and `impact.reindexFields`.
 - Does not hardcode the create-form distance metric default when the backend provides one.
 - Can trigger reindex with `POST /v1/admin/collections/:collectionId/reindex`.
+- Creates collections without `sourcePath` by default (uploads collections) and offers a server folder (`sourcePath`) only as an advanced option.
+- Lists documents with `GET /v1/admin/collections/:collectionId/files`, uploads with `POST .../files` (multipart `files`, batches of at most 20, a fresh action token per request) and deletes with `DELETE .../files/:fileName` (URL-encoded name).
+- Shows per-file `rejected` results, handles `409 COLLECTION_FILES_READ_ONLY`, `413 FILE_TOO_LARGE`, `400 UNSUPPORTED_FILE`, `404 DOCUMENT_NOT_FOUND` and `503 COLLECTION_STORAGE_INCONSISTENT` on delete.
+- Offers a reindex when `indexState.documentsChanged` is `true` after an upload; does not ask for one after a delete.
+- Shows a folder collection's files read-only (`writable: false`).
 - Can poll job state with `GET /v1/admin/jobs` or `GET /v1/admin/jobs/:jobId`.
 - Can load `GET /v1/admin/jobs/:jobId/events` for stage-aware progress.
 - Can load `GET /v1/admin/collections/:collectionId/physical-collections` for rebuild and cleanup visibility.

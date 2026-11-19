@@ -1,6 +1,13 @@
-import type { CollectionRegistry, CreateCollectionInput, RagCollection, RequestContext, UpdateCollectionPatch } from "../collections/types.js";
+import type {
+  CollectionRegistry,
+  CollectionSourceKind,
+  CreateCollectionInput,
+  RagCollection,
+  RequestContext,
+  UpdateCollectionPatch,
+} from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
-import { analyzeIndexingSource, registryExcludePaths } from "../ingestion/pipeline.js";
+import { analyzeIndexingSource, sourceScanExcludes } from "../ingestion/pipeline.js";
 import { checkChromaHealth } from "../rag.js";
 import {
   checkEmbeddingTarget,
@@ -38,6 +45,7 @@ export type CollectionValidationDraft = {
   status: RagCollection["status"];
   displayName: string;
   description?: string;
+  sourceKind: CollectionSourceKind;
   sourcePath: string;
   embeddingProvider: EmbeddingProvider;
   embeddingModel: string;
@@ -152,10 +160,13 @@ export function buildCreateCollectionInput(
   input: Partial<CreateCollectionInput>,
   runtimeConfig: ResolvedConfig,
 ): CreateCollectionInput {
+  // No source path: the collection gets its own folder for uploaded documents (data/collections/<id>).
+  const sourceKind: CollectionSourceKind = input.sourcePath ? "folder" : "uploads";
   return {
     displayName: input.displayName as string,
     description: input.description,
-    sourcePath: input.sourcePath ?? runtimeConfig.collectionDefaults.sourcePath,
+    sourceKind,
+    sourcePath: input.sourcePath ?? runtimeConfig.uploadsDir,
     distanceMetric: input.distanceMetric ?? runtimeConfig.collectionDefaults.distanceMetric,
     chunkSize: input.chunkSize ?? runtimeConfig.collectionDefaults.chunkSize,
     chunkOverlap: input.chunkOverlap ?? runtimeConfig.collectionDefaults.chunkOverlap,
@@ -197,6 +208,7 @@ export function buildCreateValidationDraft(
     status: "creating",
     displayName: input.displayName,
     description: input.description,
+    sourceKind: input.sourceKind ?? "folder",
     sourcePath: input.sourcePath,
     embeddingProvider: input.embeddingProvider ?? "builtin",
     embeddingModel: input.embeddingModel,
@@ -242,6 +254,7 @@ export function buildUpdateValidationDraft(
     status: collection.status,
     displayName: patch.displayName ?? collection.displayName,
     description: patch.description ?? collection.description,
+    sourceKind: collection.sourceKind,
     sourcePath: patch.sourcePath ?? collection.sourcePath,
     embeddingProvider: patch.embeddingProvider ?? collection.embeddingProvider,
     embeddingModel: patch.embeddingModel ?? collection.embeddingModel,
@@ -255,29 +268,58 @@ export function buildUpdateValidationDraft(
   };
 }
 
+const UPLOAD_DOCUMENTS_ACTION =
+  "Upload documents to this collection (the Documents tab in the admin panel, or POST /v1/admin/collections/<id>/files), then re-index.";
+
+/** A Windows path such as C:\docs given to a server that runs on Linux (for example in Docker). */
+export function looksLikeHostWindowsPath(sourcePath: string, platform: NodeJS.Platform = process.platform): boolean {
+  return platform !== "win32" && /^[A-Za-z]:[\\/]/.test(sourcePath.trim());
+}
+
+function folderSourceAction(sourcePath: string): string {
+  const hostPathHint = looksLikeHostWindowsPath(sourcePath)
+    ? "This is a path on your computer, but the server runs in a container and only sees its data folder. "
+    : "";
+  return `${hostPathHint}Use a folder the server can read, for example data/my-docs (with Docker: ./data/my-docs next to docker-compose.yml), `
+    + "and put supported files (.txt, .md, .pdf, .doc, .docx) in it. Or create the collection without a source path and upload the documents.";
+}
+
 async function analyzeSourcePath(
   draft: CollectionValidationDraft,
   runtimeConfig: ResolvedConfig,
 ): Promise<{ blockers: CollectionValidationIssue[]; warnings: CollectionValidationIssue[] }> {
+  const uploads = draft.sourceKind === "uploads";
+  // A new uploads collection has no folder or documents yet; documents are uploaded after it is created.
+  if (uploads && draft.mode === "create") return { blockers: [], warnings: [] };
+
+  const noDocuments = (): CollectionValidationIssue => uploads
+    ? makeIssue("NO_INDEXABLE_DOCUMENTS", "This collection has no documents.", runtimeConfig, UPLOAD_DOCUMENTS_ACTION)
+    : makeIssue(
+      "NO_INDEXABLE_DOCUMENTS",
+      `No indexable documents were found in ${draft.sourcePath}.`,
+      runtimeConfig,
+      folderSourceAction(draft.sourcePath),
+    );
+
   try {
     const analysis = await analyzeIndexingSource({
       sourcePath: draft.sourcePath,
-      excludePaths: registryExcludePaths(runtimeConfig.registryPath),
+      ...sourceScanExcludes(runtimeConfig),
     });
 
     const blockers: CollectionValidationIssue[] = [];
     const warnings: CollectionValidationIssue[] = [];
 
     if (analysis.loadedDocumentCount === 0) {
-      blockers.push(makeIssue(
-        "NO_INDEXABLE_DOCUMENTS",
-        `No indexable documents were found in ${draft.sourcePath}.`,
-        runtimeConfig,
-      ));
+      blockers.push(noDocuments());
     }
 
     return { blockers, warnings };
   } catch (error) {
+    // The uploads folder is created by the first upload; until then the collection simply has no documents.
+    if (uploads && (error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return { blockers: [noDocuments()], warnings: [] };
+    }
     const message = error instanceof Error ? error.message : String(error);
     return {
       blockers: [
@@ -285,6 +327,7 @@ async function analyzeSourcePath(
           "INDEXING_SOURCE_UNREADABLE",
           `Indexing source cannot be read at ${draft.sourcePath}. ${message}`.trim(),
           runtimeConfig,
+          folderSourceAction(draft.sourcePath),
         ),
       ],
       warnings: [],
@@ -305,6 +348,15 @@ export async function validateCollectionDraft(
   const requiresReindexChecks = draft.mode === "create" || !hasAnyChanges || hasChangedField(draft, REINDEX_FIELDS);
   const requiresEmbeddingChecks = draft.mode === "create" || !hasAnyChanges || hasChangedField(draft, EMBEDDING_FIELDS);
   const requiresChromaChecks = draft.mode === "create" || !hasAnyChanges || hasChangedField(draft, REINDEX_FIELDS);
+
+  if (draft.sourceKind === "uploads" && draft.mode === "update" && draft.changedFields.includes("sourcePath")) {
+    blockers.push(makeIssue(
+      "COLLECTION_SOURCE_FIXED",
+      "This collection stores uploaded documents in its own folder; its source path cannot be changed.",
+      runtimeConfig,
+      "Manage the documents with the files API instead, or create a new collection with a source path.",
+    ));
+  }
 
   if (draft.chunkOverlap >= draft.chunkSize) {
     blockers.push(makeIssue(

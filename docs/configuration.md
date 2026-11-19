@@ -28,7 +28,8 @@ chat:                               # optional; empty = retrieve-only (/query re
   # temperature, maxTokens: not sent unless set here (provider defaults apply)
   # maxContextTokens: cap on the retrieved context sent to the model
 collectionDefaults:                 # defaults for new collections
-  sourcePath: data
+  sourcePath: data                  # default source checked by /ready and onboarding; a collection created
+                                    # without sourcePath gets its own uploads folder instead
   distanceMetric: l2                # l2 | cosine | ip
   chunkSize: 500                    # characters
   chunkOverlap: 200                 # must be smaller than chunkSize
@@ -54,6 +55,8 @@ observability:
   includeDebugTimings: false        # adds debug.latency to query/retrieve responses
 sampleCollection:
   enabled: true                     # create and index "Sample documents" on the very first start
+uploads:
+  maxFileSizeMb: 50                 # per file uploaded through the files API (stored in data/collections/<id>)
 ```
 
 API keys are never stored in the YAML: the chat key comes from `RAG_CHAT_API_KEY` or `.local/rag_chat_api_key.secret`, the embedding key from `RAG_EMBEDDING_API_KEY` or `.local/rag_embedding_api_key.secret`, and the admin session secret from `RAG_ADMIN_SESSION_SECRET` or `.local/rag_admin_session.secret`. They are redacted from errors and never returned by the API.

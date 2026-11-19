@@ -145,6 +145,14 @@ export function getHttpOperationTarget(req: Request): { operation: string; colle
       };
     }
 
+    const uploadMatch = /^\/v1\/admin\/collections\/([^/]+)\/files$/.exec(req.path);
+    if (uploadMatch) {
+      return {
+        collectionId: decodeURIComponent(uploadMatch[1] ?? ""),
+        operation: "document_upload",
+      };
+    }
+
     const jobDeleteMatch = /^\/v1\/admin\/jobs\/bulk-delete$/.exec(req.path);
     if (jobDeleteMatch) {
       return {
@@ -172,6 +180,14 @@ export function getHttpOperationTarget(req: Request): { operation: string; colle
   }
 
   if (req.method === "DELETE") {
+    const documentMatch = /^\/v1\/admin\/collections\/([^/]+)\/files\/([^/]+)$/.exec(req.path);
+    if (documentMatch) {
+      return {
+        collectionId: decodeURIComponent(documentMatch[1] ?? ""),
+        operation: "document_delete",
+      };
+    }
+
     const collectionMatch = /^\/v1\/admin\/collections\/([^/]+)$/.exec(req.path);
     if (collectionMatch) {
       return {

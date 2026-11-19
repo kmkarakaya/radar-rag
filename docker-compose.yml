@@ -9,7 +9,8 @@
 #   docker compose up -d chroma   # only Chroma, for running the backend with `npm run dev`
 #
 # Open http://localhost:3010/admin. On the first start a "Sample documents" collection is created and
-# indexed. Put your own documents under ./data/<folder> and create a collection with that source path.
+# indexed. Create your own collections there and upload documents in their Documents tab (or with
+# POST /v1/admin/collections/<id>/files); they are stored in ./data/collections.
 # Optional config file: ./config/rag.config.yaml (every setting has a default; after editing it, run
 # `docker compose restart backend`).
 # Settings go in a .env file next to this file:
@@ -58,7 +59,8 @@ services:
       # Set to false to skip the sample collection on the first start.
       RAG_SAMPLE_COLLECTION: ${RAG_SAMPLE_COLLECTION:-}
     volumes:
-      # Your documents and the SQLite registry. Create collections with source paths like data/<folder>.
+      # Uploaded documents (./data/collections) and the SQLite registry. A collection can also read a
+      # folder you put here, with the source path data/<folder>.
       - ./data:/app/data
       # Built-in embedding models, downloaded once on the first indexing and kept across restarts.
       - ./models:/app/models

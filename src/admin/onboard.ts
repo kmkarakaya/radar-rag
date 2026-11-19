@@ -569,6 +569,7 @@ async function promptAdvancedConfig(rawConfig: RawConfig): Promise<PromptedConfi
           ),
         },
         sampleCollection: rawConfig.sampleCollection,
+        uploads: rawConfig.uploads,
       },
       adminSessionSecretValue: adminAuthResult.adminSessionSecretValue,
       chatApiKeyAction,

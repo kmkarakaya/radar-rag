@@ -6,7 +6,7 @@ When it is on:
 
 - Users log in with a username and password; passwords are stored only as scrypt hashes.
 - The login sets an HMAC-signed, `HttpOnly`, `SameSite=Lax` session cookie (`rag_admin_session`, marked `Secure` when `NODE_ENV=production`).
-- Roles: `viewer` (read), `operator` (+ create, validate, update, re-index, cancel), `admin` (+ delete and bulk delete). Each user belongs to a `tenantId` and only sees that tenant's collections.
+- Roles: `viewer` (read), `operator` (+ create, validate, update, re-index, cancel, upload and delete documents), `admin` (+ delete and bulk delete). Each user belongs to a `tenantId` and only sees that tenant's collections.
 - Every state-changing admin request needs a single-use action token (CSRF protection), bound to the session, tenant, method and path.
 - The admin panel redirects to `/admin/login` when there is no session.
 

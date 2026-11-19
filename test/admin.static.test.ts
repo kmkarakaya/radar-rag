@@ -23,6 +23,29 @@ describe("admin panel static contract", () => {
     assert.ok(!js.includes(".innerHTML"));
   });
 
+  it("manages documents through the files API in a Documents tab", async () => {
+    const [html, js] = await Promise.all([
+      readAdminFile("index.html"),
+      readAdminFile("admin.js"),
+    ]);
+
+    // The panel is a client of the files API, like any other API client.
+    assert.ok(html.includes('data-tab="files"'));
+    assert.ok(html.includes('id="tab-files"'));
+    assert.ok(html.includes('id="filesInput" type="file" multiple'));
+    assert.ok(js.includes("`${API.admin}/collections/${id}/files`"));
+    assert.ok(js.includes('adminMutationRequest(adminCollectionFilesUrl(collection.id), { method: "POST", body: form })'));
+    assert.ok(js.includes('adminMutationRequest(adminCollectionFilesUrl(collection.id, fileName), { method: "DELETE" })'));
+    // Uploads collections are created without a sourcePath; a server folder is the advanced option.
+    assert.ok(html.includes('name="sourceKind" value="uploads"'));
+    assert.ok(js.includes('if (getSelectedSourceKind() === "folder") addIfText(payload, "sourcePath", values.sourcePath);'));
+    // The client role table mirrors the server's manageDocuments capability.
+    assert.ok(js.includes('"cancelJob", "manageDocuments"'));
+    // The external embedding provider is only selectable once the server has a service configured.
+    assert.ok(js.includes("function syncExternalProviderOption()"));
+    assert.ok(js.includes("RAG_EMBEDDING_BASE_URL (and RAG_EMBEDDING_API_KEY if it needs a key)"));
+  });
+
   it("loads full editable settings through the admin collection detail endpoint", async () => {
     const js = await readAdminFile("admin.js");
 

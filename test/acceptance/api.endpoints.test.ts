@@ -381,8 +381,9 @@ describe("v1 admin and rag api endpoints", () => {
     assert.ok(saved);
     
     assert.equal(saved.displayName, "Defaults Test Collection");
-    // Assert auto-filled paths from config
-    assert.equal(saved.sourcePath, config.collectionDefaults.sourcePath);
+    // Without a sourcePath the collection gets its own folder for uploaded documents.
+    assert.equal(saved.sourceKind, "uploads");
+    assert.equal(saved.sourcePath, path.join(config.uploadsDir, saved.id));
     assert.equal("ozelgeDataPath" in saved, false);
     
     // Assert defaults from config

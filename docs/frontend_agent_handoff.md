@@ -38,7 +38,7 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 17. Use `GET /v1/admin/audit-log` for persisted operations history. `collectionId` and `operation` filters can be repeated for multi-select UI state.
 18. Treat admin auth as cookie-based and opt-in. Call `GET /v1/admin/auth/session` on boot, redirect `/admin/` to `/admin/login` when unauthenticated, and do not trust user-editable `x-tenant-id` / `x-user-id` on `/v1/admin/**`.
 19. Use `POST /v1/admin/auth/login` and `POST /v1/admin/auth/logout` for session lifecycle. Fetch `POST /v1/admin/auth/action-token` just in time before any mutating admin request except validation-only flows.
-20. Enforce the role matrix in the UI: `viewer` is read-only, `operator` can create/validate/update/reindex/cancel jobs, and `admin` can additionally delete collections, delete jobs, and bulk delete jobs.
+20. Enforce the role matrix in the UI: `viewer` is read-only, `operator` can create/validate/update/reindex/cancel jobs and upload/delete documents (`manageDocuments`), and `admin` can additionally delete collections, delete jobs, and bulk delete jobs.
 
 ## Canonical End-User RAG Workflow
 
@@ -54,7 +54,7 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 ## Canonical Admin Workflow
 
 1. For create forms, fetch `GET /v1/admin/config/defaults` and `GET /v1/admin/models` first so the UI can show backend defaults and model suggestions.
-2. Create or load a collection with `/v1/admin/collections` after a valid admin session has been established.
+2. Create or load a collection with `/v1/admin/collections` after a valid admin session has been established. Without `sourcePath` the collection is an uploads collection (`sourceKind: "uploads"`): offer document management for it with `GET/POST /v1/admin/collections/:collectionId/files` (multipart `files`, one action token per request) and `DELETE /v1/admin/collections/:collectionId/files/:fileName`. Show `rejected` files from the upload response. After an upload, `indexState.documentsChanged` is `true`: offer a reindex. A delete leaves search results at once and needs no reindex. For a folder collection (`writable: false`), show the file list read-only.
 3. Call `/v1/admin/collections/validate` or `/v1/admin/collections/:collectionId/validate` before saving major configuration changes.
 4. Save changes with `PATCH /v1/admin/collections/:collectionId` after fetching a fresh action token.
 5. If validation says `impact.reindexRequired === true`, offer a reindex action.
@@ -123,7 +123,12 @@ Use the readiness payload to drive the UI:
 | `EMBEDDING_PROVIDER_ERROR` | `502` | The embedding service returned an HTTP error (`details.upstreamStatus`, `details.providerMessage`) | Show provider failure and log the `requestId` |
 | `EMBEDDING_DIMENSION_MISMATCH` | `409` | The query embedding does not match the collection's index (`details.expectedDimensions`, `details.gotDimensions`) | Show that the collection needs a reindex |
 | `UNAVAILABLE_MODEL` | `422` | Admin create/reindex: the embedding model is not in the built-in catalog or not offered by the embedding service (`details.availableModels`) | Let the user pick another model |
-| `COLLECTION_STORAGE_INCONSISTENT` | `503` | Metadata says a physical collection exists, but storage does not | Show backend inconsistency and escalate |
+| `COLLECTION_STORAGE_INCONSISTENT` | `503` | Metadata says a physical collection exists, but storage does not; on a document delete, the search index could not be updated and nothing was deleted | Show backend inconsistency and escalate; a document delete can be retried |
+| `COLLECTION_FILES_READ_ONLY` | `409` | Document upload or delete on a folder collection | Show the file list read-only |
+| `FILE_TOO_LARGE` | `413` | An uploaded file is larger than `uploads.maxFileSizeMb` | Tell the user the limit |
+| `TOO_MANY_FILES` | `400` | More than 20 files in one upload request | Upload in batches of 20 |
+| `UNSUPPORTED_FILE` | `400` | No uploaded file has a supported type and a valid name (`details.rejected`) | Show the rejected files and their reasons |
+| `DOCUMENT_NOT_FOUND` | `404` | The document to delete does not exist | Refresh the file list |
 | `RATE_LIMIT_EXCEEDED` | `429` | Request limit was hit for tenant + user + collection + operation | Back off using `Retry-After` |
 | `COLLECTION_INDEX_ALREADY_RUNNING` | `409` | A reindex job is already active | Reuse the existing job state |
 | `INVALID_JOB_STATUS` | `400` | A job action was attempted in the wrong state | Disable the action in the UI |

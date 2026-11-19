@@ -140,6 +140,10 @@ export const configSchema = z.object({
   sampleCollection: z.object({
     enabled: z.boolean().default(true),
   }).strict().default({}),
+  /** Documents uploaded through the files API (stored in data/collections/<collection id>). */
+  uploads: z.object({
+    maxFileSizeMb: z.number().positive().max(1024).default(50),
+  }).strict().default({}),
 }).strict().superRefine((value, ctx) => {
   if (value.collectionDefaults.chunkOverlap >= value.collectionDefaults.chunkSize) {
     ctx.addIssue({
@@ -345,10 +349,16 @@ export function resolveConfig(
     adminAuth: rawConfig.adminAuth ?? defaultAdminAuthConfig,
     includeDebugTimings: rawConfig.observability?.includeDebugTimings ?? false,
     sampleCollectionEnabled: rawConfig.sampleCollection.enabled,
+    /** Uploads collections live in `<uploadsDir>/<collection id>`; folder collections never scan it. */
+    uploadsDir: path.resolve(cwd, UPLOADS_DIR),
+    uploadMaxFileSizeBytes: Math.round(rawConfig.uploads.maxFileSizeMb * 1024 * 1024),
   };
 }
 
 export type ResolvedConfig = ReturnType<typeof resolveConfig>;
+
+/** Root folder for uploaded documents, relative to the project root (inside the Docker data mount). */
+export const UPLOADS_DIR = "data/collections";
 
 /**
  * Environment variables that override config file values at runtime (Docker, CI, other machines).

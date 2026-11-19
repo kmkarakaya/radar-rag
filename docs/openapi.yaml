@@ -810,6 +810,138 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
         "500":
           $ref: "#/components/responses/ApiError"
+  /v1/admin/collections/{collectionId}/files:
+    get:
+      tags: [Admin Collections]
+      operationId: listCollectionFiles
+      summary: List the documents of a collection
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/CollectionId"
+      responses:
+        "200":
+          description: Documents of the collection; writable is true for uploads collections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionFilesResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+    post:
+      tags: [Admin Collections]
+      operationId: uploadCollectionFiles
+      summary: Upload or replace documents of an uploads collection
+      description: >-
+        multipart/form-data with one part named files per document (at most 20, each at most uploads.maxFileSizeMb).
+        A file with an existing name replaces it. Afterwards indexState.documentsChanged is true until the next
+        successful reindex. Refused while a reindex job is queued or running (409 COLLECTION_INDEX_ALREADY_RUNNING)
+        and for folder collections (409 COLLECTION_FILES_READ_ONLY).
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/CollectionId"
+        - $ref: "#/components/parameters/XAdminActionToken"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "201":
+          description: Stored documents and the files that were rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionFilesUploadResponse"
+        "400":
+          description: INVALID_REQUEST_BODY (no files, not multipart), TOO_MANY_FILES, or UNSUPPORTED_FILE (details.rejected)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "409":
+          $ref: "#/components/responses/ApiError"
+        "413":
+          description: FILE_TOO_LARGE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "500":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/collections/{collectionId}/files/{fileName}:
+    delete:
+      tags: [Admin Collections]
+      operationId: deleteCollectionFile
+      summary: Delete one document of an uploads collection
+      description: >-
+        Removes the document's chunks from the active index first (so it leaves search results at once and no
+        reindex is needed), then deletes the file. If Chroma cannot be reached, 503 COLLECTION_STORAGE_INCONSISTENT
+        is returned and nothing is deleted.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/CollectionId"
+        - $ref: "#/components/parameters/XAdminActionToken"
+        - name: fileName
+          in: path
+          required: true
+          description: URL-encoded file name
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          description: COLLECTION_NOT_FOUND or DOCUMENT_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "409":
+          $ref: "#/components/responses/ApiError"
+        "500":
+          $ref: "#/components/responses/ApiError"
+        "503":
+          description: COLLECTION_STORAGE_INCONSISTENT (the search index could not be updated; nothing was deleted)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
   /v1/admin/jobs:
     get:
       tags: [Admin Jobs]
@@ -1206,6 +1338,11 @@ components:
             - CHAT_PROVIDER_UNREACHABLE
             - CHAT_PROVIDER_ERROR
             - ROUTE_NOT_FOUND
+            - COLLECTION_FILES_READ_ONLY
+            - FILE_TOO_LARGE
+            - TOO_MANY_FILES
+            - UNSUPPORTED_FILE
+            - DOCUMENT_NOT_FOUND
             - INTERNAL_ERROR
         message:
           type: string
@@ -1889,6 +2026,9 @@ components:
           type: array
           items:
             type: string
+        documentsChanged:
+          type: boolean
+          description: Documents were uploaded (added or replaced) through the files API since the last successful reindex. Deletes are applied to the index at once and do not set it.
         note:
           type: string
     PublicCollection:
@@ -2218,6 +2358,9 @@ components:
         sourcePath:
           type: string
           minLength: 1
+          description: >-
+            Omit it to create an uploads collection with its own folder (data/collections/<id>) whose documents are
+            managed with the files endpoints. Give it to index a file or folder on the server (a folder collection).
         distanceMetric:
           $ref: "#/components/schemas/DistanceMetric"
         chunkSize:
@@ -2331,8 +2474,14 @@ components:
           type: string
         activeVersion:
           type: string
+        sourceKind:
+          type: string
+          enum: [uploads, folder]
+          description: uploads = own folder managed with the files endpoints; folder = a folder on the server (files are read-only).
         sourcePath:
           type: string
+        documentsChanged:
+          type: boolean
         embeddingProvider:
           allOf:
             - $ref: "#/components/schemas/EmbeddingProvider"
@@ -2585,6 +2734,75 @@ components:
                     type: string
                 error:
                   type: string
+    CollectionFile:
+      type: object
+      required: [name, sizeBytes, modifiedAt, supported]
+      properties:
+        name:
+          type: string
+          description: File name (folder collections, path relative to the folder with / separators)
+        sizeBytes:
+          type: integer
+        modifiedAt:
+          type: string
+          format: date-time
+        supported:
+          type: boolean
+          description: Whether the indexer reads this file type
+    CollectionFilesResponse:
+      type: object
+      required: [collectionId, sourceKind, writable, files, fileCount, totalBytes]
+      properties:
+        collectionId:
+          type: string
+        sourceKind:
+          type: string
+          enum: [uploads, folder]
+        writable:
+          type: boolean
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/CollectionFile"
+        fileCount:
+          type: integer
+        totalBytes:
+          type: integer
+        indexState:
+          $ref: "#/components/schemas/CollectionIndexState"
+    CollectionFilesUploadResponse:
+      type: object
+      required: [collectionId, uploaded, rejected]
+      properties:
+        collectionId:
+          type: string
+        uploaded:
+          type: array
+          items:
+            type: object
+            required: [name, sizeBytes, replaced]
+            properties:
+              name:
+                type: string
+              sizeBytes:
+                type: integer
+              replaced:
+                type: boolean
+        rejected:
+          type: array
+          items:
+            type: object
+            required: [name, code, reason]
+            properties:
+              name:
+                type: string
+              code:
+                type: string
+                enum: [UNSUPPORTED_FILE, INVALID_FILE_NAME]
+              reason:
+                type: string
+        indexState:
+          $ref: "#/components/schemas/CollectionIndexState"
     ReindexAcceptedResponse:
       type: object
       required: [job]

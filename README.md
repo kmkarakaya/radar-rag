@@ -53,19 +53,58 @@ In Windows PowerShell, `curl` (without `.exe`) is a different command and `&&` d
 
 Good to know:
 
-- Everything lives next to `docker-compose.yml`: your documents and the registry in `./data`, the vectors in `./chroma_data`, the downloaded model in `./models`. `docker compose down` stops the stack and keeps all of it; `docker compose up -d` starts it again in seconds.
+- Everything lives next to `docker-compose.yml`: your uploaded documents (`./data/collections`) and the registry in `./data`, the vectors in `./chroma_data`, the downloaded model in `./models`. `docker compose down` stops the stack and keeps all of it; `docker compose up -d` starts it again in seconds.
 - Port already in use? Create a `.env` file next to `docker-compose.yml` with `BACKEND_HOST_PORT=3020` (and/or `CHROMA_HOST_PORT=8020`) and open that port instead. The startup log still prints `localhost:3010`, its port inside the container.
 - Prefer the source code? `git clone https://github.com/kmkarakaya/radar-rag.git`, `cd radar-rag`, `docker compose up -d`. The clone also contains `data/dataset1` and `data/dataset2`, two small Turkish sample folders. `docker compose up -d --build` builds the image from your working copy.
 - Don't want the sample collection? Delete it in the admin panel (it is not recreated), or put `RAG_SAMPLE_COLLECTION=false` in `.env` before the first start.
 
 ## Level 2 — Search your own documents
 
-1. Create a folder under `./data`, for example `./data/my-docs`, and copy your files into it. Supported: `.txt`, `.md`, `.pdf` (with a text layer), `.doc`, `.docx`; subfolders are included.
-2. In the admin panel, go to **Collections** → **New Collection**. Enter a display name and the source path `data/my-docs`. Leave the other fields empty to use the defaults, and click **Save Changes**.
-3. With the collection open, click **Re-index Collection** and wait until the job is `succeeded` in the **Job Monitor**. If it fails, the error is shown there.
+Each collection you create gets its own folder for documents. You add documents in the admin panel or over the API; you never type a path. Supported: `.txt`, `.md`, `.pdf` (with a text layer), `.doc`, `.docx`.
+
+**In the admin panel:**
+
+1. Go to **Collections** → **New Collection**, enter a display name (keep **Upload files** selected) and click **Save Changes**.
+2. The **Documents** tab opens. Drop your files there, or click it to choose them. A file with the same name as an existing one replaces it.
+3. Click **Re-index now** and wait until the job is `succeeded` in the **Job Monitor**. If it fails, the error is shown there.
 4. Use the **Playground** tab to search.
 
-After you add, change or delete files, click **Re-index Collection** again. Re-indexing builds a new index in the background, and searches keep using the old one until it is ready. Uploading files from the admin panel is planned; for now, documents go into the `./data` folder.
+After you upload documents, the Documents tab asks you to re-index again. Re-indexing builds a new index in the background, and searches keep using the old one until it is ready. A deleted document leaves the search results right away; no re-index is needed.
+
+**The same over the API** (the admin panel uses exactly these endpoints):
+
+```bash
+# 1. Create a collection; the response contains its id
+curl -X POST http://localhost:3010/v1/admin/collections \
+  -H "content-type: application/json" -d '{"displayName": "My docs"}'
+
+# 2. Upload documents (one -F per file, up to 20 per request)
+curl -F "files=@handbook.pdf" -F "files=@notes.md" \
+  http://localhost:3010/v1/admin/collections/<collection-id>/files
+
+# 3. Index them; the response contains the job id. Repeat the second call until "status" is "succeeded"
+curl -X POST http://localhost:3010/v1/admin/collections/<collection-id>/reindex
+curl http://localhost:3010/v1/admin/jobs/<job-id>
+
+# 4. Search
+curl -X POST http://localhost:3010/v1/rag/collections/<collection-id>/retrieve \
+  -H "content-type: application/json" -d '{"question": "What is in the handbook?"}'
+```
+
+Windows PowerShell (uploads use `curl.exe`, because Windows PowerShell 5.1 cannot send files with `Invoke-RestMethod`):
+
+```powershell
+$base = "http://localhost:3010"
+$id = (Invoke-RestMethod -Method Post -Uri "$base/v1/admin/collections" -ContentType "application/json" -Body '{"displayName": "My docs"}').collection.id
+curl.exe -F "files=@handbook.pdf" -F "files=@notes.md" "$base/v1/admin/collections/$id/files"
+$jobId = (Invoke-RestMethod -Method Post -Uri "$base/v1/admin/collections/$id/reindex").job.id
+(Invoke-RestMethod "$base/v1/admin/jobs/$jobId").job.status
+Invoke-RestMethod -Method Post -Uri "$base/v1/rag/collections/$id/retrieve" -ContentType "application/json" -Body '{"question": "What is in the handbook?"}' | ConvertTo-Json -Depth 5
+```
+
+List the documents with `GET /v1/admin/collections/<collection-id>/files` and delete one with `DELETE /v1/admin/collections/<collection-id>/files/<file-name>` (URL-encode names with spaces); a deleted document is removed from the index at once. Deleting the collection deletes its documents too. Files are limited to 50 MB each (`uploads.maxFileSizeMb`). With [admin auth](#level-6--protect-the-admin-panel) turned on, these admin calls also need a session cookie and an action token; see [docs/http_workflows.md](docs/http_workflows.md).
+
+**Advanced: index a folder on the server.** If your documents already live on the server, put them in a folder inside `./data` (next to `docker-compose.yml`; in a clone, the repo's `data` folder), for example `./data/handbook`. Then choose **Use a folder on the server** in New Collection, or send `"sourcePath": "data/handbook"` when you create it over the API. With Docker, a path on your computer such as `C:\docs` does not work: the server only sees its `data` folder. Such a collection reads that folder directly; the Documents tab lists its files but cannot change them, so you manage the files there and re-index.
 
 ## Level 3 — Use it from your app
 
@@ -107,6 +146,7 @@ const prompt = `Answer only from this context:\n\n${context}\n\nQuestion: ${ques
 - Check `GET /v1/rag/collections/<collection-id>/ready` before searching: it tells you whether the collection can serve retrieval (and answers) right now.
 - Optional headers: `x-request-id` (echoed in logs and errors), `x-tenant-id` and `x-user-id` (default `default` / `local-dev`). Requests are rate-limited; a `429 RATE_LIMIT_EXCEEDED` response carries a `Retry-After` header.
 - A runnable browser example is at `http://localhost:3010/test-frontend/` (source in [test_frontend/](test_frontend/README.md)). The full API is in [docs/user_api_endpoints.md](docs/user_api_endpoints.md), [docs/http_workflows.md](docs/http_workflows.md) and [docs/openapi.yaml](docs/openapi.yaml).
+- Your app can also manage collections and their documents over the admin API: create a collection, upload or delete documents, re-index and follow the job, as shown in [Level 2](#level-2--search-your-own-documents). Every endpoint is in [docs/admin_api_endpoints.md](docs/admin_api_endpoints.md).
 - AI assistants: an MCP server that exposes retrieval as a tool is planned.
 
 > **Security:** the public `/v1/rag` API has no authentication yet; anyone who can reach the port can read every collection. Run it on your own computer or a trusted network, and do not expose it to the internet. API keys are planned.
@@ -151,7 +191,7 @@ RAG_EMBEDDING_MODEL=embeddinggemma-2:270m
 # RAG_EMBEDDING_API_KEY=...   for cloud providers
 ```
 
-- Each collection stores the provider and model it was indexed with and is always searched with them. The setting above is only the default for **new** collections; existing ones are never touched. You can also pick the provider and model per collection in the admin panel.
+- Each collection stores the provider and model it was indexed with and is always searched with them. The setting above is only the default for **new** collections; existing ones are never touched. You can also pick the provider and model per collection in the admin panel. To offer an external service only for some collections, set just `RAG_EMBEDDING_BASE_URL` (and `RAG_EMBEDDING_API_KEY` if needed): `builtin` stays the default, and **openai-compatible** becomes selectable in New Collection (the panel disables it while no service is configured). Managing these connections from the admin panel is planned.
 - Changing a collection's provider or model marks it `reindex_required`; it keeps serving with the old embedding until the re-index finishes. Vectors from different models are not comparable, which is why a re-index is needed.
 - Speed: `builtin` runs on the backend's CPU. It is fine for small and medium document sets, but indexes noticeably slower than a dedicated embedding server, and a large indexing job can slow down concurrent searches. For large document sets, use Ollama (with a GPU if available) or a cloud API.
 - `/ready` checks the default embedding without running it. If an external default service is down, only indexing new collections is blocked; collections on another provider keep serving.
@@ -240,6 +280,9 @@ All settings, environment variables and onboarding flags are described in [docs/
 | The first re-index takes minutes, or fails with `EMBEDDING_PROVIDER_UNREACHABLE` on the built-in model | The built-in model (~350 MB) downloads on the first indexing and needs internet access | Wait for the download (once), or check the network; the model is then kept in `./models` |
 | Creating a collection or re-indexing returns `422 UNAVAILABLE_MODEL` | The external embedding service does not offer that model | Pick a model from `details.availableModels`; for Ollama, `ollama pull <model>` first |
 | `503 EMBEDDING_PROVIDER_UNREACHABLE` or `422 EMBEDDING_PROVIDER_NOT_CONFIGURED` | The external embedding service is down, its URL is wrong, or none is set | Start it and check `RAG_EMBEDDING_BASE_URL` (in Docker use `host.docker.internal`, not `localhost`), or use `builtin` |
+| Saving a new collection is blocked with `INDEXING_SOURCE_UNREADABLE` or `NO_INDEXABLE_DOCUMENTS` | The "folder on the server" option points to a folder that does not exist or has no supported files (a `C:\...` path never works with Docker) | Choose **Upload files** instead, or put the files in `./data/<folder>` and enter `data/<folder>` |
+| An upload returns `413 FILE_TOO_LARGE` or lists files under `rejected` | The file is larger than `uploads.maxFileSizeMb` (50 MB), or its type or name is not supported | Raise the limit in the config, or convert the file to `.txt`, `.md`, `.pdf`, `.doc` or `.docx` |
+| An upload or delete returns `409 COLLECTION_FILES_READ_ONLY` | The collection reads a folder on the server | Change the files in that folder and re-index, or create a collection without a source path |
 | `/retrieve` or `/query` returns `409 EMBEDDING_DIMENSION_MISMATCH` | The index was built with a different embedding model | Re-index the collection |
 | `/query` returns `503 CHAT_NOT_CONFIGURED`, or the Query button is disabled | No chat model is configured (the default) | Use `/retrieve`, or see [Level 4](#level-4--get-written-answers-optional) |
 | `/query` returns `503 CHAT_PROVIDER_UNREACHABLE` | The chat API is down or its URL is wrong | Start it; the URL must end in `/v1` (Ollama: `http://localhost:11434/v1`, from Docker `http://host.docker.internal:11434/v1`) |

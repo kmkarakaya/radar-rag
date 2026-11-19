@@ -18,7 +18,8 @@ export type AdminCapability =
   | "cancelJob"
   | "deleteCollection"
   | "deleteJob"
-  | "bulkDeleteJobs";
+  | "bulkDeleteJobs"
+  | "manageDocuments";
 
 export type AdminSessionSummary = {
   username: string;
@@ -65,6 +66,7 @@ const OPERATOR_CAPABILITIES: AdminCapability[] = [
   "updateCollection",
   "reindexCollection",
   "cancelJob",
+  "manageDocuments",
 ];
 const ADMIN_CAPABILITIES: AdminCapability[] = [...OPERATOR_CAPABILITIES, "deleteCollection", "deleteJob", "bulkDeleteJobs"];
 export const defaultAdminSessionSecretFilePath = ".local/rag_admin_session.secret";
@@ -85,6 +87,9 @@ const ADMIN_ROUTE_PATTERNS: Array<{
   { method: "PATCH", pattern: /^\/v1\/admin\/collections\/[^/]+\/?$/, capability: "updateCollection", actionTokenRequired: true },
   { method: "DELETE", pattern: /^\/v1\/admin\/collections\/[^/]+\/?$/, capability: "deleteCollection", actionTokenRequired: true },
   { method: "POST", pattern: /^\/v1\/admin\/collections\/[^/]+\/reindex\/?$/, capability: "reindexCollection", actionTokenRequired: true },
+  { method: "GET", pattern: /^\/v1\/admin\/collections\/[^/]+\/files\/?$/, capability: "read", actionTokenRequired: false },
+  { method: "POST", pattern: /^\/v1\/admin\/collections\/[^/]+\/files\/?$/, capability: "manageDocuments", actionTokenRequired: true },
+  { method: "DELETE", pattern: /^\/v1\/admin\/collections\/[^/]+\/files\/[^/]+\/?$/, capability: "manageDocuments", actionTokenRequired: true },
   { method: "GET", pattern: /^\/v1\/admin\/audit-log\/?$/, capability: "read", actionTokenRequired: false },
   { method: "GET", pattern: /^\/v1\/admin\/jobs\/?$/, capability: "read", actionTokenRequired: false },
   { method: "GET", pattern: /^\/v1\/admin\/jobs\/[^/]+\/?$/, capability: "read", actionTokenRequired: false },

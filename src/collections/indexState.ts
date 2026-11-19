@@ -54,11 +54,12 @@ export function buildCollectionIndexState(
   collection: Pick<
     RagCollection,
     "sourcePath" | "distanceMetric" | "chunkSize" | "chunkOverlap" | "embeddingProvider" | "embeddingModel" | "activePhysicalCollection"
-  >,
+  > & { documentsChanged?: boolean },
   activeSnapshot: CollectionIndexSnapshot | null,
 ): CollectionIndexState {
   const desiredSnapshot = buildCollectionIndexSnapshot(collection);
   const hasActiveIndex = Boolean(collection.activePhysicalCollection);
+  const documentsChanged = collection.documentsChanged === true;
 
   if (!hasActiveIndex) {
     return {
@@ -67,6 +68,7 @@ export function buildCollectionIndexState(
       activeSnapshot,
       desiredSnapshot,
       changedFields: [...INDEX_SNAPSHOT_FIELDS],
+      documentsChanged,
       note: "No active index exists yet. Run re-index after saving the collection.",
     };
   }
@@ -78,6 +80,7 @@ export function buildCollectionIndexState(
       activeSnapshot: null,
       desiredSnapshot,
       changedFields: [...INDEX_SNAPSHOT_FIELDS],
+      documentsChanged,
       note: "The active indexed snapshot is unavailable. Re-index required to verify the saved settings.",
     };
   }
@@ -90,7 +93,20 @@ export function buildCollectionIndexState(
       activeSnapshot,
       desiredSnapshot,
       changedFields,
+      documentsChanged,
       note: "Saved indexing settings differ from the active indexed snapshot. Re-index required to apply them.",
+    };
+  }
+
+  if (documentsChanged) {
+    return {
+      status: "reindex_required",
+      reindexRequired: true,
+      activeSnapshot,
+      desiredSnapshot,
+      changedFields: [],
+      documentsChanged,
+      note: "Documents were uploaded since the last index. Re-index to search them.",
     };
   }
 
@@ -100,6 +116,7 @@ export function buildCollectionIndexState(
     activeSnapshot,
     desiredSnapshot,
     changedFields: [],
+    documentsChanged,
     note: "Saved settings are aligned with the active indexed snapshot.",
   };
 }

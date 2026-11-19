@@ -252,9 +252,16 @@ describe("sqlite collection registry", () => {
         assert.ok(columns.some((column) => column.name === "active_embedding_model"));
         assert.ok(!columns.some((column) => column.name === "ozelge_data_path"));
         assert.ok(!columns.some((column) => column.name === "chat_model"));
+        assert.ok(columns.some((column) => column.name === "source_kind"));
+        assert.ok(columns.some((column) => column.name === "documents_changed"));
       } finally {
         migratedDb.close();
       }
+
+      // Existing collections keep reading their folder; nothing is marked as changed.
+      const legacy = await migratedRegistry.getVisibleCollection(context, "legacy-collection");
+      assert.equal(legacy?.sourceKind, "folder");
+      assert.equal(legacy?.documentsChanged, false);
 
       const queued = await migratedRegistry.beginIndexJob(context, "legacy-collection", {
         targetVersion: "legacy-v2",

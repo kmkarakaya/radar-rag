@@ -1,5 +1,9 @@
+import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
+import multer from "multer";
 import { z } from "zod";
 import type { AppDependencies } from "../app.js";
 import { HttpError } from "./errors.js";
@@ -17,6 +21,21 @@ import {
 import { createAdminAuthService, type AdminAuthService } from "./adminAuth.js";
 import { listEmbeddingModels } from "../embeddings/index.js";
 import { assertEmbeddingAvailable } from "./modelAvailability.js";
+import { deleteSourceChunks } from "../collections/chromaCollections.js";
+import {
+  MAX_FILES_PER_UPLOAD,
+  UPLOAD_TEMP_PREFIX,
+  checkUploadName,
+  findCollectionFile,
+  listCollectionFiles,
+  placeUploadedFile,
+  removeUploadsFolder,
+  resolveCollectionFolder,
+  resolveUploadsFolder,
+  type RejectedUpload,
+} from "../documents/collectionFiles.js";
+
+type UploadRequest = Request & { uploadFolder?: string; rejectedUploads?: RejectedUpload[] };
 
 const JOB_STATUS_VALUES = ["queued", "running", "succeeded", "failed", "cancelled"] as const satisfies readonly IndexJobStatus[];
 
@@ -525,7 +544,14 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       }
 
       const context = res.locals.requestContext as RequestContext;
-      await requireVisibleCollection(context, collectionId);
+      const existing = await requireVisibleCollection(context, collectionId);
+      if (existing.sourceKind === "uploads" && parsed.data.sourcePath !== undefined && parsed.data.sourcePath !== existing.sourcePath) {
+        throw new HttpError(
+          400,
+          "INVALID_REQUEST_BODY",
+          "This collection stores uploaded documents in its own folder; its sourcePath cannot be changed.",
+        );
+      }
       const collection = await deps.registry!.updateCollection(context, collectionId, parsed.data);
       res.json({ collection });
     } catch (error) {
@@ -537,13 +563,212 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     try {
       const collectionId = req.params.collectionId as string;
       const context = res.locals.requestContext as RequestContext;
-      await requireVisibleCollection(context, collectionId);
-      
+      const collection = await requireVisibleCollection(context, collectionId);
+
       const cancelledJobIds = await deps.registry!.deleteCollection(context, collectionId);
       for (const jobId of cancelledJobIds) {
         await deps.jobRunner!.abort(jobId);
       }
 
+      // Uploaded documents belong to the collection; a folder collection's files are never touched.
+      if (collection.sourceKind === "uploads") {
+        await removeUploadsFolder(
+          resolveCollectionFolder(collection.sourcePath, runtimeConfig.projectRoot),
+          runtimeConfig.uploadsDir,
+        );
+      }
+
+      res.locals.collectionId = collectionId;
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ---- Documents of a collection (files API) ----
+
+  router.get("/collections/:collectionId/files", requireRegistry, async (req, res, next) => {
+    try {
+      const collectionId = req.params.collectionId as string;
+      const context = res.locals.requestContext as RequestContext;
+      const collection = await requireVisibleCollection(context, collectionId);
+      const folder = resolveCollectionFolder(collection.sourcePath, runtimeConfig.projectRoot);
+      const files = await listCollectionFiles(folder, runtimeConfig);
+      res.json({
+        collectionId,
+        sourceKind: collection.sourceKind,
+        writable: collection.sourceKind === "uploads",
+        files,
+        fileCount: files.length,
+        totalBytes: files.reduce((sum, file) => sum + file.sizeBytes, 0),
+        indexState: collection.indexState,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /** Checks shared by upload and delete: visible, an uploads collection, and no index job reading the folder. */
+  async function requireWritableCollection(context: RequestContext, collectionId: string) {
+    const collection = await requireVisibleCollection(context, collectionId);
+    if (collection.sourceKind !== "uploads") {
+      throw new HttpError(
+        409,
+        "COLLECTION_FILES_READ_ONLY",
+        "This collection reads a folder on the server; manage its files there. Create a collection without a sourcePath to upload documents.",
+      );
+    }
+    const activeJob = await deps.registry!.getActiveJobForCollection(context, collectionId);
+    if (activeJob && (activeJob.status === "queued" || activeJob.status === "running")) {
+      throw new HttpError(
+        409,
+        "COLLECTION_INDEX_ALREADY_RUNNING",
+        `Index job ${activeJob.id} is ${activeJob.status}; change documents after it finishes.`,
+        { jobId: activeJob.id, status: activeJob.status },
+      );
+    }
+    return { collection, folder: resolveUploadsFolder(collection.sourcePath, runtimeConfig) };
+  }
+
+  const uploadParser = multer({
+    storage: multer.diskStorage({
+      destination: (req, _file, callback) => callback(null, (req as UploadRequest).uploadFolder as string),
+      // Hidden temp name: scans skip it, and a failed upload never replaces an existing document.
+      filename: (_req, _file, callback) => callback(null, `${UPLOAD_TEMP_PREFIX}${randomUUID()}`),
+    }),
+    // File names are sent as UTF-8 by browsers and curl; the multer default (latin1) garbles e.g. Turkish names.
+    defParamCharset: "utf8",
+    limits: {
+      fileSize: runtimeConfig.uploadMaxFileSizeBytes,
+      files: MAX_FILES_PER_UPLOAD,
+      fields: 10,
+    },
+    fileFilter: (req, file, callback) => {
+      const checked = checkUploadName(file.originalname);
+      if (!checked.ok) {
+        const uploadReq = req as UploadRequest;
+        (uploadReq.rejectedUploads ??= []).push({ name: file.originalname, code: checked.code, reason: checked.reason });
+        callback(null, false);
+        return;
+      }
+      callback(null, true);
+    },
+  }).array("files", MAX_FILES_PER_UPLOAD);
+
+  function parseUpload(req: Request, res: Response): Promise<void> {
+    return new Promise((resolve, reject) => {
+      uploadParser(req, res, (error: unknown) => {
+        if (!error) {
+          resolve();
+          return;
+        }
+        if (error instanceof multer.MulterError) {
+          if (error.code === "LIMIT_FILE_SIZE") {
+            const limitMb = Math.round(runtimeConfig.uploadMaxFileSizeBytes / (1024 * 1024));
+            reject(new HttpError(413, "FILE_TOO_LARGE", `A file is larger than the limit of ${limitMb} MB (uploads.maxFileSizeMb).`));
+            return;
+          }
+          if (error.code === "LIMIT_FILE_COUNT") {
+            reject(new HttpError(400, "TOO_MANY_FILES", `Send at most ${MAX_FILES_PER_UPLOAD} files per request.`));
+            return;
+          }
+          if (error.code === "LIMIT_UNEXPECTED_FILE") {
+            reject(new HttpError(400, "INVALID_REQUEST_BODY", `Send the documents as multipart/form-data in the "files" field.`));
+            return;
+          }
+          reject(new HttpError(400, "INVALID_REQUEST_BODY", `Invalid upload: ${error.message}`));
+          return;
+        }
+        reject(error);
+      });
+    });
+  }
+
+  router.post("/collections/:collectionId/files", requireRegistry, async (req, res, next) => {
+    const uploadReq = req as UploadRequest;
+    let received: Express.Multer.File[] = [];
+    try {
+      const collectionId = req.params.collectionId as string;
+      const context = res.locals.requestContext as RequestContext;
+      if (!req.is("multipart/form-data")) {
+        throw new HttpError(400, "INVALID_REQUEST_BODY", `Send the documents as multipart/form-data in the "files" field.`);
+      }
+      const { folder } = await requireWritableCollection(context, collectionId);
+      await fs.mkdir(folder, { recursive: true });
+      uploadReq.uploadFolder = folder;
+
+      await parseUpload(req, res);
+      received = (req.files as Express.Multer.File[] | undefined) ?? [];
+      const rejected = uploadReq.rejectedUploads ?? [];
+      if (received.length === 0) {
+        if (rejected.length > 0) {
+          throw new HttpError(400, "UNSUPPORTED_FILE", "None of the files can be indexed.", { rejected });
+        }
+        throw new HttpError(400, "INVALID_REQUEST_BODY", `No files received. Send them as multipart/form-data in the "files" field.`);
+      }
+
+      const uploaded: Array<{ name: string; sizeBytes: number; replaced: boolean }> = [];
+      for (const file of received) {
+        const checked = checkUploadName(file.originalname);
+        if (!checked.ok) continue; // already filtered by fileFilter; kept for type narrowing
+        const replaced = await fs.stat(path.join(folder, checked.name)).then(() => true, () => false);
+        await placeUploadedFile(folder, file.path, checked.name);
+        uploaded.push({ name: checked.name, sizeBytes: file.size, replaced });
+      }
+
+      await deps.registry!.markDocumentsChanged(context, collectionId);
+      const collection = await requireVisibleCollection(context, collectionId);
+      res.locals.collectionId = collectionId;
+      res.status(201).json({ collectionId, uploaded, rejected, indexState: collection.indexState });
+    } catch (error) {
+      next(error);
+    } finally {
+      // Temp files that were not renamed (an error part-way) are removed; renamed ones are already gone.
+      await Promise.all(received.map((file) => fs.rm(file.path, { force: true }).catch(() => {})));
+    }
+  });
+
+  router.delete("/collections/:collectionId/files/:fileName", requireRegistry, async (req, res, next) => {
+    try {
+      const collectionId = req.params.collectionId as string;
+      const fileName = req.params.fileName as string;
+      const context = res.locals.requestContext as RequestContext;
+      const { collection, folder } = await requireWritableCollection(context, collectionId);
+      const filePath = await findCollectionFile(folder, fileName);
+      if (!filePath) {
+        throw new HttpError(404, "DOCUMENT_NOT_FOUND", `Document ${fileName} was not found in this collection.`);
+      }
+
+      // A deleted document must leave search results right away, not only after the next re-index
+      // (which is impossible once the last document is gone). Remove its chunks from the active index
+      // first; if that fails, nothing is deleted and the request can be retried.
+      let removed = { chunkCount: 0, documentCount: 0 };
+      if (collection.activePhysicalCollection) {
+        try {
+          removed = await (deps.documentIndex?.deleteSourceChunks ?? deleteSourceChunks)({
+            name: collection.activePhysicalCollection,
+            sourcePath: filePath,
+            runtimeConfig,
+          });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          throw new HttpError(
+            503,
+            "COLLECTION_STORAGE_INCONSISTENT",
+            `The document could not be removed from the search index, so it was not deleted. Check that Chroma is running and try again. (${reason})`,
+            { physicalCollection: collection.activePhysicalCollection },
+          );
+        }
+      }
+
+      await fs.rm(filePath);
+      if (removed.chunkCount > 0) {
+        await deps.registry!.updateCollection(context, collectionId, {
+          chunkCount: Math.max(0, (collection.chunkCount ?? 0) - removed.chunkCount),
+          documentCount: Math.max(0, (collection.documentCount ?? 0) - removed.documentCount),
+        });
+      }
+      res.locals.collectionId = collectionId;
       res.status(204).send();
     } catch (error) {
       next(error);

@@ -19,8 +19,17 @@ import {
   validateCollectionDraft,
 } from "./collectionValidation.js";
 import { createAdminAuthService, type AdminAuthService } from "./adminAuth.js";
-import { desiredEmbeddingTarget, listEmbeddingModels } from "../embeddings/index.js";
-import { resolveEmbeddingTarget } from "../embeddings/services.js";
+import {
+  desiredEmbeddingTarget,
+  listConnectionModels,
+  listEmbeddingModels,
+  serverEmbeddingConnection,
+  SERVER_EMBEDDING_SERVICE_ID,
+  SERVER_EMBEDDING_SERVICE_NAME,
+  type EmbeddingConnection,
+  type EmbeddingProvider,
+} from "../embeddings/index.js";
+import { resolveEmbeddingTarget, serviceConnection } from "../embeddings/services.js";
 import { assertEmbeddingAvailable } from "./modelAvailability.js";
 import { deleteSourceChunks } from "../collections/chromaCollections.js";
 import {
@@ -365,6 +374,8 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       modelDefaults: {
         embeddingProvider: runtimeConfig.embedding.provider,
         embeddingModel: runtimeConfig.embedding.model,
+        // The "server" embedding service (RAG_EMBEDDING_BASE_URL / embedding.baseUrl); more via /embedding-services.
+        embeddingServerConfigured: Boolean(runtimeConfig.embedding.baseUrl),
       },
       // Global, optional chat LLM for /query (set via onboarding or RAG_CHAT_*). The API key is never returned.
       chat: {
@@ -375,6 +386,240 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       },
     };
   }
+
+  // ---- Embedding services ----
+
+  const httpUrlSchema = z.string().trim().url().refine(
+    (value) => /^https?:\/\//i.test(value),
+    "Use an http:// or https:// URL, for example http://host.docker.internal:11434/v1.",
+  ).transform((value) => value.replace(/\/+$/, ""));
+  const embeddingServiceCreateSchema = z.object({
+    name: z.string().trim().min(1).max(100),
+    baseUrl: httpUrlSchema,
+    apiKey: z.string().trim().min(1).max(1000).optional(),
+  }).strict();
+  const embeddingServiceUpdateSchema = z.object({
+    name: z.string().trim().min(1).max(100).optional(),
+    baseUrl: httpUrlSchema.optional(),
+    /** A new key; null removes it; omitted keeps it. */
+    apiKey: z.string().trim().min(1).max(1000).nullable().optional(),
+  }).strict();
+  const embeddingServiceTestSchema = z.union([
+    z.object({ serviceId: z.string().trim().min(1) }).strict(),
+    z.object({ baseUrl: httpUrlSchema, apiKey: z.string().trim().min(1).max(1000).optional() }).strict(),
+  ]);
+
+  function managementWarnings(): string[] {
+    return runtimeConfig.adminAuth.enabled
+      ? []
+      : ["Admin auth is off: anyone who can reach this server can change where documents are sent for embedding. "
+        + "Turn on admin auth before other people can reach it."];
+  }
+
+  async function serializeEmbeddingServices(context: RequestContext) {
+    const services = await deps.registry!.listEmbeddingServices(context);
+    const server = serverEmbeddingConnection(runtimeConfig);
+    const serverUsers = await deps.registry!.listCollectionsUsingEmbeddingService(context, SERVER_EMBEDDING_SERVICE_ID);
+    const stored = await Promise.all(services.map(async (service) => ({
+      id: service.id,
+      name: service.displayName,
+      baseUrl: service.baseUrl,
+      apiKeyConfigured: Boolean(service.apiKey),
+      source: "panel" as const,
+      readOnly: false,
+      configured: true,
+      collectionCount: (await deps.registry!.listCollectionsUsingEmbeddingService(context, service.id)).length,
+      createdAt: service.createdAt,
+      updatedAt: service.updatedAt,
+    })));
+    return [
+      {
+        id: SERVER_EMBEDDING_SERVICE_ID,
+        name: SERVER_EMBEDDING_SERVICE_NAME,
+        baseUrl: server?.baseUrl ?? null,
+        apiKeyConfigured: Boolean(server?.apiKey),
+        source: "server" as const,
+        readOnly: true,
+        configured: Boolean(server),
+        collectionCount: serverUsers.length,
+      },
+      ...stored,
+    ];
+  }
+
+  async function requireEmbeddingService(context: RequestContext, serviceId: string) {
+    if (serviceId === SERVER_EMBEDDING_SERVICE_ID) {
+      throw new HttpError(
+        409,
+        "EMBEDDING_SERVICE_READ_ONLY",
+        "The server embedding service comes from .env / config (RAG_EMBEDDING_BASE_URL, embedding.baseUrl); change it there.",
+      );
+    }
+    const service = await deps.registry!.getEmbeddingService(context, serviceId);
+    if (!service) {
+      throw new HttpError(404, "EMBEDDING_SERVICE_NOT_FOUND", `Embedding service ${serviceId} was not found.`);
+    }
+    return service;
+  }
+
+  async function assertUniqueServiceName(context: RequestContext, name: string, exceptId?: string) {
+    const clash = (await deps.registry!.listEmbeddingServices(context))
+      .find((service) => service.displayName.toLowerCase() === name.toLowerCase() && service.id !== exceptId);
+    if (clash || name.toLowerCase() === SERVER_EMBEDDING_SERVICE_NAME.toLowerCase()) {
+      throw new HttpError(400, "INVALID_REQUEST_BODY", `An embedding service named "${name}" already exists.`);
+    }
+  }
+
+  /**
+   * The embedding service a collection uses. Given: it must exist for the tenant ("server" always does).
+   * Not given, on create: "server" when configured, else the tenant's only service, else "server"
+   * (the preflight then reports that no service is configured).
+   */
+  async function chooseEmbeddingService(
+    context: RequestContext,
+    provider: EmbeddingProvider,
+    requested: string | null | undefined,
+    mode: "create" | "update",
+  ): Promise<string | null | undefined> {
+    if (provider !== "openai-compatible") {
+      if (requested) {
+        throw new HttpError(400, "INVALID_REQUEST_BODY", "embeddingServiceId only applies to the openai-compatible provider.");
+      }
+      return mode === "create" ? undefined : requested;
+    }
+    if (requested) {
+      if (requested !== SERVER_EMBEDDING_SERVICE_ID && !(await deps.registry!.getEmbeddingService(context, requested))) {
+        throw new HttpError(404, "EMBEDDING_SERVICE_NOT_FOUND", `Embedding service ${requested} was not found.`);
+      }
+      return requested;
+    }
+    if (mode === "update") return requested;
+    if (serverEmbeddingConnection(runtimeConfig)) return SERVER_EMBEDDING_SERVICE_ID;
+    const services = await deps.registry!.listEmbeddingServices(context);
+    if (services.length === 1) return services[0].id;
+    if (services.length > 1) {
+      throw new HttpError(
+        400,
+        "INVALID_REQUEST_BODY",
+        `Choose the embedding service with embeddingServiceId: ${services.map((service) => service.id).join(", ")}.`,
+      );
+    }
+    return SERVER_EMBEDDING_SERVICE_ID;
+  }
+
+  router.get("/embedding-services", requireRegistry, async (_req, res, next) => {
+    try {
+      const context = res.locals.requestContext as RequestContext;
+      res.json({ services: await serializeEmbeddingServices(context), warnings: managementWarnings() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/embedding-services/test", requireRegistry, async (req, res, next) => {
+    try {
+      const parsed = embeddingServiceTestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new HttpError(400, "INVALID_REQUEST_BODY", "Send { serviceId } or { baseUrl, apiKey? }.", { issues: parsed.error.issues });
+      }
+      const context = res.locals.requestContext as RequestContext;
+      let connection: EmbeddingConnection;
+      let name: string;
+      if ("serviceId" in parsed.data) {
+        if (parsed.data.serviceId === SERVER_EMBEDDING_SERVICE_ID) {
+          const server = serverEmbeddingConnection(runtimeConfig);
+          if (!server) {
+            throw new HttpError(404, "EMBEDDING_SERVICE_NOT_FOUND", "No server embedding service is configured (RAG_EMBEDDING_BASE_URL).");
+          }
+          connection = server;
+          name = SERVER_EMBEDDING_SERVICE_NAME;
+        } else {
+          const service = await deps.registry!.getEmbeddingService(context, parsed.data.serviceId);
+          if (!service) {
+            throw new HttpError(404, "EMBEDDING_SERVICE_NOT_FOUND", `Embedding service ${parsed.data.serviceId} was not found.`);
+          }
+          connection = serviceConnection(service);
+          name = service.displayName;
+        }
+      } else {
+        connection = { serviceId: "test", baseUrl: parsed.data.baseUrl, apiKey: parsed.data.apiKey, version: `test:${Date.now()}` };
+        name = "Connection test";
+      }
+      // A free GET {baseUrl}/models: never runs an embedding; the key is never part of the response.
+      const result = await (deps.healthChecks?.checkEmbeddingConnection ?? listConnectionModels)(
+        runtimeConfig,
+        connection,
+        name,
+        { useCache: false },
+      );
+      res.json({ ...result, ok: result.reachable && result.authOk });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/embedding-services", requireRegistry, async (req, res, next) => {
+    try {
+      const parsed = embeddingServiceCreateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid embedding service", { issues: parsed.error.issues });
+      }
+      const context = res.locals.requestContext as RequestContext;
+      await assertUniqueServiceName(context, parsed.data.name);
+      const service = await deps.registry!.createEmbeddingService(context, {
+        displayName: parsed.data.name,
+        baseUrl: parsed.data.baseUrl,
+        apiKey: parsed.data.apiKey,
+      });
+      const serialized = (await serializeEmbeddingServices(context)).find((item) => item.id === service.id);
+      res.status(201).json({ service: serialized, warnings: managementWarnings() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.patch("/embedding-services/:serviceId", requireRegistry, async (req, res, next) => {
+    try {
+      const serviceId = req.params.serviceId as string;
+      const parsed = embeddingServiceUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid embedding service update", { issues: parsed.error.issues });
+      }
+      const context = res.locals.requestContext as RequestContext;
+      await requireEmbeddingService(context, serviceId);
+      if (parsed.data.name !== undefined) await assertUniqueServiceName(context, parsed.data.name, serviceId);
+      await deps.registry!.updateEmbeddingService(context, serviceId, {
+        displayName: parsed.data.name,
+        baseUrl: parsed.data.baseUrl,
+        apiKey: parsed.data.apiKey,
+      });
+      const serialized = (await serializeEmbeddingServices(context)).find((item) => item.id === serviceId);
+      res.json({ service: serialized, warnings: managementWarnings() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete("/embedding-services/:serviceId", requireRegistry, async (req, res, next) => {
+    try {
+      const serviceId = req.params.serviceId as string;
+      const context = res.locals.requestContext as RequestContext;
+      await requireEmbeddingService(context, serviceId);
+      const users = await deps.registry!.listCollectionsUsingEmbeddingService(context, serviceId);
+      if (users.length > 0) {
+        throw new HttpError(
+          409,
+          "EMBEDDING_SERVICE_IN_USE",
+          `Embedding service ${serviceId} is used by ${users.length} collection(s); switch them to another service (and re-index) or delete them first.`,
+          { collections: users },
+        );
+      }
+      await deps.registry!.deleteEmbeddingService(context, serviceId);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
 
   router.post("/collections", requireRegistry, async (req, res, next) => {
     try {
@@ -388,10 +633,17 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       const context = res.locals.requestContext as RequestContext;
 
       const input: CreateCollectionInput = buildCreateCollectionInput(parsed.data, runtimeConfig);
+      const provider = input.embeddingProvider ?? runtimeConfig.embedding.provider;
+      input.embeddingServiceId = (await chooseEmbeddingService(context, provider, parsed.data.embeddingServiceId, "create")) ?? undefined;
 
       await assertEmbeddingAvailable({
         runtimeConfig,
-        target: { provider: input.embeddingProvider ?? runtimeConfig.embedding.provider, model: input.embeddingModel },
+        target: await resolveEmbeddingTarget({
+          registry: deps.registry,
+          runtimeConfig,
+          context,
+          target: { provider, model: input.embeddingModel, serviceId: input.embeddingServiceId },
+        }),
         action: "Collection cannot be created.",
         check: deps.healthChecks?.checkEmbeddingTarget,
       });
@@ -402,6 +654,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
           id: collection.id,
           displayName: collection.displayName,
           status: collection.status,
+          ...(collection.embeddingServiceId ? { embeddingServiceId: collection.embeddingServiceId } : {}),
         },
       });
     } catch (error) {
@@ -419,8 +672,15 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
 
   router.get("/models", async (_req, res, next) => {
     try {
-      // Embedding model suggestions per provider (builtin catalog + the openai-compatible service's GET /models).
-      res.json(await (deps.healthChecks?.listEmbeddingModels ?? listEmbeddingModels)(runtimeConfig));
+      // Embedding model suggestions: builtin catalog plus GET /models of every embedding service of the tenant.
+      const context = res.locals.requestContext as RequestContext;
+      const services = deps.registry
+        ? (await deps.registry.listEmbeddingServices(context)).map((service) => ({
+          connection: serviceConnection(service),
+          name: service.displayName,
+        }))
+        : [];
+      res.json(await (deps.healthChecks?.listEmbeddingModels ?? listEmbeddingModels)(runtimeConfig, { services }));
     } catch (error) {
       next(error);
     }
@@ -496,6 +756,12 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
 
       const context = res.locals.requestContext as RequestContext;
       const input = buildCreateCollectionInput(parsed.data, runtimeConfig);
+      input.embeddingServiceId = (await chooseEmbeddingService(
+        context,
+        input.embeddingProvider ?? runtimeConfig.embedding.provider,
+        parsed.data.embeddingServiceId,
+        "create",
+      )) ?? undefined;
       const validation = await validateCollectionDraft(
         buildCreateValidationDraft(input),
         runtimeConfig,
@@ -546,6 +812,15 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
 
       const context = res.locals.requestContext as RequestContext;
       const existing = await requireVisibleCollection(context, collectionId);
+      if (parsed.data.embeddingServiceId !== undefined || parsed.data.embeddingProvider !== undefined) {
+        // A service id must exist for the tenant and only goes with the openai-compatible provider.
+        await chooseEmbeddingService(
+          context,
+          parsed.data.embeddingProvider ?? existing.embeddingProvider,
+          parsed.data.embeddingServiceId,
+          "update",
+        );
+      }
       if (existing.sourceKind === "uploads" && parsed.data.sourcePath !== undefined && parsed.data.sourcePath !== existing.sourcePath) {
         throw new HttpError(
           400,

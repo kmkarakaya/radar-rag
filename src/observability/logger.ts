@@ -145,6 +145,10 @@ export function getHttpOperationTarget(req: Request): { operation: string; colle
       };
     }
 
+    if (/^\/v1\/admin\/embedding-services$/.test(req.path)) {
+      return { operation: "embedding_service_create" };
+    }
+
     const uploadMatch = /^\/v1\/admin\/collections\/([^/]+)\/files$/.exec(req.path);
     if (uploadMatch) {
       return {
@@ -179,7 +183,15 @@ export function getHttpOperationTarget(req: Request): { operation: string; colle
     }
   }
 
+  if (req.method === "PATCH" && /^\/v1\/admin\/embedding-services\/[^/]+$/.test(req.path)) {
+    return { operation: "embedding_service_update" };
+  }
+
   if (req.method === "DELETE") {
+    if (/^\/v1\/admin\/embedding-services\/[^/]+$/.test(req.path)) {
+      return { operation: "embedding_service_delete" };
+    }
+
     const documentMatch = /^\/v1\/admin\/collections\/([^/]+)\/files\/([^/]+)$/.exec(req.path);
     if (documentMatch) {
       return {

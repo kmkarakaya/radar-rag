@@ -18,6 +18,11 @@ import {
 import { resolveEmbeddingTarget } from "../src/embeddings/services.js";
 import { runIndexJob } from "../src/indexing/jobs.js";
 import { clearProviderStatusCache } from "../src/providers/openaiCompatible.js";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { createApp } from "../src/app.js";
+import { createAdminAuthService } from "../src/http/adminAuth.js";
+import { hashPassword } from "../src/admin/passwordHash.js";
 
 const tenantA = { tenantId: "tenant-a", userId: "admin", requestId: "r1" };
 const tenantB = { tenantId: "tenant-b", userId: "admin", requestId: "r2" };
@@ -271,5 +276,213 @@ describe("embedding service connections", () => {
     assert.equal(failed.status, "failed");
     assert.doesNotMatch(failed.error ?? "", /sk-very-secret-key/);
     assert.match(failed.error ?? "", /401 Unauthorized/);
+  });
+});
+
+
+describe("embedding services API", () => {
+  const SECRET = "sk-never-returned-123";
+  let server: Server | undefined;
+  let baseUrl = "";
+  const bodies: string[] = [];
+
+  afterEach(async () => {
+    if (server) {
+      server.closeAllConnections?.();
+      await new Promise<void>((resolve) => server!.close(() => resolve()));
+      server = undefined;
+    }
+  });
+
+  async function start(options: { serverBaseUrl?: string; adminAuth?: ReturnType<typeof createAdminAuthService>; authConfig?: any } = {}) {
+    const registry = createSqliteCollectionRegistry({ dbPath: ":memory:" });
+    const runtimeConfig: ResolvedConfig = {
+      ...config,
+      rateLimitEnabled: false,
+      adminAuth: options.authConfig ?? { ...config.adminAuth, enabled: false },
+      embedding: { ...config.embedding, provider: "builtin", baseUrl: options.serverBaseUrl ?? "", apiKey: undefined, apiKeySource: "none" },
+    };
+    const app = createApp({
+      runtimeConfig,
+      registry,
+      adminAuth: options.adminAuth,
+      jobRunner: { start: () => {}, abort: () => false, drain: async () => {}, shutdown: async () => {} } as any,
+      healthChecks: {
+        // Configured when the resolved target has a connection; every model is listed. No network.
+        checkEmbeddingTarget: async (cfg: ResolvedConfig, target: any) => {
+          const configured = target.provider === "builtin" || Boolean(connectionForTarget(cfg, target));
+          return {
+            provider: target.provider,
+            model: target.model,
+            configured,
+            supported: true,
+            reachable: configured,
+            authOk: configured,
+            modelListed: configured,
+            ok: configured,
+            latencyMs: 0,
+            ...(configured ? {} : { error: "No embedding service is configured" }),
+          };
+        },
+        listEmbeddingModels: async (_cfg: ResolvedConfig, opts: any = {}) => ({
+          default: { provider: "builtin", model: "m" },
+          providers: {
+            builtin: { models: [], cacheDir: "models" },
+            "openai-compatible": { configured: false, baseUrl: null, reachable: false, models: [] },
+          },
+          embeddingServices: (opts.services ?? []).map((service: any) => ({
+            id: service.connection.serviceId,
+            name: service.name,
+            reachable: true,
+            authOk: true,
+            models: ["bge-m3"],
+          })),
+        }),
+        checkEmbeddingConnection: async (_cfg: ResolvedConfig, connection: any, name: string) => ({
+          id: connection.serviceId,
+          name,
+          reachable: true,
+          authOk: true,
+          models: ["bge-m3", "nomic-embed-text"],
+        }),
+      } as any,
+    });
+    await new Promise<void>((resolve) => { server = app.listen(0, () => resolve()); });
+    baseUrl = `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
+    return registry;
+  }
+
+  async function call(method: string, path: string, body?: unknown, headers: Record<string, string> = {}) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers: { ...(body === undefined ? {} : { "content-type": "application/json" }), ...headers },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await response.text();
+    bodies.push(text);
+    return { status: response.status, body: text ? JSON.parse(text) : null };
+  }
+
+  it("manages services over the API and never returns an API key", async () => {
+    await start({ serverBaseUrl: "http://server.test/v1" });
+    const initial = await call("GET", "/v1/admin/embedding-services");
+    assert.equal(initial.status, 200);
+    assert.deepEqual(initial.body.services.map((s: any) => [s.id, s.source, s.readOnly, s.configured]), [["server", "server", true, true]]);
+    assert.equal(initial.body.warnings.length, 1, "auth is off: the API warns every client");
+
+    const created = await call("POST", "/v1/admin/embedding-services", { name: "OpenAI", baseUrl: "https://api.openai.test/v1/", apiKey: SECRET });
+    assert.equal(created.status, 201);
+    const id = created.body.service.id;
+    assert.equal(created.body.service.baseUrl, "https://api.openai.test/v1");
+    assert.equal(created.body.service.apiKeyConfigured, true);
+
+    assert.equal((await call("POST", "/v1/admin/embedding-services", { name: "openai", baseUrl: "http://x.test" })).status, 400, "names are unique per tenant");
+    assert.equal((await call("POST", "/v1/admin/embedding-services", { name: "Bad", baseUrl: "ftp://x.test" })).status, 400);
+    assert.equal((await call("PATCH", "/v1/admin/embedding-services/server", { name: "x" })).body.code, "EMBEDDING_SERVICE_READ_ONLY");
+    assert.equal((await call("DELETE", "/v1/admin/embedding-services/nope")).body.code, "EMBEDDING_SERVICE_NOT_FOUND");
+
+    const cleared = await call("PATCH", `/v1/admin/embedding-services/${id}`, { name: "OpenAI cloud", apiKey: null });
+    assert.equal(cleared.body.service.name, "OpenAI cloud");
+    assert.equal(cleared.body.service.apiKeyConfigured, false);
+    await call("PATCH", `/v1/admin/embedding-services/${id}`, { apiKey: SECRET });
+
+    const tested = await call("POST", "/v1/admin/embedding-services/test", { serviceId: id });
+    assert.equal(tested.status, 200);
+    assert.deepEqual(tested.body.models, ["bge-m3", "nomic-embed-text"]);
+    const adHoc = await call("POST", "/v1/admin/embedding-services/test", { baseUrl: "http://localhost:11434/v1", apiKey: SECRET });
+    assert.equal(adHoc.body.ok, true);
+    assert.equal((await call("POST", "/v1/admin/embedding-services/test", { serviceId: "nope" })).status, 404);
+
+    const models = await call("GET", "/v1/admin/models");
+    assert.deepEqual(models.body.embeddingServices.map((s: any) => s.id), [id]);
+
+    assert.equal(bodies.some((text) => text.includes(SECRET)), false, "no response ever contains the key");
+    assert.equal(bodies.some((text) => /"apiKey"\s*:/.test(text)), false, "no response has an apiKey field");
+  });
+
+  it("lets collections use a service, chooses a default on the server, and protects services in use", async () => {
+    const registry = await start();
+    const one = (await call("POST", "/v1/admin/embedding-services", { name: "Ollama", baseUrl: "http://ollama.test/v1" })).body.service.id;
+
+    // No server service configured and exactly one stored service: the server picks it.
+    const auto = await call("POST", "/v1/admin/collections", { displayName: "Auto", embeddingProvider: "openai-compatible", embeddingModel: "bge-m3" });
+    assert.equal(auto.status, 201);
+    assert.equal(auto.body.collection.embeddingServiceId, one);
+    const detail = await call("GET", `/v1/admin/collections/${auto.body.collection.id}`);
+    assert.equal(detail.body.collection.embeddingServiceId, one);
+
+    const two = (await call("POST", "/v1/admin/embedding-services", { name: "Second", baseUrl: "http://second.test/v1" })).body.service.id;
+    const ambiguous = await call("POST", "/v1/admin/collections", { displayName: "Which", embeddingProvider: "openai-compatible", embeddingModel: "bge-m3" });
+    assert.equal(ambiguous.status, 400);
+    assert.match(ambiguous.body.message, /embeddingServiceId/);
+
+    assert.equal(
+      (await call("POST", "/v1/admin/collections", { displayName: "Unknown", embeddingProvider: "openai-compatible", embeddingModel: "m", embeddingServiceId: "nope" })).body.code,
+      "EMBEDDING_SERVICE_NOT_FOUND",
+    );
+    assert.equal((await call("POST", "/v1/admin/collections", { displayName: "Builtin", embeddingProvider: "builtin", embeddingServiceId: one })).status, 400);
+    assert.equal(
+      (await call(
+        "POST",
+        "/v1/admin/collections",
+        { displayName: "Other tenant", embeddingProvider: "openai-compatible", embeddingModel: "m", embeddingServiceId: one },
+        { "x-tenant-id": "other" },
+      )).body.code,
+      "EMBEDDING_SERVICE_NOT_FOUND",
+    );
+
+    // Switching service: validate reports it as a re-index field; PATCH checks the id.
+    const validation = await call("POST", `/v1/admin/collections/${auto.body.collection.id}/validate`, { embeddingServiceId: two });
+    assert.ok(validation.body.impact.reindexFields.includes("embeddingServiceId"));
+    assert.equal((await call("PATCH", `/v1/admin/collections/${auto.body.collection.id}`, { embeddingServiceId: "nope" })).status, 404);
+    assert.equal((await call("PATCH", `/v1/admin/collections/${auto.body.collection.id}`, { embeddingServiceId: two })).status, 200);
+    const switched = await registry.getVisibleCollection({ tenantId: "default", userId: "u", requestId: "r" }, auto.body.collection.id);
+    assert.equal(switched?.embeddingServiceId, two);
+
+    const inUse = await call("DELETE", `/v1/admin/embedding-services/${two}`);
+    assert.equal(inUse.status, 409);
+    assert.equal(inUse.body.code, "EMBEDDING_SERVICE_IN_USE");
+    assert.deepEqual(inUse.body.details.collections.map((c: any) => c.id), [auto.body.collection.id]);
+    assert.equal((await call("DELETE", `/v1/admin/embedding-services/${one}`)).status, 204);
+  });
+
+  it("lets only admins manage services when admin auth is on", async () => {
+    const passwordHash = hashPassword("secret");
+    const authConfig = {
+      enabled: true,
+      cookieName: "rag_admin_session",
+      sessionTtlMs: 60_000,
+      actionTokenTtlMs: 30_000,
+      sessionSecretEnvVar: "RAG_ADMIN_SESSION_SECRET",
+      users: [
+        { username: "operator", passwordHash, role: "operator" as const, tenantId: "default" },
+        { username: "admin", passwordHash, role: "admin" as const, tenantId: "default" },
+      ],
+    };
+    const adminAuth = createAdminAuthService({ config: authConfig, env: { RAG_ADMIN_SESSION_SECRET: "s" } });
+    await start({ adminAuth, authConfig });
+    const login = async (username: string) => {
+      const response = await fetch(`${baseUrl}/v1/admin/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username, password: "secret" }),
+      });
+      return response.headers.get("set-cookie")!.split(";")[0];
+    };
+    const token = (cookie: string, method: string, path: string) => call("POST", "/v1/admin/auth/action-token", { method, path }, { cookie });
+
+    const operator = await login("operator");
+    assert.equal((await call("GET", "/v1/admin/embedding-services", undefined, { cookie: operator })).status, 200);
+    assert.equal((await token(operator, "POST", "/v1/admin/embedding-services")).status, 403);
+    assert.equal((await call("POST", "/v1/admin/embedding-services/test", { baseUrl: "http://x.test/v1" }, { cookie: operator })).status, 403);
+
+    const admin = await login("admin");
+    const list = await call("GET", "/v1/admin/embedding-services", undefined, { cookie: admin });
+    assert.deepEqual(list.body.warnings, [], "no warning once admin auth is on");
+    assert.equal((await call("POST", "/v1/admin/embedding-services", { name: "A", baseUrl: "http://a.test/v1" }, { cookie: admin })).status, 403, "action token required");
+    const createToken = (await token(admin, "POST", "/v1/admin/embedding-services")).body.actionToken;
+    const created = await call("POST", "/v1/admin/embedding-services", { name: "A", baseUrl: "http://a.test/v1" }, { cookie: admin, "x-admin-action-token": createToken });
+    assert.equal(created.status, 201);
+    assert.equal((await call("POST", "/v1/admin/embedding-services/test", { serviceId: created.body.service.id }, { cookie: admin })).status, 200);
   });
 });

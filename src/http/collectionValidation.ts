@@ -174,6 +174,7 @@ export function buildCreateCollectionInput(
     description: input.description,
     sourceKind,
     sourcePath: input.sourcePath ?? runtimeConfig.uploadsDir,
+    embeddingServiceId: input.embeddingServiceId,
     distanceMetric: input.distanceMetric ?? runtimeConfig.collectionDefaults.distanceMetric,
     chunkSize: input.chunkSize ?? runtimeConfig.collectionDefaults.chunkSize,
     chunkOverlap: input.chunkOverlap ?? runtimeConfig.collectionDefaults.chunkOverlap,

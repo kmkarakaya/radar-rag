@@ -1647,6 +1647,7 @@ describe("v1 admin and rag api endpoints", () => {
     assert.deepEqual(body.modelDefaults, {
       embeddingProvider: config.embedding.provider,
       embeddingModel: config.embedding.model,
+      embeddingServerConfigured: true,
     });
     assert.deepEqual(body.chat, {
       enabled: true,

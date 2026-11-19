@@ -182,18 +182,58 @@ The embedding model turns text into vectors; indexing and retrieval need one. Tw
 | `builtin` (default) | `onnx-community/embeddinggemma-2-ONNX`, running inside the backend on the CPU | Nothing: downloaded (~350 MB) on the first indexing into `./models` |
 | `openai-compatible` | Any OpenAI-compatible `/v1/embeddings` API: Ollama, OpenAI, LM Studio, vLLM   | Base URL, model and, if needed, an API key |
 
-To make an external service the default for new collections, add to `.env` and run `docker compose up -d`:
+How it fits together:
+
+- **The model is chosen per collection.** Each collection stores its provider and model, is indexed with them and is always searched with them. Different collections can use different models.
+- **The external service is one per server.** Its base URL and API key are server settings (`.env` with Docker), not collection fields; changing them needs a restart. So today all `openai-compatible` collections use the same service (for example one Ollama), each with the model it picked. Managing several connections from the admin panel is planned.
+- **The server default only applies to new collections.** Changing it never touches existing collections.
+
+### Common setups with Docker
+
+Settings go in the `.env` file next to `docker-compose.yml`; run `docker compose up -d` after changing it. Without Docker, `npm run onboard` asks for the same settings.
+
+**1. Do nothing.** Every collection uses the built-in model. It is downloaded once, on the first indexing.
+
+**2. Use Ollama on your computer for some collections.** Pull an embedding model (`ollama pull bge-m3`), then add to `.env`:
+
+```bash
+RAG_EMBEDDING_BASE_URL=http://host.docker.internal:11434/v1
+```
+
+`builtin` stays the default. In **New Collection**, choose **Embedding Provider: openai-compatible** and pick the model from the list (the panel disables this provider while no service is configured). Over the API, send it when you create the collection:
+
+```bash
+curl -X POST http://localhost:3010/v1/admin/collections -H "content-type: application/json" \
+  -d '{"displayName": "My docs", "embeddingProvider": "openai-compatible", "embeddingModel": "bge-m3"}'
+```
+
+**3. Make an external service the default for new collections.** Add the provider and model too:
 
 ```bash
 RAG_EMBEDDING_PROVIDER=openai-compatible
 RAG_EMBEDDING_BASE_URL=http://host.docker.internal:11434/v1
-RAG_EMBEDDING_MODEL=embeddinggemma-2:270m
-# RAG_EMBEDDING_API_KEY=...   for cloud providers
+RAG_EMBEDDING_MODEL=bge-m3
 ```
 
-- Each collection stores the provider and model it was indexed with and is always searched with them. The setting above is only the default for **new** collections; existing ones are never touched. You can also pick the provider and model per collection in the admin panel. To offer an external service only for some collections, set just `RAG_EMBEDDING_BASE_URL` (and `RAG_EMBEDDING_API_KEY` if needed): `builtin` stays the default, and **openai-compatible** becomes selectable in New Collection (the panel disables it while no service is configured). Managing these connections from the admin panel is planned.
-- Changing a collection's provider or model marks it `reindex_required`; it keeps serving with the old embedding until the re-index finishes. Vectors from different models are not comparable, which is why a re-index is needed.
-- Speed: `builtin` runs on the backend's CPU. It is fine for small and medium document sets, but indexes noticeably slower than a dedicated embedding server, and a large indexing job can slow down concurrent searches. For large document sets, use Ollama (with a GPU if available) or a cloud API.
+New collections now use it unless they pick another provider; existing collections keep their model.
+
+**4. Use a cloud API**, for example OpenAI:
+
+```bash
+RAG_EMBEDDING_BASE_URL=https://api.openai.com/v1
+RAG_EMBEDDING_API_KEY=sk-...
+```
+
+Then pick a model such as `text-embedding-3-small` for a collection (as in 2), or also set `RAG_EMBEDDING_PROVIDER` and `RAG_EMBEDDING_MODEL` (as in 3). The key is never returned by the API and is redacted from errors.
+
+**5. Switch an existing collection to another model.** Open the collection, go to **Settings**, change the provider or model and save (API: `PATCH /v1/admin/collections/<collection-id>` with `embeddingProvider` / `embeddingModel`). The collection becomes `reindex_required` and keeps answering with the old model until you re-index; vectors from different models are not comparable, which is why a re-index is needed.
+
+### Good to know
+
+- **Pick an embedding model.** Ollama lists all its models, chat models included. A chat model fails at indexing (for example `501 This server does not support embeddings`). `bge-m3`, `nomic-embed-text` and `embeddinggemma` are embedding models; with Ollama, `bge-m3` and `bge-m3:latest` both work.
+- **Check the distance threshold after switching models.** Chunks farther than the collection's `retrievalDistanceThreshold` (default 1.2, tuned for the built-in model) are dropped. Other models score on a different scale: in our test with `bge-m3`, relevant chunks scored 0.6 to 1.4, so short questions returned nothing at 1.2. If searches come back empty, raise the threshold in **Settings** (it takes effect at once, no re-index), look at each result's **Distance** in the **Playground**, and settle on a value that keeps the relevant chunks.
+- **Inside Docker, `localhost` is the container itself.** Reach services on your computer with `host.docker.internal`.
+- **Speed:** `builtin` runs on the backend's CPU. It is fine for small and medium document sets, but indexes noticeably slower than a dedicated embedding server, and a large indexing job can slow down concurrent searches. For large document sets, use Ollama (with a GPU if available) or a cloud API.
 - `/ready` checks the default embedding without running it. If an external default service is down, only indexing new collections is blocked; collections on another provider keep serving.
 
 ## Level 6 — Protect the admin panel

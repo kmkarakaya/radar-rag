@@ -83,7 +83,7 @@ describe("collection files API", () => {
   }
 
   beforeEach(async () => {
-    projectRoot = await mkdtemp(path.join(os.tmpdir(), "radar-rag-files-"));
+    projectRoot = await mkdtemp(path.join(os.tmpdir(), "ragstation-files-"));
     await mkdir(path.join(projectRoot, "data"), { recursive: true });
     runtimeConfig = {
       ...config,

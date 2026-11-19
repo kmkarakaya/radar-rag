@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Agent brief for Radar RAG (formerly Vanilla RAG Backend). Read this first, then see [AGENTS.md](AGENTS.md) for the graphify knowledge-graph workflow and [docs/README.md](docs/README.md) for the API contract.
+Agent brief for RAGStation (formerly Radar RAG, and before that Vanilla RAG Backend). Read this first, then see [AGENTS.md](AGENTS.md) for the graphify knowledge-graph workflow and [docs/README.md](docs/README.md) for the API contract.
 
 ## What this is
 
@@ -16,7 +16,7 @@ The server listens on **port 3010** in the shipped config. APIs are strictly ver
 
 ## Run / build / test
 
-All-in-one: `docker compose up -d` (backend + Chroma 1.5.9). The compose file pulls the prebuilt `ghcr.io/kmkarakaya/radar-rag` image (published by [.github/workflows/ci.yml](.github/workflows/ci.yml) on main after the tests pass) and works on its own without a clone; `docker compose up -d --build` builds the working copy. `./data`, `./models` and an optional `./config` folder are mounted; on the very first start a "Sample documents" collection is created from `data/sample` (image: `/app/samples`) and indexed. See [Dockerfile](Dockerfile), which sets `ONNXRUNTIME_NODE_INSTALL=skip`, prunes non-Linux onnxruntime binaries and must stay glibc-based. Local dev prereqs: `docker compose up -d chroma`; nothing else for embeddings (Ollama only if you choose it as an external provider or chat LLM).
+All-in-one: `docker compose up -d` (backend + Chroma 1.5.9). The compose file pulls the prebuilt `ghcr.io/kmkarakaya/ragstation` image (published by [.github/workflows/ci.yml](.github/workflows/ci.yml) on main after the tests pass) and works on its own without a clone; `docker compose up -d --build` builds the working copy. `./data`, `./models` and an optional `./config` folder are mounted; on the very first start a "Sample documents" collection is created from `data/sample` (image: `/app/samples`) and indexed. See [Dockerfile](Dockerfile), which sets `ONNXRUNTIME_NODE_INSTALL=skip`, prunes non-Linux onnxruntime binaries and must stay glibc-based. Local dev prereqs: `docker compose up -d chroma`; nothing else for embeddings (Ollama only if you choose it as an external provider or chat LLM).
 
 - `npm run dev` — start in watch mode (`tsx watch src/server.ts`).
 - `npm run build` — compile TypeScript to `dist/` (`tsc`); `npm start` — run compiled server.
@@ -66,7 +66,7 @@ Implemented in [src/http/adminAuth.ts](src/http/adminAuth.ts); config under `adm
 ## Docs & knowledge graph
 
 - API: [docs/README.md](docs/README.md), [docs/user_api_endpoints.md](docs/user_api_endpoints.md), [docs/admin_api_endpoints.md](docs/admin_api_endpoints.md), [docs/http_workflows.md](docs/http_workflows.md), [docs/openapi.yaml](docs/openapi.yaml).
-- Architecture rationale (Turkish): [radar_rag_mimarisi.md](radar_rag_mimarisi.md).
+- Architecture rationale (Turkish): [ragstation_mimarisi.md](ragstation_mimarisi.md).
 - **Knowledge graph**: see [AGENTS.md](AGENTS.md). For codebase questions run `graphify query "<question>"` (also `graphify path` / `graphify explain`) when `graphify-out/graph.json` exists, instead of broad grep.
 
 ## After changing code

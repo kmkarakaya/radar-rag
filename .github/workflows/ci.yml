@@ -1,6 +1,6 @@
 # Tests on every push and pull request; on main (and v* tags) also publishes the backend image to
 # ghcr.io, which docker-compose.yml pulls. After the first publish, make the package public once:
-# GitHub -> your profile -> Packages -> radar-rag -> Package settings -> Change visibility.
+# GitHub -> your profile -> Packages -> ragstation -> Package settings -> Change visibility.
 name: CI
 
 on:

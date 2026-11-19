@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="235" viewBox="0 0 1200 235" role="img">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0D2232"/><stop offset="1" stop-color="#07131F"/></linearGradient>
+<linearGradient id="accent" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#83F5DA"/><stop offset="1" stop-color="#4AE3C4"/></linearGradient>
+<linearGradient id="glow" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#76A9FD" stop-opacity=".24"/><stop offset="1" stop-color="#4AE3C4" stop-opacity=".05"/></linearGradient>
+<radialGradient id="light"><stop stop-color="#4AE3C4" stop-opacity=".17"/><stop offset="1" stop-color="#4AE3C4" stop-opacity="0"/></radialGradient>
+<pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#76A9FD" opacity=".11"/></pattern>
+</defs><g transform="translate(13 10) scale(1.77)"><g fill="none" stroke="#B3C9D0" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round">
+<path d="M28 35 L46 50"/><path d="M26 60 H43"/><path d="M28 85 L46 70"/><path d="M78 60 H95"/>
+</g>
+<circle cx="26" cy="33" r="6.3" fill="#091827"/><circle cx="24" cy="60" r="6.3" fill="#091827"/><circle cx="26" cy="87" r="6.3" fill="#091827"/>
+<path d="M60 41 L78 51.5 L78 68.5 L60 79 L42 68.5 L42 51.5 Z" fill="#F4FAFE" stroke="#4AE3C4" stroke-width="5.5" stroke-linejoin="round"/>
+<circle cx="60" cy="60" r="6.8" fill="#4AE3C4"/>
+<circle cx="98" cy="60" r="7.4" fill="#4AE3C4"/><circle cx="98" cy="60" r="2.4" fill="#091827"/>
+</g><text x="263" y="157" font-family="Inter, Arial, sans-serif" font-size="111" font-weight="750" letter-spacing="-3.3" fill="#091827">RAG<tspan fill="#078F7F">Station</tspan></text></svg>

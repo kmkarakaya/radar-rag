@@ -19,7 +19,7 @@ Then replace the placeholders in one of the prompt templates below.
 ## Template: User-Facing RAG Frontend
 
 ```text
-You are building a frontend for the Radar RAG backend in this repository.
+You are building a frontend for the RAGStation backend in this repository.
 
 Read these files in order:
 1. docs/frontend_agent_handoff.md
@@ -68,7 +68,7 @@ Deliverables:
 ## Template: User + Admin Frontend
 
 ```text
-You are building a frontend for the Radar RAG backend in this repository.
+You are building a frontend for the RAGStation backend in this repository.
 
 Read these files in order:
 1. docs/frontend_agent_handoff.md
@@ -120,7 +120,7 @@ Deliverables:
 ## Template: Search-First Evidence Browser
 
 ```text
-You are building a frontend for the Radar RAG backend in this repository.
+You are building a frontend for the RAGStation backend in this repository.
 
 Read:
 1. docs/frontend_agent_handoff.md

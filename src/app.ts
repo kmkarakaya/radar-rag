@@ -320,7 +320,7 @@ function configureApp(app: Express): void {
 
   app.get("/", (_req, res) => {
     res.json({
-      name: "Radar RAG",
+      name: "RAGStation",
       status: "ok",
       message: "Use the versioned multi-collection API under /v1/rag/collections.",
       endpoints: {

@@ -2,7 +2,7 @@
 
 ## Which file formats can I index?
 
-Radar RAG indexes these file types:
+RAGStation indexes these file types:
 
 - Plain text (.txt)
 - Markdown (.md)

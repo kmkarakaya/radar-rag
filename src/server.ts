@@ -112,7 +112,7 @@ export async function startServer(input: {
   const app = createApp({ registry, jobRunner, runtimeConfig, logEvent: rawLogEvent });
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
     const startedServer = app.listen(runtimeConfig.port, () => {
-      log.log(`Radar RAG listening on http://localhost:${runtimeConfig.port}`);
+      log.log(`RAGStation listening on http://localhost:${runtimeConfig.port}`);
       log.log(formatStartupLinks(runtimeConfig));
       log.log(formatChatStatus(runtimeConfig));
       if (!existsSync(runtimeConfig.configPath)) {

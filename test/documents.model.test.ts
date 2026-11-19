@@ -40,7 +40,7 @@ describe("document management model", () => {
   let registry: CollectionRegistry;
 
   beforeEach(async () => {
-    projectRoot = await mkdtemp(path.join(os.tmpdir(), "radar-rag-docs-model-"));
+    projectRoot = await mkdtemp(path.join(os.tmpdir(), "ragstation-docs-model-"));
     runtimeConfig = {
       ...config,
       projectRoot,
@@ -180,7 +180,7 @@ describe("document management model", () => {
     assert.match(unreadable.recommendedAction ?? "", /data\/my-docs/);
     assert.doesNotMatch(unreadable.recommendedAction ?? "", /rag\.config\.yaml/);
 
-    assert.equal(looksLikeHostWindowsPath("C:\\Deneme\\radar-rag\\data\\my-docs", "linux"), true);
+    assert.equal(looksLikeHostWindowsPath("C:\\Deneme\\ragstation\\data\\my-docs", "linux"), true);
     assert.equal(looksLikeHostWindowsPath("D:/docs", "linux"), true);
     assert.equal(looksLikeHostWindowsPath("C:\\docs", "win32"), false);
     assert.equal(looksLikeHostWindowsPath("data/my-docs", "linux"), false);

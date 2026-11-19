@@ -1,8 +1,8 @@
-# What is Radar RAG?
+# What is RAGStation?
 
-Radar RAG is a self-hosted, LLM-agnostic retrieval server that finds the evidence in your documents. You give it a folder of documents; it indexes them, and your application, script or AI assistant asks it for the passages that are most relevant to a question.
+RAGStation is a self-hosted, LLM-agnostic retrieval server that finds the evidence in your documents. You give it a folder of documents; it indexes them, and your application, script or AI assistant asks it for the passages that are most relevant to a question.
 
-It is LLM-agnostic: retrieval does not need a chat model. Your application receives the relevant passages and passes them to whichever large language model you prefer. Generating a written answer inside Radar RAG is optional; it works with any OpenAI-compatible chat API (a local Ollama, OpenAI, OpenRouter, LM Studio, vLLM).
+It is LLM-agnostic: retrieval does not need a chat model. Your application receives the relevant passages and passes them to whichever large language model you prefer. Generating a written answer inside RAGStation is optional; it works with any OpenAI-compatible chat API (a local Ollama, OpenAI, OpenRouter, LM Studio, vLLM).
 
 ## What you get
 

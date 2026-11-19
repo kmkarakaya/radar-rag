@@ -12,6 +12,7 @@ import {
   parseCollectionIndexSnapshot,
   SERVER_EMBEDDING_SERVICE_ID,
 } from "./indexState.js";
+import { BUILTIN_EMBEDDING_SERVICE_ID } from "../embeddings/models.js";
 import { toPortablePath } from "../paths.js";
 import type { OperationalLogEvent } from "../observability/logger.js";
 import type {
@@ -485,7 +486,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     let id = "";
     for (let attempt = 0; attempt < 5 && !id; attempt += 1) {
       const candidate = generateCollectionId(input.displayName);
-      const taken = candidate === SERVER_EMBEDDING_SERVICE_ID
+      const taken = candidate === SERVER_EMBEDDING_SERVICE_ID || candidate === BUILTIN_EMBEDDING_SERVICE_ID
         || this.db.prepare("SELECT id FROM embedding_services WHERE id = ?").get(candidate);
       if (!taken) id = candidate;
     }
@@ -539,6 +540,16 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     context: RequestContext,
     serviceId: string,
   ): Promise<Array<{ id: string; displayName: string }>> {
+    if (serviceId === BUILTIN_EMBEDDING_SERVICE_ID) {
+      // The built-in model: collections whose saved or active embedding is builtin.
+      const builtinRows = this.db.prepare(`
+        SELECT id, display_name FROM collections
+        WHERE tenant_id = ? AND status != 'archived'
+          AND (embedding_provider = 'builtin' OR active_embedding_provider = 'builtin')
+        ORDER BY display_name COLLATE NOCASE
+      `).all(context.tenantId) as Array<{ id: string; display_name: string }>;
+      return builtinRows.map((row) => ({ id: row.id, displayName: row.display_name }));
+    }
     const isServer = serviceId === SERVER_EMBEDDING_SERVICE_ID;
     const rows = this.db.prepare(`
       SELECT id, display_name FROM collections

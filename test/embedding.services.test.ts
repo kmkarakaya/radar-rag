@@ -375,7 +375,10 @@ describe("embedding services API", () => {
     await start({ serverBaseUrl: "http://server.test/v1" });
     const initial = await call("GET", "/v1/admin/embedding-services");
     assert.equal(initial.status, 200);
-    assert.deepEqual(initial.body.services.map((s: any) => [s.id, s.source, s.readOnly, s.configured]), [["server", "server", true, true]]);
+    assert.deepEqual(initial.body.services.map((s: any) => [s.id, s.source, s.readOnly, s.configured]), [
+      ["builtin", "builtin", true, true],
+      ["server", "server", true, true],
+    ]);
     assert.equal(initial.body.warnings.length, 1, "auth is off: the API warns every client");
 
     const created = await call("POST", "/v1/admin/embedding-services", { name: "OpenAI", baseUrl: "https://api.openai.test/v1/", apiKey: SECRET });
@@ -452,6 +455,32 @@ describe("embedding services API", () => {
     assert.equal(inUse.body.code, "EMBEDDING_SERVICE_IN_USE");
     assert.deepEqual(inUse.body.details.collections.map((c: any) => c.id), [auto.body.collection.id]);
     assert.equal((await call("DELETE", `/v1/admin/embedding-services/${one}`)).status, 204);
+  });
+
+  it("lists the built-in model read-only, with its models and the collections that use it", async () => {
+    const registry = await start();
+    const context = { tenantId: "default", userId: "u", requestId: "r" };
+    await registry.createCollection(context, openaiInput({ displayName: "Inside", embeddingProvider: "builtin", embeddingModel: "m" }));
+    await registry.createCollection(context, openaiInput({ displayName: "Outside" }));
+
+    const list = await call("GET", "/v1/admin/embedding-services");
+    const builtin = list.body.services.find((service: any) => service.id === "builtin");
+    assert.deepEqual(
+      { source: builtin.source, readOnly: builtin.readOnly, baseUrl: builtin.baseUrl, apiKeyConfigured: builtin.apiKeyConfigured, collectionCount: builtin.collectionCount },
+      { source: "builtin", readOnly: true, baseUrl: null, apiKeyConfigured: false, collectionCount: 1 },
+    );
+    assert.ok(builtin.models.includes("onnx-community/embeddinggemma-2-ONNX"));
+
+    assert.equal((await call("PATCH", "/v1/admin/embedding-services/builtin", { name: "x" })).body.code, "EMBEDDING_SERVICE_READ_ONLY");
+    assert.equal((await call("DELETE", "/v1/admin/embedding-services/builtin")).body.code, "EMBEDDING_SERVICE_READ_ONLY");
+    assert.equal((await call("POST", "/v1/admin/embedding-services/test", { serviceId: "builtin" })).status, 400);
+    assert.equal((await call("POST", "/v1/admin/embedding-services", { name: "Built-in (inside the backend)", baseUrl: "http://x.test" })).status, 400);
+    // A collection picks the built-in model with its provider, never as a service.
+    const misuse = await call("POST", "/v1/admin/collections", { displayName: "Misuse", embeddingProvider: "openai-compatible", embeddingModel: "m", embeddingServiceId: "builtin" });
+    assert.equal(misuse.status, 400);
+    assert.match(misuse.body.message, /embeddingProvider/);
+    // Not offered in the editor's service list (that list is for openai-compatible).
+    assert.equal((await call("GET", "/v1/admin/models")).body.embeddingServices.some((service: any) => service.id === "builtin"), false);
   });
 
   it("picks the default service when PATCH switches a collection to openai-compatible", async () => {

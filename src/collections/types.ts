@@ -367,7 +367,7 @@ export interface CollectionRegistry {
   updateEmbeddingService(context: RequestContext, serviceId: string, patch: UpdateEmbeddingServicePatch): Promise<EmbeddingService>;
   /** Deletes a service; throws when it does not exist. Callers check that no collection uses it. */
   deleteEmbeddingService(context: RequestContext, serviceId: string): Promise<void>;
-  /** Visible collections whose desired or active embedding uses the service ("server" includes unset ones). */
+  /** Visible collections whose desired or active embedding uses the service ("server" includes unset ones; "builtin" = the built-in model). */
   listCollectionsUsingEmbeddingService(context: RequestContext, serviceId: string): Promise<Array<{ id: string; displayName: string }>>;
   /** Records that documents were uploaded; cleared when the next index job succeeds. */
   markDocumentsChanged(context: RequestContext, collectionId: string): Promise<void>;

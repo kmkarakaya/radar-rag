@@ -3439,13 +3439,18 @@ function renderEmbeddingServices() {
         const row = createEl("tr", "hover:bg-slate-50");
         const nameCell = createEl("td", "px-4 py-3 font-medium text-slate-800", service.name);
         row.appendChild(nameCell);
-        const urlText = service.configured === false ? "Not configured (RAG_EMBEDDING_BASE_URL)" : service.baseUrl || "-";
+        const isBuiltin = service.source === "builtin";
+        const builtinModels = Array.isArray(service.models) ? service.models : [];
+        const urlText = isBuiltin
+            ? `No URL: runs inside the backend. Model${builtinModels.length === 1 ? "" : "s"}: ${builtinModels.join(", ") || "-"}`
+            : service.configured === false ? "Not configured (RAG_EMBEDDING_BASE_URL)" : service.baseUrl || "-";
         row.appendChild(createEl("td", "px-4 py-3 text-slate-600 break-all", urlText));
-        row.appendChild(createEl("td", "px-4 py-3 text-slate-600", service.apiKeyConfigured ? "Set" : "Not set"));
-        row.appendChild(createEl("td", "px-4 py-3 text-slate-500", service.source === "server" ? ".env / config (read-only)" : "Admin panel / API"));
+        row.appendChild(createEl("td", "px-4 py-3 text-slate-600", isBuiltin ? "Not needed" : service.apiKeyConfigured ? "Set" : "Not set"));
+        const sourceText = { builtin: "Built-in (read-only)", server: ".env / config (read-only)" }[service.source] || "Admin panel / API";
+        row.appendChild(createEl("td", "px-4 py-3 text-slate-500", sourceText));
         row.appendChild(createEl("td", "px-4 py-3 text-slate-600", formatCount(service.collectionCount ?? 0)));
         const actions = createEl("td", "px-4 py-3 text-right whitespace-nowrap space-x-3");
-        if (service.configured !== false && canManage) {
+        if (!isBuiltin && service.configured !== false && canManage) {
             actions.appendChild(createButton("Test", "text-indigo-600 hover:text-indigo-800 text-xs font-bold", () => testEmbeddingService({ serviceId: service.id }, service.name)));
         }
         if (!service.readOnly && canManage) {

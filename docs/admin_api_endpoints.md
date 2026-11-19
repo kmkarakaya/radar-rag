@@ -671,6 +671,7 @@ Notes:
 
 Connections to OpenAI-compatible embedding APIs, per tenant. A collection with the `openai-compatible` provider uses one (`embeddingServiceId`). Changes take effect immediately: clients and checks are cached per service and are rebuilt when its URL or key changes, so no restart is needed. The admin panel's **Embedding services** view uses exactly these endpoints.
 
+- The `builtin` entry is the built-in model that runs inside the backend. It is listed first, read-only, with its `models` and `collectionCount`, so the list shows every embedding the tenant's collections can use. It is not a connection: a collection picks it with `"embeddingProvider": "builtin"` (`embeddingServiceId: "builtin"` returns `400`); `PATCH`/`DELETE` return `409 EMBEDDING_SERVICE_READ_ONLY` and `/test` returns `400`. It is not part of `GET /v1/admin/models` `embeddingServices`.
 - The `server` service is the one from `.env` / config (`RAG_EMBEDDING_BASE_URL`, `RAG_EMBEDDING_API_KEY`, `embedding.baseUrl`). It is listed read-only (`PATCH`/`DELETE` return `409 EMBEDDING_SERVICE_READ_ONLY`). Collections created before embedding services existed use it.
 - API keys are stored in plain text in the registry (`data/registry.sqlite`) and never returned: responses only say `apiKeyConfigured`. They are redacted from error messages and job errors.
 - Managing services needs the `manageEmbeddingServices` capability (admin role) when admin auth is on. While admin auth is off, anyone who can reach the server can manage them; responses then carry a `warnings` entry saying so.
@@ -681,6 +682,7 @@ Connections to OpenAI-compatible embedding APIs, per tenant. A collection with t
 ```json
 {
   "services": [
+    { "id": "builtin", "name": "Built-in (inside the backend)", "baseUrl": null, "apiKeyConfigured": false, "source": "builtin", "readOnly": true, "configured": true, "collectionCount": 3, "models": ["onnx-community/embeddinggemma-2-ONNX"] },
     { "id": "server", "name": "Server (.env / config)", "baseUrl": "http://host.docker.internal:11434/v1", "apiKeyConfigured": false, "source": "server", "readOnly": true, "configured": true, "collectionCount": 2 },
     { "id": "openai-4f2a9c1b7e", "name": "OpenAI", "baseUrl": "https://api.openai.com/v1", "apiKeyConfigured": true, "source": "panel", "readOnly": false, "configured": true, "collectionCount": 1, "createdAt": "2026-11-19T10:00:00.000Z", "updatedAt": "2026-11-19T10:05:00.000Z" }
   ],

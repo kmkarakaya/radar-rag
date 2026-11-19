@@ -28,6 +28,9 @@ import {
 } from "./collectionValidation.js";
 import { createAdminAuthService, type AdminAuthService } from "./adminAuth.js";
 import {
+  BUILTIN_EMBEDDING_SERVICE_ID,
+  BUILTIN_EMBEDDING_SERVICE_NAME,
+  builtinEmbeddingModelIds,
   desiredEmbeddingTarget,
   listConnectionModels,
   listEmbeddingModels,
@@ -428,6 +431,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     const services = await deps.registry!.listEmbeddingServices(context);
     const server = serverEmbeddingConnection(runtimeConfig);
     const serverUsers = await deps.registry!.listCollectionsUsingEmbeddingService(context, SERVER_EMBEDDING_SERVICE_ID);
+    const builtinUsers = await deps.registry!.listCollectionsUsingEmbeddingService(context, BUILTIN_EMBEDDING_SERVICE_ID);
     const stored = await Promise.all(services.map(async (service) => ({
       id: service.id,
       name: service.displayName,
@@ -441,6 +445,19 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       updatedAt: service.updatedAt,
     })));
     return [
+      {
+        // The built-in model runs inside the backend: no URL or key. Listed so its models and users are visible;
+        // collections pick it with embeddingProvider "builtin", not with embeddingServiceId.
+        id: BUILTIN_EMBEDDING_SERVICE_ID,
+        name: BUILTIN_EMBEDDING_SERVICE_NAME,
+        baseUrl: null,
+        apiKeyConfigured: false,
+        source: "builtin" as const,
+        readOnly: true,
+        configured: true,
+        collectionCount: builtinUsers.length,
+        models: builtinEmbeddingModelIds(),
+      },
       {
         id: SERVER_EMBEDDING_SERVICE_ID,
         name: SERVER_EMBEDDING_SERVICE_NAME,
@@ -456,6 +473,13 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
   }
 
   async function requireEmbeddingService(context: RequestContext, serviceId: string) {
+    if (serviceId === BUILTIN_EMBEDDING_SERVICE_ID) {
+      throw new HttpError(
+        409,
+        "EMBEDDING_SERVICE_READ_ONLY",
+        "The built-in model is part of the backend; it cannot be changed or deleted.",
+      );
+    }
     if (serviceId === SERVER_EMBEDDING_SERVICE_ID) {
       throw new HttpError(
         409,
@@ -473,7 +497,8 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
   async function assertUniqueServiceName(context: RequestContext, name: string, exceptId?: string) {
     const clash = (await deps.registry!.listEmbeddingServices(context))
       .find((service) => service.displayName.toLowerCase() === name.toLowerCase() && service.id !== exceptId);
-    if (clash || name.toLowerCase() === SERVER_EMBEDDING_SERVICE_NAME.toLowerCase()) {
+    const reserved = [SERVER_EMBEDDING_SERVICE_NAME, BUILTIN_EMBEDDING_SERVICE_NAME].map((item) => item.toLowerCase());
+    if (clash || reserved.includes(name.toLowerCase())) {
       throw new HttpError(400, "INVALID_REQUEST_BODY", `An embedding service named "${name}" already exists.`);
     }
   }
@@ -494,6 +519,13 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
         throw new HttpError(400, "INVALID_REQUEST_BODY", "embeddingServiceId only applies to the openai-compatible provider.");
       }
       return mode === "create" ? undefined : requested;
+    }
+    if (requested === BUILTIN_EMBEDDING_SERVICE_ID) {
+      throw new HttpError(
+        400,
+        "INVALID_REQUEST_BODY",
+        'The built-in model is not an embedding service: use "embeddingProvider": "builtin" without embeddingServiceId.',
+      );
     }
     if (requested) {
       if (requested !== SERVER_EMBEDDING_SERVICE_ID && !(await deps.registry!.getEmbeddingService(context, requested))) {
@@ -556,6 +588,13 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       let connection: EmbeddingConnection;
       let name: string;
       if ("serviceId" in parsed.data) {
+        if (parsed.data.serviceId === BUILTIN_EMBEDDING_SERVICE_ID) {
+          throw new HttpError(
+            400,
+            "INVALID_REQUEST_BODY",
+            "The built-in model runs inside the backend; there is no connection to test.",
+          );
+        }
         if (parsed.data.serviceId === SERVER_EMBEDDING_SERVICE_ID) {
           const server = serverEmbeddingConnection(runtimeConfig);
           if (!server) {

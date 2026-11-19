@@ -185,7 +185,7 @@ The embedding model turns text into vectors; indexing and retrieval need one. Tw
 How it fits together:
 
 - **The model is chosen per collection.** Each collection stores its provider, embedding service and model, is indexed with them and is always searched with them. Different collections can use different services and models.
-- **Embedding services are connections you manage** in the admin panel (**Embedding services** in the left menu) or over the API. Adding or changing one takes effect at once; no restart, no file to edit. You can add several (for example Ollama and OpenAI) and use them side by side.
+- **Embedding services are connections you manage** in the admin panel (**Embedding services** in the left menu) or over the API. That list also shows the **Built-in** model (read-only, with how many collections use it); it needs no connection. Adding or changing one takes effect at once; no restart, no file to edit. You can add several (for example Ollama and OpenAI) and use them side by side.
 - **A service can also come from `.env` / config.** `RAG_EMBEDDING_BASE_URL` (and `RAG_EMBEDDING_API_KEY`) define the **Server (.env / config)** service; it is listed read-only in the panel and is changed only in those files.
 - **The server default only applies to new collections.** Changing it never touches existing collections.
 

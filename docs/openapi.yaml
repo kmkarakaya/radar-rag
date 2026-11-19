@@ -2550,7 +2550,8 @@ components:
           minLength: 1
           description: >-
             openai-compatible only: an embedding service id or "server". Omitted: "server" when configured, else the
-            tenant's only service. Unknown ids return 404 EMBEDDING_SERVICE_NOT_FOUND.
+            tenant's only service. Unknown ids return 404 EMBEDDING_SERVICE_NOT_FOUND; "builtin" returns 400 (use
+            embeddingProvider "builtin").
         embeddingModel:
           type: string
           minLength: 1
@@ -2955,7 +2956,15 @@ components:
           description: The key itself is never returned.
         source:
           type: string
-          enum: [server, panel]
+          enum: [builtin, server, panel]
+          description: >-
+            builtin = the built-in model inside the backend (listed for visibility; collections pick it with
+            embeddingProvider "builtin", never as embeddingServiceId); server = .env / config; panel = added via the API.
+        models:
+          type: array
+          items:
+            type: string
+          description: builtin entry only; the built-in models this backend ships.
         readOnly:
           type: boolean
         configured:

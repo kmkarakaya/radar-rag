@@ -315,6 +315,7 @@ export type EmbeddingModelCatalog = {
 };
 
 export const SERVER_EMBEDDING_SERVICE_NAME = "Server (.env / config)";
+export const BUILTIN_EMBEDDING_SERVICE_NAME = "Built-in (inside the backend)";
 
 /** Model suggestions for the admin panel (GET /v1/admin/models). */
 export async function listEmbeddingModels(

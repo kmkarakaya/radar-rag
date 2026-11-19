@@ -686,7 +686,7 @@ Example response:
   ],
   "fileCount": 1,
   "totalBytes": 248331,
-  "indexState": { "status": "reindex_required", "reindexRequired": true, "documentsChanged": true, "note": "Documents were added or removed since the last index. Re-index to search them." }
+  "indexState": { "status": "reindex_required", "reindexRequired": true, "documentsChanged": true, "note": "Documents were uploaded since the last index. Re-index to search them." }
 }
 ```
 

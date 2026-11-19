@@ -122,7 +122,7 @@ describe("document management model", () => {
     assert.equal(changed.status, "reindex_required");
     assert.equal(changed.reindexRequired, true);
     assert.equal(changed.documentsChanged, true);
-    assert.match(changed.note, /Documents were added or removed/);
+    assert.match(changed.note, /Documents were uploaded since the last index/);
   });
 
   it("never scans the uploads root from a folder collection, but scans an uploads collection's own folder", async () => {

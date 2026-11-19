@@ -2028,7 +2028,7 @@ components:
             type: string
         documentsChanged:
           type: boolean
-          description: Documents were uploaded or deleted through the files API since the last successful reindex.
+          description: Documents were uploaded (added or replaced) through the files API since the last successful reindex. Deletes are applied to the index at once and do not set it.
         note:
           type: string
     PublicCollection:

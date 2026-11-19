@@ -64,7 +64,7 @@ export type CollectionIndexState = {
   activeSnapshot: CollectionIndexSnapshot | null;
   desiredSnapshot: CollectionIndexSnapshot;
   changedFields: Array<keyof CollectionIndexSnapshot>;
-  /** Documents were uploaded or deleted through the API since the last successful index. */
+  /** Documents were uploaded (added or replaced) through the API since the last successful index; deletes apply to the index at once. */
   documentsChanged: boolean;
   note: string;
 };
@@ -104,7 +104,7 @@ export type RagCollection = {
   createdAt: string;
   updatedAt: string;
   lastIndexedAt?: string;
-  /** Documents were uploaded or deleted through the API since the last successful index. */
+  /** Documents were uploaded (added or replaced) through the API since the last successful index; deletes apply to the index at once. */
   documentsChanged: boolean;
   indexState?: CollectionIndexState;
 };
@@ -333,7 +333,7 @@ export interface CollectionRegistry {
   deleteJobs(context: RequestContext, jobIds: string[]): Promise<void>;
   getActiveJobForCollection(context: RequestContext, collectionId: string): Promise<IndexJob | null>;
   createCollection(context: RequestContext, input: CreateCollectionInput): Promise<RagCollection>;
-  /** Records that documents were uploaded or deleted; cleared when the next index job succeeds. */
+  /** Records that documents were uploaded; cleared when the next index job succeeds. */
   markDocumentsChanged(context: RequestContext, collectionId: string): Promise<void>;
   updateCollection(
     context: RequestContext,

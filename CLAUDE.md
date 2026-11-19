@@ -38,7 +38,7 @@ All-in-one: `docker compose up -d` (backend + Chroma 1.5.9). The compose file pu
 Implemented in [src/http/adminAuth.ts](src/http/adminAuth.ts); config under `adminAuth` in the YAML (**disabled** in the shipped config).
 
 - **Auth**: username/password with **scrypt** hashes; login sets an HMAC-signed, HttpOnly, `SameSite=Lax` session cookie (`rag_admin_session`, `Secure` in production). Session secret from `RAG_ADMIN_SESSION_SECRET` env var, else `.local/rag_admin_session.secret`.
-- **RBAC**: roles `viewer` (read) < `operator` (+create/validate/update/reindex/cancel) < `admin` (+delete/bulk). Enforced per-route via `requireCapability`; sessions carry `tenantId`.
+- **RBAC**: roles `viewer` (read) < `operator` (+create/validate/update/reindex/cancel/manageDocuments) < `admin` (+delete/bulk). Enforced per-route via `requireCapability`; sessions carry `tenantId`.
 - **CSRF**: state-changing admin routes require a single-use, HMAC-signed `x-admin-action-token` bound to session/tenant/method/path, minted via `POST /v1/admin/auth/action-token`.
 - Public `/v1/rag/**` is **not** behind admin auth — it uses `x-tenant-id` / `x-user-id` headers (plus `x-request-id`) via `RequestContext`. When `adminAuth.enabled` is false, all admin guards no-op.
 

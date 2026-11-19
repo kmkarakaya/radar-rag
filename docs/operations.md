@@ -25,6 +25,7 @@ Running the backend day to day: health checks, limits, logs, index lifecycle and
 
 - Uploads collections keep their documents in `data/collections/<collection id>` (with Docker: `./data/collections` next to `docker-compose.yml`). Deleting the collection deletes that folder. Back up `./data` to keep both the documents and the registry.
 - Folder collections read their `sourcePath` directly; nothing in the API changes those files. Scans of a folder never descend into `data/collections`, so a folder collection on `data` does not index other collections' uploads.
+- An upload makes the collection `reindex_required` until the next re-index; until then searches use the previous content. A delete removes the document's chunks from the active index at once (and lowers `chunkCount` / `documentCount`), so it needs no re-index; if Chroma cannot be reached, nothing is deleted (`503 COLLECTION_STORAGE_INCONSISTENT`).
 - Uploads and deletes are refused while the collection's index job is queued or running, so a job always reads a stable set of files.
 - The Docker image runs as root, so on a Linux host the files it writes into `./data` (registry and uploads) belong to root; use `sudo` to remove them by hand.
 

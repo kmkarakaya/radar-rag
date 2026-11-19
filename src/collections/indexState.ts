@@ -106,7 +106,7 @@ export function buildCollectionIndexState(
       desiredSnapshot,
       changedFields: [],
       documentsChanged,
-      note: "Documents were added or removed since the last index. Re-index to search them.",
+      note: "Documents were uploaded since the last index. Re-index to search them.",
     };
   }
 

@@ -127,13 +127,7 @@ Yapilacaklar:
 - Panel: New Collection varsayilan "Upload files"; Documents sekmesi (surukle-birak, liste, silme, reddedilenler, "Re-index now"). Panel ayni API'nin istemcisi.
 - Dokuman: README Level 2 (panel + curl + PowerShell), admin_api_endpoints, openapi, http_workflows, configuration, operations.
 
-Ileride (ilk plandan kalanlar):
-
-- Admin API: bir koleksiyona dosya yukleme (multipart), dosyalari listeleme, silme, degistirme.
-- Admin panelde ayni islemler (surukle-birak yukleme, dosya listesi, silme).
-- Boyut ve format limitleri, dosya adi guvenligi (path traversal), tenant izolasyonu.
-- Yukleme/silme sonrasi reindex akisi; ileride incremental indexing ile (P1 #5) sadece degisen dosyalar islenir.
-- Mevcut "sunucu klasoru" (`sourcePath`) kullanimi da desteklenmeye devam etsin.
+Ilk plandaki maddelerin hepsi yapildi. Ileride: yuklemeden sonra tam re-index yerine sadece degisen dosyalari islemek (incremental indexing, P1 #5).
 
 ### 4. MCP sunucusu
 
@@ -240,7 +234,7 @@ Sorun:
 Yapilacaklar:
 
 - Full rebuild ve incremental mod ayrimi tasarla (hash karsilastirmasi ile degisen/silinen belgeleri bul).
-- Belge bazli upsert/silme icin admin yuzeyi dusun (ornek: `POST /v1/admin/collections/:id/upsert`).
+- Belge bazli upsert icin admin yuzeyi dusun. Silme artik var (2026-11-19): `DELETE /v1/admin/collections/:id/files/:fileName` belgenin parcalarini aktif fiziksel koleksiyondan yerinde siliyor; upsert de ayni yolu izleyebilir (yeni parcalari aktif koleksiyona eklemek).
 - Blue/green modeliyle nasil birlesecegine karar ver (aktif fiziksel koleksiyona yerinde upsert mi, yeni build'e kopyalama mi).
 
 ### 6. Test coverage bosluklari

@@ -94,6 +94,7 @@ function createHealthyRegistryStub(): CollectionRegistry {
       throw new Error("Not implemented in foundation test");
     },
     failStaleJobs: async () => 0,
+    recordIndexJobHeartbeat: async () => {},
     getPhysicalCollection: async () => null,
     createPhysicalCollectionRecord: async () => {
       throw new Error("Not implemented in foundation test");

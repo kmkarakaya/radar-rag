@@ -109,6 +109,10 @@ type IndexJobRow = {
   updated_at: string;
 };
 
+/** Error of a job whose process stopped or crashed (no heartbeat any more). */
+export const STALE_JOB_ERROR = "Interrupted: the job stopped reporting progress because the server stopped or crashed. "
+  + "Re-index again.";
+
 type EmbeddingServiceRow = {
   id: string;
   tenant_id: string;
@@ -351,6 +355,8 @@ function migrateSchema(db: SqliteDatabase): void {
   ensureColumn(db, "collections", "embedding_service_id", "TEXT");
   ensureColumn(db, "collections", "active_embedding_service_id", "TEXT");
   ensureColumn(db, "index_jobs", "target_embedding_service_id", "TEXT");
+  // Interrupted jobs: a running job marks itself alive; failStaleJobs fails jobs whose mark stopped.
+  ensureColumn(db, "index_jobs", "heartbeat_at", "TEXT");
   // Ozelge JSON support was removed; older registries still have this NOT NULL column, which would break inserts.
   dropColumnIfExists(db, "collections", "ozelge_data_path");
   // The chat LLM is now global and optional (config `chat` section); older registries have a NOT NULL chat_model column.
@@ -1700,6 +1706,13 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     return transaction();
   }
 
+  async recordIndexJobHeartbeat(jobId: string): Promise<void> {
+    // Not updated_at: job lists are ordered and paged by it.
+    this.db.prepare(`
+      UPDATE index_jobs SET heartbeat_at = ? WHERE id = ? AND status IN ('queued', 'running')
+    `).run(new Date().toISOString(), jobId);
+  }
+
   async failStaleJobs(staleThresholdMs: number): Promise<number> {
     const thresholdDate = new Date(Date.now() - staleThresholdMs).toISOString();
     const now = new Date().toISOString();
@@ -1707,7 +1720,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     const transaction = this.db.transaction(() => {
       const staleJobs = this.db.prepare(`
         SELECT * FROM index_jobs
-        WHERE status IN ('queued', 'running') AND updated_at < ?
+        WHERE status IN ('queued', 'running') AND COALESCE(heartbeat_at, updated_at) < ?
       `).all(thresholdDate) as IndexJobRow[];
 
       if (staleJobs.length === 0) {
@@ -1721,7 +1734,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           WHERE id = @id AND status IN ('queued', 'running')
         `).run({
           id: job.id,
-          error: "Job timed out (stale lock)",
+          error: STALE_JOB_ERROR,
           updatedAt: now,
           finishedAt: now,
         });
@@ -1731,13 +1744,13 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           status: "failed",
           finished_at: now,
           updated_at: now,
-          error: "Job timed out (stale lock)",
+          error: STALE_JOB_ERROR,
         }, {
           status: "failed",
           stage: "failed",
           code: "JOB_FAILED",
           level: "error",
-          message: "Job timed out (stale lock)",
+          message: STALE_JOB_ERROR,
           details: {
             targetPhysicalCollection: job.target_physical_collection,
             targetVersion: job.target_version,
@@ -1762,7 +1775,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           tenantId: job.tenant_id,
           collectionId: job.collection_id,
           version: job.target_version,
-          error: "Job timed out (stale lock)",
+          error: STALE_JOB_ERROR,
         });
 
         const collection = this.getCollectionRow(job.tenant_id, job.collection_id);

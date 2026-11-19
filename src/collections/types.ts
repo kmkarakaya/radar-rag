@@ -385,6 +385,12 @@ export interface CollectionRegistry {
   cancelIndexJob(jobId: string): Promise<IndexJob>;
   completeIndexJob(jobId: string, result: CompleteIndexJobResult): Promise<IndexJob>;
   failIndexJob(jobId: string, error: string): Promise<IndexJob>;
+  /** A running job's "still alive" mark (every JOB_HEARTBEAT_INTERVAL_MS); no-op once the job has finished. */
+  recordIndexJobHeartbeat(jobId: string): Promise<void>;
+  /**
+   * Fails queued/running jobs with no heartbeat (or, for older rows, no update) for staleThresholdMs:
+   * their process stopped or crashed. The collection goes back to its active index.
+   */
   failStaleJobs(staleThresholdMs: number): Promise<number>;
   getPhysicalCollection(name: string): Promise<PhysicalCollectionRecord | null>;
   

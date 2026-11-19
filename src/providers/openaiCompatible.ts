@@ -100,6 +100,9 @@ async function fetchProviderStatus(
   try {
     response = await fetchImpl(`${target.baseUrl}/models`, {
       headers: target.apiKey ? { Authorization: `Bearer ${target.apiKey}` } : {},
+      // Redirects are not followed: the key is never sent on to another host, and an admin-supplied URL
+      // cannot be used to reach other addresses through a redirect.
+      redirect: "manual",
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {

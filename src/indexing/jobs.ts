@@ -8,6 +8,9 @@ import type {
 import type { ResolvedConfig } from "../config.js";
 import { emitOperationalLog, type OperationalLogSink } from "../observability/logger.js";
 import { buildPhysicalCollection } from "./buildPhysicalCollection.js";
+import type { EmbeddingTarget } from "../embeddings/index.js";
+import { resolveEmbeddingTarget, targetApiKey } from "../embeddings/services.js";
+import { redactSecret } from "../providers/openaiCompatible.js";
 
 const JOB_PHASE_COUNT = 6;
 
@@ -114,6 +117,7 @@ export async function runIndexJob(input: {
   }
 
   const targetVersion = job.targetVersion;
+  let embeddingTarget: EmbeddingTarget | undefined;
 
   try {
     await registry.createPhysicalCollectionRecord({
@@ -146,8 +150,21 @@ export async function runIndexJob(input: {
       chromaCollectionConfiguration: job.targetChromaConfiguration,
     };
 
+    // The job builds with the embedding service it was started with (copied from the collection).
+    embeddingTarget = await resolveEmbeddingTarget({
+      registry,
+      runtimeConfig,
+      context: { tenantId: job.tenantId, userId: "system", requestId: jobId },
+      target: {
+        provider: job.targetEmbeddingProvider,
+        model: job.targetEmbeddingModel,
+        serviceId: job.targetEmbeddingServiceId ?? null,
+      },
+    });
+
     const result = await buildCollection({
       collection: collectionForBuild,
+      embeddingTarget,
       targetPhysicalCollection: job.targetPhysicalCollection,
       targetVersion,
       runtimeConfig,
@@ -183,8 +200,12 @@ export async function runIndexJob(input: {
     });
     return job;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const isAbort = message === "Build aborted" || signal?.aborted;
+    // Job errors are returned by the jobs API: never store an embedding service's API key in them.
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const message = embeddingTarget
+      ? redactSecret(redactSecret(rawMessage, targetApiKey(runtimeConfig, embeddingTarget)), runtimeConfig.embedding.apiKey)
+      : redactSecret(rawMessage, runtimeConfig.embedding.apiKey);
+    const isAbort = rawMessage === "Build aborted" || signal?.aborted;
 
     if (isAbort) {
       job = await registry.getJob(jobId) || job;

@@ -2,6 +2,7 @@ import type { ResolvedConfig } from "../config.js";
 import {
   builtinEmbeddingModelIds,
   checkEmbeddingTarget,
+  connectionForTarget,
   type EmbeddingTarget,
 } from "../embeddings/index.js";
 import { HttpError } from "./errors.js";
@@ -18,6 +19,7 @@ import { HttpError } from "./errors.js";
  */
 export async function assertEmbeddingAvailable(input: {
   runtimeConfig: ResolvedConfig;
+  /** Resolved with resolveEmbeddingTarget when the collection uses an embedding service. */
   target: EmbeddingTarget;
   /** Sentence prefix describing the blocked action, e.g. "Re-index cannot start." */
   action: string;
@@ -33,7 +35,11 @@ export async function assertEmbeddingAvailable(input: {
   }
 
   const status = await (input.check ?? checkEmbeddingTarget)(runtimeConfig, target);
-  const details = { embeddingProvider: target.provider, embeddingModel: target.model };
+  const details = {
+    embeddingProvider: target.provider,
+    embeddingModel: target.model,
+    ...(target.serviceId ? { embeddingServiceId: target.serviceId } : {}),
+  };
 
   if (target.provider === "builtin") {
     if (!status.supported) {
@@ -47,16 +53,19 @@ export async function assertEmbeddingAvailable(input: {
   }
 
   if (!status.configured) {
-    throw new HttpError(422, "EMBEDDING_PROVIDER_NOT_CONFIGURED", `${action} The openai-compatible embedding service is not configured.`, {
+    throw new HttpError(422, "EMBEDDING_PROVIDER_NOT_CONFIGURED", `${action} ${status.error ?? "No embedding service is configured."}`, {
       ...details,
-      recommendedActions: ["Set embedding.baseUrl (npm run onboard or RAG_EMBEDDING_BASE_URL), or use the builtin provider."],
+      recommendedActions: [
+        "Add an embedding service in the admin panel (Embedding services) or with POST /v1/admin/embedding-services, "
+          + "or set RAG_EMBEDDING_BASE_URL / embedding.baseUrl; or use the builtin provider.",
+      ],
     });
   }
 
   if (!status.reachable || status.authOk === false) {
     throw new HttpError(503, "EMBEDDING_PROVIDER_UNREACHABLE", `${action} ${status.error ?? "The embedding service is not reachable."}`, {
       ...details,
-      embeddingBaseUrl: runtimeConfig.embedding.baseUrl,
+      embeddingBaseUrl: connectionForTarget(runtimeConfig, target)?.baseUrl ?? runtimeConfig.embedding.baseUrl,
       ...(status.httpStatus !== undefined ? { httpStatus: status.httpStatus } : {}),
     });
   }

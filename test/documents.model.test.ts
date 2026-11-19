@@ -113,7 +113,7 @@ describe("document management model", () => {
       embeddingModel: "m",
       activePhysicalCollection: "rag_x_v1",
     };
-    const snapshot = { ...collection };
+    const snapshot = { ...collection, embeddingServiceId: null };
     delete (snapshot as Partial<typeof snapshot>).activePhysicalCollection;
 
     const synced = buildCollectionIndexState({ ...collection, documentsChanged: false }, snapshot);

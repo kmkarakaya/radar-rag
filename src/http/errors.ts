@@ -33,6 +33,9 @@ export type ApiErrorCode =
   | "TOO_MANY_FILES"
   | "UNSUPPORTED_FILE"
   | "DOCUMENT_NOT_FOUND"
+  | "EMBEDDING_SERVICE_NOT_FOUND"
+  | "EMBEDDING_SERVICE_IN_USE"
+  | "EMBEDDING_SERVICE_READ_ONLY"
   | "INTERNAL_ERROR";
 
 export type ApiErrorResponse = {

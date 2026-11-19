@@ -65,6 +65,10 @@
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                 Collections
             </a>
+            <a href="#" data-view="embedding-services" class="nav-item flex items-center gap-3 px-3 py-2 rounded-md transition-colors hover:text-white hover:bg-slate-800">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                Embedding services
+            </a>
             <a href="#" data-view="jobs" class="nav-item flex items-center gap-3 px-3 py-2 rounded-md transition-colors hover:text-white hover:bg-slate-800">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                 Job Monitor
@@ -187,6 +191,67 @@
                             <!-- Rows injected by JS -->
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- Embedding services View (GET/POST /v1/admin/embedding-services, PATCH/DELETE .../:id, POST .../test) -->
+            <div id="view-embedding-services" class="view-container hidden space-y-6">
+                <div id="esWarnings" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"></div>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p class="text-sm text-slate-600">The embeddings your collections can use. <span class="font-semibold">Built-in</span> runs inside the backend and needs no setup (Embedding Provider: builtin). The others are connections to OpenAI-compatible embedding APIs such as Ollama, OpenAI or LM Studio; a collection that uses the <span class="font-semibold">openai-compatible</span> provider picks one of them. Changes take effect at once, without a restart.</p>
+                    <button id="btnAddEmbeddingService" type="button" class="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm">Add service</button>
+                </div>
+                <form id="esForm" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
+                    <input type="hidden" id="esFormId">
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <h3 id="esFormTitle" class="text-sm font-semibold text-slate-800">Add embedding service</h3>
+                        <div class="flex flex-wrap gap-2 text-xs">
+                            <span class="text-slate-400">Examples:</span>
+                            <button type="button" data-es-preset="ollama" class="rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50">Ollama on this computer</button>
+                            <button type="button" data-es-preset="openai" class="rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50">OpenAI</button>
+                            <button type="button" data-es-preset="lmstudio" class="rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50">LM Studio</button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="esName">Name *</label>
+                            <input type="text" id="esName" required maxlength="100" class="w-full p-2 border border-slate-200 rounded-lg text-sm" placeholder="Ollama">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="esBaseUrl">Base URL *</label>
+                            <input type="text" id="esBaseUrl" required class="w-full p-2 border border-slate-200 rounded-lg text-sm" placeholder="http://host.docker.internal:11434/v1">
+                            <p class="mt-1 text-xs text-slate-400">It must end in /v1. With Docker, reach a service on this computer with host.docker.internal, not localhost.</p>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="esApiKey">API key</label>
+                            <input type="password" id="esApiKey" autocomplete="new-password" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                            <p id="esApiKeyHint" class="mt-1 text-xs text-slate-400">Optional; a local Ollama needs none. Stored on the server and never shown again.</p>
+                            <label id="esClearKeyRow" class="hidden mt-2 flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" id="esClearKey"> Remove the stored API key</label>
+                        </div>
+                    </div>
+                    <div id="esTestResult" class="hidden rounded-lg border p-3 text-xs"></div>
+                    <div class="flex justify-end gap-3">
+                        <button type="button" id="btnEsTest" class="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-medium">Test connection</button>
+                        <button type="button" id="btnEsCancel" class="px-4 py-2 text-slate-500 hover:text-slate-700 text-sm font-medium">Cancel</button>
+                        <button type="submit" id="btnEsSave" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-bold shadow-sm">Save</button>
+                    </div>
+                </form>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="table-responsive">
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+                                <tr>
+                                    <th class="px-4 py-3 text-left font-semibold">Name</th>
+                                    <th class="px-4 py-3 text-left font-semibold">Base URL</th>
+                                    <th class="px-4 py-3 text-left font-semibold">API key</th>
+                                    <th class="px-4 py-3 text-left font-semibold">Source</th>
+                                    <th class="px-4 py-3 text-left font-semibold">Collections</th>
+                                    <th class="px-4 py-3 text-right font-semibold"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="esTableBody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
@@ -494,7 +559,7 @@
                         </div>
                     </div>
                     <div class="md:col-span-2 space-y-4 border-t border-slate-100 pt-4">
-                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Models</h4>
+                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Embedding &amp; chat LLM</h4>
                         <div id="modelDiscoveryPanel" class="rounded-xl border border-slate-200 bg-slate-50 p-4">
                             <div class="flex items-start justify-between gap-3">
                                 <div>
@@ -519,11 +584,16 @@
                                 </select>
                                 <p class="mt-1 text-xs text-slate-400" data-default-for="embeddingProvider"></p>
                             </div>
+                            <div id="embeddingServiceField" class="hidden">
+                                <label class="block text-xs font-medium text-slate-500 mb-1" for="editEmbeddingService">Embedding Service</label>
+                                <select id="editEmbeddingService" class="w-full p-2 border border-slate-200 rounded-lg text-sm"></select>
+                                <p class="mt-1 text-xs text-slate-400">Add or change services under <a href="#" id="linkEmbeddingServices" class="text-indigo-600 underline">Embedding services</a>.</p>
+                            </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-500 mb-1">Embedding Model</label>
                                 <input type="text" id="editEmbeddingModel" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
                                 <p class="mt-1 text-xs text-slate-400" data-default-for="embeddingModel"></p>
-                                <p class="mt-1 text-xs text-slate-400">Changing the provider or model of an existing collection requires a re-index.</p>
+                                <p class="mt-1 text-xs text-slate-400">Changing the provider, service or model of an existing collection requires a re-index.</p>
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-500 mb-1">Chat LLM (global, optional)</label>

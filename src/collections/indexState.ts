@@ -1,5 +1,7 @@
 import type { DistanceMetric } from "../config.js";
-import { isEmbeddingProvider } from "../embeddings/models.js";
+import { isEmbeddingProvider, SERVER_EMBEDDING_SERVICE_ID, type EmbeddingProvider } from "../embeddings/models.js";
+
+export { SERVER_EMBEDDING_SERVICE_ID };
 import type { CollectionIndexSnapshot, CollectionIndexState, RagCollection } from "./types.js";
 
 const INDEX_SNAPSHOT_FIELDS = [
@@ -9,12 +11,22 @@ const INDEX_SNAPSHOT_FIELDS = [
   "chunkOverlap",
   "embeddingProvider",
   "embeddingModel",
+  "embeddingServiceId",
 ] as const satisfies Array<keyof CollectionIndexSnapshot>;
+
+/**
+ * One value per embedding connection, so old records (no service id) compare equal to new ones:
+ * builtin has no service; an openai-compatible collection without a service id uses "server".
+ */
+export function normalizeEmbeddingServiceId(provider: EmbeddingProvider, serviceId: string | null | undefined): string | null {
+  if (provider !== "openai-compatible") return null;
+  return serviceId || SERVER_EMBEDDING_SERVICE_ID;
+}
 
 export function buildCollectionIndexSnapshot(collection: Pick<
   RagCollection,
   "sourcePath" | "distanceMetric" | "chunkSize" | "chunkOverlap" | "embeddingProvider" | "embeddingModel"
->): CollectionIndexSnapshot {
+> & { embeddingServiceId?: string | null }): CollectionIndexSnapshot {
   return {
     sourcePath: collection.sourcePath,
     distanceMetric: collection.distanceMetric,
@@ -22,6 +34,7 @@ export function buildCollectionIndexSnapshot(collection: Pick<
     chunkOverlap: collection.chunkOverlap,
     embeddingProvider: collection.embeddingProvider,
     embeddingModel: collection.embeddingModel,
+    embeddingServiceId: normalizeEmbeddingServiceId(collection.embeddingProvider, collection.embeddingServiceId),
   };
 }
 
@@ -47,6 +60,11 @@ export function parseCollectionIndexSnapshot(input: unknown): CollectionIndexSna
     chunkOverlap: value.chunkOverlap,
     embeddingProvider: value.embeddingProvider,
     embeddingModel: value.embeddingModel,
+    // Snapshots written before embedding services have no service id: derive it like new ones.
+    embeddingServiceId: normalizeEmbeddingServiceId(
+      value.embeddingProvider,
+      typeof value.embeddingServiceId === "string" ? value.embeddingServiceId : null,
+    ),
   };
 }
 
@@ -54,7 +72,7 @@ export function buildCollectionIndexState(
   collection: Pick<
     RagCollection,
     "sourcePath" | "distanceMetric" | "chunkSize" | "chunkOverlap" | "embeddingProvider" | "embeddingModel" | "activePhysicalCollection"
-  > & { documentsChanged?: boolean },
+  > & { documentsChanged?: boolean; embeddingServiceId?: string | null },
   activeSnapshot: CollectionIndexSnapshot | null,
 ): CollectionIndexState {
   const desiredSnapshot = buildCollectionIndexSnapshot(collection);

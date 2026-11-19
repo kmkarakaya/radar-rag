@@ -15,6 +15,8 @@ import {
   type EmbeddingProvider,
 } from "../embeddings/index.js";
 import { describeEmbeddingReadiness } from "../readiness.js";
+import { resolveEmbeddingTarget } from "../embeddings/services.js";
+import { normalizeEmbeddingServiceId } from "../collections/indexState.js";
 import { recommendedActionFor, unique } from "../readiness.js";
 
 export type CollectionValidationIssue = {
@@ -49,6 +51,8 @@ export type CollectionValidationDraft = {
   sourcePath: string;
   embeddingProvider: EmbeddingProvider;
   embeddingModel: string;
+  /** openai-compatible: the embedding service (null/undefined = "server"). */
+  embeddingServiceId?: string | null;
   chunkSize: number;
   chunkOverlap: number;
   retrievalK: number;
@@ -87,11 +91,13 @@ const REINDEX_FIELDS = new Set([
   "chunkOverlap",
   "embeddingProvider",
   "embeddingModel",
+  "embeddingServiceId",
 ]);
 
 const EMBEDDING_FIELDS = new Set([
   "embeddingProvider",
   "embeddingModel",
+  "embeddingServiceId",
 ]);
 
 const VALIDATION_FIELD_ORDER = [
@@ -105,6 +111,7 @@ const VALIDATION_FIELD_ORDER = [
   "retrievalDistanceThreshold",
   "embeddingProvider",
   "embeddingModel",
+  "embeddingServiceId",
 ];
 
 function buildImpact(draft: CollectionValidationDraft): CollectionValidationImpact {
@@ -167,6 +174,7 @@ export function buildCreateCollectionInput(
     description: input.description,
     sourceKind,
     sourcePath: input.sourcePath ?? runtimeConfig.uploadsDir,
+    embeddingServiceId: input.embeddingServiceId,
     distanceMetric: input.distanceMetric ?? runtimeConfig.collectionDefaults.distanceMetric,
     chunkSize: input.chunkSize ?? runtimeConfig.collectionDefaults.chunkSize,
     chunkOverlap: input.chunkOverlap ?? runtimeConfig.collectionDefaults.chunkOverlap,
@@ -212,6 +220,7 @@ export function buildCreateValidationDraft(
     sourcePath: input.sourcePath,
     embeddingProvider: input.embeddingProvider ?? "builtin",
     embeddingModel: input.embeddingModel,
+    embeddingServiceId: input.embeddingServiceId ?? null,
     chunkSize: input.chunkSize,
     chunkOverlap: input.chunkOverlap,
     retrievalK: input.retrievalK,
@@ -238,6 +247,13 @@ function buildChangedFields(collection: RagCollection, patch: UpdateCollectionPa
   pushIfChanged("retrievalDistanceThreshold", collection.retrievalDistanceThreshold);
   pushIfChanged("embeddingProvider", collection.embeddingProvider);
   pushIfChanged("embeddingModel", collection.embeddingModel);
+  if (patch.embeddingServiceId !== undefined) {
+    const nextProvider = patch.embeddingProvider ?? collection.embeddingProvider;
+    if (normalizeEmbeddingServiceId(nextProvider, patch.embeddingServiceId)
+      !== normalizeEmbeddingServiceId(collection.embeddingProvider, collection.embeddingServiceId)) {
+      changed.push("embeddingServiceId");
+    }
+  }
 
   return changed;
 }
@@ -258,6 +274,7 @@ export function buildUpdateValidationDraft(
     sourcePath: patch.sourcePath ?? collection.sourcePath,
     embeddingProvider: patch.embeddingProvider ?? collection.embeddingProvider,
     embeddingModel: patch.embeddingModel ?? collection.embeddingModel,
+    embeddingServiceId: patch.embeddingServiceId !== undefined ? patch.embeddingServiceId : collection.embeddingServiceId ?? null,
     chunkSize: patch.chunkSize ?? collection.chunkSize,
     chunkOverlap: patch.chunkOverlap ?? collection.chunkOverlap,
     retrievalK: patch.retrievalK ?? collection.retrievalK,
@@ -371,10 +388,12 @@ export async function validateCollectionDraft(
       ? analyzeSourcePath(draft, runtimeConfig)
       : Promise.resolve({ blockers: [], warnings: [] }),
     requiresEmbeddingChecks && draft.embeddingModel
-      ? (healthChecks.checkEmbeddingTarget ?? checkEmbeddingTarget)(runtimeConfig, {
-        provider: draft.embeddingProvider,
-        model: draft.embeddingModel,
-      })
+      ? resolveEmbeddingTarget({
+        registry,
+        runtimeConfig,
+        context: context ?? { tenantId: "default", userId: "local-dev", requestId: "validate" },
+        target: { provider: draft.embeddingProvider, model: draft.embeddingModel, serviceId: draft.embeddingServiceId },
+      }).then((target) => (healthChecks.checkEmbeddingTarget ?? checkEmbeddingTarget)(runtimeConfig, target))
       : Promise.resolve(null),
     requiresChromaChecks
       ? (healthChecks.checkChromaHealth ?? checkChromaHealth)(runtimeConfig).catch((error) => ({

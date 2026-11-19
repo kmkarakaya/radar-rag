@@ -56,6 +56,8 @@ export type CollectionIndexSnapshot = {
   chunkOverlap: number;
   embeddingProvider: EmbeddingProvider;
   embeddingModel: string;
+  /** Normalized: null for builtin, the service id (or "server") for openai-compatible. */
+  embeddingServiceId: string | null;
 };
 
 export type CollectionIndexState = {
@@ -89,6 +91,11 @@ export type RagCollection = {
   /** Embedding for the next re-index (desired). Reads always use the active pair below. */
   embeddingProvider: EmbeddingProvider;
   embeddingModel: string;
+  /**
+   * Embedding service of an openai-compatible collection (desired): a service from the embedding services
+   * API, or "server" (the service configured in .env / config). Unset on older collections, meaning "server".
+   */
+  embeddingServiceId?: string;
   distanceMetric: DistanceMetric;
   chromaCollectionConfiguration: Record<string, unknown>;
   chunkSize: number;
@@ -98,6 +105,7 @@ export type RagCollection = {
   /** Embedding the active index was built with; queries must use it. */
   activeEmbeddingProvider?: EmbeddingProvider;
   activeEmbeddingModel?: string;
+  activeEmbeddingServiceId?: string;
   documentCount?: number;
   chunkCount?: number;
   createdBy: string;
@@ -118,6 +126,7 @@ export type IndexJob = {
   targetVersion: string;
   targetEmbeddingProvider: EmbeddingProvider;
   targetEmbeddingModel: string;
+  targetEmbeddingServiceId?: string;
   targetChromaConfiguration: Record<string, unknown>;
   startedAt?: string;
   finishedAt?: string;
@@ -224,6 +233,7 @@ export type CreateCollectionInput = {
   /** Defaults to "builtin" when omitted (the HTTP API always fills it from the configured default). */
   embeddingProvider?: EmbeddingProvider;
   embeddingModel: string;
+  embeddingServiceId?: string;
   distanceMetric: DistanceMetric;
   chromaCollectionConfiguration?: Record<string, unknown>;
   chunkSize: number;
@@ -239,6 +249,7 @@ export type UpdateCollectionPatch = {
   sourcePath?: RagCollection["sourcePath"];
   embeddingProvider?: RagCollection["embeddingProvider"];
   embeddingModel?: RagCollection["embeddingModel"];
+  embeddingServiceId?: RagCollection["embeddingServiceId"] | null;
   distanceMetric?: RagCollection["distanceMetric"];
   chromaCollectionConfiguration?: RagCollection["chromaCollectionConfiguration"];
   chunkSize?: RagCollection["chunkSize"];
@@ -247,6 +258,7 @@ export type UpdateCollectionPatch = {
   retrievalDistanceThreshold?: RagCollection["retrievalDistanceThreshold"];
   activeEmbeddingProvider?: RagCollection["activeEmbeddingProvider"] | null;
   activeEmbeddingModel?: RagCollection["activeEmbeddingModel"] | null;
+  activeEmbeddingServiceId?: RagCollection["activeEmbeddingServiceId"] | null;
   activePhysicalCollection?: RagCollection["activePhysicalCollection"] | null;
   activeVersion?: RagCollection["activeVersion"] | null;
   documentCount?: RagCollection["documentCount"] | null;
@@ -313,6 +325,22 @@ export type ListAuditLogResult = {
   nextCursor: string | null;
 };
 
+/** A tenant's connection to an OpenAI-compatible embedding API, managed through the embedding services API. */
+export type EmbeddingService = {
+  id: string;
+  tenantId: string;
+  displayName: string;
+  baseUrl: string;
+  /** Stored as plain text in the registry; never returned by the API. */
+  apiKey?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateEmbeddingServiceInput = { displayName: string; baseUrl: string; apiKey?: string };
+export type UpdateEmbeddingServicePatch = { displayName?: string; baseUrl?: string; apiKey?: string | null };
+
 export interface CollectionRegistry {
   listVisibleCollections(context: RequestContext): Promise<RagCollection[]>;
   /** Every collection ever created, across tenants and including archived (deleted) ones. */
@@ -333,6 +361,14 @@ export interface CollectionRegistry {
   deleteJobs(context: RequestContext, jobIds: string[]): Promise<void>;
   getActiveJobForCollection(context: RequestContext, collectionId: string): Promise<IndexJob | null>;
   createCollection(context: RequestContext, input: CreateCollectionInput): Promise<RagCollection>;
+  listEmbeddingServices(context: RequestContext): Promise<EmbeddingService[]>;
+  getEmbeddingService(context: RequestContext, serviceId: string): Promise<EmbeddingService | null>;
+  createEmbeddingService(context: RequestContext, input: CreateEmbeddingServiceInput): Promise<EmbeddingService>;
+  updateEmbeddingService(context: RequestContext, serviceId: string, patch: UpdateEmbeddingServicePatch): Promise<EmbeddingService>;
+  /** Deletes a service; throws when it does not exist. Callers check that no collection uses it. */
+  deleteEmbeddingService(context: RequestContext, serviceId: string): Promise<void>;
+  /** Visible collections whose desired or active embedding uses the service ("server" includes unset ones; "builtin" = the built-in model). */
+  listCollectionsUsingEmbeddingService(context: RequestContext, serviceId: string): Promise<Array<{ id: string; displayName: string }>>;
   /** Records that documents were uploaded; cleared when the next index job succeeds. */
   markDocumentsChanged(context: RequestContext, collectionId: string): Promise<void>;
   updateCollection(

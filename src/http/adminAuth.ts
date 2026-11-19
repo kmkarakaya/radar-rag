@@ -19,7 +19,8 @@ export type AdminCapability =
   | "deleteCollection"
   | "deleteJob"
   | "bulkDeleteJobs"
-  | "manageDocuments";
+  | "manageDocuments"
+  | "manageEmbeddingServices";
 
 export type AdminSessionSummary = {
   username: string;
@@ -68,7 +69,14 @@ const OPERATOR_CAPABILITIES: AdminCapability[] = [
   "cancelJob",
   "manageDocuments",
 ];
-const ADMIN_CAPABILITIES: AdminCapability[] = [...OPERATOR_CAPABILITIES, "deleteCollection", "deleteJob", "bulkDeleteJobs"];
+// Embedding services decide where document text is sent, so only admins manage them.
+const ADMIN_CAPABILITIES: AdminCapability[] = [
+  ...OPERATOR_CAPABILITIES,
+  "deleteCollection",
+  "deleteJob",
+  "bulkDeleteJobs",
+  "manageEmbeddingServices",
+];
 export const defaultAdminSessionSecretFilePath = ".local/rag_admin_session.secret";
 
 const ADMIN_ROUTE_PATTERNS: Array<{
@@ -90,6 +98,12 @@ const ADMIN_ROUTE_PATTERNS: Array<{
   { method: "GET", pattern: /^\/v1\/admin\/collections\/[^/]+\/files\/?$/, capability: "read", actionTokenRequired: false },
   { method: "POST", pattern: /^\/v1\/admin\/collections\/[^/]+\/files\/?$/, capability: "manageDocuments", actionTokenRequired: true },
   { method: "DELETE", pattern: /^\/v1\/admin\/collections\/[^/]+\/files\/[^/]+\/?$/, capability: "manageDocuments", actionTokenRequired: true },
+  { method: "GET", pattern: /^\/v1\/admin\/embedding-services\/?$/, capability: "read", actionTokenRequired: false },
+  // A connection test only reads GET /models (like validate): no action token, but admins only.
+  { method: "POST", pattern: /^\/v1\/admin\/embedding-services\/test\/?$/, capability: "manageEmbeddingServices", actionTokenRequired: false },
+  { method: "POST", pattern: /^\/v1\/admin\/embedding-services\/?$/, capability: "manageEmbeddingServices", actionTokenRequired: true },
+  { method: "PATCH", pattern: /^\/v1\/admin\/embedding-services\/[^/]+\/?$/, capability: "manageEmbeddingServices", actionTokenRequired: true },
+  { method: "DELETE", pattern: /^\/v1\/admin\/embedding-services\/[^/]+\/?$/, capability: "manageEmbeddingServices", actionTokenRequired: true },
   { method: "GET", pattern: /^\/v1\/admin\/audit-log\/?$/, capability: "read", actionTokenRequired: false },
   { method: "GET", pattern: /^\/v1\/admin\/jobs\/?$/, capability: "read", actionTokenRequired: false },
   { method: "GET", pattern: /^\/v1\/admin\/jobs\/[^/]+\/?$/, capability: "read", actionTokenRequired: false },

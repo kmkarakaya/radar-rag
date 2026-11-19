@@ -339,6 +339,33 @@ curl.exe -i `
 
 Success is `204 No Content`; an unknown name returns `404 DOCUMENT_NOT_FOUND`. The document's chunks are removed from the active index at once, so it leaves search results without a reindex. `503 COLLECTION_STORAGE_INCONSISTENT` means Chroma could not be updated and nothing was deleted.
 
+### Add an embedding service and use it in a collection
+
+Embedding services are connections to OpenAI-compatible embedding APIs (Ollama, OpenAI, LM Studio...). Adding one takes effect immediately, without a restart. Managing them needs the admin role when admin auth is on.
+
+```powershell
+$ACTION_TOKEN = ((curl.exe -s `
+  -b "$COOKIE_JAR" `
+  -X POST `
+  -H "content-type: application/json" `
+  -d '{"method":"POST","path":"/v1/admin/embedding-services"}' `
+  "$BASE_URL/v1/admin/auth/action-token" | ConvertFrom-Json).actionToken)
+
+curl.exe -s `
+  -b "$COOKIE_JAR" `
+  -X POST `
+  -H "content-type: application/json" `
+  -H "x-admin-action-token: $ACTION_TOKEN" `
+  -d '{"name":"Ollama","baseUrl":"http://host.docker.internal:11434/v1"}' `
+  "$BASE_URL/v1/admin/embedding-services"
+```
+
+Notes:
+
+- Without admin auth (the default), skip the cookie and the action token. The response then carries a `warnings` entry about it.
+- Check a service before using it: `POST /v1/admin/embedding-services/test` with `{"serviceId":"<service-id>"}` (or `{"baseUrl":"...","apiKey":"..."}` before saving) lists its models with a free `GET /models`; it needs no action token.
+- Create a collection with `"embeddingProvider":"openai-compatible","embeddingServiceId":"<service-id>","embeddingModel":"bge-m3"`. Change a service's URL or key with `PATCH /v1/admin/embedding-services/<service-id>`; collections use it at once. `DELETE` refuses a service that collections still use (`409 EMBEDDING_SERVICE_IN_USE`).
+
 ## 4. Reindex Flow
 
 ### Trigger reindex

@@ -38,7 +38,7 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 17. Use `GET /v1/admin/audit-log` for persisted operations history. `collectionId` and `operation` filters can be repeated for multi-select UI state.
 18. Treat admin auth as cookie-based and opt-in. Call `GET /v1/admin/auth/session` on boot, redirect `/admin/` to `/admin/login` when unauthenticated, and do not trust user-editable `x-tenant-id` / `x-user-id` on `/v1/admin/**`.
 19. Use `POST /v1/admin/auth/login` and `POST /v1/admin/auth/logout` for session lifecycle. Fetch `POST /v1/admin/auth/action-token` just in time before any mutating admin request except validation-only flows.
-20. Enforce the role matrix in the UI: `viewer` is read-only, `operator` can create/validate/update/reindex/cancel jobs and upload/delete documents (`manageDocuments`), and `admin` can additionally delete collections, delete jobs, and bulk delete jobs.
+20. Enforce the role matrix in the UI: `viewer` is read-only, `operator` can create/validate/update/reindex/cancel jobs and upload/delete documents (`manageDocuments`), and `admin` can additionally delete collections, delete jobs, bulk delete jobs, and manage embedding services (`manageEmbeddingServices`).
 
 ## Canonical End-User RAG Workflow
 

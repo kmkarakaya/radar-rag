@@ -10,6 +10,15 @@
 export const EMBEDDING_PROVIDERS = ["builtin", "openai-compatible"] as const;
 export type EmbeddingProvider = (typeof EMBEDDING_PROVIDERS)[number];
 
+/** The openai-compatible embedding service configured in .env / config (embedding.baseUrl). */
+export const SERVER_EMBEDDING_SERVICE_ID = "server";
+
+/**
+ * The built-in model, listed read-only among the embedding services so its models and users are visible.
+ * Not a connection: collections pick it with embeddingProvider "builtin", never with embeddingServiceId.
+ */
+export const BUILTIN_EMBEDDING_SERVICE_ID = "builtin";
+
 export type BuiltinEmbeddingModelSpec = {
   id: string;
   /** Quantization is fixed per catalog entry: a different dtype produces different vectors. */

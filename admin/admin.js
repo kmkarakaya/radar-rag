@@ -40,6 +40,7 @@ const EDIT_FIELD_IDS = {
     retrievalK: "editRetrievalK",
     retrievalDistanceThreshold: "editRetrievalDistanceThreshold",
     embeddingProvider: "editEmbeddingProvider",
+    embeddingServiceId: "editEmbeddingService",
     embeddingModel: "editEmbeddingModel",
 };
 
@@ -47,6 +48,7 @@ let state = {
     currentView: "collections",
     activeTab: "ready",
     files: { collectionId: null, data: null, loading: false, uploading: false, error: null, rejected: [] },
+    embeddingServices: emptyEmbeddingServicesState(),
     auth: {
         enabled: false,
         authenticated: false,
@@ -223,6 +225,25 @@ const elements = {
     editRetrievalDistanceThreshold: document.getElementById("editRetrievalDistanceThreshold"),
     editEmbeddingModel: document.getElementById("editEmbeddingModel"),
     editEmbeddingProvider: document.getElementById("editEmbeddingProvider"),
+    editEmbeddingService: document.getElementById("editEmbeddingService"),
+    embeddingServiceField: document.getElementById("embeddingServiceField"),
+    linkEmbeddingServices: document.getElementById("linkEmbeddingServices"),
+    esWarnings: document.getElementById("esWarnings"),
+    btnAddEmbeddingService: document.getElementById("btnAddEmbeddingService"),
+    esForm: document.getElementById("esForm"),
+    esFormId: document.getElementById("esFormId"),
+    esFormTitle: document.getElementById("esFormTitle"),
+    esName: document.getElementById("esName"),
+    esBaseUrl: document.getElementById("esBaseUrl"),
+    esApiKey: document.getElementById("esApiKey"),
+    esApiKeyHint: document.getElementById("esApiKeyHint"),
+    esClearKeyRow: document.getElementById("esClearKeyRow"),
+    esClearKey: document.getElementById("esClearKey"),
+    esTestResult: document.getElementById("esTestResult"),
+    btnEsTest: document.getElementById("btnEsTest"),
+    btnEsCancel: document.getElementById("btnEsCancel"),
+    btnEsSave: document.getElementById("btnEsSave"),
+    esTableBody: document.getElementById("esTableBody"),
     chatLlmStatus: document.getElementById("chatLlmStatus"),
     modelDiscoveryPanel: document.getElementById("modelDiscoveryPanel"),
     modelDiscoverySummary: document.getElementById("modelDiscoverySummary"),
@@ -595,8 +616,15 @@ function emptyModelDiscovery() {
         defaultProvider: "",
         defaultModel: "",
         builtinModels: [],
-        external: { configured: false, baseUrl: "", reachable: false, models: [], error: "" },
+        /** GET /v1/admin/models embeddingServices: [{ id, name, reachable, authOk, models, error }] ("server" first when configured). */
+        services: [],
     };
+}
+
+/** The embedding service chosen in the editor (openai-compatible only). */
+function selectedEmbeddingServiceEntry() {
+    const id = elements.editEmbeddingService?.value || "";
+    return state.modelDiscovery.services.find((service) => service.id === id) || null;
 }
 
 /** The provider the editor is about to use: the selected one, else the backend default. */
@@ -610,7 +638,7 @@ function getModelDiscoveryFieldConfig(_kind) {
     return {
         input: elements.editEmbeddingModel,
         select: elements.embeddingModelSelect,
-        models: provider === "builtin" ? state.modelDiscovery.builtinModels : state.modelDiscovery.external.models,
+        models: provider === "builtin" ? state.modelDiscovery.builtinModels : selectedEmbeddingServiceEntry()?.models || [],
     };
 }
 
@@ -650,11 +678,12 @@ function syncModelDiscoveryPanel() {
 
     const discovery = state.modelDiscovery;
     const provider = selectedEmbeddingProvider();
-    const external = discovery.external;
-    const online = provider === "builtin" ? discovery.loaded : external.configured && external.reachable;
+    syncEmbeddingServiceField();
+    const service = selectedEmbeddingServiceEntry();
+    const online = provider === "builtin" ? discovery.loaded : Boolean(service?.reachable && service?.authOk !== false);
 
     if (elements.modelDiscoveryStatus) {
-        elements.modelDiscoveryStatus.textContent = online ? "Available" : provider === "builtin" ? "Loading" : external.configured ? "Offline" : "Not configured";
+        elements.modelDiscoveryStatus.textContent = online ? "Available" : provider === "builtin" ? "Loading" : service ? "Offline" : "Not configured";
         elements.modelDiscoveryStatus.className = online
             ? "rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-700"
             : "rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-700";
@@ -667,12 +696,14 @@ function syncModelDiscoveryPanel() {
         let providerText;
         if (provider === "builtin") {
             providerText = `builtin: ${discovery.builtinModels.length} built-in model(s), run inside the backend and downloaded on first use.`;
-        } else if (!external.configured) {
+        } else if (discovery.services.length === 0) {
             providerText = EXTERNAL_EMBEDDING_SETUP_HINT;
-        } else if (!external.reachable) {
-            providerText = `openai-compatible: ${external.baseUrl} is not reachable${external.error ? ` (${external.error})` : ""}.`;
+        } else if (!service) {
+            providerText = "openai-compatible: pick an embedding service.";
+        } else if (!online) {
+            providerText = `openai-compatible: ${service.name} is not reachable${service.error ? ` (${service.error})` : ""}.`;
         } else {
-            providerText = `openai-compatible: ${external.models.length} model(s) at ${external.baseUrl}.`;
+            providerText = `openai-compatible: ${service.models.length} model(s) at ${service.name}. Pick an embedding model (chat models fail at indexing).`;
         }
         elements.modelDiscoverySummary.textContent = `${providerText} ${defaultText}`.trim();
     }
@@ -681,23 +712,60 @@ function syncModelDiscoveryPanel() {
     syncModelSelect("embedding");
 }
 
-// The external embedding service (URL, API key) is a server setting, not a per-collection field yet.
-const EXTERNAL_EMBEDDING_SETUP_HINT = "openai-compatible: no external embedding service is configured on the server. "
-    + "To use one (Ollama, OpenAI, LM Studio...): with Docker, add RAG_EMBEDDING_BASE_URL (and RAG_EMBEDDING_API_KEY if it needs a key) "
-    + "to the .env file next to docker-compose.yml and run docker compose up -d (Ollama on this computer: http://host.docker.internal:11434/v1); "
-    + "without Docker, run npm run onboard. Then pick its model here.";
+// External embedding services are managed in the "Embedding services" view (or set in .env / config as "server").
+const EXTERNAL_EMBEDDING_SETUP_HINT = "openai-compatible: no embedding service yet. "
+    + "Add one under Embedding services in the left menu (for example Ollama on this computer at http://host.docker.internal:11434/v1), "
+    + "or set RAG_EMBEDDING_BASE_URL on the server. Then pick it and its model here.";
 
-/** Disable "openai-compatible" while no external service is configured, unless the collection already uses it. */
+/** Disable "openai-compatible" while there is no embedding service, unless the collection already uses it. */
 function syncExternalProviderOption() {
     const select = elements.editEmbeddingProvider;
     const option = select?.querySelector('option[value="openai-compatible"]');
     if (!option) return;
     const discovery = state.modelDiscovery;
-    const unavailable = discovery.loaded && !discovery.external.configured && select.value !== "openai-compatible";
+    const unavailable = discovery.loaded && discovery.services.length === 0 && select.value !== "openai-compatible";
     option.disabled = unavailable;
     option.textContent = unavailable
-        ? "openai-compatible (external service, not configured on the server)"
+        ? "openai-compatible (external service; add one under Embedding services)"
         : "openai-compatible (external service)";
+}
+
+/**
+ * The service select only shows for openai-compatible. It lists GET /v1/admin/models embeddingServices and keeps
+ * a collection's current service selectable even if it is gone (so the editor never changes it silently).
+ */
+function syncEmbeddingServiceField(preferredId) {
+    const select = elements.editEmbeddingService;
+    if (!select) return;
+    const show = selectedEmbeddingProvider() === "openai-compatible";
+    elements.embeddingServiceField?.classList.toggle("hidden", !show);
+    const wanted = preferredId !== undefined ? preferredId : select.value;
+    const services = state.modelDiscovery.services;
+    clearNode(select);
+    services.forEach((service) => {
+        const option = createEl("option", "", service.reachable === false ? `${service.name} (not reachable)` : service.name);
+        option.value = service.id;
+        select.appendChild(option);
+    });
+    if (wanted && !services.some((service) => service.id === wanted)) {
+        const missing = createEl("option", "", `${wanted} (not available)`);
+        missing.value = wanted;
+        select.appendChild(missing);
+    }
+    // Default on create: "server" when configured, else the first service (the API picks the same way).
+    select.value = wanted || services[0]?.id || "";
+}
+
+/** " via <service name>" for an openai-compatible embedding, "" otherwise. */
+function viaEmbeddingService(id) {
+    return id ? ` via ${embeddingServiceName(id)}` : "";
+}
+
+function embeddingServiceName(id) {
+    if (!id) return "";
+    const known = state.modelDiscovery.services.find((service) => service.id === id)
+        || state.embeddingServices.items.find((service) => service.id === id);
+    return known?.name || id;
 }
 
 function describeChatLlm(chat) {
@@ -886,19 +954,21 @@ async function loadModelDiscovery() {
     try {
         const data = await apiRequest(`${API.admin}/models`);
         if (token !== loadTokens.modelDiscovery) return;
-        const external = data?.providers?.["openai-compatible"] || {};
         state.modelDiscovery = {
             loaded: true,
             defaultProvider: typeof data?.default?.provider === "string" ? data.default.provider : "",
             defaultModel: typeof data?.default?.model === "string" ? data.default.model : "",
             builtinModels: normalizeModelList(data?.providers?.builtin?.models),
-            external: {
-                configured: external.configured === true,
-                baseUrl: typeof external.baseUrl === "string" ? external.baseUrl : "",
-                reachable: external.reachable === true,
-                models: normalizeModelList(external.models),
-                error: typeof external.error === "string" ? external.error : "",
-            },
+            services: (Array.isArray(data?.embeddingServices) ? data.embeddingServices : [])
+                .filter((service) => typeof service?.id === "string")
+                .map((service) => ({
+                    id: service.id,
+                    name: typeof service.name === "string" ? service.name : service.id,
+                    reachable: service.reachable === true,
+                    authOk: service.authOk !== false,
+                    models: normalizeModelList(service.models),
+                    error: typeof service.error === "string" ? service.error : "",
+                })),
         };
     } catch (_error) {
         if (token !== loadTokens.modelDiscovery) return;
@@ -1359,7 +1429,7 @@ function canAdminAction(capability) {
     const permissions = {
         viewer: ["read"],
         operator: ["read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob", "manageDocuments"],
-        admin: ["read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob", "manageDocuments", "deleteCollection", "deleteJob", "bulkDeleteJobs"],
+        admin: ["read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob", "manageDocuments", "deleteCollection", "deleteJob", "bulkDeleteJobs", "manageEmbeddingServices"],
     };
     return (permissions[role] || []).includes(capability);
 }
@@ -1513,6 +1583,9 @@ function resetDashboardState() {
     state.selectedReadiness = null;
     state.selectedPhysicalCollections = null;
     state.selectedPhysicalCollectionsError = null;
+    state.embeddingServices = emptyEmbeddingServicesState();
+    closeEmbeddingServiceForm();
+    clearNode(elements.esTableBody);
     state.jobList = [];
     state.jobListSource = "local";
     state.jobListNextCursor = null;
@@ -1616,6 +1689,7 @@ const VALIDATION_FIELD_LABELS = {
     retrievalDistanceThreshold: "Retrieval distance threshold",
     embeddingProvider: "Embedding provider",
     embeddingModel: "Embedding model",
+    embeddingServiceId: "Embedding service",
 };
 
 function formatValidationFieldLabel(field) {
@@ -1778,7 +1852,8 @@ function renderCollectionIndexStateBanner() {
     snapshotGrid.appendChild(createMetaItem("Saved chunk overlap", indexState?.desiredSnapshot?.chunkOverlap ?? collection.chunkOverlap));
     snapshotGrid.appendChild(createMetaItem(
         "Saved embedding",
-        `${indexState?.desiredSnapshot?.embeddingProvider ?? collection.embeddingProvider ?? "-"} / ${indexState?.desiredSnapshot?.embeddingModel ?? collection.embeddingModel}`,
+        `${indexState?.desiredSnapshot?.embeddingProvider ?? collection.embeddingProvider ?? "-"} / ${indexState?.desiredSnapshot?.embeddingModel ?? collection.embeddingModel}`
+            + viaEmbeddingService(indexState?.desiredSnapshot?.embeddingServiceId),
     ));
     snapshotGrid.appendChild(createMetaItem("Saved distance metric", indexState?.desiredSnapshot?.distanceMetric ?? collection.distanceMetric));
 
@@ -1791,7 +1866,8 @@ function renderCollectionIndexStateBanner() {
         activeGrid.appendChild(createMetaItem("Active source path", indexState.activeSnapshot.sourcePath));
         activeGrid.appendChild(createMetaItem("Active chunk size", indexState.activeSnapshot.chunkSize));
         activeGrid.appendChild(createMetaItem("Active chunk overlap", indexState.activeSnapshot.chunkOverlap));
-        activeGrid.appendChild(createMetaItem("Active embedding", `${indexState.activeSnapshot.embeddingProvider} / ${indexState.activeSnapshot.embeddingModel}`));
+        activeGrid.appendChild(createMetaItem("Active embedding", `${indexState.activeSnapshot.embeddingProvider} / ${indexState.activeSnapshot.embeddingModel}`
+            + viaEmbeddingService(indexState.activeSnapshot.embeddingServiceId)));
         activeGrid.appendChild(createMetaItem("Active distance metric", indexState.activeSnapshot.distanceMetric));
         activeSection.appendChild(activeGrid);
         detail.appendChild(activeSection);
@@ -1978,12 +2054,14 @@ function switchView(viewId) {
     const titles = {
         collections: "Collections",
         jobs: "Job Monitor",
+        "embedding-services": "Embedding services",
         audit: "Audit Log",
         health: "System Health",
     };
     elements.viewTitle.textContent = titles[viewId] || "Dashboard";
 
     if (viewId === "jobs") loadJobs();
+    if (viewId === "embedding-services") loadEmbeddingServices();
     if (viewId === "audit") loadAuditLog({ cursor: state.auditLogCursor, resetHistory: false });
     if (viewId === "health") loadHealth();
 }
@@ -2713,7 +2791,8 @@ function renderReadinessData(readiness) {
         createReadinessRow("Chroma readable", readiness.chromaReadable, Boolean(readiness.chromaReadable)),
         createReadinessRow("Chroma count", formatCount(readiness.chromaCount)),
         createReadinessRow(
-            `Embedding: ${availability.embeddingProvider || "-"} / ${availability.embeddingModel || "-"}`,
+            `Embedding: ${availability.embeddingProvider || "-"} / ${availability.embeddingModel || "-"}`
+                + (availability.embeddingServiceId ? ` via ${embeddingServiceName(availability.embeddingServiceId)}` : ""),
             availability.embeddingModelAvailable,
             Boolean(availability.embeddingModelAvailable),
         ),
@@ -2827,6 +2906,8 @@ function setupEditorTab(collection) {
     elements.editRetrievalK.value = collection.retrievalK ?? "";
     elements.editRetrievalDistanceThreshold.value = collection.retrievalDistanceThreshold ?? "";
     if (elements.editEmbeddingProvider) elements.editEmbeddingProvider.value = collection.embeddingProvider || "";
+    // An openai-compatible collection without a service id uses "server" (.env / config).
+    syncEmbeddingServiceField(collection.embeddingProvider === "openai-compatible" ? collection.embeddingServiceId || "server" : "");
     elements.editEmbeddingModel.value = fieldValueFromCollection(collection, "embeddingModel");
     syncSourceKindFields(collection);
     state.editorInitialSnapshot = readEditorValues();
@@ -2864,6 +2945,7 @@ function readEditorValues() {
         retrievalK: readOptionalInteger(EDIT_FIELD_IDS.retrievalK),
         retrievalDistanceThreshold: readOptionalNumber(EDIT_FIELD_IDS.retrievalDistanceThreshold),
         embeddingProvider: readTrimmed(EDIT_FIELD_IDS.embeddingProvider),
+        embeddingServiceId: readTrimmed(EDIT_FIELD_IDS.embeddingServiceId),
         embeddingModel: readTrimmed(EDIT_FIELD_IDS.embeddingModel),
     };
 }
@@ -2919,6 +3001,7 @@ function buildCollectionPayload(mode) {
         addIfNumber(payload, "retrievalDistanceThreshold", values.retrievalDistanceThreshold);
         addIfText(payload, "embeddingProvider", values.embeddingProvider);
         addIfText(payload, "embeddingModel", values.embeddingModel);
+        if (selectedEmbeddingProvider() === "openai-compatible") addIfText(payload, "embeddingServiceId", values.embeddingServiceId);
         return payload;
     }
 
@@ -2933,6 +3016,10 @@ function buildCollectionPayload(mode) {
     ["sourcePath", "embeddingProvider", "embeddingModel"].forEach((key) => {
         if (values[key] && values[key] !== initial[key]) payload[key] = values[key];
     });
+    if (selectedEmbeddingProvider() === "openai-compatible"
+        && values.embeddingServiceId && values.embeddingServiceId !== initial.embeddingServiceId) {
+        payload.embeddingServiceId = values.embeddingServiceId;
+    }
 
     if (values.distanceMetric && values.distanceMetric !== initial.distanceMetric) payload.distanceMetric = values.distanceMetric;
 
@@ -3284,6 +3371,249 @@ async function reindexCollection() {
     } finally {
         setButtonLoading(elements.btnReindex, false);
     }
+}
+
+// ---- Embedding services view (a client of /v1/admin/embedding-services) ----
+
+function emptyEmbeddingServicesState() {
+    return { loaded: false, loading: false, items: [], warnings: [], error: null, testing: false, saving: false };
+}
+
+function embeddingServicesUrl(id) {
+    const base = `${API.admin}/embedding-services`;
+    return id === undefined ? base : `${base}/${encodeURIComponent(id)}`;
+}
+
+const EMBEDDING_SERVICE_PRESETS = {
+    ollama: { name: "Ollama", baseUrl: "http://host.docker.internal:11434/v1" },
+    openai: { name: "OpenAI", baseUrl: "https://api.openai.com/v1" },
+    lmstudio: { name: "LM Studio", baseUrl: "http://host.docker.internal:1234/v1" },
+};
+
+async function loadEmbeddingServices() {
+    const services = state.embeddingServices;
+    services.loading = true;
+    renderEmbeddingServices();
+    try {
+        const data = await apiRequest(embeddingServicesUrl());
+        services.items = Array.isArray(data?.services) ? data.services : [];
+        services.warnings = Array.isArray(data?.warnings) ? data.warnings : [];
+        services.error = null;
+        services.loaded = true;
+    } catch (error) {
+        services.error = error;
+        showErrorToast(error, "Failed to load embedding services");
+    } finally {
+        services.loading = false;
+        renderEmbeddingServices();
+    }
+}
+
+function renderEmbeddingServices() {
+    if (!elements.esTableBody) return;
+    const services = state.embeddingServices;
+    const canManage = canAdminAction("manageEmbeddingServices");
+
+    elements.esWarnings.classList.toggle("hidden", services.warnings.length === 0);
+    clearNode(elements.esWarnings);
+    services.warnings.forEach((warning) => elements.esWarnings.appendChild(createEl("p", "", warning)));
+
+    if (elements.btnAddEmbeddingService) {
+        elements.btnAddEmbeddingService.disabled = !canManage;
+        elements.btnAddEmbeddingService.classList.toggle("opacity-50", !canManage);
+        if (!canManage) elements.btnAddEmbeddingService.title = "Managing embedding services requires admin access.";
+        else elements.btnAddEmbeddingService.removeAttribute("title");
+    }
+
+    clearNode(elements.esTableBody);
+    if (services.loading && services.items.length === 0) {
+        const row = createEl("tr");
+        const cell = createEl("td", "px-4 py-6 text-center text-slate-400 italic", "Loading embedding services...");
+        cell.colSpan = 6;
+        row.appendChild(cell);
+        elements.esTableBody.appendChild(row);
+        return;
+    }
+
+    services.items.forEach((service) => {
+        const row = createEl("tr", "hover:bg-slate-50");
+        const nameCell = createEl("td", "px-4 py-3 font-medium text-slate-800", service.name);
+        row.appendChild(nameCell);
+        const isBuiltin = service.source === "builtin";
+        const builtinModels = Array.isArray(service.models) ? service.models : [];
+        const urlText = isBuiltin
+            ? `No URL: runs inside the backend. Model${builtinModels.length === 1 ? "" : "s"}: ${builtinModels.join(", ") || "-"}`
+            : service.configured === false ? "Not configured (RAG_EMBEDDING_BASE_URL)" : service.baseUrl || "-";
+        row.appendChild(createEl("td", "px-4 py-3 text-slate-600 break-all", urlText));
+        row.appendChild(createEl("td", "px-4 py-3 text-slate-600", isBuiltin ? "Not needed" : service.apiKeyConfigured ? "Set" : "Not set"));
+        const sourceText = { builtin: "Built-in (read-only)", server: ".env / config (read-only)" }[service.source] || "Admin panel / API";
+        row.appendChild(createEl("td", "px-4 py-3 text-slate-500", sourceText));
+        row.appendChild(createEl("td", "px-4 py-3 text-slate-600", formatCount(service.collectionCount ?? 0)));
+        const actions = createEl("td", "px-4 py-3 text-right whitespace-nowrap space-x-3");
+        if (!isBuiltin && service.configured !== false && canManage) {
+            actions.appendChild(createButton("Test", "text-indigo-600 hover:text-indigo-800 text-xs font-bold", () => testEmbeddingService({ serviceId: service.id }, service.name)));
+        }
+        if (!service.readOnly && canManage) {
+            actions.appendChild(createButton("Edit", "text-slate-600 hover:text-slate-800 text-xs font-bold", () => openEmbeddingServiceForm(service)));
+            actions.appendChild(createButton("Delete", "text-red-500 hover:text-red-700 text-xs font-bold", () => deleteEmbeddingServiceAction(service)));
+        }
+        row.appendChild(actions);
+        elements.esTableBody.appendChild(row);
+    });
+}
+
+function openEmbeddingServiceForm(service = null) {
+    if (!canAdminAction("manageEmbeddingServices")) {
+        showToast("Managing embedding services requires admin access.", "error");
+        return;
+    }
+    elements.esForm.classList.remove("hidden");
+    elements.esFormId.value = service?.id || "";
+    elements.esFormTitle.textContent = service ? `Edit ${service.name}` : "Add embedding service";
+    elements.esName.value = service?.name || "";
+    elements.esBaseUrl.value = service?.baseUrl || "";
+    elements.esApiKey.value = "";
+    elements.esApiKeyHint.textContent = service?.apiKeyConfigured
+        ? "An API key is stored. Leave this empty to keep it, or type a new one."
+        : "Optional; a local Ollama needs none. Stored on the server and never shown again.";
+    elements.esClearKey.checked = false;
+    elements.esClearKeyRow.classList.toggle("hidden", !service?.apiKeyConfigured);
+    setEmbeddingServiceTestResult(null);
+    elements.esName.focus();
+}
+
+function closeEmbeddingServiceForm() {
+    elements.esForm.classList.add("hidden");
+    elements.esFormId.value = "";
+    elements.esApiKey.value = "";
+    setEmbeddingServiceTestResult(null);
+}
+
+function setEmbeddingServiceTestResult(result) {
+    const box = elements.esTestResult;
+    if (!box) return;
+    clearNode(box);
+    box.classList.toggle("hidden", !result);
+    if (!result) return;
+    const ok = result.ok === true;
+    box.className = `rounded-lg border p-3 text-xs ${ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-100 bg-red-50 text-red-700"}`;
+    const models = Array.isArray(result.models) ? result.models : [];
+    box.appendChild(createEl("p", "font-semibold", ok
+        ? `Connected: ${models.length} model(s).`
+        : `Not connected: ${result.error || "the service did not answer."}`));
+    if (models.length > 0) {
+        box.appendChild(createEl("p", "mt-1", `${models.slice(0, 15).join(", ")}${models.length > 15 ? ", ..." : ""}`));
+        box.appendChild(createEl("p", "mt-1 text-slate-500", "Pick an embedding model (such as bge-m3 or nomic-embed-text) for a collection; chat models fail at indexing."));
+    }
+}
+
+/** POST /embedding-services/test: { serviceId } or { baseUrl, apiKey? }. A free GET /models; never embeds. */
+async function testEmbeddingService(body, label) {
+    if (state.embeddingServices.testing) return;
+    state.embeddingServices.testing = true;
+    setButtonLoading(elements.btnEsTest, true, "Testing...");
+    try {
+        const result = await apiRequest(`${embeddingServicesUrl()}/test`, { method: "POST", body: JSON.stringify(body) });
+        if (!elements.esForm.classList.contains("hidden") && !body.serviceId) setEmbeddingServiceTestResult(result);
+        else showToast(result.ok ? `${label}: connected, ${result.models.length} model(s).` : `${label}: ${result.error || "not reachable"}`, result.ok ? "success" : "error");
+    } catch (error) {
+        showErrorToast(error, "Connection test failed");
+    } finally {
+        state.embeddingServices.testing = false;
+        setButtonLoading(elements.btnEsTest, false);
+    }
+}
+
+function testEmbeddingServiceForm() {
+    const id = elements.esFormId.value;
+    const baseUrl = elements.esBaseUrl.value.trim();
+    const apiKey = elements.esApiKey.value.trim();
+    const stored = state.embeddingServices.items.find((service) => service.id === id);
+    // An unchanged saved service is tested with its stored key; anything typed is tested as typed.
+    if (stored && baseUrl === stored.baseUrl && !apiKey && !elements.esClearKey.checked) {
+        apiRequest(`${embeddingServicesUrl()}/test`, { method: "POST", body: JSON.stringify({ serviceId: id }) })
+            .then(setEmbeddingServiceTestResult)
+            .catch((error) => showErrorToast(error, "Connection test failed"));
+        return;
+    }
+    if (!baseUrl) {
+        showToast("Enter the base URL first.", "error");
+        return;
+    }
+    testEmbeddingService(apiKey ? { baseUrl, apiKey } : { baseUrl }, "Connection");
+}
+
+async function saveEmbeddingService() {
+    const id = elements.esFormId.value;
+    const body = { name: elements.esName.value.trim(), baseUrl: elements.esBaseUrl.value.trim() };
+    const apiKey = elements.esApiKey.value.trim();
+    if (apiKey) body.apiKey = apiKey;
+    else if (id && elements.esClearKey.checked) body.apiKey = null;
+    if (!body.name || !body.baseUrl) {
+        showToast("Name and base URL are required.", "error");
+        return;
+    }
+    state.embeddingServices.saving = true;
+    setButtonLoading(elements.btnEsSave, true, "Saving...");
+    try {
+        const data = await adminMutationRequest(id ? embeddingServicesUrl(id) : embeddingServicesUrl(), {
+            method: id ? "PATCH" : "POST",
+            body: JSON.stringify(body),
+        });
+        showToast(id ? "Embedding service updated; it is used at once." : "Embedding service added.", "success");
+        // Warnings about this change (for example a URL another service already uses); the auth-off one is on the page.
+        (Array.isArray(data?.warnings) ? data.warnings : [])
+            .filter((warning) => !state.embeddingServices.warnings.includes(warning))
+            .forEach((warning) => showToast(warning, "info", { durationMs: 10000 }));
+        closeEmbeddingServiceForm();
+        await Promise.all([loadEmbeddingServices(), loadModelDiscovery()]);
+    } catch (error) {
+        showErrorToast(error, "Saving the embedding service failed");
+    } finally {
+        state.embeddingServices.saving = false;
+        setButtonLoading(elements.btnEsSave, false);
+    }
+}
+
+async function deleteEmbeddingServiceAction(service) {
+    if (!confirm(`Delete the embedding service "${service.name}"?`)) return;
+    try {
+        await adminMutationRequest(embeddingServicesUrl(service.id), { method: "DELETE" });
+        showToast(`Deleted ${service.name}.`, "success");
+        await Promise.all([loadEmbeddingServices(), loadModelDiscovery()]);
+    } catch (error) {
+        const users = Array.isArray(error?.details?.collections) ? error.details.collections : [];
+        if (error?.code === "EMBEDDING_SERVICE_IN_USE" && users.length > 0) {
+            showToast(`${service.name} is used by: ${users.map((collection) => collection.displayName).join(", ")}. Switch them to another service first.`, "error", { durationMs: 9000 });
+            return;
+        }
+        showErrorToast(error, "Deleting the embedding service failed");
+    }
+}
+
+function bindEmbeddingServicesEvents() {
+    elements.btnAddEmbeddingService?.addEventListener("click", () => openEmbeddingServiceForm());
+    elements.btnEsCancel?.addEventListener("click", () => closeEmbeddingServiceForm());
+    elements.btnEsTest?.addEventListener("click", () => testEmbeddingServiceForm());
+    elements.esForm?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        saveEmbeddingService();
+    });
+    document.querySelectorAll("[data-es-preset]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const preset = EMBEDDING_SERVICE_PRESETS[button.dataset.esPreset];
+            if (!preset) return;
+            if (!elements.esName.value.trim()) elements.esName.value = preset.name;
+            elements.esBaseUrl.value = preset.baseUrl;
+            setEmbeddingServiceTestResult(null);
+        });
+    });
+    elements.editEmbeddingService?.addEventListener("change", () => syncModelDiscoveryPanel());
+    elements.linkEmbeddingServices?.addEventListener("click", (event) => {
+        event.preventDefault();
+        closeInspector();
+        switchView("embedding-services");
+    });
 }
 
 // ---- Documents tab (a client of the files API) ----
@@ -4721,6 +5051,7 @@ function bindEvents() {
     });
 
     bindDocumentsTabEvents();
+    bindEmbeddingServicesEvents();
 
     elements.pgModeBtns.forEach((button) => {
         button.addEventListener("click", () => {

@@ -973,6 +973,155 @@ paths:
           $ref: "#/components/responses/ApiError"
         "500":
           $ref: "#/components/responses/ApiError"
+  /v1/admin/embedding-services:
+    get:
+      tags: [Admin Embedding Services]
+      operationId: listEmbeddingServices
+      summary: List the tenant's embedding services, including the read-only "server" one
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+      responses:
+        "200":
+          description: Services and management warnings (admin auth off)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbeddingServicesListResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+    post:
+      tags: [Admin Embedding Services]
+      operationId: createEmbeddingService
+      summary: Add an embedding service (admin; takes effect at once)
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XAdminActionToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingServiceCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbeddingServiceResponse"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/embedding-services/test:
+    post:
+      tags: [Admin Embedding Services]
+      operationId: testEmbeddingService
+      summary: Check a saved or unsaved service with a free GET /models (never embeds)
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingServiceTestRequest"
+      responses:
+        "200":
+          description: Reachability and the models the service lists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbeddingServiceTestResponse"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/embedding-services/{serviceId}:
+    parameters:
+      - name: serviceId
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      tags: [Admin Embedding Services]
+      operationId: updateEmbeddingService
+      summary: Change a service's name, URL or key (collections use the change at once)
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XAdminActionToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingServiceUpdateRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbeddingServiceResponse"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "409":
+          description: EMBEDDING_SERVICE_READ_ONLY for "server"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+    delete:
+      tags: [Admin Embedding Services]
+      operationId: deleteEmbeddingService
+      summary: Delete a service that no collection uses
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XAdminActionToken"
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "409":
+          description: EMBEDDING_SERVICE_IN_USE (details.collections) or EMBEDDING_SERVICE_READ_ONLY
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
   /v1/admin/audit-log:
     get:
       tags: [Admin Audit]
@@ -1343,6 +1492,9 @@ components:
             - TOO_MANY_FILES
             - UNSUPPORTED_FILE
             - DOCUMENT_NOT_FOUND
+            - EMBEDDING_SERVICE_NOT_FOUND
+            - EMBEDDING_SERVICE_IN_USE
+            - EMBEDDING_SERVICE_READ_ONLY
             - INTERNAL_ERROR
         message:
           type: string
@@ -1875,8 +2027,8 @@ components:
       description: >-
         builtin = an ONNX model from the fixed built-in catalog running inside the backend process (CPU), downloaded
         once on first use into embedding.cacheDir. openai-compatible = any OpenAI-compatible /v1/embeddings API
-        configured once globally with embedding.baseUrl (API key from RAG_EMBEDDING_API_KEY or
-        .local/rag_embedding_api_key.secret, never returned).
+        reached through an embedding service: one managed with /v1/admin/embedding-services, or the read-only
+        "server" service from embedding.baseUrl / RAG_EMBEDDING_BASE_URL. API keys are never returned.
     EmbeddingTargetStatus:
       type: object
       description: >-
@@ -2106,6 +2258,12 @@ components:
           description: >-
             Model currently used by live retrieval and query reads (with embeddingProvider: the pair the active
             index was built with).
+        embeddingServiceId:
+          type: string
+          description: openai-compatible only; the embedding service the active index was built with.
+        desiredEmbeddingServiceId:
+          type: string
+          description: Set with desiredEmbeddingProvider/Model when the saved embedding service differs from the active one.
         embeddingModelAvailable:
           type: boolean
           description: >-
@@ -2293,6 +2451,9 @@ components:
           description: >-
             Embedding model used for retrieval (with embeddingProvider: the pair the collection's active index was
             built with, never the configured default).
+        embeddingServiceId:
+          type: string
+          description: openai-compatible only; the embedding service used for the query embedding.
         debug:
           $ref: "#/components/schemas/RetrievalDebug"
     QueryRequest:
@@ -2323,6 +2484,9 @@ components:
         embeddingModel:
           type: string
           description: Embedding model (collection's active pair, with embeddingProvider) used to retrieve the sources that grounded the answer.
+        embeddingServiceId:
+          type: string
+          description: openai-compatible only; the embedding service ("server" = the one from .env / config).
         chatModel:
           type: string
           description: Global chat LLM model that generated the answer.
@@ -2381,6 +2545,13 @@ components:
           description: >-
             Defaults to the configured default provider (modelDefaults.embeddingProvider). The configured default only
             applies to new collections; the stored provider/model never change when the default changes.
+        embeddingServiceId:
+          type: string
+          minLength: 1
+          description: >-
+            openai-compatible only: an embedding service id or "server". Omitted: "server" when configured, else the
+            tenant's only service. Unknown ids return 404 EMBEDDING_SERVICE_NOT_FOUND; "builtin" returns 400 (use
+            embeddingProvider "builtin").
         embeddingModel:
           type: string
           minLength: 1
@@ -2420,6 +2591,10 @@ components:
           allOf:
             - $ref: "#/components/schemas/EmbeddingProvider"
           description: Reindex-bound; live reads keep the active embedding until a reindex succeeds.
+        embeddingServiceId:
+          type: string
+          minLength: 1
+          description: Reindex-bound; openai-compatible only. An embedding service id or "server".
         embeddingModel:
           type: string
           minLength: 1
@@ -2489,6 +2664,12 @@ components:
         embeddingModel:
           type: string
           description: Desired embedding model, used by the next reindex.
+        embeddingServiceId:
+          type: string
+          description: Desired embedding service (openai-compatible); unset on older collections, meaning "server".
+        activeEmbeddingServiceId:
+          type: string
+          description: Embedding service the active index was built with.
         distanceMetric:
           $ref: "#/components/schemas/DistanceMetric"
         chromaCollectionConfiguration:
@@ -2618,6 +2799,9 @@ components:
               $ref: "#/components/schemas/EmbeddingProvider"
             embeddingModel:
               type: string
+            embeddingServerConfigured:
+              type: boolean
+              description: Whether the "server" embedding service (RAG_EMBEDDING_BASE_URL / embedding.baseUrl) is set.
         chat:
           type: object
           description: >-
@@ -2734,6 +2918,142 @@ components:
                     type: string
                 error:
                   type: string
+        embeddingServices:
+          type: array
+          description: Every embedding service of the tenant with its models ("server" first when configured).
+          items:
+            $ref: "#/components/schemas/EmbeddingServiceModels"
+    EmbeddingServiceModels:
+      type: object
+      required: [id, name, reachable, authOk, models]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        reachable:
+          type: boolean
+        authOk:
+          type: boolean
+        models:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+    EmbeddingService:
+      type: object
+      required: [id, name, baseUrl, apiKeyConfigured, source, readOnly, configured, collectionCount]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        baseUrl:
+          type: [string, "null"]
+        apiKeyConfigured:
+          type: boolean
+          description: The key itself is never returned.
+        source:
+          type: string
+          enum: [builtin, server, panel]
+          description: >-
+            builtin = the built-in model inside the backend (listed for visibility; collections pick it with
+            embeddingProvider "builtin", never as embeddingServiceId); server = .env / config; panel = added via the API.
+        models:
+          type: array
+          items:
+            type: string
+          description: builtin entry only; the built-in models this backend ships.
+        readOnly:
+          type: boolean
+        configured:
+          type: boolean
+        collectionCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    EmbeddingServicesListResponse:
+      type: object
+      required: [services, warnings]
+      properties:
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmbeddingService"
+        warnings:
+          type: array
+          items:
+            type: string
+    EmbeddingServiceResponse:
+      type: object
+      required: [service, warnings]
+      properties:
+        service:
+          $ref: "#/components/schemas/EmbeddingService"
+        warnings:
+          type: array
+          items:
+            type: string
+    EmbeddingServiceCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, baseUrl]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        baseUrl:
+          type: string
+          format: uri
+          description: http or https; a trailing / is removed.
+        apiKey:
+          type: string
+          minLength: 1
+    EmbeddingServiceUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        baseUrl:
+          type: string
+          format: uri
+        apiKey:
+          type: [string, "null"]
+          description: A new key; null removes the stored key; omitted keeps it.
+    EmbeddingServiceTestRequest:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [serviceId]
+          properties:
+            serviceId:
+              type: string
+        - type: object
+          additionalProperties: false
+          required: [baseUrl]
+          properties:
+            baseUrl:
+              type: string
+              format: uri
+            apiKey:
+              type: string
+    EmbeddingServiceTestResponse:
+      allOf:
+        - $ref: "#/components/schemas/EmbeddingServiceModels"
+        - type: object
+          required: [ok]
+          properties:
+            ok:
+              type: boolean
     CollectionFile:
       type: object
       required: [name, sizeBytes, modifiedAt, supported]
@@ -2851,6 +3171,9 @@ components:
           allOf:
             - $ref: "#/components/schemas/EmbeddingProvider"
           description: Embedding provider the job builds with; becomes the collection's activeEmbeddingProvider on success.
+        targetEmbeddingServiceId:
+          type: string
+          description: Embedding service the job builds with (openai-compatible).
         targetEmbeddingModel:
           type: string
           description: Embedding model the job builds with; becomes the collection's activeEmbeddingModel on success.

@@ -23,7 +23,7 @@ Role matrix:
 | --- | --- |
 | `viewer` | Read-only `GET /v1/admin/**` plus auth session endpoints |
 | `operator` | Viewer access plus create, validate, update, reindex, job cancel, and document upload/delete (`manageDocuments`) |
-| `admin` | Operator access plus collection delete, job delete, and bulk delete |
+| `admin` | Operator access plus collection delete, job delete, bulk delete, and embedding services (`manageEmbeddingServices`) |
 
 Operational notes:
 
@@ -98,6 +98,7 @@ Example response:
 Notes:
 
 - `collectionDefaults.sourcePath` is a resolved runtime path, so it may appear absolute.
+- `modelDefaults.embeddingServerConfigured` tells whether the `server` embedding service (`RAG_EMBEDDING_BASE_URL` / `embedding.baseUrl`) is set; more services come from the embedding services endpoints.
 - `modelDefaults` is the configured default embedding (`embedding.provider` / `embedding.model`). It applies to **new** collections only; every existing collection keeps its own stored provider and model, so changing this default never changes an existing collection.
 - `chat` describes the global, optional chat LLM used only by `/query`. It is not a collection setting. `enabled: false` means the backend is retrieve-only (`/query` returns `503 CHAT_NOT_CONFIGURED`). When enabled, `baseUrl` and `model` show the OpenAI-compatible endpoint and model (for example `http://localhost:11434/v1` and `gemma3:4b`). The API key itself is never returned; `apiKeyConfigured` only tells whether one is set (`RAG_CHAT_API_KEY` or `.local/rag_chat_api_key.secret`). The chat LLM is configured with `npm run onboard` or `RAG_CHAT_BASE_URL` / `RAG_CHAT_MODEL`, not through the admin API. The bundled admin panel (`/admin`) shows it as a read-only "Chat LLM (global, optional)" line in the collection form, which has no chat model field.
 - This endpoint is intended for create-form visibility only; it does not expose the full config file.
@@ -110,7 +111,7 @@ Returns embedding model suggestions per embedding provider, for the collection `
 There are two embedding providers:
 
 - `builtin` (default): an ONNX model that runs inside the backend process on CPU (transformers.js). Models come from a fixed built-in catalog (currently `onnx-community/embeddinggemma-2-ONNX`, q8, about 346 MB) and are downloaded once on first use into `embedding.cacheDir` (default `models/`). No external service is needed.
-- `openai-compatible`: any OpenAI-compatible `/v1/embeddings` API (Ollama `http://localhost:11434/v1`, OpenAI, LM Studio, vLLM, ...). The connection is configured once for the server (`embedding.baseUrl`; the API key comes from `RAG_EMBEDDING_API_KEY` or `.local/rag_embedding_api_key.secret` and is never returned).
+- `openai-compatible`: any OpenAI-compatible `/v1/embeddings` API (Ollama `http://localhost:11434/v1`, OpenAI, LM Studio, vLLM, ...), reached through an **embedding service**: one managed with the [embedding services endpoints](#embedding-services), or the read-only `server` service from `.env` / config (`embedding.baseUrl`; its API key comes from `RAG_EMBEDDING_API_KEY` or `.local/rag_embedding_api_key.secret`). Keys are never returned.
 
 Example response:
 
@@ -131,9 +132,15 @@ Example response:
       "reachable": true,
       "models": ["embeddinggemma-2:270m", "bge-m3"]
     }
-  }
+  },
+  "embeddingServices": [
+    { "id": "server", "name": "Server (.env / config)", "reachable": true, "authOk": true, "models": ["embeddinggemma-2:270m", "bge-m3"] },
+    { "id": "openai-4f2a9c1b7e", "name": "OpenAI", "reachable": true, "authOk": true, "models": ["text-embedding-3-small"] }
+  ]
 }
 ```
+
+`embeddingServices` lists every embedding service the tenant can use with its models (`server` first, when configured); a collection picks one with `embeddingServiceId`. `providers["openai-compatible"]` describes only the `server` service and is kept for older clients.
 
 If no `embedding.baseUrl` is configured, the `openai-compatible` entry is `{ "configured": false, "baseUrl": null, "reachable": false, "models": [] }`. If the service is configured but unreachable or rejects the API key, the endpoint still returns `200` with `reachable: false`, `models: []`, and an `error` string.
 
@@ -142,7 +149,7 @@ Notes:
 - `default` is the configured default embedding for new collections (same as `GET /v1/admin/config/defaults` `modelDefaults`).
 - The bundled admin panel (`/admin`) uses this for the Embedding Provider select and the model suggestions in the collection form; its collection health view shows the active embedding (`modelAvailability.embeddingProvider` / `embeddingModel`) from the collection readiness endpoint.
 - `providers.builtin.models` is the full built-in catalog; any other built-in model name is rejected with `422 UNAVAILABLE_MODEL`.
-- `providers["openai-compatible"].models` comes from a free, cached `GET {embedding.baseUrl}/models`. It lists every model the service offers (it cannot tell embedding models from chat models), so it can change without a code deploy.
+- Each service's `models` come from a free, cached `GET {baseUrl}/models`. It lists every model the service offers (it cannot tell embedding models from chat models), so it can change without a code deploy.
 - Use this together with `GET /v1/admin/config/defaults` so the create form can show both autocomplete suggestions and backend defaults.
 
 ### `GET /v1/admin/auth/session`
@@ -212,6 +219,7 @@ Optional:
 - `retrievalK`
 - `retrievalDistanceThreshold`
 - `embeddingProvider`: `builtin` or `openai-compatible`
+- `embeddingServiceId`: `openai-compatible` only; an embedding service id, or `server`
 - `embeddingModel`
 
 Behavior:
@@ -222,6 +230,7 @@ Behavior:
   - With `sourcePath` it is a **folder** collection (`sourceKind: "folder"`): it indexes that file or folder on the server (relative to the project root, for example `data/handbook`; with Docker, inside the `./data` mount). The files endpoints list its files read-only. Before this release, an omitted `sourcePath` meant the whole `collectionDefaults.sourcePath` folder; send `"sourcePath": "data"` for that behavior.
   - Folder collections never see the `data/collections` folder, so a folder collection on `data` does not pick up other collections' uploads.
   - The `sourcePath` of an uploads collection cannot be changed (`PATCH` returns `400 INVALID_REQUEST_BODY`; validation reports `COLLECTION_SOURCE_FIXED`).
+- Embedding service (`openai-compatible` only): `embeddingServiceId` must be one of the tenant's services or `server` (`404 EMBEDDING_SERVICE_NOT_FOUND` otherwise; `400` with the `builtin` provider). Left out, the server picks `server` when it is configured, otherwise the tenant's only service; with several services and no `server`, it asks for `embeddingServiceId` (`400`). The response's `collection.embeddingServiceId` shows the choice. Changing it later (PATCH) is a re-index field, like the model; a PATCH that switches a collection to `openai-compatible` without `embeddingServiceId` picks the service the same way.
 - Embedding: omitted `embeddingProvider` / `embeddingModel` come from the configured default (`modelDefaults`). If you pick a provider other than the default without a model, `builtin` gets its default built-in model, while `openai-compatible` needs an explicit `embeddingModel` (otherwise `422 UNAVAILABLE_MODEL`). The stored provider and model belong to the collection; later changes of the configured default never affect it.
 - Collections have no chat model. Sending `chatModel` (or any other unknown field) returns `400 INVALID_REQUEST_BODY`. The chat LLM used by `/query` is global and optional (see `GET /v1/admin/config/defaults`).
 - Omitted create fields are filled from runtime configuration defaults and model defaults.
@@ -658,6 +667,47 @@ Notes:
 - When the job succeeds, the collection's `activeEmbeddingProvider` / `activeEmbeddingModel` become the job's `targetEmbeddingProvider` / `targetEmbeddingModel`.
 - Reindex is one of the rate-limited operations.
 
+## Embedding services
+
+Connections to OpenAI-compatible embedding APIs, per tenant. A collection with the `openai-compatible` provider uses one (`embeddingServiceId`). Changes take effect immediately: clients and checks are cached per service and are rebuilt when its URL or key changes, so no restart is needed. The admin panel's **Embedding services** view uses exactly these endpoints.
+
+- The `builtin` entry is the built-in model that runs inside the backend. It is listed first, read-only, with its `models` and `collectionCount`, so the list shows every embedding the tenant's collections can use. It is not a connection: a collection picks it with `"embeddingProvider": "builtin"` (`embeddingServiceId: "builtin"` returns `400`); `PATCH`/`DELETE` return `409 EMBEDDING_SERVICE_READ_ONLY` and `/test` returns `400`. It is not part of `GET /v1/admin/models` `embeddingServices`.
+- The `server` service is the one from `.env` / config (`RAG_EMBEDDING_BASE_URL`, `RAG_EMBEDDING_API_KEY`, `embedding.baseUrl`). It is listed read-only (`PATCH`/`DELETE` return `409 EMBEDDING_SERVICE_READ_ONLY`). Collections created before embedding services existed use it.
+- API keys are stored in plain text in the registry (`data/registry.sqlite`) and never returned: responses only say `apiKeyConfigured`. They are redacted from error messages and job errors.
+- Managing services needs the `manageEmbeddingServices` capability (admin role) when admin auth is on. While admin auth is off, anyone who can reach the server can manage them; responses then carry a `warnings` entry saying so.
+- Whoever manages a service decides where document text is sent for embedding, and the server makes requests to the URL given (`http`/`https` only; redirects are never followed, neither in checks nor in embedding requests). Do not expose the server without admin auth.
+
+### `GET /v1/admin/embedding-services`
+
+```json
+{
+  "services": [
+    { "id": "builtin", "name": "Built-in (inside the backend)", "baseUrl": null, "apiKeyConfigured": false, "source": "builtin", "readOnly": true, "configured": true, "collectionCount": 3, "models": ["onnx-community/embeddinggemma-2-ONNX"] },
+    { "id": "server", "name": "Server (.env / config)", "baseUrl": "http://host.docker.internal:11434/v1", "apiKeyConfigured": false, "source": "server", "readOnly": true, "configured": true, "collectionCount": 2 },
+    { "id": "openai-4f2a9c1b7e", "name": "OpenAI", "baseUrl": "https://api.openai.com/v1", "apiKeyConfigured": true, "source": "panel", "readOnly": false, "configured": true, "collectionCount": 1, "createdAt": "2026-11-19T10:00:00.000Z", "updatedAt": "2026-11-19T10:05:00.000Z" }
+  ],
+  "warnings": ["Admin auth is off: anyone who can reach this server can change where documents are sent for embedding. Turn on admin auth before other people can reach it."]
+}
+```
+
+`collectionCount` counts the collections whose saved or active embedding uses the service. When `RAG_EMBEDDING_BASE_URL` is not set, the `server` entry has `configured: false` and `baseUrl: null`.
+
+### `POST /v1/admin/embedding-services`
+
+`{ "name": "OpenAI", "baseUrl": "https://api.openai.com/v1", "apiKey": "sk-..." }` → `201 { "service": {...}, "warnings": [...] }`. `apiKey` is optional; `baseUrl` must be `http(s)` (a trailing `/` is removed); names are unique per tenant (`400` otherwise). When another service (or `server`) already uses the same URL, the request still succeeds and `warnings` says which one; that is fine with a different API key. `PATCH` with a new `baseUrl` warns the same way.
+
+### `PATCH /v1/admin/embedding-services/:serviceId`
+
+Any of `name`, `baseUrl`, `apiKey` (`null` removes the stored key; leaving it out keeps it). Collections that use the service pick up the change on their next request; no re-index is needed (the model is unchanged).
+
+### `DELETE /v1/admin/embedding-services/:serviceId`
+
+`204`, or `409 EMBEDDING_SERVICE_IN_USE` with `details.collections` (`[{ id, displayName }]`) while any collection still uses it; switch those collections to another service and re-index, or delete them, first.
+
+### `POST /v1/admin/embedding-services/test`
+
+`{ "serviceId": "openai-4f2a9c1b7e" }` (a saved service, or `server`) or `{ "baseUrl": "...", "apiKey": "..." }` (before saving). A free `GET {baseUrl}/models`; nothing is embedded and nothing is stored. Response: `{ "id", "name", "reachable", "authOk", "models": [...], "error"?, "ok" }`. Needs `manageEmbeddingServices` but no action token (like validate).
+
 ## Documents of a collection
 
 Upload, list, replace and delete the documents of an **uploads** collection (created without `sourcePath`). The admin panel's Documents tab uses exactly these endpoints.
@@ -921,6 +971,9 @@ Rules:
 | `TOO_MANY_FILES` | `400` | More than 20 files in one upload request |
 | `UNSUPPORTED_FILE` | `400` | None of the uploaded files has a supported type and a valid name; see `details.rejected` |
 | `DOCUMENT_NOT_FOUND` | `404` | The document to delete does not exist in the collection |
+| `EMBEDDING_SERVICE_NOT_FOUND` | `404` | The embedding service does not exist for this tenant (also when a collection names an unknown `embeddingServiceId`) |
+| `EMBEDDING_SERVICE_IN_USE` | `409` | The embedding service is still used by collections (`details.collections`) |
+| `EMBEDDING_SERVICE_READ_ONLY` | `409` | The `server` service comes from `.env` / config and cannot be changed through the API |
 | `COLLECTION_STORAGE_INCONSISTENT` | `503` | Document delete: the document's chunks could not be removed from the search index (Chroma unreachable); nothing was deleted, retry later |
 | `INVALID_JOB_STATUS` | `400` | Job action was attempted in the wrong job state |
 | `UNAVAILABLE_MODEL` | `422` | Create or reindex preflight: no embedding model for `openai-compatible`, a built-in model outside the catalog, or a model the embedding service does not offer; see `details.availableModels` and `details.recommendedActions` |

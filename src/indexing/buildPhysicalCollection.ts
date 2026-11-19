@@ -4,6 +4,7 @@ import { createPhysicalChromaCollection, assertChromaCollectionReadable, deleteP
 import { createVectorStore } from "../rag.js";
 import type { CreateIndexJobEventInput, RagCollection } from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
+import type { EmbeddingTarget } from "../embeddings/index.js";
 import { emitOperationalLog, type OperationalLogSink } from "../observability/logger.js";
 import type { Document } from "@langchain/core/documents";
 
@@ -29,6 +30,8 @@ export function addMetadataToChunks(
 
 export async function buildPhysicalCollection(input: {
   collection: RagCollection;
+  /** The resolved embedding of the job (with its service connection); defaults to the collection's provider/model. */
+  embeddingTarget?: EmbeddingTarget;
   targetPhysicalCollection: string;
   targetVersion: string;
   runtimeConfig: ResolvedConfig;
@@ -230,6 +233,7 @@ export async function buildPhysicalCollection(input: {
       runtimeConfig,
       embeddingProvider: collection.embeddingProvider,
       embeddingModel: collection.embeddingModel,
+      embeddingTarget: input.embeddingTarget,
     });
 
     await vectorStore.addDocuments(indexedChunks, {

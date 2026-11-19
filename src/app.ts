@@ -33,7 +33,7 @@ import {
   checkChromaHealth,
   retrieveSources,
 } from "./rag.js";
-import { checkEmbeddingTarget, defaultEmbeddingTarget, listEmbeddingModels } from "./embeddings/index.js";
+import { checkEmbeddingTarget, defaultEmbeddingTarget, listConnectionModels, listEmbeddingModels } from "./embeddings/index.js";
 import type { IndexJobRunner } from "./indexing/jobRunner.js";
 
 export type AppDependencies = {
@@ -54,6 +54,8 @@ export type AppDependencies = {
     checkEmbeddingTarget?: typeof checkEmbeddingTarget;
     /** Model suggestions for GET /v1/admin/models. */
     listEmbeddingModels?: typeof listEmbeddingModels;
+    /** Free GET /models check of one embedding service (POST /v1/admin/embedding-services/test). */
+    checkEmbeddingConnection?: typeof listConnectionModels;
     /** Free GET /models check of the optional chat LLM (never a generation). */
     checkChatProvider?: typeof checkChatProvider;
     checkIndexingSourceHealth?: typeof checkIndexingSourceHealth;

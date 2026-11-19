@@ -180,21 +180,59 @@ The embedding model turns text into vectors; indexing and retrieval need one. Tw
 | Provider            | What it is                                                                    | Setup |
 | ------------------- | ----------------------------------------------------------------------------- | ----- |
 | `builtin` (default) | `onnx-community/embeddinggemma-2-ONNX`, running inside the backend on the CPU | Nothing: downloaded (~350 MB) on the first indexing into `./models` |
-| `openai-compatible` | Any OpenAI-compatible `/v1/embeddings` API: Ollama, OpenAI, LM Studio, vLLM   | Base URL, model and, if needed, an API key |
+| `openai-compatible` | Any OpenAI-compatible `/v1/embeddings` API: Ollama, OpenAI, LM Studio, vLLM   | An **embedding service** (base URL and, if needed, an API key) and a model |
 
-To make an external service the default for new collections, add to `.env` and run `docker compose up -d`:
+How it fits together:
+
+- **The model is chosen per collection.** Each collection stores its provider, embedding service and model, is indexed with them and is always searched with them. Different collections can use different services and models.
+- **Embedding services are connections you manage** in the admin panel (**Embedding services** in the left menu) or over the API. That list also shows the **Built-in** model (read-only, with how many collections use it); it needs no connection. Adding or changing one takes effect at once; no restart, no file to edit. You can add several (for example Ollama and OpenAI) and use them side by side.
+- **A service can also come from `.env` / config.** `RAG_EMBEDDING_BASE_URL` (and `RAG_EMBEDDING_API_KEY`) define the **Server (.env / config)** service; it is listed read-only in the panel and is changed only in those files.
+- **The server default only applies to new collections.** Changing it never touches existing collections.
+
+### Common setups
+
+**1. Do nothing.** Every collection uses the built-in model. It is downloaded once, on the first indexing.
+
+**2. Use Ollama on your computer.** Pull an embedding model (`ollama pull bge-m3`). In the admin panel, open **Embedding services** → **Add service**, click **Ollama on this computer** (base URL `http://host.docker.internal:11434/v1`), click **Test connection** to see its models, and **Save**. Then, in **New Collection**, choose **Embedding Provider: openai-compatible**, the service and the model. The same over the API:
 
 ```bash
-RAG_EMBEDDING_PROVIDER=openai-compatible
-RAG_EMBEDDING_BASE_URL=http://host.docker.internal:11434/v1
-RAG_EMBEDDING_MODEL=embeddinggemma-2:270m
-# RAG_EMBEDDING_API_KEY=...   for cloud providers
+# Add the service; the response contains its id
+curl -X POST http://localhost:3010/v1/admin/embedding-services -H "content-type: application/json" \
+  -d '{"name": "Ollama", "baseUrl": "http://host.docker.internal:11434/v1"}'
+
+# Check it (a free GET /models; nothing is embedded)
+curl -X POST http://localhost:3010/v1/admin/embedding-services/test -H "content-type: application/json" \
+  -d '{"serviceId": "<service-id>"}'
+
+# Create a collection that uses it
+curl -X POST http://localhost:3010/v1/admin/collections -H "content-type: application/json" \
+  -d '{"displayName": "My docs", "embeddingProvider": "openai-compatible", "embeddingServiceId": "<service-id>", "embeddingModel": "bge-m3"}'
 ```
 
-- Each collection stores the provider and model it was indexed with and is always searched with them. The setting above is only the default for **new** collections; existing ones are never touched. You can also pick the provider and model per collection in the admin panel. To offer an external service only for some collections, set just `RAG_EMBEDDING_BASE_URL` (and `RAG_EMBEDDING_API_KEY` if needed): `builtin` stays the default, and **openai-compatible** becomes selectable in New Collection (the panel disables it while no service is configured). Managing these connections from the admin panel is planned.
-- Changing a collection's provider or model marks it `reindex_required`; it keeps serving with the old embedding until the re-index finishes. Vectors from different models are not comparable, which is why a re-index is needed.
-- Speed: `builtin` runs on the backend's CPU. It is fine for small and medium document sets, but indexes noticeably slower than a dedicated embedding server, and a large indexing job can slow down concurrent searches. For large document sets, use Ollama (with a GPU if available) or a cloud API.
-- `/ready` checks the default embedding without running it. If an external default service is down, only indexing new collections is blocked; collections on another provider keep serving.
+If `embeddingServiceId` is left out, the server picks the **Server (.env / config)** service when it is set, otherwise the tenant's only service.
+
+**3. Use a cloud API**, for example OpenAI: add a service with the base URL `https://api.openai.com/v1` and your API key (`"apiKey": "sk-..."` over the API), then pick a model such as `text-embedding-3-small`. The key is stored on the server, never returned by the API and redacted from errors.
+
+**4. Use a service from `.env` instead** (handy for scripted setups). With Docker, add to the `.env` file next to `docker-compose.yml` and run `docker compose up -d`; without Docker, `npm run onboard` asks for the same settings:
+
+```bash
+RAG_EMBEDDING_BASE_URL=http://host.docker.internal:11434/v1
+# RAG_EMBEDDING_API_KEY=...            if the service needs a key
+# RAG_EMBEDDING_PROVIDER=openai-compatible and RAG_EMBEDDING_MODEL=bge-m3   to make it the default for new collections
+```
+
+**5. Switch an existing collection to another service or model.** Open the collection, go to **Settings**, change the provider, service or model and save (API: `PATCH /v1/admin/collections/<collection-id>` with `embeddingProvider` / `embeddingServiceId` / `embeddingModel`). The collection becomes `reindex_required` and keeps answering with the old embedding until you re-index; vectors from different models are not comparable, which is why a re-index is needed.
+
+Changing a service's URL or key (Embedding services → Edit) takes effect at once for every collection that uses it, without a re-index. A service that collections still use cannot be deleted.
+
+### Good to know
+
+- **Pick an embedding model.** Ollama lists all its models, chat models included. A chat model fails at indexing (for example `501 This server does not support embeddings`). `bge-m3`, `nomic-embed-text` and `embeddinggemma` are embedding models; with Ollama, `bge-m3` and `bge-m3:latest` both work.
+- **Check the distance threshold after switching models.** Chunks farther than the collection's `retrievalDistanceThreshold` (default 1.2, tuned for the built-in model) are dropped. Other models score on a different scale: in our test with `bge-m3`, relevant chunks scored 0.6 to 1.4, so short questions returned nothing at 1.2. If searches come back empty, raise the threshold in **Settings** (it takes effect at once, no re-index), look at each result's **Distance** in the **Playground**, and settle on a value that keeps the relevant chunks.
+- **Inside Docker, `localhost` is the container itself.** Reach services on your computer with `host.docker.internal`.
+- **Protect the panel before sharing the server.** Whoever can manage embedding services decides where your documents' text is sent. Only the `admin` role may do it once [admin auth](#level-6--protect-the-admin-panel) is on; while it is off (the default), anyone who can reach the server can, and the panel and API say so. API keys are stored in plain text in `data/registry.sqlite`; treat that file (and its backups) as secret.
+- **Speed:** `builtin` runs on the backend's CPU. It is fine for small and medium document sets, but indexes noticeably slower than a dedicated embedding server, and a large indexing job can slow down concurrent searches. For large document sets, use Ollama (with a GPU if available) or a cloud API.
+- `/ready` checks the default embedding without running it. If an external default service is down, only indexing new collections is blocked; collections on another provider or service keep serving.
 
 ## Level 6 — Protect the admin panel
 
@@ -279,7 +317,7 @@ All settings, environment variables and onboarding flags are described in [docs/
 | `no configuration file provided: not found` | `docker compose` was run in a folder without `docker-compose.yml` | `cd` into the folder with the downloaded file (Level 1: `radar-rag`) |
 | The first re-index takes minutes, or fails with `EMBEDDING_PROVIDER_UNREACHABLE` on the built-in model | The built-in model (~350 MB) downloads on the first indexing and needs internet access | Wait for the download (once), or check the network; the model is then kept in `./models` |
 | Creating a collection or re-indexing returns `422 UNAVAILABLE_MODEL` | The external embedding service does not offer that model | Pick a model from `details.availableModels`; for Ollama, `ollama pull <model>` first |
-| `503 EMBEDDING_PROVIDER_UNREACHABLE` or `422 EMBEDDING_PROVIDER_NOT_CONFIGURED` | The external embedding service is down, its URL is wrong, or none is set | Start it and check `RAG_EMBEDDING_BASE_URL` (in Docker use `host.docker.internal`, not `localhost`), or use `builtin` |
+| `503 EMBEDDING_PROVIDER_UNREACHABLE` or `422 EMBEDDING_PROVIDER_NOT_CONFIGURED` | The collection's embedding service is down, its URL or key is wrong, it was deleted, or there is none | Start it, then check it under **Embedding services** → **Test** (or `RAG_EMBEDDING_BASE_URL` for the .env / config one; in Docker use `host.docker.internal`, not `localhost`); or switch the collection to another service or to `builtin` |
 | Saving a new collection is blocked with `INDEXING_SOURCE_UNREADABLE` or `NO_INDEXABLE_DOCUMENTS` | The "folder on the server" option points to a folder that does not exist or has no supported files (a `C:\...` path never works with Docker) | Choose **Upload files** instead, or put the files in `./data/<folder>` and enter `data/<folder>` |
 | An upload returns `413 FILE_TOO_LARGE` or lists files under `rejected` | The file is larger than `uploads.maxFileSizeMb` (50 MB), or its type or name is not supported | Raise the limit in the config, or convert the file to `.txt`, `.md`, `.pdf`, `.doc` or `.docx` |
 | An upload or delete returns `409 COLLECTION_FILES_READ_ONLY` | The collection reads a folder on the server | Change the files in that folder and re-index, or create a collection without a source path |

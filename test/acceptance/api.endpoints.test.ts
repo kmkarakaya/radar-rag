@@ -156,6 +156,15 @@ async function stubListEmbeddingModels(runtimeConfig: ResolvedConfig): Promise<E
         models: embeddingServiceReachable ? availableEmbeddingModels : [],
       },
     },
+    embeddingServices: runtimeConfig.embedding.baseUrl
+      ? [{
+        id: "server",
+        name: "Server (.env / config)",
+        reachable: embeddingServiceReachable,
+        authOk: true,
+        models: embeddingServiceReachable ? availableEmbeddingModels : [],
+      }]
+      : [],
   };
 }
 
@@ -582,6 +591,7 @@ describe("v1 admin and rag api endpoints", () => {
     assert.deepEqual(body.modelAvailability, {
       embeddingProvider: "openai-compatible",
       embeddingModel: createdCollection.embeddingModel,
+      embeddingServiceId: "server",
       embeddingModelAvailable: true,
       chatModel: config.chat.model,
       chatModelAvailable: true,
@@ -610,6 +620,7 @@ describe("v1 admin and rag api endpoints", () => {
       assert.deepEqual(body.modelAvailability, {
         embeddingProvider: "openai-compatible",
         embeddingModel: "missing-embed-model",
+        embeddingServiceId: "server",
         embeddingModelAvailable: false,
         chatModel: config.chat.model,
         chatModelAvailable: false,
@@ -1636,6 +1647,7 @@ describe("v1 admin and rag api endpoints", () => {
     assert.deepEqual(body.modelDefaults, {
       embeddingProvider: config.embedding.provider,
       embeddingModel: config.embedding.model,
+      embeddingServerConfigured: true,
     });
     assert.deepEqual(body.chat, {
       enabled: true,

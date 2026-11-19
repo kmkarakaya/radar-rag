@@ -2,6 +2,8 @@ import type { CollectionRegistry, IndexJob, RagCollection, RequestContext } from
 import type { ResolvedConfig } from "../config.js";
 import { checkChatProvider } from "../chat.js";
 import { activeEmbeddingTarget, checkEmbeddingTarget, type EmbeddingProvider } from "../embeddings/index.js";
+import { resolveEmbeddingTarget } from "../embeddings/services.js";
+import { normalizeEmbeddingServiceId } from "../collections/indexState.js";
 import { checkChromaHealth } from "../rag.js";
 import { describeChatReadiness, describeEmbeddingReadiness, recommendedActionFor, unique } from "../readiness.js";
 
@@ -23,6 +25,8 @@ export type CollectionReadinessPayload = {
     /** The embedding the active index was built with (what reads use). */
     embeddingProvider: EmbeddingProvider;
     embeddingModel: string;
+    /** openai-compatible: the embedding service the active index was built with ("server" = .env / config). */
+    embeddingServiceId?: string;
     embeddingModelAvailable: boolean;
     /** The global chat LLM model, or null when no chat LLM is configured (retrieve-only). */
     chatModel: string | null;
@@ -30,6 +34,7 @@ export type CollectionReadinessPayload = {
     /** Set when the collection's saved embedding differs from the active one (takes effect after re-index). */
     desiredEmbeddingProvider?: EmbeddingProvider;
     desiredEmbeddingModel?: string;
+    desiredEmbeddingServiceId?: string;
   };
   capabilities: {
     query: boolean;
@@ -67,8 +72,14 @@ export async function buildCollectionReadinessPayload(
   healthChecks?: CollectionReadinessHealthChecks,
 ): Promise<CollectionReadinessPayload> {
   const activeJob = await registry.getActiveJobForCollection(context, collection.id);
-  // Reads use the embedding the active index was built with, so that is what is checked here.
-  const readEmbedding = activeEmbeddingTarget(collection);
+  // Reads use the embedding the active index was built with (and its service), so that is what is checked here.
+  const readEmbedding = await resolveEmbeddingTarget({
+    registry,
+    runtimeConfig,
+    context,
+    target: activeEmbeddingTarget(collection),
+  });
+  const desiredServiceId = normalizeEmbeddingServiceId(collection.embeddingProvider, collection.embeddingServiceId);
   const embeddingStatus = await (healthChecks?.checkEmbeddingTarget ?? checkEmbeddingTarget)(runtimeConfig, readEmbedding);
   const hasActivePhysicalCollection = Boolean(collection.activePhysicalCollection);
   const embeddingModelAvailable = embeddingStatus.ok;
@@ -146,11 +157,18 @@ export async function buildCollectionReadinessPayload(
     modelAvailability: {
       embeddingProvider: readEmbedding.provider,
       embeddingModel: readEmbedding.model,
+      ...(readEmbedding.serviceId ? { embeddingServiceId: readEmbedding.serviceId } : {}),
       embeddingModelAvailable,
       chatModel: runtimeConfig.chat.enabled ? runtimeConfig.chat.model : null,
       chatModelAvailable,
-      ...(collection.embeddingProvider !== readEmbedding.provider || collection.embeddingModel !== readEmbedding.model
-        ? { desiredEmbeddingProvider: collection.embeddingProvider, desiredEmbeddingModel: collection.embeddingModel }
+      ...(collection.embeddingProvider !== readEmbedding.provider
+        || collection.embeddingModel !== readEmbedding.model
+        || desiredServiceId !== (readEmbedding.serviceId ?? null)
+        ? {
+          desiredEmbeddingProvider: collection.embeddingProvider,
+          desiredEmbeddingModel: collection.embeddingModel,
+          ...(desiredServiceId ? { desiredEmbeddingServiceId: desiredServiceId } : {}),
+        }
         : {}),
     },
     capabilities: {

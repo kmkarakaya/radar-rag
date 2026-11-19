@@ -302,7 +302,7 @@ Notes:
 - Without admin auth (the default), skip the cookie and the action token: `curl.exe -F "files=@handbook.pdf" "$BASE_URL$UPLOAD_PATH"`.
 - Success is `201 Created` with `uploaded`, `rejected` (unsupported type or invalid name, per file) and the collection's `indexState` (`documentsChanged: true`).
 - `409 COLLECTION_FILES_READ_ONLY`: the collection reads a folder on the server. `409 COLLECTION_INDEX_ALREADY_RUNNING`: wait for the running job. `413 FILE_TOO_LARGE`: the file is above `uploads.maxFileSizeMb`.
-- Then trigger a reindex (section 4); searches use the new documents once the job succeeds.
+- Then trigger a reindex (section 4); searches use the new documents once the job succeeds. (Deletes, below, need no reindex.)
 
 ### List documents
 
@@ -337,7 +337,7 @@ curl.exe -i `
   "$BASE_URL$DELETE_PATH"
 ```
 
-Success is `204 No Content`; an unknown name returns `404 DOCUMENT_NOT_FOUND`. Reindex afterwards to remove the document from search results.
+Success is `204 No Content`; an unknown name returns `404 DOCUMENT_NOT_FOUND`. The document's chunks are removed from the active index at once, so it leaves search results without a reindex. `503 COLLECTION_STORAGE_INCONSISTENT` means Chroma could not be updated and nothing was deleted.
 
 ## 4. Reindex Flow
 

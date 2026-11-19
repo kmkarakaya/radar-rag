@@ -901,6 +901,10 @@ paths:
       tags: [Admin Collections]
       operationId: deleteCollectionFile
       summary: Delete one document of an uploads collection
+      description: >-
+        Removes the document's chunks from the active index first (so it leaves search results at once and no
+        reindex is needed), then deletes the file. If Chroma cannot be reached, 503 COLLECTION_STORAGE_INCONSISTENT
+        is returned and nothing is deleted.
       security:
         - AdminSessionCookie: []
       parameters:
@@ -932,6 +936,12 @@ paths:
           $ref: "#/components/responses/ApiError"
         "500":
           $ref: "#/components/responses/ApiError"
+        "503":
+          description: COLLECTION_STORAGE_INCONSISTENT (the search index could not be updated; nothing was deleted)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
   /v1/admin/jobs:
     get:
       tags: [Admin Jobs]

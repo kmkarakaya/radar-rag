@@ -116,6 +116,42 @@ export async function deletePhysicalChromaCollection(input: {
   }
 }
 
+/**
+ * Removes every chunk of one source file from a physical collection (chunks carry the file's absolute
+ * path in metadata.sourcePath). Returns how many chunks and loaded documents were removed.
+ */
+export async function deleteSourceChunks(input: {
+  name: string;
+  sourcePath: string;
+  runtimeConfig: ResolvedConfig;
+}): Promise<{ chunkCount: number; documentCount: number }> {
+  const client = new ChromaClient(chromaClientParams(input.runtimeConfig));
+  const timeoutMs = input.runtimeConfig.readyTimeoutMs;
+  const collection = await withTimeoutAndAbort({
+    promise: client.getCollection({ name: input.name }),
+    timeoutMs,
+    label: `Chroma getCollection ${input.name}`,
+  });
+  const existing = await withTimeoutAndAbort({
+    promise: collection.get({ where: { sourcePath: input.sourcePath }, include: ["metadatas" as any] }),
+    timeoutMs,
+    label: `Chroma get chunks of ${input.sourcePath}`,
+  });
+  if (existing.ids.length === 0) return { chunkCount: 0, documentCount: 0 };
+
+  const documentIds = new Set(
+    (existing.metadatas ?? [])
+      .map((metadata) => (metadata as Record<string, unknown> | null)?.documentId)
+      .filter((documentId): documentId is string => typeof documentId === "string"),
+  );
+  await withTimeoutAndAbort({
+    promise: collection.delete({ ids: existing.ids }),
+    timeoutMs,
+    label: `Chroma delete chunks of ${input.sourcePath}`,
+  });
+  return { chunkCount: existing.ids.length, documentCount: documentIds.size };
+}
+
 export async function listPhysicalChromaCollections(runtimeConfig: ResolvedConfig): Promise<{ name: string }[]> {
   const client = new ChromaClient(chromaClientParams(runtimeConfig));
   const collections = await client.listCollections();

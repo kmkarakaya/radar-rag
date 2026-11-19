@@ -21,11 +21,12 @@ import {
 import { createAdminAuthService, type AdminAuthService } from "./adminAuth.js";
 import { listEmbeddingModels } from "../embeddings/index.js";
 import { assertEmbeddingAvailable } from "./modelAvailability.js";
+import { deleteSourceChunks } from "../collections/chromaCollections.js";
 import {
   MAX_FILES_PER_UPLOAD,
   UPLOAD_TEMP_PREFIX,
   checkUploadName,
-  deleteCollectionFile,
+  findCollectionFile,
   listCollectionFiles,
   placeUploadedFile,
   removeUploadsFolder,
@@ -732,12 +733,41 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       const collectionId = req.params.collectionId as string;
       const fileName = req.params.fileName as string;
       const context = res.locals.requestContext as RequestContext;
-      const { folder } = await requireWritableCollection(context, collectionId);
-      const deleted = await deleteCollectionFile(folder, fileName);
-      if (!deleted) {
+      const { collection, folder } = await requireWritableCollection(context, collectionId);
+      const filePath = await findCollectionFile(folder, fileName);
+      if (!filePath) {
         throw new HttpError(404, "DOCUMENT_NOT_FOUND", `Document ${fileName} was not found in this collection.`);
       }
-      await deps.registry!.markDocumentsChanged(context, collectionId);
+
+      // A deleted document must leave search results right away, not only after the next re-index
+      // (which is impossible once the last document is gone). Remove its chunks from the active index
+      // first; if that fails, nothing is deleted and the request can be retried.
+      let removed = { chunkCount: 0, documentCount: 0 };
+      if (collection.activePhysicalCollection) {
+        try {
+          removed = await (deps.documentIndex?.deleteSourceChunks ?? deleteSourceChunks)({
+            name: collection.activePhysicalCollection,
+            sourcePath: filePath,
+            runtimeConfig,
+          });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          throw new HttpError(
+            503,
+            "COLLECTION_STORAGE_INCONSISTENT",
+            `The document could not be removed from the search index, so it was not deleted. Check that Chroma is running and try again. (${reason})`,
+            { physicalCollection: collection.activePhysicalCollection },
+          );
+        }
+      }
+
+      await fs.rm(filePath);
+      if (removed.chunkCount > 0) {
+        await deps.registry!.updateCollection(context, collectionId, {
+          chunkCount: Math.max(0, (collection.chunkCount ?? 0) - removed.chunkCount),
+          documentCount: Math.max(0, (collection.documentCount ?? 0) - removed.documentCount),
+        });
+      }
       res.locals.collectionId = collectionId;
       res.status(204).send();
     } catch (error) {

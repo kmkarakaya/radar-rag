@@ -119,22 +119,23 @@ export async function listCollectionFiles(
   return files;
 }
 
-/** Deletes one uploaded file. Returns false when it does not exist. */
-export async function deleteCollectionFile(folder: string, fileName: string): Promise<boolean> {
+/**
+ * Absolute path of an uploaded document, or null when there is no such file. The path is exactly what
+ * the indexer stored in each chunk's metadata.sourcePath (folder + name).
+ */
+export async function findCollectionFile(folder: string, fileName: string): Promise<string | null> {
   const checked = checkUploadName(fileName);
   // Unsupported names cannot have been uploaded; invalid names could point outside the folder.
-  if (!checked.ok) return false;
+  if (!checked.ok) return null;
   const target = path.join(folder, checked.name);
-  if (!isInsideFolder(folder, target)) return false;
+  if (!isInsideFolder(folder, target)) return null;
   try {
     const stats = await fs.stat(target);
-    if (!stats.isFile()) return false;
+    return stats.isFile() ? target : null;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
-  await fs.rm(target);
-  return true;
 }
 
 /** Moves an uploaded temp file to its final name, replacing an existing file with that name. */

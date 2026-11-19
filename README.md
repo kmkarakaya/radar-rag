@@ -69,7 +69,7 @@ Each collection you create gets its own folder for documents. You add documents 
 3. Click **Re-index now** and wait until the job is `succeeded` in the **Job Monitor**. If it fails, the error is shown there.
 4. Use the **Playground** tab to search.
 
-After you add or delete documents, the Documents tab asks you to re-index again. Re-indexing builds a new index in the background, and searches keep using the old one until it is ready.
+After you upload documents, the Documents tab asks you to re-index again. Re-indexing builds a new index in the background, and searches keep using the old one until it is ready. A deleted document leaves the search results right away; no re-index is needed.
 
 **The same over the API** (the admin panel uses exactly these endpoints):
 
@@ -102,7 +102,7 @@ $jobId = (Invoke-RestMethod -Method Post -Uri "$base/v1/admin/collections/$id/re
 Invoke-RestMethod -Method Post -Uri "$base/v1/rag/collections/$id/retrieve" -ContentType "application/json" -Body '{"question": "What is in the handbook?"}' | ConvertTo-Json -Depth 5
 ```
 
-List the documents with `GET /v1/admin/collections/<collection-id>/files` and delete one with `DELETE /v1/admin/collections/<collection-id>/files/<file-name>` (URL-encode names with spaces), then re-index. Deleting the collection deletes its documents too. Files are limited to 50 MB each (`uploads.maxFileSizeMb`). With [admin auth](#level-6--protect-the-admin-panel) turned on, these admin calls also need a session cookie and an action token; see [docs/http_workflows.md](docs/http_workflows.md).
+List the documents with `GET /v1/admin/collections/<collection-id>/files` and delete one with `DELETE /v1/admin/collections/<collection-id>/files/<file-name>` (URL-encode names with spaces); a deleted document is removed from the index at once. Deleting the collection deletes its documents too. Files are limited to 50 MB each (`uploads.maxFileSizeMb`). With [admin auth](#level-6--protect-the-admin-panel) turned on, these admin calls also need a session cookie and an action token; see [docs/http_workflows.md](docs/http_workflows.md).
 
 **Advanced: index a folder on the server.** If your documents already live on the server, put them in a folder inside `./data` (next to `docker-compose.yml`; in a clone, the repo's `data` folder), for example `./data/handbook`. Then choose **Use a folder on the server** in New Collection, or send `"sourcePath": "data/handbook"` when you create it over the API. With Docker, a path on your computer such as `C:\docs` does not work: the server only sees its `data` folder. Such a collection reads that folder directly; the Documents tab lists its files but cannot change them, so you manage the files there and re-index.
 

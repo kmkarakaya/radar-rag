@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { hashPassword } from "../src/admin/passwordHash.js";
-import { createApp } from "../src/app.js";
+import { createApp, type AppDependencies } from "../src/app.js";
 import { createSqliteCollectionRegistry } from "../src/collections/sqliteRegistry.js";
 import type { CollectionRegistry } from "../src/collections/types.js";
 import { config, type ResolvedConfig } from "../src/config.js";
@@ -43,13 +43,18 @@ describe("collection files API", () => {
   let server: Server | undefined;
   let baseUrl: string;
 
-  async function start(overrides: Partial<ResolvedConfig> = {}, adminAuth?: ReturnType<typeof createAdminAuthService>) {
+  async function start(
+    overrides: Partial<ResolvedConfig> = {},
+    adminAuth?: ReturnType<typeof createAdminAuthService>,
+    extraDeps: Partial<AppDependencies> = {},
+  ) {
     const app = createApp({
       runtimeConfig: { ...runtimeConfig, ...overrides },
       registry,
       jobRunner: stubJobRunner,
       adminAuth,
       healthChecks: { checkEmbeddingTarget: stubEmbeddingTarget } as any,
+      ...extraDeps,
     });
     await new Promise<void>((resolve) => {
       server = app.listen(0, () => resolve());
@@ -147,6 +152,63 @@ describe("collection files API", () => {
     // No temp files are left behind.
     const { readdir } = await import("node:fs/promises");
     assert.deepEqual(await readdir(folder), ["guide.md"]);
+  });
+
+  it("removes a deleted document from the active index right away and keeps the index in sync", async () => {
+    const calls: Array<{ name: string; sourcePath: string }> = [];
+    let failChroma = false;
+    await start({}, undefined, {
+      documentIndex: {
+        deleteSourceChunks: async (input) => {
+          calls.push({ name: input.name, sourcePath: input.sourcePath });
+          if (failChroma) throw new Error("connect ECONNREFUSED");
+          return { chunkCount: 3, documentCount: 1 };
+        },
+      },
+    });
+    const context = { tenantId: "default", userId: "local-dev", requestId: "r" };
+    const id = await createCollection();
+    const folder = path.join(projectRoot, "data", "collections", id);
+
+    // Not indexed yet: deleting never touches the index.
+    assert.equal((await upload(id, [{ name: "draft.md", content: "x" }])).status, 201);
+    assert.equal((await fetch(`${baseUrl}/v1/admin/collections/${id}/files/draft.md`, { method: "DELETE" })).status, 204);
+    assert.equal(calls.length, 0);
+
+    assert.equal((await upload(id, [{ name: "a.md", content: "# A" }, { name: "b.md", content: "# B" }])).status, 201);
+    const queued = await registry.beginIndexJob(context, id);
+    const running = await registry.markIndexJobRunning(queued.id);
+    await registry.createPhysicalCollectionRecord({
+      name: running.targetPhysicalCollection,
+      tenantId: context.tenantId,
+      collectionId: id,
+      version: running.targetVersion,
+      chromaConfiguration: running.targetChromaConfiguration,
+    });
+    await registry.completeIndexJob(running.id, {
+      activePhysicalCollection: running.targetPhysicalCollection,
+      activeVersion: running.targetVersion,
+      documentCount: 2,
+      chunkCount: 5,
+      retentionMs: 1000,
+    });
+
+    const deleted = await fetch(`${baseUrl}/v1/admin/collections/${id}/files/a.md`, { method: "DELETE" });
+    assert.equal(deleted.status, 204);
+    assert.deepEqual(calls, [{ name: running.targetPhysicalCollection, sourcePath: path.join(folder, "a.md") }]);
+    const after = await registry.getVisibleCollection(context, id);
+    assert.equal(after?.chunkCount, 2);
+    assert.equal(after?.documentCount, 1);
+    // The index matches the documents again: no re-index needed for a delete.
+    assert.equal(after?.indexState?.status, "synced");
+    assert.equal(after?.documentsChanged, false);
+
+    // If the index cannot be updated, the document is kept so the request can be retried.
+    failChroma = true;
+    const failed = await fetch(`${baseUrl}/v1/admin/collections/${id}/files/b.md`, { method: "DELETE" });
+    assert.equal(failed.status, 503);
+    assert.equal((await failed.json() as any).code, "COLLECTION_STORAGE_INCONSISTENT");
+    await stat(path.join(folder, "b.md"));
   });
 
   it("rejects unsupported, hidden and path-like names, and files over the size limit", async () => {

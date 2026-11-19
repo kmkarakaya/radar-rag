@@ -3488,7 +3488,7 @@ async function deleteCollectionDocument(fileName) {
     if (!confirm(`Delete "${fileName}" from this collection? The file is removed from the server.`)) return;
     try {
         await adminMutationRequest(adminCollectionFilesUrl(collection.id, fileName), { method: "DELETE" });
-        showToast(`Deleted ${fileName}. Re-index to remove it from search results.`, "success");
+        showToast(`Deleted ${fileName}. It no longer appears in search results.`, "success");
     } catch (error) {
         showErrorToast(error, "Delete failed");
     } finally {

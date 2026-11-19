@@ -120,7 +120,8 @@ Yapilacaklar:
 
 - `sourcePath`'siz olusturulan koleksiyon `sourceKind: "uploads"` olur ve kendi klasorunu alir (`data/collections/<id>`); `sourcePath` verilirse `folder` (eski davranis; dosyalari salt okunur listelenir).
 - API: `GET/POST /v1/admin/collections/:id/files` (multipart, alan `files`, en cok 20 dosya, `uploads.maxFileSizeMb` = 50), `DELETE .../files/:fileName`. Ayni ad = degistirme (gizli gecici dosya + rename). Desteklenmeyen/gizli/yol iceren adlar dosya bazinda reddedilir. Aktif job varken 409. Yetki: `manageDocuments` (operator, admin) + action token.
-- `documents_changed` bayragi: yukleme/silmede kalkar, basarili reindex'te sifirlanir; `indexState.reindex_required` + `documentsChanged`.
+- `documents_changed` bayragi: yuklemede kalkar, basarili reindex'te sifirlanir; `indexState.reindex_required` + `documentsChanged`.
+- Silme, belgenin parcalarini aktif indeksten hemen kaldirir (Chroma, `metadata.sourcePath`); reindex gerekmez, son belge de silinebilir. Chroma'ya ulasilamazsa 503 ve hicbir sey silinmez. Degistirmede eski icerik reindex'e kadar aranabilir kalir (2026-11-19 karari).
 - Yan etki onlemi: her kaynak taramasi `data/collections`'a inmez (klasor koleksiyonu baska koleksiyonlarin/tenant'larin yuklemelerini gormez).
 - Uploads koleksiyonu silinince klasoru de silinir; folder koleksiyonuna dokunulmaz.
 - Panel: New Collection varsayilan "Upload files"; Documents sekmesi (surukle-birak, liste, silme, reddedilenler, "Re-index now"). Panel ayni API'nin istemcisi.

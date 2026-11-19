@@ -9,6 +9,7 @@ import { createRateLimitMiddleware, createInMemoryRequestRateLimiter, type Reque
 import { createAdminAuthService } from "./http/adminAuth.js";
 import { checkIndexingSourceHealth, type IndexingSourceHealthDetails } from "./index.js";
 import { createAdminRouter } from "./http/adminRouter.js";
+import type { deleteSourceChunks } from "./collections/chromaCollections.js";
 import { createRagRouter } from "./http/ragRouter.js";
 import {
   createConsoleLogSink,
@@ -56,6 +57,10 @@ export type AppDependencies = {
     /** Free GET /models check of the optional chat LLM (never a generation). */
     checkChatProvider?: typeof checkChatProvider;
     checkIndexingSourceHealth?: typeof checkIndexingSourceHealth;
+  };
+  /** Removes a deleted document's chunks from the active index (Chroma). */
+  documentIndex?: {
+    deleteSourceChunks?: typeof deleteSourceChunks;
   };
 };
 

@@ -656,7 +656,10 @@ Notes:
 
 ## Documents of a collection
 
-Upload, list, replace and delete the documents of an **uploads** collection (created without `sourcePath`). The admin panel's Documents tab uses exactly these endpoints. After a change, the collection's `indexState` becomes `reindex_required` with `documentsChanged: true` until the next successful reindex; reindex with `POST /v1/admin/collections/:collectionId/reindex`.
+Upload, list, replace and delete the documents of an **uploads** collection (created without `sourcePath`). The admin panel's Documents tab uses exactly these endpoints.
+
+- After an upload (new or replaced document), the collection's `indexState` becomes `reindex_required` with `documentsChanged: true` until the next successful reindex (`POST /v1/admin/collections/:collectionId/reindex`). Until then, searches use the previous content.
+- A delete takes effect in search right away: the document's chunks are removed from the active index, so no reindex is needed (and the last document of a collection can be removed too).
 
 Rules for every upload and delete:
 
@@ -719,6 +722,8 @@ Files that cannot be accepted are listed in `rejected` (`UNSUPPORTED_FILE` or `I
 ### `DELETE /v1/admin/collections/:collectionId/files/:fileName`
 
 Deletes one document and returns `204 No Content`. URL-encode the name (for example `my%20notes.md`). An unknown name returns `404 DOCUMENT_NOT_FOUND`.
+
+If the collection has an active index, the document's chunks are removed from it first, and the collection's `chunkCount` and `documentCount` are lowered accordingly; the document no longer appears in search results. If Chroma cannot be reached, the response is `503 COLLECTION_STORAGE_INCONSISTENT` and nothing is deleted, so the request can be retried.
 
 ## Job Endpoints
 

@@ -6,6 +6,7 @@ import { classifyChatError, createChatModel } from "./chat.js";
 import { config, type DistanceMetric, type ResolvedConfig } from "./config.js";
 import {
   BuiltinModelLoadError,
+  connectionForTarget,
   defaultEmbeddingTarget,
   EmbeddingProviderNotConfiguredError,
   getEmbeddings,
@@ -259,9 +260,14 @@ export function createVectorStore(input: {
   runtimeConfig: ResolvedConfig;
   embeddingProvider: EmbeddingProvider;
   embeddingModel: string;
+  /** The resolved embedding (with its service connection); provider/model above are kept for callers and tests. */
+  embeddingTarget?: EmbeddingTarget;
 }): Chroma {
   const runtimeConfig = input.runtimeConfig;
-  const embeddings = getEmbeddings(runtimeConfig, { provider: input.embeddingProvider, model: input.embeddingModel });
+  const embeddings = getEmbeddings(
+    runtimeConfig,
+    input.embeddingTarget ?? { provider: input.embeddingProvider, model: input.embeddingModel },
+  );
 
   return new Chroma(embeddings, {
     collectionName: input.collectionName,
@@ -461,7 +467,16 @@ function parseDimensionMismatch(error: unknown): { expected: number; got: number
 }
 
 /** Maps a failed query embedding to a clear API error; API keys are never included. */
-function toEmbeddingError(error: unknown, runtimeConfig: ResolvedConfig, details: Record<string, unknown>): unknown {
+function toEmbeddingError(
+  error: unknown,
+  runtimeConfig: ResolvedConfig,
+  details: Record<string, unknown>,
+  target?: EmbeddingTarget,
+): unknown {
+  // The collection's own service, not only the one from config: its key is redacted and its URL named.
+  const connection = target ? connectionForTarget(runtimeConfig, target) : null;
+  const apiKey = connection?.apiKey ?? runtimeConfig.embedding.apiKey;
+  const baseUrl = connection?.baseUrl ?? runtimeConfig.embedding.baseUrl;
   if (error instanceof EmbeddingProviderNotConfiguredError) {
     return new RagQueryError("EMBEDDING_PROVIDER_NOT_CONFIGURED", error.message, 503, details);
   }
@@ -469,14 +484,14 @@ function toEmbeddingError(error: unknown, runtimeConfig: ResolvedConfig, details
     return new RagQueryError("EMBEDDING_PROVIDER_UNREACHABLE", error.message, 503, details);
   }
 
-  const classified = classifyProviderError(error, runtimeConfig.embedding.apiKey);
+  const classified = classifyProviderError(error, apiKey);
   switch (classified.kind) {
     case "timeout":
       return new RagQueryError("MODEL_BACKPRESSURE", "Query embedding timed out or the request was aborted.", 503, details);
     case "unreachable":
       return new RagQueryError(
         "EMBEDDING_PROVIDER_UNREACHABLE",
-        `The embedding provider at ${runtimeConfig.embedding.baseUrl} could not be reached: ${classified.message}`,
+        `The embedding service at ${baseUrl} could not be reached: ${classified.message}`,
         503,
         details,
       );
@@ -506,6 +521,8 @@ export async function retrieveSources(
     /** The collection's active embedding: queries must use the provider/model the index was built with. */
     embeddingProvider: EmbeddingProvider;
     embeddingModel: string;
+    /** The resolved active embedding with its service connection (see resolveEmbeddingTarget). */
+    embeddingTarget?: EmbeddingTarget;
     retrievalDistanceThreshold?: number;
     context?: RequestContext;
     abortSignal?: AbortSignal;
@@ -521,10 +538,13 @@ export async function retrieveSources(
     embeddingModel: options.embeddingModel,
     retrievalDistanceThreshold: options.retrievalDistanceThreshold,
   });
+  const queryTarget: EmbeddingTarget = options.embeddingTarget
+    ?? { provider: settings.embeddingProvider, model: settings.embeddingModel };
   const embeddingDetails = {
     collectionName: options.collectionName,
     embeddingProvider: settings.embeddingProvider,
     embeddingModel: settings.embeddingModel,
+    ...(queryTarget.serviceId ? { embeddingServiceId: queryTarget.serviceId } : {}),
   };
 
   try {
@@ -539,13 +559,13 @@ export async function retrieveSources(
 
     let queryVector: number[];
     try {
-      const embeddings = getEmbeddings(runtimeConfig, { provider: settings.embeddingProvider, model: settings.embeddingModel });
+      const embeddings = getEmbeddings(runtimeConfig, queryTarget);
       queryVector = await semaphore.run(
         () => withTimeout(embeddings.embedQuery(question), runtimeConfig.ragTimeoutMs, "Query embedding"),
         runtimeConfig.ragTimeoutMs,
       );
     } catch (error) {
-      throw toEmbeddingError(error, runtimeConfig, embeddingDetails);
+      throw toEmbeddingError(error, runtimeConfig, embeddingDetails, queryTarget);
     }
 
     const vectorStore = createVectorStore({
@@ -553,6 +573,7 @@ export async function retrieveSources(
       runtimeConfig,
       embeddingProvider: settings.embeddingProvider,
       embeddingModel: settings.embeddingModel,
+      embeddingTarget: queryTarget,
     });
 
     let docsWithScores;
@@ -654,6 +675,7 @@ export async function answerQuestion(question: string, options: {
   retrievalK?: number;
   embeddingProvider: EmbeddingProvider;
   embeddingModel: string;
+  embeddingTarget?: EmbeddingTarget;
   retrievalDistanceThreshold?: number;
   context?: RequestContext;
   abortSignal?: AbortSignal;
@@ -716,6 +738,7 @@ export async function answerQuestion(question: string, options: {
       runtimeConfig,
       embeddingProvider: settings.embeddingProvider,
       embeddingModel: settings.embeddingModel,
+      embeddingTarget: options.embeddingTarget,
       retrievalDistanceThreshold: settings.retrievalDistanceThreshold,
       context: options.context,
       abortSignal: options.abortSignal,

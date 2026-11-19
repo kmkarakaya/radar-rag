@@ -12,6 +12,8 @@ export const collectionCreateSchema = z.object({
   retrievalDistanceThreshold: z.number().nonnegative().optional(),
   embeddingProvider: z.enum(EMBEDDING_PROVIDERS).optional(),
   embeddingModel: z.string().trim().min(1).optional(),
+  /** openai-compatible only: an embedding service id, or "server" (the service from .env / config). */
+  embeddingServiceId: z.string().trim().min(1).optional(),
 }).strict();
 
 export const collectionUpdateSchema = z.object({
@@ -25,4 +27,5 @@ export const collectionUpdateSchema = z.object({
   retrievalDistanceThreshold: z.number().nonnegative().optional(),
   embeddingProvider: z.enum(EMBEDDING_PROVIDERS).optional(),
   embeddingModel: z.string().trim().min(1).optional(),
+  embeddingServiceId: z.string().trim().min(1).optional(),
 }).strict();

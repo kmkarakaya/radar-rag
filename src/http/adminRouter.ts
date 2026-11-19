@@ -19,7 +19,8 @@ import {
   validateCollectionDraft,
 } from "./collectionValidation.js";
 import { createAdminAuthService, type AdminAuthService } from "./adminAuth.js";
-import { listEmbeddingModels } from "../embeddings/index.js";
+import { desiredEmbeddingTarget, listEmbeddingModels } from "../embeddings/index.js";
+import { resolveEmbeddingTarget } from "../embeddings/services.js";
 import { assertEmbeddingAvailable } from "./modelAvailability.js";
 import { deleteSourceChunks } from "../collections/chromaCollections.js";
 import {
@@ -796,7 +797,13 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       // The job builds with the collection's desired (saved) embedding.
       await assertEmbeddingAvailable({
         runtimeConfig,
-        target: { provider: collection.embeddingProvider, model: collection.embeddingModel },
+        // The job builds with the collection's saved embedding and its service.
+        target: await resolveEmbeddingTarget({
+          registry: deps.registry,
+          runtimeConfig,
+          context,
+          target: desiredEmbeddingTarget(collection),
+        }),
         action: "Re-index cannot start.",
         check: deps.healthChecks?.checkEmbeddingTarget,
       });

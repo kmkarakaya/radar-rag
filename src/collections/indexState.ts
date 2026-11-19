@@ -1,5 +1,7 @@
 import type { DistanceMetric } from "../config.js";
-import { isEmbeddingProvider, type EmbeddingProvider } from "../embeddings/models.js";
+import { isEmbeddingProvider, SERVER_EMBEDDING_SERVICE_ID, type EmbeddingProvider } from "../embeddings/models.js";
+
+export { SERVER_EMBEDDING_SERVICE_ID };
 import type { CollectionIndexSnapshot, CollectionIndexState, RagCollection } from "./types.js";
 
 const INDEX_SNAPSHOT_FIELDS = [
@@ -11,9 +13,6 @@ const INDEX_SNAPSHOT_FIELDS = [
   "embeddingModel",
   "embeddingServiceId",
 ] as const satisfies Array<keyof CollectionIndexSnapshot>;
-
-/** The service the "server" id stands for: the openai-compatible service configured in .env / config. */
-export const SERVER_EMBEDDING_SERVICE_ID = "server";
 
 /**
  * One value per embedding connection, so old records (no service id) compare equal to new ones:

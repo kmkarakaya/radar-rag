@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import Database from "better-sqlite3";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -7,6 +7,17 @@ import path from "node:path";
 import { buildCollectionIndexState, normalizeEmbeddingServiceId, parseCollectionIndexSnapshot } from "../src/collections/indexState.js";
 import { createSqliteCollectionRegistry } from "../src/collections/sqliteRegistry.js";
 import type { CollectionRegistry, CreateCollectionInput } from "../src/collections/types.js";
+import { config, type ResolvedConfig } from "../src/config.js";
+import {
+  checkEmbeddingTarget,
+  clearEmbeddingInstances,
+  connectionForTarget,
+  EmbeddingProviderNotConfiguredError,
+  getEmbeddings,
+} from "../src/embeddings/index.js";
+import { resolveEmbeddingTarget } from "../src/embeddings/services.js";
+import { runIndexJob } from "../src/indexing/jobs.js";
+import { clearProviderStatusCache } from "../src/providers/openaiCompatible.js";
 
 const tenantA = { tenantId: "tenant-a", userId: "admin", requestId: "r1" };
 const tenantB = { tenantId: "tenant-b", userId: "admin", requestId: "r2" };
@@ -155,5 +166,110 @@ describe("embedding services in the registry", () => {
       parsed,
     );
     assert.equal(state.status, "synced");
+  });
+});
+
+
+describe("embedding service connections", () => {
+  const runtimeConfig: ResolvedConfig = {
+    ...config,
+    embedding: { ...config.embedding, provider: "builtin", baseUrl: "http://server.test/v1", apiKey: "server-key", apiKeySource: "env" },
+  };
+
+  afterEach(() => {
+    clearEmbeddingInstances();
+    clearProviderStatusCache();
+  });
+
+  function recordingFetch(requests: Array<{ url: string; auth: string | null }>) {
+    return (async (url: string | URL, init?: RequestInit) => {
+      requests.push({ url: String(url), auth: new Headers(init?.headers).get("authorization") });
+      if (String(url).endsWith("/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "bge-m3" }] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        object: "list",
+        data: [{ object: "embedding", index: 0, embedding: [0.5, 0.5] }],
+        model: "bge-m3",
+        usage: { prompt_tokens: 1, total_tokens: 1 },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+  }
+
+  it("resolves 'server', a stored service, and a missing service (never falling back to 'server')", async () => {
+    const registry = createSqliteCollectionRegistry({ dbPath: ":memory:" });
+    const service = await registry.createEmbeddingService(tenantA, { displayName: "OpenAI", baseUrl: "https://api.openai.test/v1", apiKey: "sk-service" });
+
+    const server = await resolveEmbeddingTarget({ registry, runtimeConfig, context: tenantA, target: { provider: "openai-compatible", model: "m" } });
+    assert.equal(server.serviceId, "server");
+    assert.equal(server.connection?.baseUrl, "http://server.test/v1");
+
+    const stored = await resolveEmbeddingTarget({ registry, runtimeConfig, context: tenantA, target: { provider: "openai-compatible", model: "m", serviceId: service.id } });
+    assert.equal(stored.connection?.baseUrl, "https://api.openai.test/v1");
+    assert.equal(stored.connection?.apiKey, "sk-service");
+
+    // Another tenant's service, or a deleted one, is not usable.
+    const otherTenant = await resolveEmbeddingTarget({ registry, runtimeConfig, context: tenantB, target: { provider: "openai-compatible", model: "m", serviceId: service.id } });
+    assert.equal(otherTenant.connection, null);
+    assert.throws(() => getEmbeddings(runtimeConfig, otherTenant), EmbeddingProviderNotConfiguredError);
+    const status = await checkEmbeddingTarget(runtimeConfig, otherTenant);
+    assert.equal(status.configured, false);
+    assert.match(status.error ?? "", /does not exist/);
+
+    // An unresolved named service is never sent to "server" either.
+    assert.equal(connectionForTarget(runtimeConfig, { provider: "openai-compatible", model: "m", serviceId: service.id }), null);
+
+    const builtin = await resolveEmbeddingTarget({ registry, runtimeConfig, context: tenantA, target: { provider: "builtin", model: "x", serviceId: service.id } });
+    assert.equal(builtin.connection, undefined);
+  });
+
+  it("embeds and checks through the service's own URL and key", async () => {
+    const requests: Array<{ url: string; auth: string | null }> = [];
+    const target = {
+      provider: "openai-compatible" as const,
+      model: "bge-m3",
+      serviceId: "openai-1",
+      connection: { serviceId: "openai-1", baseUrl: "https://api.openai.test/v1", apiKey: "sk-service", version: "v1" },
+    };
+    const embeddings = getEmbeddings(runtimeConfig, target, { fetch: recordingFetch(requests) });
+    assert.deepEqual(await embeddings.embedQuery("hello"), [0.5, 0.5]);
+    const status = await checkEmbeddingTarget(runtimeConfig, target, { fetch: recordingFetch(requests) });
+    assert.equal(status.ok, true);
+    assert.deepEqual(requests.map((request) => [request.url, request.auth]), [
+      ["https://api.openai.test/v1/embeddings", "Bearer sk-service"],
+      ["https://api.openai.test/v1/models", "Bearer sk-service"],
+    ]);
+  });
+
+  it("uses a new client when a service's URL or key changes (no restart)", () => {
+    const base = { provider: "openai-compatible" as const, model: "bge-m3", serviceId: "svc" };
+    const first = getEmbeddings(runtimeConfig, { ...base, connection: { serviceId: "svc", baseUrl: "http://a/v1", apiKey: "k1", version: "1" } });
+    const same = getEmbeddings(runtimeConfig, { ...base, connection: { serviceId: "svc", baseUrl: "http://a/v1", apiKey: "k1", version: "1" } });
+    const changed = getEmbeddings(runtimeConfig, { ...base, connection: { serviceId: "svc", baseUrl: "http://a/v1", apiKey: "k2", version: "2" } });
+    assert.equal(first, same);
+    assert.notEqual(first, changed);
+  });
+
+  it("never stores a service's API key in an index job error", async () => {
+    const registry = createSqliteCollectionRegistry({ dbPath: ":memory:" });
+    const service = await registry.createEmbeddingService(tenantA, { displayName: "Cloud", baseUrl: "https://cloud.test/v1", apiKey: "sk-very-secret-key" });
+    const collection = await registry.createCollection(tenantA, openaiInput({ embeddingServiceId: service.id }));
+    const job = await registry.beginIndexJob(tenantA, collection.id);
+
+    const failed = await runIndexJob({
+      registry,
+      jobId: job.id,
+      runtimeConfig,
+      log: () => {},
+      deps: {
+        buildPhysicalCollection: async (input) => {
+          assert.equal(input.embeddingTarget?.connection?.baseUrl, "https://cloud.test/v1");
+          throw new Error("401 Unauthorized: invalid key sk-very-secret-key");
+        },
+      },
+    });
+    assert.equal(failed.status, "failed");
+    assert.doesNotMatch(failed.error ?? "", /sk-very-secret-key/);
+    assert.match(failed.error ?? "", /401 Unauthorized/);
   });
 });

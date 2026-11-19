@@ -10,6 +10,9 @@
 export const EMBEDDING_PROVIDERS = ["builtin", "openai-compatible"] as const;
 export type EmbeddingProvider = (typeof EMBEDDING_PROVIDERS)[number];
 
+/** The openai-compatible embedding service configured in .env / config (embedding.baseUrl). */
+export const SERVER_EMBEDDING_SERVICE_ID = "server";
+
 export type BuiltinEmbeddingModelSpec = {
   id: string;
   /** Quantization is fixed per catalog entry: a different dtype produces different vectors. */

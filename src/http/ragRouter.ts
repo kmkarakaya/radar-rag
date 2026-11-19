@@ -8,6 +8,7 @@ import type { RequestContext } from "./requestContext.js";
 import { resolveReadableCollection } from "../collections/resolveReadableCollection.js";
 import { retrieveSources, answerQuestion } from "../rag.js";
 import { activeEmbeddingTarget } from "../embeddings/index.js";
+import { resolveEmbeddingTarget } from "../embeddings/services.js";
 import { buildCollectionReadinessPayload } from "./collectionReadiness.js";
 import type { RagCollection } from "../collections/types.js";
 
@@ -132,8 +133,13 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         timeoutMs: runtimeConfig.ragTimeoutMs,
         logEvent: deps.logEvent,
       });
-      // Reads always use the embedding the active index was built with, never the configured default.
-      const embedding = activeEmbeddingTarget(collection);
+      // Reads always use the embedding the active index was built with (and its service), never the default.
+      const embedding = await resolveEmbeddingTarget({
+        registry: deps.registry,
+        runtimeConfig,
+        context,
+        target: activeEmbeddingTarget(collection),
+      });
       res.locals.collectionId = collection.id;
       res.locals.physicalCollection = collection.activePhysicalCollection;
 
@@ -144,6 +150,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         runtimeConfig,
         embeddingProvider: embedding.provider,
         embeddingModel: embedding.model,
+        embeddingTarget: embedding,
         retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,
         abortSignal,
@@ -162,6 +169,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         activeVersion: collection.activeVersion,
         embeddingProvider: embedding.provider,
         embeddingModel: embedding.model,
+        ...(embedding.serviceId ? { embeddingServiceId: embedding.serviceId } : {}),
         ...(runtimeConfig.includeDebugTimings && debug ? { debug } : {}),
       });
     } catch (error) {
@@ -201,14 +209,21 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
       });
       res.locals.collectionId = collection.id;
       res.locals.physicalCollection = collection.activePhysicalCollection;
+      const embedding = await resolveEmbeddingTarget({
+        registry: deps.registry,
+        runtimeConfig,
+        context,
+        target: activeEmbeddingTarget(collection),
+      });
 
       const result = await answer(parsed.data.question, {
         collectionId: collection.id,
         collectionName: collection.activePhysicalCollection!,
         retrievalK: collection.retrievalK,
         runtimeConfig,
-        embeddingProvider: activeEmbeddingTarget(collection).provider,
-        embeddingModel: activeEmbeddingTarget(collection).model,
+        embeddingProvider: embedding.provider,
+        embeddingModel: embedding.model,
+        embeddingTarget: embedding,
         retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,
         abortSignal,
@@ -225,6 +240,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         chatModel,
         embeddingProvider,
         embeddingModel,
+        ...(embedding.serviceId ? { embeddingServiceId: embedding.serviceId } : {}),
         ...(runtimeConfig.includeDebugTimings && debug ? { debug } : {}),
       });
     } catch (error) {

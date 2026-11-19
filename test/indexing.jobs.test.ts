@@ -186,6 +186,12 @@ describe("indexing jobs", () => {
       listVisibleCollections: async () => [],
       countAllCollections: async () => 0,
       markDocumentsChanged: async () => {},
+      listEmbeddingServices: async () => [],
+      getEmbeddingService: async () => null,
+      createEmbeddingService: async () => { throw new Error("not used"); },
+      updateEmbeddingService: async () => { throw new Error("not used"); },
+      deleteEmbeddingService: async () => {},
+      listCollectionsUsingEmbeddingService: async () => [],
       getVisibleCollection: async () => ({
         id: "col-1",
         tenantId: "tenant-x",

@@ -5,7 +5,13 @@ import Database from "better-sqlite3";
 import type { DistanceMetric } from "../config.js";
 import type { EmbeddingProvider } from "../embeddings/models.js";
 import { createPhysicalCollectionName, generateCollectionId } from "./ids.js";
-import { buildCollectionIndexSnapshot, buildCollectionIndexState, parseCollectionIndexSnapshot } from "./indexState.js";
+import {
+  buildCollectionIndexSnapshot,
+  buildCollectionIndexState,
+  normalizeEmbeddingServiceId,
+  parseCollectionIndexSnapshot,
+  SERVER_EMBEDDING_SERVICE_ID,
+} from "./indexState.js";
 import { toPortablePath } from "../paths.js";
 import type { OperationalLogEvent } from "../observability/logger.js";
 import type {
@@ -17,6 +23,9 @@ import type {
   CompleteIndexJobResult,
   CreateIndexJobEventInput,
   CreateCollectionInput,
+  CreateEmbeddingServiceInput,
+  EmbeddingService,
+  UpdateEmbeddingServicePatch,
   ListAuditLogInput,
   ListAuditLogResult,
   IndexJob,
@@ -66,6 +75,8 @@ type CollectionRow = {
   retrieval_distance_threshold: number;
   active_embedding_provider: EmbeddingProvider | null;
   active_embedding_model: string | null;
+  embedding_service_id: string | null;
+  active_embedding_service_id: string | null;
   document_count: number | null;
   chunk_count: number | null;
   created_by: string;
@@ -85,6 +96,7 @@ type IndexJobRow = {
   target_version: string;
   target_embedding_provider: EmbeddingProvider;
   target_embedding_model: string;
+  target_embedding_service_id: string | null;
   target_chroma_configuration_json: string;
   started_at: string | null;
   finished_at: string | null;
@@ -92,6 +104,17 @@ type IndexJobRow = {
   document_count: number | null;
   chunk_count: number | null;
   lock_token: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type EmbeddingServiceRow = {
+  id: string;
+  tenant_id: string;
+  display_name: string;
+  base_url: string;
+  api_key: string | null;
+  created_by: string;
   created_at: string;
   updated_at: string;
 };
@@ -260,6 +283,20 @@ function initializeSchema(db: SqliteDatabase): void {
       FOREIGN KEY(job_id) REFERENCES index_jobs(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS embedding_services (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      base_url TEXT NOT NULL,
+      api_key TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_embedding_services_tenant_name
+      ON embedding_services(tenant_id, display_name);
+
     CREATE TABLE IF NOT EXISTS operational_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       timestamp TEXT NOT NULL,
@@ -309,6 +346,10 @@ function migrateSchema(db: SqliteDatabase): void {
   // Document management: existing collections read a folder on the server.
   ensureColumn(db, "collections", "source_kind", "TEXT NOT NULL DEFAULT 'folder'");
   ensureColumn(db, "collections", "documents_changed", "INTEGER NOT NULL DEFAULT 0");
+  // Embedding services: an openai-compatible collection without a service id uses "server" (.env / config).
+  ensureColumn(db, "collections", "embedding_service_id", "TEXT");
+  ensureColumn(db, "collections", "active_embedding_service_id", "TEXT");
+  ensureColumn(db, "index_jobs", "target_embedding_service_id", "TEXT");
   // Ozelge JSON support was removed; older registries still have this NOT NULL column, which would break inserts.
   dropColumnIfExists(db, "collections", "ozelge_data_path");
   // The chat LLM is now global and optional (config `chat` section); older registries have a NOT NULL chat_model column.
@@ -423,6 +464,92 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       .all(context.tenantId) as CollectionRow[];
 
     return rows.map(mapCollectionRow);
+  }
+
+  async listEmbeddingServices(context: RequestContext): Promise<EmbeddingService[]> {
+    const rows = this.db
+      .prepare("SELECT * FROM embedding_services WHERE tenant_id = ? ORDER BY display_name COLLATE NOCASE")
+      .all(context.tenantId) as EmbeddingServiceRow[];
+    return rows.map(mapEmbeddingServiceRow);
+  }
+
+  async getEmbeddingService(context: RequestContext, serviceId: string): Promise<EmbeddingService | null> {
+    const row = this.db
+      .prepare("SELECT * FROM embedding_services WHERE tenant_id = ? AND id = ?")
+      .get(context.tenantId, serviceId) as EmbeddingServiceRow | undefined;
+    return row ? mapEmbeddingServiceRow(row) : null;
+  }
+
+  async createEmbeddingService(context: RequestContext, input: CreateEmbeddingServiceInput): Promise<EmbeddingService> {
+    const now = new Date().toISOString();
+    let id = "";
+    for (let attempt = 0; attempt < 5 && !id; attempt += 1) {
+      const candidate = generateCollectionId(input.displayName);
+      const taken = candidate === SERVER_EMBEDDING_SERVICE_ID
+        || this.db.prepare("SELECT id FROM embedding_services WHERE id = ?").get(candidate);
+      if (!taken) id = candidate;
+    }
+    if (!id) throw new Error("Could not generate a unique embedding service id.");
+
+    this.db.prepare(`
+      INSERT INTO embedding_services (id, tenant_id, display_name, base_url, api_key, created_by, created_at, updated_at)
+      VALUES (@id, @tenantId, @displayName, @baseUrl, @apiKey, @createdBy, @createdAt, @updatedAt)
+    `).run({
+      id,
+      tenantId: context.tenantId,
+      displayName: input.displayName,
+      baseUrl: input.baseUrl,
+      apiKey: input.apiKey || null,
+      createdBy: context.userId,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return (await this.getEmbeddingService(context, id))!;
+  }
+
+  async updateEmbeddingService(
+    context: RequestContext,
+    serviceId: string,
+    patch: UpdateEmbeddingServicePatch,
+  ): Promise<EmbeddingService> {
+    const existing = await this.getEmbeddingService(context, serviceId);
+    if (!existing) throw new Error(`Embedding service ${serviceId} not found.`);
+    const updates: string[] = [];
+    const values: Record<string, unknown> = { tenantId: context.tenantId, id: serviceId };
+    if (patch.displayName !== undefined) { updates.push("display_name = @displayName"); values.displayName = patch.displayName; }
+    if (patch.baseUrl !== undefined) { updates.push("base_url = @baseUrl"); values.baseUrl = patch.baseUrl; }
+    if (patch.apiKey !== undefined) { updates.push("api_key = @apiKey"); values.apiKey = patch.apiKey || null; }
+    if (updates.length > 0) {
+      // updated_at is part of the connection's cache key: a changed URL or key takes effect at once.
+      updates.push("updated_at = @updatedAt");
+      values.updatedAt = new Date().toISOString();
+      this.db.prepare(`UPDATE embedding_services SET ${updates.join(", ")} WHERE tenant_id = @tenantId AND id = @id`).run(values);
+    }
+    return (await this.getEmbeddingService(context, serviceId))!;
+  }
+
+  async deleteEmbeddingService(context: RequestContext, serviceId: string): Promise<void> {
+    const result = this.db
+      .prepare("DELETE FROM embedding_services WHERE tenant_id = ? AND id = ?")
+      .run(context.tenantId, serviceId);
+    if (result.changes !== 1) throw new Error(`Embedding service ${serviceId} not found.`);
+  }
+
+  async listCollectionsUsingEmbeddingService(
+    context: RequestContext,
+    serviceId: string,
+  ): Promise<Array<{ id: string; displayName: string }>> {
+    const isServer = serviceId === SERVER_EMBEDDING_SERVICE_ID;
+    const rows = this.db.prepare(`
+      SELECT id, display_name FROM collections
+      WHERE tenant_id = @tenantId AND status != 'archived' AND (
+        (embedding_provider = 'openai-compatible' AND (embedding_service_id = @serviceId OR (@isServer = 1 AND embedding_service_id IS NULL)))
+        OR (active_embedding_provider = 'openai-compatible'
+            AND (active_embedding_service_id = @serviceId OR (@isServer = 1 AND active_embedding_service_id IS NULL)))
+      )
+      ORDER BY display_name COLLATE NOCASE
+    `).all({ tenantId: context.tenantId, serviceId, isServer: isServer ? 1 : 0 }) as Array<{ id: string; display_name: string }>;
+    return rows.map((row) => ({ id: row.id, displayName: row.display_name }));
   }
 
   async markDocumentsChanged(context: RequestContext, collectionId: string): Promise<void> {
@@ -830,6 +957,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         source_path,
         embedding_provider,
         embedding_model,
+        embedding_service_id,
         distance_metric,
         chroma_collection_configuration_json,
         chunk_size,
@@ -849,6 +977,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         @sourcePath,
         @embeddingProvider,
         @embeddingModel,
+        @embeddingServiceId,
         @distanceMetric,
         @chromaCollectionConfigurationJson,
         @chunkSize,
@@ -868,6 +997,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       sourcePath: this.storedSourcePath(sourcePath),
       embeddingProvider: input.embeddingProvider ?? "builtin",
       embeddingModel: input.embeddingModel,
+      embeddingServiceId: input.embeddingProvider === "openai-compatible" ? input.embeddingServiceId ?? null : null,
       distanceMetric: input.distanceMetric,
       chromaCollectionConfigurationJson: JSON.stringify(chromaConfiguration),
       chunkSize: input.chunkSize,
@@ -916,6 +1046,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     );
     addPatch("embeddingProvider", "embedding_provider", patch.embeddingProvider, updates, values);
     addPatch("embeddingModel", "embedding_model", patch.embeddingModel, updates, values);
+    addNullablePatch("embeddingServiceId", "embedding_service_id", patch.embeddingServiceId, updates, values);
     addPatch("distanceMetric", "distance_metric", patch.distanceMetric, updates, values);
     if (patch.chromaCollectionConfiguration !== undefined || patch.distanceMetric !== undefined) {
       const nextDistanceMetric = patch.distanceMetric ?? existing.distanceMetric;
@@ -947,6 +1078,13 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       "activeEmbeddingModel",
       "active_embedding_model",
       patch.activeEmbeddingModel,
+      updates,
+      values,
+    );
+    addNullablePatch(
+      "activeEmbeddingServiceId",
+      "active_embedding_service_id",
+      patch.activeEmbeddingServiceId,
       updates,
       values,
     );
@@ -1025,6 +1163,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         targetVersion: version,
         targetEmbeddingProvider: collection.embedding_provider,
         targetEmbeddingModel: collection.embedding_model,
+        targetEmbeddingServiceId: normalizeEmbeddingServiceId(collection.embedding_provider, collection.embedding_service_id) ?? undefined,
         targetChromaConfiguration,
         lockToken: input.lockToken ?? randomUUID(),
         createdAt: now,
@@ -1041,6 +1180,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           target_version,
           target_embedding_provider,
           target_embedding_model,
+          target_embedding_service_id,
           target_chroma_configuration_json,
           lock_token,
           created_at,
@@ -1054,6 +1194,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           @targetVersion,
           @targetEmbeddingProvider,
           @targetEmbeddingModel,
+          @targetEmbeddingServiceId,
           @targetChromaConfigurationJson,
           @lockToken,
           @createdAt,
@@ -1068,6 +1209,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         targetVersion: job.targetVersion,
         targetEmbeddingProvider: job.targetEmbeddingProvider,
         targetEmbeddingModel: job.targetEmbeddingModel,
+        targetEmbeddingServiceId: job.targetEmbeddingServiceId ?? null,
         targetChromaConfigurationJson: JSON.stringify(job.targetChromaConfiguration),
         lockToken: job.lockToken,
         createdAt: job.createdAt,
@@ -1370,6 +1512,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           active_version = @activeVersion,
           active_embedding_provider = @activeEmbeddingProvider,
           active_embedding_model = @activeEmbeddingModel,
+          active_embedding_service_id = @activeEmbeddingServiceId,
           document_count = @documentCount,
           chunk_count = @chunkCount,
           last_indexed_at = @lastIndexedAt,
@@ -1385,6 +1528,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         // The active embedding is what this job built with, not what the collection wants now.
         activeEmbeddingProvider: existing.target_embedding_provider,
         activeEmbeddingModel: existing.target_embedding_model,
+        activeEmbeddingServiceId: existing.target_embedding_service_id ?? null,
         documentCount: result.documentCount ?? existing.document_count,
         chunkCount: result.chunkCount ?? existing.chunk_count,
         lastIndexedAt: now,
@@ -1396,6 +1540,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           // Same source as the active embedding above, so the snapshot matches the index that was built.
           embeddingProvider: existing.target_embedding_provider,
           embeddingModel: existing.target_embedding_model,
+          embeddingServiceId: existing.target_embedding_service_id,
         })),
         updatedAt: now,
       });
@@ -1957,6 +2102,8 @@ function mapCollectionRow(row: CollectionRow): RagCollection {
     retrievalDistanceThreshold: row.retrieval_distance_threshold,
     activeEmbeddingProvider: row.active_embedding_provider ?? undefined,
     activeEmbeddingModel: row.active_embedding_model ?? undefined,
+    embeddingServiceId: row.embedding_service_id ?? undefined,
+    activeEmbeddingServiceId: row.active_embedding_service_id ?? undefined,
     documentCount: row.document_count ?? undefined,
     chunkCount: row.chunk_count ?? undefined,
     createdBy: row.created_by,
@@ -1981,6 +2128,19 @@ function parseCollectionIndexSnapshotJson(value: string | null): ReturnType<type
   }
 }
 
+function mapEmbeddingServiceRow(row: EmbeddingServiceRow): EmbeddingService {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    displayName: row.display_name,
+    baseUrl: row.base_url,
+    apiKey: row.api_key ?? undefined,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function mapIndexJobRow(row: IndexJobRow): IndexJob {
   return {
     id: row.id,
@@ -1991,6 +2151,7 @@ function mapIndexJobRow(row: IndexJobRow): IndexJob {
     targetVersion: row.target_version,
     targetEmbeddingProvider: row.target_embedding_provider,
     targetEmbeddingModel: row.target_embedding_model,
+    targetEmbeddingServiceId: row.target_embedding_service_id ?? undefined,
     targetChromaConfiguration: JSON.parse(row.target_chroma_configuration_json) as Record<string, unknown>,
     startedAt: row.started_at ?? undefined,
     finishedAt: row.finished_at ?? undefined,

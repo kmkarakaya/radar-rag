@@ -483,6 +483,23 @@ describe("embedding services API", () => {
     assert.equal((await call("GET", "/v1/admin/models")).body.embeddingServices.some((service: any) => service.id === "builtin"), false);
   });
 
+  it("warns, without refusing, when another service already uses the same URL", async () => {
+    await start({ serverBaseUrl: "http://host.docker.internal:11434/v1" });
+    const sameAsServer = await call("POST", "/v1/admin/embedding-services", { name: "Ollama", baseUrl: "http://HOST.docker.internal:11434/v1/" });
+    assert.equal(sameAsServer.status, 201);
+    assert.ok(sameAsServer.body.warnings.some((warning: string) => warning.includes('"Server (.env / config)"')));
+
+    const other = await call("POST", "/v1/admin/embedding-services", { name: "Cloud", baseUrl: "https://cloud.test/v1" });
+    assert.equal(other.body.warnings.some((warning: string) => warning.includes("also used by")), false);
+
+    const moved = await call("PATCH", `/v1/admin/embedding-services/${other.body.service.id}`, { baseUrl: "http://host.docker.internal:11434/v1" });
+    assert.equal(moved.status, 200);
+    assert.ok(moved.body.warnings.some((warning: string) => warning.includes('"Ollama"') && warning.includes('"Server (.env / config)"')));
+    // Renaming alone does not repeat the warning; a service never warns about itself.
+    const renamed = await call("PATCH", `/v1/admin/embedding-services/${other.body.service.id}`, { name: "Cloud 2" });
+    assert.equal(renamed.body.warnings.some((warning: string) => warning.includes("also used by")), false);
+  });
+
   it("picks the default service when PATCH switches a collection to openai-compatible", async () => {
     await start();
     const service = (await call("POST", "/v1/admin/embedding-services", { name: "Ollama", baseUrl: "http://ollama.test/v1" })).body.service.id;

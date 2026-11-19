@@ -3556,11 +3556,15 @@ async function saveEmbeddingService() {
     state.embeddingServices.saving = true;
     setButtonLoading(elements.btnEsSave, true, "Saving...");
     try {
-        await adminMutationRequest(id ? embeddingServicesUrl(id) : embeddingServicesUrl(), {
+        const data = await adminMutationRequest(id ? embeddingServicesUrl(id) : embeddingServicesUrl(), {
             method: id ? "PATCH" : "POST",
             body: JSON.stringify(body),
         });
         showToast(id ? "Embedding service updated; it is used at once." : "Embedding service added.", "success");
+        // Warnings about this change (for example a URL another service already uses); the auth-off one is on the page.
+        (Array.isArray(data?.warnings) ? data.warnings : [])
+            .filter((warning) => !state.embeddingServices.warnings.includes(warning))
+            .forEach((warning) => showToast(warning, "info", { durationMs: 10000 }));
         closeEmbeddingServiceForm();
         await Promise.all([loadEmbeddingServices(), loadModelDiscovery()]);
     } catch (error) {

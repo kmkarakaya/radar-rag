@@ -427,6 +427,21 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
         + "Turn on admin auth before other people can reach it."];
   }
 
+  /**
+   * Warns (never blocks) when another service already uses the same URL: legitimate with a different API key
+   * (for example two OpenAI projects), otherwise usually a duplicate.
+   */
+  async function duplicateUrlWarnings(context: RequestContext, baseUrl: string, exceptId?: string): Promise<string[]> {
+    const same = (url: string | null | undefined) => Boolean(url) && url!.replace(/\/+$/, "").toLowerCase() === baseUrl.toLowerCase();
+    const names = (await deps.registry!.listEmbeddingServices(context))
+      .filter((service) => service.id !== exceptId && same(service.baseUrl))
+      .map((service) => `"${service.displayName}"`);
+    if (same(serverEmbeddingConnection(runtimeConfig)?.baseUrl)) names.unshift(`"${SERVER_EMBEDDING_SERVICE_NAME}"`);
+    return names.length === 0
+      ? []
+      : [`${baseUrl} is also used by ${names.join(", ")}. That is fine with a different API key; otherwise use the existing service.`];
+  }
+
   async function serializeEmbeddingServices(context: RequestContext) {
     const services = await deps.registry!.listEmbeddingServices(context);
     const server = serverEmbeddingConnection(runtimeConfig);
@@ -635,13 +650,14 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       }
       const context = res.locals.requestContext as RequestContext;
       await assertUniqueServiceName(context, parsed.data.name);
+      const duplicates = await duplicateUrlWarnings(context, parsed.data.baseUrl);
       const service = await deps.registry!.createEmbeddingService(context, {
         displayName: parsed.data.name,
         baseUrl: parsed.data.baseUrl,
         apiKey: parsed.data.apiKey,
       });
       const serialized = (await serializeEmbeddingServices(context)).find((item) => item.id === service.id);
-      res.status(201).json({ service: serialized, warnings: managementWarnings() });
+      res.status(201).json({ service: serialized, warnings: [...managementWarnings(), ...duplicates] });
     } catch (error) {
       next(error);
     }
@@ -657,13 +673,14 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       const context = res.locals.requestContext as RequestContext;
       await requireEmbeddingService(context, serviceId);
       if (parsed.data.name !== undefined) await assertUniqueServiceName(context, parsed.data.name, serviceId);
+      const duplicates = parsed.data.baseUrl !== undefined ? await duplicateUrlWarnings(context, parsed.data.baseUrl, serviceId) : [];
       await deps.registry!.updateEmbeddingService(context, serviceId, {
         displayName: parsed.data.name,
         baseUrl: parsed.data.baseUrl,
         apiKey: parsed.data.apiKey,
       });
       const serialized = (await serializeEmbeddingServices(context)).find((item) => item.id === serviceId);
-      res.json({ service: serialized, warnings: managementWarnings() });
+      res.json({ service: serialized, warnings: [...managementWarnings(), ...duplicates] });
     } catch (error) {
       next(error);
     }

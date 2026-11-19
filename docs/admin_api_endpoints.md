@@ -694,7 +694,7 @@ Connections to OpenAI-compatible embedding APIs, per tenant. A collection with t
 
 ### `POST /v1/admin/embedding-services`
 
-`{ "name": "OpenAI", "baseUrl": "https://api.openai.com/v1", "apiKey": "sk-..." }` → `201 { "service": {...}, "warnings": [...] }`. `apiKey` is optional; `baseUrl` must be `http(s)` (a trailing `/` is removed); names are unique per tenant (`400` otherwise).
+`{ "name": "OpenAI", "baseUrl": "https://api.openai.com/v1", "apiKey": "sk-..." }` → `201 { "service": {...}, "warnings": [...] }`. `apiKey` is optional; `baseUrl` must be `http(s)` (a trailing `/` is removed); names are unique per tenant (`400` otherwise). When another service (or `server`) already uses the same URL, the request still succeeds and `warnings` says which one; that is fine with a different API key. `PATCH` with a new `baseUrl` warns the same way.
 
 ### `PATCH /v1/admin/embedding-services/:serviceId`
 

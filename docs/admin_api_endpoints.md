@@ -344,6 +344,7 @@ Example response:
     "status": "ready",
     "activePhysicalCollection": "api-test-active-physical",
     "activeVersion": "v-active-1",
+    "sourceKind": "folder",
     "sourcePath": "data/api-test-updated",
     "embeddingProvider": "openai-compatible",
     "embeddingModel": "embed-patched-http",
@@ -362,6 +363,7 @@ Example response:
     "createdBy": "local-dev",
     "createdAt": "2026-06-27T20:00:00.000Z",
     "updatedAt": "2026-06-27T20:10:00.000Z",
+    "documentsChanged": false,
     "indexState": {
       "status": "reindex_required",
       "reindexRequired": true,
@@ -389,6 +391,7 @@ Example response:
         "embeddingProvider",
         "embeddingModel"
       ],
+      "documentsChanged": false,
       "note": "Saved indexing settings differ from the active indexed snapshot. Re-index required to apply them."
     }
   }
@@ -512,6 +515,7 @@ Example response:
 Notes:
 
 - `collectionId` and `operation` are optional filters; both can be supplied multiple times for an OR filter over exact matches.
+- Recorded operations include `query`, `retrieve`, `reindex`, `delete` (collection), `document_upload`, `document_delete`, `job`, `job_events`, `job_delete` and `job_delete_batch`, plus index job events.
 - When `collectionId` is provided, the route applies the same tenant visibility checks as other collection-scoped admin endpoints, one collection at a time.
 - Another tenant's collection returns `403 COLLECTION_FORBIDDEN`; an unknown collection returns `404 COLLECTION_NOT_FOUND`.
 - `limit` is capped by the backend, and `nextCursor` is opaque.
@@ -543,7 +547,7 @@ Example response:
     {
       "code": "INDEXING_SOURCE_UNREADABLE",
       "message": "Indexing source cannot be read at missing/source/path. ...",
-      "recommendedAction": "Verify config/rag.config.yaml collectionDefaults.sourcePath points to a readable file or directory."
+      "recommendedAction": "Use a folder the server can read, for example data/my-docs (with Docker: ./data/my-docs next to docker-compose.yml), and put supported files (.txt, .md, .pdf, .doc, .docx) in it. Or create the collection without a source path and upload the documents."
     },
     {
       "code": "COLLECTION_CHUNK_OVERLAP_INVALID",
@@ -559,7 +563,7 @@ Example response:
     }
   ],
   "recommendedActions": [
-    "Verify config/rag.config.yaml collectionDefaults.sourcePath points to a readable file or directory.",
+    "Use a folder the server can read, for example data/my-docs (with Docker: ./data/my-docs next to docker-compose.yml), and put supported files (.txt, .md, .pdf, .doc, .docx) in it. Or create the collection without a source path and upload the documents.",
     "Reduce chunkOverlap so it stays smaller than chunkSize before saving or re-indexing.",
     "No action needed: the built-in embedding model is downloaded automatically on the first indexing (one time)."
   ],
@@ -917,6 +921,7 @@ Rules:
 | `TOO_MANY_FILES` | `400` | More than 20 files in one upload request |
 | `UNSUPPORTED_FILE` | `400` | None of the uploaded files has a supported type and a valid name; see `details.rejected` |
 | `DOCUMENT_NOT_FOUND` | `404` | The document to delete does not exist in the collection |
+| `COLLECTION_STORAGE_INCONSISTENT` | `503` | Document delete: the document's chunks could not be removed from the search index (Chroma unreachable); nothing was deleted, retry later |
 | `INVALID_JOB_STATUS` | `400` | Job action was attempted in the wrong job state |
 | `UNAVAILABLE_MODEL` | `422` | Create or reindex preflight: no embedding model for `openai-compatible`, a built-in model outside the catalog, or a model the embedding service does not offer; see `details.availableModels` and `details.recommendedActions` |
 | `EMBEDDING_PROVIDER_NOT_CONFIGURED` | `422` | Create or reindex preflight: `openai-compatible` was chosen but `embedding.baseUrl` is not configured |

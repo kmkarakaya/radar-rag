@@ -466,7 +466,7 @@ Notes:
 - `nextCursor` is opaque; pass it back unchanged if you paginate.
 - If any selected collection is outside the current tenant, expect `403 COLLECTION_FORBIDDEN`.
 - If any selected collection does not exist, expect `404 COLLECTION_NOT_FOUND`.
-- Use this endpoint for persisted operator history such as reindex, delete, query, retrieve, and related failures.
+- Use this endpoint for persisted operator history such as reindex, delete, document uploads and deletes (`document_upload`, `document_delete`), query, retrieve, and related failures.
 
 ## 6. Job Cancel And Delete Flow
 

@@ -90,6 +90,7 @@ Frontend requirements:
   - inspect retrieved evidence
 - Main admin flows:
   - create a collection
+  - upload, list and delete its documents (files endpoints)
   - validate config before save
   - patch collection settings
   - trigger reindex

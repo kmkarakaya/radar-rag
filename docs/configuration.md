@@ -59,6 +59,8 @@ uploads:
   maxFileSizeMb: 50                 # per file uploaded through the files API (stored in data/collections/<id>)
 ```
 
+The `embedding.baseUrl` service (`RAG_EMBEDDING_BASE_URL`, key `RAG_EMBEDDING_API_KEY`) is the **server** embedding service. More embedding services can be added at runtime in the admin panel (**Embedding services**) or with `/v1/admin/embedding-services`, without editing files or restarting; they are stored in the registry, per tenant, and the server one is listed there read-only. See the README, Level 5.
+
 API keys are never stored in the YAML: the chat key comes from `RAG_CHAT_API_KEY` or `.local/rag_chat_api_key.secret`, the embedding key from `RAG_EMBEDDING_API_KEY` or `.local/rag_embedding_api_key.secret`, and the admin session secret from `RAG_ADMIN_SESSION_SECRET` or `.local/rag_admin_session.secret`. They are redacted from errors and never returned by the API.
 
 ## Environment variables

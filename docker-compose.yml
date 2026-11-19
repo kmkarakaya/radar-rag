@@ -16,7 +16,8 @@
 # Settings go in a .env file next to this file:
 #   BACKEND_HOST_PORT / CHROMA_HOST_PORT   host ports (default 3010 / 8000)
 #
-# Embedding (default for NEW collections; each collection keeps the one it was indexed with):
+# Embedding services: add them in the admin panel (Embedding services) without editing this file or
+# restarting. The variables below define the read-only "server" service and the default for NEW collections:
 #   built-in (default):    nothing to set
 #   Ollama on the host:    RAG_EMBEDDING_PROVIDER=openai-compatible
 #                          RAG_EMBEDDING_BASE_URL=http://host.docker.internal:11434/v1

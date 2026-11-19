@@ -25,6 +25,7 @@ The rest of this folder is the API contract.
 - Use only versioned routes under `/v1/rag` and `/v1/admin`.
 - Legacy `/rag/query` and `/rag/retrieve` routes intentionally return `404`.
 - Treat `GET /v1/rag/collections/:collectionId/ready` as the capability gate for collection-specific UI state.
+- Embedding services: `openai-compatible` collections use a connection from `/v1/admin/embedding-services` (or the read-only `server` one from `.env` / config) via `embeddingServiceId`; changes apply without a restart. See [admin_api_endpoints.md](./admin_api_endpoints.md#embedding-services).
 - Documents: create a collection without `sourcePath` and manage its documents with `GET/POST /v1/admin/collections/:collectionId/files` and `DELETE /v1/admin/collections/:collectionId/files/:fileName`. Uploads need a reindex to become searchable; deletes leave search results at once. See [admin_api_endpoints.md](./admin_api_endpoints.md#documents-of-a-collection).
 - `GET /v1/rag/collections/:collectionId/ready` may still return `200` while query is blocked; read `capabilities`, `blockers`, and `warnings`.
 - Answer generation is optional. `POST /v1/rag/collections/:collectionId/query` needs the global chat LLM (any OpenAI-compatible chat completions API); without one (the shipped default) the backend is retrieve-only and `/query` returns `503 CHAT_NOT_CONFIGURED`. `GET /ready` reports this as `queryEnabled: false` and `systemReadyFor: "retrieve-and-index"`. Chat provider failures return `503 CHAT_PROVIDER_UNREACHABLE` or `502 CHAT_PROVIDER_ERROR`.

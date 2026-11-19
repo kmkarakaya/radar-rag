@@ -21,6 +21,12 @@ Running the backend day to day: health checks, limits, logs, index lifecycle and
 - Every request gets a request id (`x-request-id`, generated if missing), returned in errors and written to the structured operational log, which is also stored in the registry (`operational_logs`). The admin panel's audit log shows the persisted history.
 - Set `observability.includeDebugTimings: true` to add `debug.latency` (`retrievalMs`, `generationMs`, `totalMs`) to query and retrieve responses; it is `false` by default.
 
+## Embedding services and their keys
+
+- Embedding services added through the admin panel or `/v1/admin/embedding-services` are stored in the registry (`data/registry.sqlite`), with their API keys in **plain text**. The API never returns a key, and keys are redacted from errors and job errors. Treat the registry file and its backups as secret.
+- Whoever can manage embedding services decides where document text is sent, and the server makes requests to the URLs they enter. Only the `admin` role can manage them when admin auth is on; turn it on before other people can reach the server.
+- A service's URL or key change applies to the next request of every collection that uses it (clients are cached per service version); no restart and no re-index are needed.
+
 ## Documents on disk
 
 - Uploads collections keep their documents in `data/collections/<collection id>` (with Docker: `./data/collections` next to `docker-compose.yml`). Deleting the collection deletes that folder. Back up `./data` to keep both the documents and the registry.

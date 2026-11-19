@@ -421,7 +421,7 @@
                     <div id="configDefaultsPanel" class="hidden md:col-span-2 rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
                         <div class="flex items-start justify-between gap-3">
                             <div>
-                                <h4 class="text-xs font-bold uppercase tracking-wider text-indigo-600">Backend defaults</h4>
+                                <h4 class="text-xs font-bold uppercase tracking-wider text-indigo-600">Server defaults</h4>
                                 <p id="configDefaultsSummary" class="mt-1 text-xs text-slate-600">Loading GET /v1/admin/config/defaults...</p>
                             </div>
                             <span id="configDefaultsStatus" class="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600">Loading</span>
@@ -473,7 +473,7 @@
                         <div>
                             <label class="block text-xs font-medium text-slate-500 mb-1">Distance Metric</label>
                             <select id="editDistanceMetric" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
-                                <option value="">Use backend default</option>
+                                <option value="">Server default</option>
                                 <option value="l2">L2 (Euclidean)</option>
                                 <option value="cosine">Cosine</option>
                                 <option value="ip">Inner Product</option>
@@ -513,7 +513,7 @@
                             <div>
                                 <label class="block text-xs font-medium text-slate-500 mb-1">Embedding Provider</label>
                                 <select id="editEmbeddingProvider" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
-                                    <option value="">Use backend default</option>
+                                    <option value="">Server default</option>
                                     <option value="builtin">builtin (in-process, downloaded on first use)</option>
                                     <option value="openai-compatible">openai-compatible (external service)</option>
                                 </select>

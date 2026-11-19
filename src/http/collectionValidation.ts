@@ -293,7 +293,7 @@ async function analyzeSourcePath(
   if (uploads && draft.mode === "create") return { blockers: [], warnings: [] };
 
   const noDocuments = (): CollectionValidationIssue => uploads
-    ? makeIssue("NO_INDEXABLE_DOCUMENTS", "No documents have been uploaded to this collection yet.", runtimeConfig, UPLOAD_DOCUMENTS_ACTION)
+    ? makeIssue("NO_INDEXABLE_DOCUMENTS", "This collection has no documents.", runtimeConfig, UPLOAD_DOCUMENTS_ACTION)
     : makeIssue(
       "NO_INDEXABLE_DOCUMENTS",
       `No indexable documents were found in ${draft.sourcePath}.`,

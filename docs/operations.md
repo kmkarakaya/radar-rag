@@ -40,7 +40,8 @@ Running the backend day to day: health checks, limits, logs, index lifecycle and
 - Each re-index builds a new physical Chroma collection and switches the collection to it only when the build succeeds (blue/green), so searches keep working during a rebuild. One re-index job can run per collection at a time.
 - Retired physical collections are deleted after `cleanup.retentionMs`. Their lifecycle states are `delete_pending`, `cleanup_failed` (retried) and `failed_build`.
 - Storage delete handling is idempotent not-found cleanup behavior: deleting something that is already gone is not an error. Accessing another tenant's collection returns `COLLECTION_FORBIDDEN`.
-- Jobs left running by a crash are marked failed at the next startup.
+- Interrupted jobs never stay "running". When the server stops (restart, update, `docker compose stop`), it marks its running jobs failed with "Interrupted: the server stopped while this job was running. Re-index again." A running job (in the server or in `npm run index`) also records a heartbeat every 30 seconds; a job without one for 3 minutes (its process crashed or was killed) is failed at startup or by a check that runs every minute. The collection keeps serving its previous index; re-index it again.
+- Docker: the compose file gives the backend `stop_grace_period: 30s` so it can stop cleanly; built-in embedding batches can keep it busy for a few seconds.
 - `GET /v1/admin/collections` (with `/v1/admin/jobs/` for job status) is a registry-style discovery endpoint and does not return query/retrieve capability flags. Its items include `readyUrl`, `queryUrl` and `retrieveUrl`; when a collection has no active index yet, the `activeVersion` and `chunkCount` fields stay `null` instead of disappearing from the response shape.
 - The HTTP application is assembled in [src/app.ts](../src/app.ts).
 

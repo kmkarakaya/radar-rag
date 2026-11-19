@@ -1,7 +1,7 @@
 import type { CollectionRegistry } from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
 import { emitOperationalLog, type OperationalLogSink } from "../observability/logger.js";
-import { runIndexJob } from "./jobs.js";
+import { JobInterruptedError, runIndexJob } from "./jobs.js";
 import { isTimeoutOrAbortError } from "../observability/timeout.js";
 
 export interface IndexJobRunner {
@@ -16,10 +16,15 @@ export function createIndexJobRunner(deps: {
   runtimeConfig: ResolvedConfig;
   log?: (message: string) => void;
   logEvent?: OperationalLogSink;
+  /** How long shutdown waits for aborted jobs to stop (default 2 s; Docker kills the process after 10 s). */
+  shutdownGraceMs?: number;
+  /** Passed to runIndexJob (tests replace the physical build). */
+  jobDeps?: Parameters<typeof runIndexJob>[0]["deps"];
 }): IndexJobRunner {
   const { registry, runtimeConfig } = deps;
   const log = deps.log ?? console.log;
   const logEvent = deps.logEvent;
+  const shutdownGraceMs = deps.shutdownGraceMs ?? 2000;
 
   const runningPromises = new Map<string, Promise<void>>();
   const abortControllers = new Map<string, AbortController>();
@@ -39,7 +44,7 @@ export function createIndexJobRunner(deps: {
     }
 
     try {
-      await runIndexJob({ registry, jobId, runtimeConfig, signal, log, logEvent });
+      await runIndexJob({ registry, jobId, runtimeConfig, signal, log, logEvent, deps: deps.jobDeps });
     } catch (error) {
       if (!isTimeoutOrAbortError(error)) {
         const message = error instanceof Error ? error.message : String(error);
@@ -85,10 +90,30 @@ export function createIndexJobRunner(deps: {
     },
     async shutdown() {
       isShuttingDown = true;
-      for (const controller of abortControllers.values()) {
-        controller.abort();
+      // Fail the running jobs first, then stop them. The process may be killed at any moment from here on
+      // (Docker after 10 s), and some steps do not stop on abort (a model download) or keep the event loop
+      // busy (built-in embedding batches); marking first means no job is left "running" either way.
+      const interrupted = new JobInterruptedError();
+      for (const jobId of runningPromises.keys()) {
+        try {
+          const job = await registry.getJob(jobId);
+          if (job && (job.status === "queued" || job.status === "running")) {
+            await registry.failIndexJob(jobId, interrupted.message);
+            log(`Job ${jobId} interrupted: the server is stopping.`);
+          }
+        } catch (error) {
+          log(`Could not mark job ${jobId} as interrupted: ${error instanceof Error ? error.message : String(error)}`);
+        }
       }
-      await this.drain();
+      for (const controller of abortControllers.values()) {
+        controller.abort(interrupted);
+      }
+      let timer: NodeJS.Timeout | undefined;
+      await Promise.race([
+        this.drain(),
+        new Promise<void>((resolve) => { timer = setTimeout(resolve, shutdownGraceMs); }),
+      ]);
+      clearTimeout(timer);
     }
   };
 }

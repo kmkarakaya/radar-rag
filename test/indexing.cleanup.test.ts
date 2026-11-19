@@ -361,6 +361,7 @@ describe("startup maintenance", () => {
           throw new Error("startup maintenance boom");
         },
         startupSampleCollection: async () => undefined,
+        staleJobCheckIntervalMs: 0,
       });
       server = started.server;
 

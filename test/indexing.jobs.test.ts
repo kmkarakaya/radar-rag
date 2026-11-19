@@ -292,6 +292,7 @@ describe("indexing jobs", () => {
         return { ...job, status: "failed", error };
       },
       failStaleJobs: async () => 0,
+      recordIndexJobHeartbeat: async () => {},
       getPhysicalCollection: async () => null,
       createPhysicalCollectionRecord: async (input) => {
         createdRecordVersions.push(input.version);

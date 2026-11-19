@@ -75,3 +75,6 @@ services:
       chroma:
         condition: service_started
     restart: unless-stopped
+    # Time to stop cleanly (restart, stop, updates): a running index job is marked interrupted instead of
+    # staying "running". Built-in embedding batches can keep the backend busy for several seconds.
+    stop_grace_period: 30s

@@ -5,6 +5,7 @@ import type { CollectionRegistry } from "./collections/types.js";
 import { createSqliteCollectionRegistry } from "./collections/sqliteRegistry.js";
 import { createIndexJobRunner, type IndexJobRunner } from "./indexing/jobRunner.js";
 import { cleanupRetiredPhysicalCollections } from "./indexing/cleanup.js";
+import { STALE_JOB_THRESHOLD_MS } from "./indexing/jobs.js";
 import { config, type ResolvedConfig } from "./config.js";
 import { ensureSampleCollection } from "./samples/sampleCollection.js";
 import {
@@ -24,7 +25,8 @@ export async function runStartupMaintenance(input: {
   logEvent?: OperationalLogSink;
   cleanupRetiredPhysicalCollectionsFn?: typeof cleanupRetiredPhysicalCollections;
 }): Promise<void> {
-  const staleThresholdMs = input.staleThresholdMs ?? 2 * 60 * 60 * 1000;
+  // Running jobs send a heartbeat; one without it for this long was interrupted (stop or crash).
+  const staleThresholdMs = input.staleThresholdMs ?? STALE_JOB_THRESHOLD_MS;
   const cleanupLimit = input.cleanupLimit ?? 10;
   const log = input.log ?? console;
   const cleanupFn = input.cleanupRetiredPhysicalCollectionsFn ?? cleanupRetiredPhysicalCollections;
@@ -90,6 +92,8 @@ export async function startServer(input: {
   startupMaintenance?: typeof runStartupMaintenance;
   /** First-run sample collection; injectable so tests can turn it off. */
   startupSampleCollection?: (input: Parameters<typeof ensureSampleCollection>[0]) => Promise<unknown>;
+  /** How often interrupted jobs are looked for while running (default 60 s; 0 turns it off, as in tests). */
+  staleJobCheckIntervalMs?: number;
 } = {}) {
   const runtimeConfig = input.runtimeConfig ?? config;
   const registry = input.registry ?? createSqliteCollectionRegistry({ dbPath: runtimeConfig.registryPath, projectRoot: runtimeConfig.projectRoot });
@@ -129,11 +133,26 @@ export async function startServer(input: {
       log.error("Creating the sample collection failed:", error);
     });
 
-  return { app, server, registry, jobRunner, startupMaintenancePromise };
+  // Jobs interrupted while this server runs (for example a CLI indexing process that crashed) are failed
+  // within minutes, not only at the next start.
+  const staleJobCheckIntervalMs = input.staleJobCheckIntervalMs ?? 60_000;
+  const staleJobTimer = staleJobCheckIntervalMs > 0
+    ? setInterval(() => {
+      registry.failStaleJobs(STALE_JOB_THRESHOLD_MS)
+        .then((count) => {
+          if (count > 0) log.log(`Failed ${count} interrupted index job(s) (no heartbeat).`);
+        })
+        .catch((error) => log.error("Checking for interrupted index jobs failed:", error));
+    }, staleJobCheckIntervalMs)
+    : undefined;
+  staleJobTimer?.unref?.();
+  const stopBackgroundChecks = () => clearInterval(staleJobTimer);
+
+  return { app, server, registry, jobRunner, startupMaintenancePromise, stopBackgroundChecks };
 }
 
 async function main(): Promise<void> {
-  const { server, jobRunner, registry } = await startServer();
+  const { server, jobRunner, registry, stopBackgroundChecks } = await startServer();
 
   const shutdown = async (signal: string) => {
     console.log(`Received ${signal}. Starting graceful shutdown...`);
@@ -145,7 +164,12 @@ async function main(): Promise<void> {
     }, 10000);
 
     try {
-      // 1. Close HTTP server
+      stopBackgroundChecks();
+      // 1. Stop the index jobs first: running ones are marked interrupted at once, so none stays "running"
+      //    even if the process is killed before shutdown completes.
+      const jobsStopped = jobRunner.shutdown();
+
+      // 2. Close HTTP server
       await new Promise<void>((resolve, reject) => {
         server.close((err) => {
           if (err) reject(err);
@@ -154,8 +178,7 @@ async function main(): Promise<void> {
       });
       console.log("HTTP server closed.");
 
-      // 2. Shutdown job runner
-      await jobRunner.shutdown();
+      await jobsStopped;
       console.log("Job runner shut down.");
 
       // 3. Close registry

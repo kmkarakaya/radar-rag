@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import Database from "better-sqlite3";
-import { createSqliteCollectionRegistry } from "../src/collections/sqliteRegistry.js";
+import { createSqliteCollectionRegistry, STALE_JOB_ERROR } from "../src/collections/sqliteRegistry.js";
 import { createPhysicalCollectionName } from "../src/collections/ids.js";
 import type {
   CollectionRegistry,
@@ -741,10 +741,10 @@ describe("sqlite collection registry", () => {
 
     assert.equal(failedCount, 1);
     assert.equal(staleJob?.status, "failed");
-    assert.equal(staleJob?.error, "Job timed out (stale lock)");
+    assert.equal(staleJob?.error, STALE_JOB_ERROR);
     assert.equal(collection?.status, "failed");
     assert.equal(physical?.status, "failed_build");
-    assert.equal(physical?.cleanupError, "Job timed out (stale lock)");
+    assert.equal(physical?.cleanupError, STALE_JOB_ERROR);
     assert.equal(due.length, 0);
   });
 

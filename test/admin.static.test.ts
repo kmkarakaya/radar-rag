@@ -41,6 +41,9 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes('if (getSelectedSourceKind() === "folder") addIfText(payload, "sourcePath", values.sourcePath);'));
     // The client role table mirrors the server's manageDocuments capability.
     assert.ok(js.includes('"cancelJob", "manageDocuments"'));
+    // The external embedding provider is only selectable once the server has a service configured.
+    assert.ok(js.includes("function syncExternalProviderOption()"));
+    assert.ok(js.includes("RAG_EMBEDDING_BASE_URL (and RAG_EMBEDDING_API_KEY if it needs a key)"));
   });
 
   it("loads full editable settings through the admin collection detail endpoint", async () => {

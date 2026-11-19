@@ -668,7 +668,7 @@ function syncModelDiscoveryPanel() {
         if (provider === "builtin") {
             providerText = `builtin: ${discovery.builtinModels.length} built-in model(s), run inside the backend and downloaded on first use.`;
         } else if (!external.configured) {
-            providerText = "openai-compatible: no embedding service configured (set embedding.baseUrl with npm run onboard or RAG_EMBEDDING_BASE_URL).";
+            providerText = EXTERNAL_EMBEDDING_SETUP_HINT;
         } else if (!external.reachable) {
             providerText = `openai-compatible: ${external.baseUrl} is not reachable${external.error ? ` (${external.error})` : ""}.`;
         } else {
@@ -677,7 +677,27 @@ function syncModelDiscoveryPanel() {
         elements.modelDiscoverySummary.textContent = `${providerText} ${defaultText}`.trim();
     }
 
+    syncExternalProviderOption();
     syncModelSelect("embedding");
+}
+
+// The external embedding service (URL, API key) is a server setting, not a per-collection field yet.
+const EXTERNAL_EMBEDDING_SETUP_HINT = "openai-compatible: no external embedding service is configured on the server. "
+    + "To use one (Ollama, OpenAI, LM Studio...): with Docker, add RAG_EMBEDDING_BASE_URL (and RAG_EMBEDDING_API_KEY if it needs a key) "
+    + "to the .env file next to docker-compose.yml and run docker compose up -d (Ollama on this computer: http://host.docker.internal:11434/v1); "
+    + "without Docker, run npm run onboard. Then pick its model here.";
+
+/** Disable "openai-compatible" while no external service is configured, unless the collection already uses it. */
+function syncExternalProviderOption() {
+    const select = elements.editEmbeddingProvider;
+    const option = select?.querySelector('option[value="openai-compatible"]');
+    if (!option) return;
+    const discovery = state.modelDiscovery;
+    const unavailable = discovery.loaded && !discovery.external.configured && select.value !== "openai-compatible";
+    option.disabled = unavailable;
+    option.textContent = unavailable
+        ? "openai-compatible (external service, not configured on the server)"
+        : "openai-compatible (external service)";
 }
 
 function describeChatLlm(chat) {

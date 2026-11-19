@@ -191,7 +191,7 @@ RAG_EMBEDDING_MODEL=embeddinggemma-2:270m
 # RAG_EMBEDDING_API_KEY=...   for cloud providers
 ```
 
-- Each collection stores the provider and model it was indexed with and is always searched with them. The setting above is only the default for **new** collections; existing ones are never touched. You can also pick the provider and model per collection in the admin panel.
+- Each collection stores the provider and model it was indexed with and is always searched with them. The setting above is only the default for **new** collections; existing ones are never touched. You can also pick the provider and model per collection in the admin panel. To offer an external service only for some collections, set just `RAG_EMBEDDING_BASE_URL` (and `RAG_EMBEDDING_API_KEY` if needed): `builtin` stays the default, and **openai-compatible** becomes selectable in New Collection (the panel disables it while no service is configured). Managing these connections from the admin panel is planned.
 - Changing a collection's provider or model marks it `reindex_required`; it keeps serving with the old embedding until the re-index finishes. Vectors from different models are not comparable, which is why a re-index is needed.
 - Speed: `builtin` runs on the backend's CPU. It is fine for small and medium document sets, but indexes noticeably slower than a dedicated embedding server, and a large indexing job can slow down concurrent searches. For large document sets, use Ollama (with a GPU if available) or a cloud API.
 - `/ready` checks the default embedding without running it. If an external default service is down, only indexing new collections is blocked; collections on another provider keep serving.

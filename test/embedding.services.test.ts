@@ -186,9 +186,9 @@ describe("embedding service connections", () => {
     clearProviderStatusCache();
   });
 
-  function recordingFetch(requests: Array<{ url: string; auth: string | null }>) {
+  function recordingFetch(requests: Array<{ url: string; auth: string | null; redirect?: RequestInit["redirect"] }>) {
     return (async (url: string | URL, init?: RequestInit) => {
-      requests.push({ url: String(url), auth: new Headers(init?.headers).get("authorization") });
+      requests.push({ url: String(url), auth: new Headers(init?.headers).get("authorization"), redirect: init?.redirect });
       if (String(url).endsWith("/models")) {
         return new Response(JSON.stringify({ data: [{ id: "bge-m3" }] }), { status: 200 });
       }
@@ -228,8 +228,8 @@ describe("embedding service connections", () => {
     assert.equal(builtin.connection, undefined);
   });
 
-  it("embeds and checks through the service's own URL and key", async () => {
-    const requests: Array<{ url: string; auth: string | null }> = [];
+  it("embeds and checks through the service's own URL and key, without following redirects", async () => {
+    const requests: Array<{ url: string; auth: string | null; redirect?: RequestInit["redirect"] }> = [];
     const target = {
       provider: "openai-compatible" as const,
       model: "bge-m3",
@@ -244,6 +244,8 @@ describe("embedding service connections", () => {
       ["https://api.openai.test/v1/embeddings", "Bearer sk-service"],
       ["https://api.openai.test/v1/models", "Bearer sk-service"],
     ]);
+    // Document text and the key only go to the URL the admin entered.
+    assert.deepEqual(requests.map((request) => request.redirect), ["manual", "manual"]);
   });
 
   it("uses a new client when a service's URL or key changes (no restart)", () => {
@@ -294,7 +296,12 @@ describe("embedding services API", () => {
     }
   });
 
-  async function start(options: { serverBaseUrl?: string; adminAuth?: ReturnType<typeof createAdminAuthService>; authConfig?: any } = {}) {
+  async function start(options: {
+    serverBaseUrl?: string;
+    adminAuth?: ReturnType<typeof createAdminAuthService>;
+    authConfig?: any;
+    ragHandlers?: any;
+  } = {}) {
     const registry = createSqliteCollectionRegistry({ dbPath: ":memory:" });
     const runtimeConfig: ResolvedConfig = {
       ...config,
@@ -306,6 +313,7 @@ describe("embedding services API", () => {
       runtimeConfig,
       registry,
       adminAuth: options.adminAuth,
+      ragHandlers: options.ragHandlers,
       jobRunner: { start: () => {}, abort: () => false, drain: async () => {}, shutdown: async () => {} } as any,
       healthChecks: {
         // Configured when the resolved target has a connection; every model is listed. No network.
@@ -444,6 +452,59 @@ describe("embedding services API", () => {
     assert.equal(inUse.body.code, "EMBEDDING_SERVICE_IN_USE");
     assert.deepEqual(inUse.body.details.collections.map((c: any) => c.id), [auto.body.collection.id]);
     assert.equal((await call("DELETE", `/v1/admin/embedding-services/${one}`)).status, 204);
+  });
+
+  it("picks the default service when PATCH switches a collection to openai-compatible", async () => {
+    await start();
+    const service = (await call("POST", "/v1/admin/embedding-services", { name: "Ollama", baseUrl: "http://ollama.test/v1" })).body.service.id;
+    const created = await call("POST", "/v1/admin/collections", { displayName: "Starts builtin", embeddingProvider: "builtin" });
+    assert.equal(created.status, 201);
+
+    const validation = await call("POST", `/v1/admin/collections/${created.body.collection.id}/validate`, {
+      embeddingProvider: "openai-compatible",
+      embeddingModel: "bge-m3",
+    });
+    assert.equal(validation.status, 200);
+    assert.equal(validation.body.blockers.some((issue: any) => issue.code.startsWith("EMBEDDING")), false);
+
+    const patched = await call("PATCH", `/v1/admin/collections/${created.body.collection.id}`, {
+      embeddingProvider: "openai-compatible",
+      embeddingModel: "bge-m3",
+    });
+    assert.equal(patched.status, 200);
+    assert.equal(patched.body.collection.embeddingServiceId, service);
+  });
+
+  it("refuses an openai-compatible collection while no embedding service exists, and says how to add one", async () => {
+    await start();
+    const refused = await call("POST", "/v1/admin/collections", { displayName: "No service", embeddingProvider: "openai-compatible", embeddingModel: "bge-m3" });
+    assert.equal(refused.status, 422);
+    assert.equal(refused.body.code, "EMBEDDING_PROVIDER_NOT_CONFIGURED");
+    assert.match(refused.body.details.recommendedActions.join(" "), /embedding-services/);
+  });
+
+  it("retrieves through the collection's active service and names it in the response", async () => {
+    const seen: any[] = [];
+    const registry = await start({
+      ragHandlers: {
+        resolveReadableCollection: async (req: any) =>
+          registry.getVisibleCollection({ tenantId: "default", userId: "u", requestId: "r" }, req.params.collectionId),
+        retrieveSources: async (_question: string, options: any) => {
+          seen.push(options.embeddingTarget);
+          return { sources: [], context: "" };
+        },
+      },
+    });
+    const context = { tenantId: "default", userId: "u", requestId: "r" };
+    const service = (await call("POST", "/v1/admin/embedding-services", { name: "Cloud", baseUrl: "https://cloud.test/v1", apiKey: SECRET })).body.service.id;
+    const collection = await registry.createCollection(context, openaiInput({ embeddingServiceId: service }));
+    await completeJob(registry, context, collection.id);
+
+    const retrieved = await call("POST", `/v1/rag/collections/${collection.id}/retrieve`, { question: "hello" });
+    assert.equal(retrieved.status, 200);
+    assert.equal(retrieved.body.embeddingServiceId, service);
+    assert.equal(seen[0].connection.baseUrl, "https://cloud.test/v1");
+    assert.equal(JSON.stringify(retrieved.body).includes(SECRET), false);
   });
 
   it("lets only admins manage services when admin auth is on", async () => {

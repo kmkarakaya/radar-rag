@@ -756,6 +756,11 @@ function syncEmbeddingServiceField(preferredId) {
     select.value = wanted || services[0]?.id || "";
 }
 
+/** " via <service name>" for an openai-compatible embedding, "" otherwise. */
+function viaEmbeddingService(id) {
+    return id ? ` via ${embeddingServiceName(id)}` : "";
+}
+
 function embeddingServiceName(id) {
     if (!id) return "";
     const known = state.modelDiscovery.services.find((service) => service.id === id)
@@ -1847,7 +1852,8 @@ function renderCollectionIndexStateBanner() {
     snapshotGrid.appendChild(createMetaItem("Saved chunk overlap", indexState?.desiredSnapshot?.chunkOverlap ?? collection.chunkOverlap));
     snapshotGrid.appendChild(createMetaItem(
         "Saved embedding",
-        `${indexState?.desiredSnapshot?.embeddingProvider ?? collection.embeddingProvider ?? "-"} / ${indexState?.desiredSnapshot?.embeddingModel ?? collection.embeddingModel}`,
+        `${indexState?.desiredSnapshot?.embeddingProvider ?? collection.embeddingProvider ?? "-"} / ${indexState?.desiredSnapshot?.embeddingModel ?? collection.embeddingModel}`
+            + viaEmbeddingService(indexState?.desiredSnapshot?.embeddingServiceId),
     ));
     snapshotGrid.appendChild(createMetaItem("Saved distance metric", indexState?.desiredSnapshot?.distanceMetric ?? collection.distanceMetric));
 
@@ -1860,7 +1866,8 @@ function renderCollectionIndexStateBanner() {
         activeGrid.appendChild(createMetaItem("Active source path", indexState.activeSnapshot.sourcePath));
         activeGrid.appendChild(createMetaItem("Active chunk size", indexState.activeSnapshot.chunkSize));
         activeGrid.appendChild(createMetaItem("Active chunk overlap", indexState.activeSnapshot.chunkOverlap));
-        activeGrid.appendChild(createMetaItem("Active embedding", `${indexState.activeSnapshot.embeddingProvider} / ${indexState.activeSnapshot.embeddingModel}`));
+        activeGrid.appendChild(createMetaItem("Active embedding", `${indexState.activeSnapshot.embeddingProvider} / ${indexState.activeSnapshot.embeddingModel}`
+            + viaEmbeddingService(indexState.activeSnapshot.embeddingServiceId)));
         activeGrid.appendChild(createMetaItem("Active distance metric", indexState.activeSnapshot.distanceMetric));
         activeSection.appendChild(activeGrid);
         detail.appendChild(activeSection);

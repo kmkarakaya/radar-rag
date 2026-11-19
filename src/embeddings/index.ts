@@ -116,12 +116,16 @@ function createOpenAICompatibleEmbeddings(
     throw notConfiguredError(target);
   }
 
+  const baseFetch = fetchImpl ?? fetch;
   return new OpenAIEmbeddings({
     model: target.model,
     apiKey: connection.apiKey ?? PLACEHOLDER_API_KEY,
     configuration: {
       baseURL: connection.baseUrl,
-      ...(fetchImpl ? { fetch: fetchImpl } : {}),
+      // Redirects are not followed (as in the GET /models checks): document text and the key only go to the
+      // URL the admin entered; a redirect fails as an HTTP error instead.
+      fetch: ((url: Parameters<FetchLike>[0], init?: Parameters<FetchLike>[1]) =>
+        baseFetch(url, { ...init, redirect: "manual" })) as FetchLike,
     },
     // The SDK defaults to base64, which some local servers do not support.
     encodingFormat: "float",

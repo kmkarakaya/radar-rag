@@ -10,7 +10,15 @@ import { HttpError } from "./errors.js";
 import { config, type ResolvedConfig } from "../config.js";
 import { startReindexJob } from "../indexing/jobs.js";
 import type { RequestContext } from "./requestContext.js";
-import type { CreateCollectionInput, IndexJob, IndexJobStatus, ListAuditLogInput, ListJobsInput } from "../collections/types.js";
+import type {
+  CreateCollectionInput,
+  IndexJob,
+  IndexJobStatus,
+  ListAuditLogInput,
+  ListJobsInput,
+  RagCollection,
+  UpdateCollectionPatch,
+} from "../collections/types.js";
 import { collectionCreateSchema, collectionUpdateSchema } from "./collectionSchemas.js";
 import {
   buildCreateCollectionInput,
@@ -507,6 +515,28 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     return SERVER_EMBEDDING_SERVICE_ID;
   }
 
+  /**
+   * Checks an update's embedding service like a create: a given id must exist for the tenant and only goes with
+   * openai-compatible. Switching a collection to openai-compatible without an id picks the default the same way
+   * a create does, so PATCH and POST never disagree.
+   */
+  async function withUpdateEmbeddingService(
+    context: RequestContext,
+    existing: RagCollection,
+    patch: UpdateCollectionPatch,
+  ): Promise<UpdateCollectionPatch> {
+    if (patch.embeddingServiceId === undefined && patch.embeddingProvider === undefined) return patch;
+    const provider = patch.embeddingProvider ?? existing.embeddingProvider;
+    const switchingToExternal = provider === "openai-compatible" && existing.embeddingProvider !== "openai-compatible";
+    const chosen = await chooseEmbeddingService(
+      context,
+      provider,
+      patch.embeddingServiceId,
+      switchingToExternal ? "create" : "update",
+    );
+    return chosen && chosen !== patch.embeddingServiceId ? { ...patch, embeddingServiceId: chosen } : patch;
+  }
+
   router.get("/embedding-services", requireRegistry, async (_req, res, next) => {
     try {
       const context = res.locals.requestContext as RequestContext;
@@ -788,7 +818,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       }
 
       const validation = await validateCollectionDraft(
-        buildUpdateValidationDraft(collection, parsed.data),
+        buildUpdateValidationDraft(collection, await withUpdateEmbeddingService(context, collection, parsed.data)),
         runtimeConfig,
         deps.registry!,
         context,
@@ -812,15 +842,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
 
       const context = res.locals.requestContext as RequestContext;
       const existing = await requireVisibleCollection(context, collectionId);
-      if (parsed.data.embeddingServiceId !== undefined || parsed.data.embeddingProvider !== undefined) {
-        // A service id must exist for the tenant and only goes with the openai-compatible provider.
-        await chooseEmbeddingService(
-          context,
-          parsed.data.embeddingProvider ?? existing.embeddingProvider,
-          parsed.data.embeddingServiceId,
-          "update",
-        );
-      }
+      const patch = await withUpdateEmbeddingService(context, existing, parsed.data);
       if (existing.sourceKind === "uploads" && parsed.data.sourcePath !== undefined && parsed.data.sourcePath !== existing.sourcePath) {
         throw new HttpError(
           400,
@@ -828,7 +850,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
           "This collection stores uploaded documents in its own folder; its sourcePath cannot be changed.",
         );
       }
-      const collection = await deps.registry!.updateCollection(context, collectionId, parsed.data);
+      const collection = await deps.registry!.updateCollection(context, collectionId, patch);
       res.json({ collection });
     } catch (error) {
       next(error);

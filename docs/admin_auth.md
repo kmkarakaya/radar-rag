@@ -2,6 +2,8 @@
 
 Admin auth protects the admin panel (`/admin`) and the admin API (`/v1/admin/**`). It is off by default (the shipped config has `adminAuth.enabled: false` and no users), which is fine on your own computer; turn it on before other people can reach the server. It does not protect the public `/v1/rag/**` API.
 
+While it is off, anyone who can reach the server can also add or change **embedding services**: they decide where document text is sent, and the server makes requests to the URLs entered there. The embedding services API and panel say so in a warning. Do not expose a server with admin auth off.
+
 When it is on:
 
 - Users log in with a username and password; passwords are stored only as scrypt hashes.

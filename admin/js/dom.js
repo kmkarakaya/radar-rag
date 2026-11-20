@@ -234,17 +234,25 @@ export function appendJsonDetails(parent, label, value) {
     parent.appendChild(details);
 }
 
+/**
+ * Shows a loading text on a button and restores it afterwards: its original content (icons included) and the
+ * disabled state it had before, so a button disabled for the session's role stays disabled.
+ */
 export function setButtonLoading(button, loading, loadingText = "Loading...") {
     if (!button) return;
     if (loading) {
-        button.dataset.originalText = button.dataset.originalText || button.textContent || "";
+        if (!button.loadingSnapshot) {
+            button.loadingSnapshot = { nodes: [...button.childNodes], disabled: button.disabled };
+        }
         button.disabled = true;
         button.textContent = loadingText;
         return;
     }
-    button.textContent = button.dataset.originalText || button.textContent || "";
-    delete button.dataset.originalText;
-    button.disabled = false;
+    const snapshot = button.loadingSnapshot;
+    if (!snapshot) return;
+    button.replaceChildren(...snapshot.nodes);
+    button.disabled = snapshot.disabled;
+    delete button.loadingSnapshot;
 }
 
 export function renderIssuesList(parent, issues) {

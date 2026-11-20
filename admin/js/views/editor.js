@@ -1,4 +1,4 @@
-import { adminCollectionUrl, adminCollectionValidateUrl, adminMutationRequest, apiRequest } from "../api.js";
+import { adminCollectionUrl, adminCollectionValidateUrl, adminMutationRequest, apiRequest, normalizeError } from "../api.js";
 import { canAdminAction } from "../auth.js";
 import { clearNode, createEl, getStatusBadge, setButtonLoading, showErrorToast, showToast } from "../dom.js";
 import { API, EDIT_FIELD_IDS, elements, loadTokens, state } from "../state.js";
@@ -95,7 +95,9 @@ export function syncModelDiscoveryPanel() {
     const online = provider === "builtin" ? discovery.loaded : Boolean(service?.reachable && service?.authOk !== false);
 
     if (elements.modelDiscoveryStatus) {
-        elements.modelDiscoveryStatus.textContent = online ? "Available" : provider === "builtin" ? "Loading" : service ? "Offline" : "Not configured";
+        elements.modelDiscoveryStatus.textContent = discovery.error
+            ? "Unavailable"
+            : online ? "Available" : provider === "builtin" ? "Loading" : service ? "Offline" : "Not configured";
         elements.modelDiscoveryStatus.className = online
             ? "rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-700"
             : "rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-700";
@@ -106,7 +108,9 @@ export function syncModelDiscoveryPanel() {
             ? `Default for new collections: ${discovery.defaultProvider} / ${discovery.defaultModel}.`
             : "";
         let providerText;
-        if (provider === "builtin") {
+        if (discovery.error) {
+            providerText = `Model suggestions could not be loaded (${discovery.error}). You can still type a model name.`;
+        } else if (provider === "builtin") {
             providerText = `builtin: ${discovery.builtinModels.length} built-in model(s), run inside the backend and downloaded on first use.`;
         } else if (discovery.services.length === 0) {
             providerText = EXTERNAL_EMBEDDING_SETUP_HINT;
@@ -389,9 +393,9 @@ export async function loadModelDiscovery() {
             chatServices: normalizeServiceModels(data?.chatServices),
             defaultServiceId: typeof data?.defaultEmbeddingServiceId === "string" ? data.defaultEmbeddingServiceId : null,
         };
-    } catch (_error) {
+    } catch (error) {
         if (token !== loadTokens.modelDiscovery) return;
-        state.modelDiscovery = emptyModelDiscovery();
+        state.modelDiscovery = { ...emptyModelDiscovery(), error: normalizeError(error).message };
     }
 
     if (token === loadTokens.modelDiscovery) {

@@ -145,7 +145,8 @@ export function renderServices(view) {
         row.appendChild(createEl("td", "px-4 py-3 text-slate-600", view.usageText(service)));
         const actions = createEl("td", "px-4 py-3 text-right whitespace-nowrap space-x-3");
         if (!isBuiltin && service.configured !== false && canManage) {
-            actions.appendChild(createButton("Test", "text-indigo-600 hover:text-indigo-800 text-xs font-bold", () => testService(view, { serviceId: service.id }, service.name)));
+            const rowTestButton = createButton("Test", "text-indigo-600 hover:text-indigo-800 text-xs font-bold", () => testService(view, { serviceId: service.id }, service.name, rowTestButton));
+            actions.appendChild(rowTestButton);
         }
         if (!service.readOnly && canManage) {
             actions.appendChild(createButton("Edit", "text-slate-600 hover:text-slate-800 text-xs font-bold", () => openServiceForm(view, service)));
@@ -204,11 +205,10 @@ export function setServiceTestResult(view, result) {
 }
 
 /** POST {service url}/test: { serviceId } or { baseUrl, apiKey? }. A free GET /models; never embeds or generates. */
-export async function testService(view, body, label) {
+export async function testService(view, body, label, testButton = serviceButton(view, "Test")) {
     const services = state[view.stateKey];
     if (services.testing) return;
     services.testing = true;
-    const testButton = serviceButton(view, "Test");
     setButtonLoading(testButton, true, "Testing...");
     try {
         const result = await apiRequest(`${view.url()}/test`, { method: "POST", body: JSON.stringify(body) });

@@ -59,7 +59,7 @@ Use this checklist to evaluate whether a frontend built against this backend is 
 - Can list, add (with a connection test), edit and delete embedding services with `/v1/admin/embedding-services`, shows the `warnings` the API returns, never shows or keeps API keys after saving, and explains `409 EMBEDDING_SERVICE_IN_USE` (`details.collections`).
 - Lets the create/edit form choose `embeddingProvider` (`builtin` or `openai-compatible`) next to `embeddingModel`, defaulting to `modelDefaults` from `GET /v1/admin/config/defaults`, and requires a model when `openai-compatible` is not the default provider.
 - Handles create/reindex preflight failures `422 UNAVAILABLE_MODEL` (show `details.availableModels`), `422 EMBEDDING_PROVIDER_NOT_CONFIGURED`, and `503 EMBEDDING_PROVIDER_UNREACHABLE`.
-- Does not send `chatModel` in collection create/update/validate bodies (it is rejected with `400 INVALID_REQUEST_BODY`); shows the global chat LLM from `GET /v1/admin/config/defaults` (`chat`) as read-only information at most.
+- Does not send `chatModel` in collection create/update/validate bodies (it is rejected with `400 INVALID_REQUEST_BODY`); the chat LLM is chosen per tenant with `GET/PUT/DELETE /v1/admin/chat-settings` (admin only), and chat services are managed with `/v1/admin/chat-services`.
 - Uses validate endpoints before expensive saves or reindex actions.
 - Can patch collections with `PATCH /v1/admin/collections/:collectionId`.
 - Understands `impact.immediateFields` and `impact.reindexFields`.

@@ -162,7 +162,25 @@ const prompt = `Answer only from this context:\n\n${context}\n\nQuestion: ${ques
 
 ## Level 4 — Get written answers (optional)
 
-The backend can also write an answer from the retrieved passages (`POST /v1/rag/collections/<collection-id>/query`, the **Query** button in the Playground). It needs a chat model behind any OpenAI-compatible API. Add it to `.env` next to `docker-compose.yml`, then run `docker compose up -d` again:
+The backend can also write an answer from the retrieved passages (`POST /v1/rag/collections/<collection-id>/query`, the **Query** button in the Playground). It needs a chat model behind any OpenAI-compatible API. Add a **chat service** (the connection) and choose it with a model; both take effect at once, with no restart and no file to edit. With Ollama on your computer (`ollama pull gemma3:4b` first):
+
+```bash
+# 1. Add the chat service; the response contains its id.
+curl -X POST http://localhost:3010/v1/admin/chat-services -H "content-type: application/json" \
+  -d '{"name":"Ollama chat","baseUrl":"http://host.docker.internal:11434/v1"}'
+
+# 2. See its models (a free GET /models; nothing is generated).
+curl -X POST http://localhost:3010/v1/admin/chat-services/test -H "content-type: application/json" \
+  -d '{"serviceId":"<service-id>"}'
+
+# 3. Choose the service and a model for answer generation.
+curl -X PUT http://localhost:3010/v1/admin/chat-settings -H "content-type: application/json" \
+  -d '{"serviceId":"<service-id>","model":"gemma3:4b"}'
+```
+
+In the admin panel the same is under **Chat services** in the left menu: **Add service** → **Test connection** → **Save**, then pick the service and the model under **Answer generation** and **Save**. For a cloud provider, add its `apiKey` to the service; it is stored on the server and never shown again.
+
+You can also set the chat model for the whole server in `.env` next to `docker-compose.yml` (then run `docker compose up -d` again). It appears as the read-only **Server (.env / config)** chat service and answers Query until you choose another one:
 
 ```bash
 RAG_CHAT_BASE_URL=http://host.docker.internal:11434/v1
@@ -181,6 +199,8 @@ RAG_CHAT_MODEL=gemma3:4b
 - The answer only uses the retrieved context; when the context does not contain the answer, the model says so instead of guessing. The response lists the sources it used.
 - Model parameters (temperature, max tokens) are not sent, so the provider's defaults apply; see [docs/configuration.md](docs/configuration.md) to override them.
 - Without a chat model, `/query` returns `503 CHAT_NOT_CONFIGURED` and everything else works. The backend never needs a chat model for retrieval.
+- One choice answers Query for all collections of a tenant. `PUT /v1/admin/chat-settings` refuses a model the service does not offer; `DELETE /v1/admin/chat-settings` goes back to the `.env` chat model (or to retrieve-only). Details: [docs/admin_api_endpoints.md](docs/admin_api_endpoints.md#chat-services-and-the-chat-choice).
+- Like embedding services, chat services decide where your questions and document text are sent: turn on admin auth before other people can reach the server.
 
 ## Level 5 — Choose the embedding model
 
@@ -331,9 +351,9 @@ All settings, environment variables and onboarding flags are described in [docs/
 | An upload returns `413 FILE_TOO_LARGE` or lists files under `rejected` | The file is larger than `uploads.maxFileSizeMb` (50 MB), or its type or name is not supported | Raise the limit in the config, or convert the file to `.txt`, `.md`, `.pdf`, `.doc` or `.docx` |
 | An upload or delete returns `409 COLLECTION_FILES_READ_ONLY` | The collection reads a folder on the server | Change the files in that folder and re-index, or create a collection without a source path |
 | `/retrieve` or `/query` returns `409 EMBEDDING_DIMENSION_MISMATCH` | The index was built with a different embedding model | Re-index the collection |
-| `/query` returns `503 CHAT_NOT_CONFIGURED`, or the Query button is disabled | No chat model is configured (the default) | Use `/retrieve`, or see [Level 4](#level-4--get-written-answers-optional) |
+| `/query` returns `503 CHAT_NOT_CONFIGURED`, or the Query button is disabled | No chat model is chosen (the default), or the chosen chat service no longer exists | Use `/retrieve`, or choose one under **Chat services** (see [Level 4](#level-4--get-written-answers-optional)) |
 | `/query` returns `503 CHAT_PROVIDER_UNREACHABLE` | The chat API is down or its URL is wrong | Start it; the URL must end in `/v1` (Ollama: `http://localhost:11434/v1`, from Docker `http://host.docker.internal:11434/v1`) |
-| `/query` returns `502 CHAT_PROVIDER_ERROR` | The chat API rejected the request: `details.upstreamStatus` 401/403 = wrong key, 404 = unknown model, 429 = provider rate limit | Fix the key (`RAG_CHAT_API_KEY`) or the model name |
+| `/query` returns `502 CHAT_PROVIDER_ERROR` | The chat API rejected the request: `details.upstreamStatus` 401/403 = wrong key, 404 = unknown model, 429 = provider rate limit | Fix the chat service's key (Chat services → Edit, or `RAG_CHAT_API_KEY` for the server one) or the model |
 | Onboarding prints `Chroma: fail` | The Chroma container is not running | `docker compose up -d chroma`; the config is already saved, no need to rerun onboarding |
 
 `GET http://localhost:3010/ready?details=true` reports Chroma, embedding, chat model and data source status with blockers and recommended actions.

@@ -11,7 +11,7 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 - A **collection** is the unit that users query.
 - A collection may exist before it is queryable.
 - `query` and `retrieve` are collection-specific operations, not global operations.
-- Answer generation (`query`) is optional for the whole deployment: it needs the global chat LLM. Without one the backend is retrieve-only, `capabilities.query` is always `false`, and `query` returns `503 CHAT_NOT_CONFIGURED`. `retrieve` never needs the chat LLM.
+- Answer generation (`query`) is optional: it needs a chat LLM, chosen per tenant (`GET/PUT /v1/admin/chat-settings`) or set for the whole server (`RAG_CHAT_*`). Without one the tenant is retrieve-only, `capabilities.query` is always `false`, and `query` returns `503 CHAT_NOT_CONFIGURED`. `retrieve` never needs the chat LLM.
 - `ready` is the backend's explicit answer to "what can the frontend do right now for this collection?"
 - Reindexing is asynchronous and produces jobs.
 - Jobs have both a coarse status view and a stage-aware event timeline.
@@ -38,7 +38,7 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 17. Use `GET /v1/admin/audit-log` for persisted operations history. `collectionId` and `operation` filters can be repeated for multi-select UI state.
 18. Treat admin auth as cookie-based and opt-in. Call `GET /v1/admin/auth/session` on boot, redirect `/admin/` to `/admin/login` when unauthenticated, and do not trust user-editable `x-tenant-id` / `x-user-id` on `/v1/admin/**`.
 19. Use `POST /v1/admin/auth/login` and `POST /v1/admin/auth/logout` for session lifecycle. Fetch `POST /v1/admin/auth/action-token` just in time before any mutating admin request except validation-only flows.
-20. Enforce the role matrix in the UI: `viewer` is read-only, `operator` can create/validate/update/reindex/cancel jobs and upload/delete documents (`manageDocuments`), and `admin` can additionally delete collections, delete jobs, bulk delete jobs, and manage embedding services (`manageEmbeddingServices`).
+20. Enforce the role matrix in the UI: `viewer` is read-only, `operator` can create/validate/update/reindex/cancel jobs and upload/delete documents (`manageDocuments`), and `admin` can additionally delete collections, delete jobs, bulk delete jobs, manage embedding services (`manageEmbeddingServices`), and manage chat services and the tenant's chat choice (`manageChatServices`).
 
 ## Canonical End-User RAG Workflow
 
@@ -70,7 +70,7 @@ Build a frontend that uses the existing API contract correctly. The frontend mus
 | Operation | Endpoint | Use when | Returns |
 | --- | --- | --- | --- |
 | `retrieve` | `POST /v1/rag/collections/:collectionId/retrieve` | The UI should show relevant source chunks without generating an answer | `sources`, `embeddingProvider`, `embeddingModel`, threshold, collection metadata, optional debug timings |
-| `query` | `POST /v1/rag/collections/:collectionId/query` | The UI should return a grounded answer generated from retrieved context | `answer`, `embeddingProvider`, `embeddingModel`, `chatModel`, generation-context `sources`, threshold, collection metadata, optional debug timings |
+| `query` | `POST /v1/rag/collections/:collectionId/query` | The UI should return a grounded answer generated from retrieved context | `answer`, `embeddingProvider`, `embeddingModel`, `chatModel`, `chatServiceId`, generation-context `sources`, threshold, collection metadata, optional debug timings |
 
 ## Readiness-Driven UI States
 

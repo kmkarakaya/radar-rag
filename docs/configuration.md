@@ -22,7 +22,7 @@ embedding:                          # default for NEW collections; each collecti
   model: onnx-community/embeddinggemma-2-ONNX
   baseUrl: ""                       # openai-compatible API, e.g. http://localhost:11434/v1
   cacheDir: models                  # where the built-in model is downloaded
-chat:                               # optional; empty = retrieve-only (/query returns 503)
+chat:                               # optional server chat LLM; empty = none (see Chat services below)
   baseUrl: ""
   model: ""
   # temperature, maxTokens: not sent unless set here (provider defaults apply)
@@ -60,6 +60,8 @@ uploads:
 ```
 
 The `embedding.baseUrl` service (`RAG_EMBEDDING_BASE_URL`, key `RAG_EMBEDDING_API_KEY`) is the **server** embedding service. More embedding services can be added at runtime in the admin panel (**Embedding services**) or with `/v1/admin/embedding-services`, without editing files or restarting; they are stored in the registry, per tenant, and the server one is listed there read-only. See the README, Level 5.
+
+The `chat` section (`RAG_CHAT_BASE_URL` + `RAG_CHAT_MODEL`, key `RAG_CHAT_API_KEY`) is the **server** chat LLM. Chat services can be added at runtime in the admin panel (**Chat services**) or with `/v1/admin/chat-services`, and each tenant chooses the service and model that answer `/query` with `PUT /v1/admin/chat-settings`. Which one answers: the tenant's choice, else the server chat LLM, else none (retrieve-only). `temperature`, `maxTokens` and `maxContextTokens` stay here and apply to every chat service. See the README, Level 4.
 
 API keys are never stored in the YAML: the chat key comes from `RAG_CHAT_API_KEY` or `.local/rag_chat_api_key.secret`, the embedding key from `RAG_EMBEDDING_API_KEY` or `.local/rag_embedding_api_key.secret`, and the admin session secret from `RAG_ADMIN_SESSION_SECRET` or `.local/rag_admin_session.secret`. They are redacted from errors and never returned by the API.
 

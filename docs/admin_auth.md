@@ -2,13 +2,13 @@
 
 Admin auth protects the admin panel (`/admin`) and the admin API (`/v1/admin/**`). It is off by default (the shipped config has `adminAuth.enabled: false` and no users), which is fine on your own computer; turn it on before other people can reach the server. It does not protect the public `/v1/rag/**` API.
 
-While it is off, anyone who can reach the server can also add or change **embedding services**: they decide where document text is sent, and the server makes requests to the URLs entered there. The embedding services API and panel say so in a warning. Do not expose a server with admin auth off.
+While it is off, anyone who can reach the server can also add or change **embedding services** and **chat services** (and choose the chat LLM): they decide where questions and document text are sent, and the server makes requests to the URLs entered there. These APIs and the panel say so in a warning. Do not expose a server with admin auth off.
 
 When it is on:
 
 - Users log in with a username and password; passwords are stored only as scrypt hashes.
 - The login sets an HMAC-signed, `HttpOnly`, `SameSite=Lax` session cookie (`rag_admin_session`, marked `Secure` when `NODE_ENV=production`).
-- Roles: `viewer` (read), `operator` (+ create, validate, update, re-index, cancel, upload and delete documents), `admin` (+ delete and bulk delete, and managing embedding services, which decide where document text is sent). Each user belongs to a `tenantId` and only sees that tenant's collections.
+- Roles: `viewer` (read), `operator` (+ create, validate, update, re-index, cancel, upload and delete documents), `admin` (+ delete and bulk delete, and managing embedding services and chat services and choosing the chat LLM, which decide where questions and document text are sent). Each user belongs to a `tenantId` and only sees that tenant's collections.
 - Every state-changing admin request needs a single-use action token (CSRF protection), bound to the session, tenant, method and path.
 - The admin panel redirects to `/admin/login` when there is no session.
 

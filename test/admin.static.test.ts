@@ -355,6 +355,15 @@ describe("admin panel static contract", () => {
     assert.ok(!js.includes(".innerHTML"));
   });
 
+  it("works offline: no CDN, the Tailwind CSS is built locally", async () => {
+    const html = await readAdminFile("index.html");
+    assert.ok(!html.includes("cdn.tailwindcss.com"));
+    assert.ok(html.includes('<link rel="stylesheet" href="/admin/tailwind.css">'));
+    assert.ok(html.includes('<script type="module" src="/admin/js/main.js"></script>'));
+    const css = await readAdminFile("tailwind.css");
+    assert.ok(css.includes(".translate-x-full"), "admin/tailwind.css is built (npm run build:admin-css)");
+  });
+
   it("contains the planned playground and job monitor controls", async () => {
     const html = await readAdminFile("index.html");
     const js = await readAdminScripts();

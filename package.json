@@ -13,7 +13,8 @@
     "start": "node dist/server.js",
     "test:integration": "node --import tsx --test test/integration/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "typecheck:test": "tsc -p tsconfig.test.json --noEmit"
+    "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
+    "build:admin-css": "tailwindcss -c admin/tailwind.config.cjs -i admin/tailwind.input.css -o admin/tailwind.css --minify"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.2",
@@ -38,6 +39,7 @@
     "@types/express": "^5.0.0",
     "@types/multer": "^2.3.0",
     "@types/node": "^24.0.0",
+    "tailwindcss": "^3.4.19",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   },

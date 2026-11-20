@@ -1,5 +1,6 @@
 import { adminJobDeleteUrl, adminJobUrl, adminJobsBulkDeleteUrl, adminJobsListUrl, adminMutationRequest, apiRequest, normalizeError } from "../api.js";
 import { canAdminAction } from "../auth.js";
+import { confirmDialog } from "../dialog.js";
 import { appendText, clearNode, createBadge, createButton, createEl, formatCount, formatDateTime, getStatusColor, setButtonLoading, shortId, showErrorToast, showToast } from "../dom.js";
 import { API, JOB_LIST_LIMIT, elements, state } from "../state.js";
 import { collectionNameById, loadCollections } from "./collections.js";
@@ -40,6 +41,13 @@ export async function deleteJob(jobId) {
         await removeSelectedJobs();
         return;
     }
+
+    const confirmed = await confirmDialog({
+        title: "Remove this job from the list?",
+        message: "Only the job record is removed; the collection and its index stay as they are.",
+        confirmLabel: "Remove",
+    });
+    if (!confirmed) return;
 
     try {
         await adminMutationRequest(adminJobDeleteUrl(jobId), { method: "DELETE" });
@@ -126,6 +134,12 @@ export async function removeSelectedJobs() {
         showToast("Select one or more terminal jobs to remove.", "info");
         return;
     }
+    const confirmed = await confirmDialog({
+        title: `Remove ${jobIds.length} job${jobIds.length === 1 ? "" : "s"} from the list?`,
+        message: "Only the job records are removed; collections and their indexes stay as they are.",
+        confirmLabel: "Remove",
+    });
+    if (!confirmed) return;
 
     try {
         await adminMutationRequest(adminJobsBulkDeleteUrl(), {
@@ -261,9 +275,17 @@ export async function changeJobsStatusFilter(value) {
 
 export async function cancelJob(jobId) {
     if (!canAdminAction("cancelJob")) {
-        showToast("Cancel requires operator access.", "error");
+        showToast("Cancelling a job needs the operator role.", "error");
         return;
     }
+    const confirmed = await confirmDialog({
+        title: "Cancel this job?",
+        message: "Indexing stops; the collection keeps serving its previous index.",
+        confirmLabel: "Cancel job",
+        cancelLabel: "Keep running",
+        danger: true,
+    });
+    if (!confirmed) return;
     try {
         await adminMutationRequest(`${API.admin}/jobs/${jobId}/cancel`, { method: "POST" });
         showToast("Job cancellation requested.", "success");

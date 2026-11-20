@@ -1,6 +1,7 @@
 import { adminCollectionPhysicalCollectionsUrl, adminCollectionUrl, adminMutationRequest, apiRequest, collectionReadyUrl, normalizeError } from "../api.js";
 import { canAdminAction } from "../auth.js";
 import { switchView } from "../dashboard.js";
+import { confirmDialog } from "../dialog.js";
 import { appendChildren, appendText, clearNode, createBadge, createButton, createEl, createMetaItem, formatCount, formatDateTime, getStatusBadge, getStatusColor, isRecord, renderApiErrorContent, setButtonLoading, shortId, showErrorToast, showToast, stringifyForDisplay } from "../dom.js";
 import { recordRoute } from "../router.js";
 import { API, elements, state } from "../state.js";
@@ -395,7 +396,25 @@ export function closeInspector() {
 }
 
 export function handleOverlayClick(event) {
-    if (event.target === elements.inspectorOverlay) closeInspector();
+    if (event.target === elements.inspectorOverlay) void requestCloseInspector();
+}
+
+/** Closes the inspector the user asked to close; asks first when the settings form has unsaved changes. */
+export async function requestCloseInspector() {
+    if (!state.inspectorOpen) return true;
+    const dirty = state.selectedCollection ? hasUnsavedCollectionChanges() : Boolean(elements.editDisplayName?.value.trim());
+    if (dirty) {
+        const discard = await confirmDialog({
+            title: "Discard your changes?",
+            message: "The settings you changed have not been saved.",
+            confirmLabel: "Discard changes",
+            cancelLabel: "Keep editing",
+            danger: true,
+        });
+        if (!discard) return false;
+    }
+    closeInspector();
+    return true;
 }
 
 /** Switches to a tab and loads what it shows. */
@@ -878,7 +897,15 @@ export async function deleteCollection() {
     const deleteNote = state.selectedCollection.sourceKind === "uploads"
         ? "Its uploaded documents are deleted too."
         : "This is a soft delete; the files in its folder are not touched.";
-    if (!confirm(`Delete collection "${state.selectedCollection.displayName || state.selectedCollection.id}"? ${deleteNote}`)) return;
+    const name = state.selectedCollection.displayName || state.selectedCollection.id;
+    const confirmed = await confirmDialog({
+        title: `Delete "${name}"?`,
+        message: `${deleteNote} This cannot be undone from the panel.`,
+        confirmLabel: "Delete collection",
+        danger: true,
+        requireText: name,
+    });
+    if (!confirmed) return;
 
     try {
         setButtonLoading(elements.btnDeleteCol, true, "Deleting...");

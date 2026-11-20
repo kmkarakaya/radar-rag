@@ -1,5 +1,6 @@
 import { adminCollectionFilesUrl, adminMutationRequest, apiRequest } from "../api.js";
 import { canAdminAction } from "../auth.js";
+import { confirmDialog } from "../dialog.js";
 import { appendText, clearNode, createButton, createEl, formatBytes, formatCount, formatDateTime, showErrorToast, showToast } from "../dom.js";
 import { describeUploadLimits } from "../serverInfo.js";
 import { elements, state } from "../state.js";
@@ -206,7 +207,13 @@ export async function deleteCollectionDocument(fileName) {
         showToast("Deleting documents requires operator access.", "error");
         return;
     }
-    if (!confirm(`Delete "${fileName}" from this collection? The file is removed from the server.`)) return;
+    const confirmed = await confirmDialog({
+        title: `Delete "${fileName}"?`,
+        message: "The file is removed from the server and its passages are removed from search at once.",
+        confirmLabel: "Delete file",
+        danger: true,
+    });
+    if (!confirmed) return;
     try {
         await adminMutationRequest(adminCollectionFilesUrl(collection.id, fileName), { method: "DELETE" });
         showToast(`Deleted ${fileName}. It no longer appears in search results.`, "success");

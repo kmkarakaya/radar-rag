@@ -8,7 +8,7 @@ import { loadCollections } from "./views/collections.js";
 import { bindDocumentsTabEvents } from "./views/documents.js";
 import { loadModelDiscovery, saveCollection, setModelFromSelect, syncModelDiscoveryPanel } from "./views/editor.js";
 import { loadHealth } from "./views/health.js";
-import { activateTab, closeInspector, deleteCollection, handleOverlayClick, openInspector, reindexCollection, updateReadinessTab } from "./views/inspector.js";
+import { activateTab, deleteCollection, handleOverlayClick, openInspector, reindexCollection, requestCloseInspector, updateReadinessTab } from "./views/inspector.js";
 import { changeJobsStatusFilter, getVisibleSelectableJobIds, goToNextJobsPage, goToPreviousJobsPage, loadJobs, refreshJobsList, removeSelectedJobs, renderJobs } from "./views/jobs.js";
 import { runPlayground, setPlaygroundMode } from "./views/playground.js";
 import { bindEmbeddingServicesEvents } from "./views/services.js";
@@ -178,9 +178,9 @@ export function bindEvents() {
         elements.editEmbeddingProvider.addEventListener("change", () => syncModelDiscoveryPanel());
     }
     elements.btnCreateCollection.addEventListener("click", () => openInspector(null));
-    elements.btnCloseInspector.addEventListener("click", closeInspector);
+    elements.btnCloseInspector.addEventListener("click", () => void requestCloseInspector());
     elements.inspectorOverlay.addEventListener("click", handleOverlayClick);
-    elements.btnCancelEdit.addEventListener("click", closeInspector);
+    elements.btnCancelEdit.addEventListener("click", () => void requestCloseInspector());
     elements.colEditForm.addEventListener("submit", (event) => {
         event.preventDefault();
         saveCollection();
@@ -212,7 +212,7 @@ export function bindEvents() {
     document.addEventListener("keydown", (event) => {
         if (event.key !== "Escape") return;
         if (!elements.inspectorOverlay.classList.contains("hidden")) {
-            closeInspector();
+            void requestCloseInspector();
             return;
         }
         closeAuditPickers();

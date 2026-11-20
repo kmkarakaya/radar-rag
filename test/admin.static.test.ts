@@ -355,6 +355,14 @@ describe("admin panel static contract", () => {
     assert.ok(!js.includes(".innerHTML"));
   });
 
+  it("asks with its own accessible dialog, never window.confirm", async () => {
+    const js = await readAdminScripts();
+    assert.ok(!/[^.\w]confirm\(/.test(js), "no native confirm() calls");
+    assert.ok(js.includes('dialog.setAttribute("aria-modal", "true");'));
+    assert.ok(js.includes("requireText: name,"), "deleting a collection asks for its name");
+    assert.ok(js.includes("export async function requestCloseInspector()"), "closing with unsaved settings asks first");
+  });
+
   it("works offline: no CDN, the Tailwind CSS is built locally", async () => {
     const html = await readAdminFile("index.html");
     assert.ok(!html.includes("cdn.tailwindcss.com"));

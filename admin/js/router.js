@@ -2,7 +2,7 @@ import { switchView } from "./dashboard.js";
 import { showToast } from "./dom.js";
 import { state } from "./state.js";
 import { loadCollections } from "./views/collections.js";
-import { activateTab, closeInspector, openInspector } from "./views/inspector.js";
+import { activateTab, closeInspector, openInspector, requestCloseInspector } from "./views/inspector.js";
 
 /**
  * Hash routes, so reload, back/forward and shared links keep the place in the panel:
@@ -70,7 +70,7 @@ export async function applyRoute() {
                 else if (state.activeTab !== route.tab) activateTab(route.tab);
             }
         } else if (state.inspectorOpen) {
-            closeInspector();
+            await requestCloseInspector();
         }
     } finally {
         applying = false;

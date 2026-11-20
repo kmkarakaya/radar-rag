@@ -1,12 +1,13 @@
 import { adminMutationRequest, apiRequest } from "../api.js";
 import { canAdminAction } from "../auth.js";
 import { switchView } from "../dashboard.js";
+import { confirmDialog } from "../dialog.js";
 import { clearNode, createButton, createEl, formatCount, setButtonLoading, showErrorToast, showToast } from "../dom.js";
 import { findServicePreset } from "../serverInfo.js";
 import { API, elements, state } from "../state.js";
 import { bindChatSettingsEvents, loadChatSettings } from "./chatSettings.js";
 import { loadModelDiscovery, syncModelDiscoveryPanel } from "./editor.js";
-import { closeInspector } from "./inspector.js";
+import { requestCloseInspector } from "./inspector.js";
 
 // ---- Service views (clients of /v1/admin/embedding-services and /v1/admin/chat-services) ----
 // Both views show the same table and form over the same API contract; the server decides everything
@@ -276,7 +277,13 @@ export async function saveService(view) {
 }
 
 export async function deleteServiceAction(view, service) {
-    if (!confirm(`Delete the ${view.noun} "${service.name}"?`)) return;
+    const confirmed = await confirmDialog({
+        title: `Delete the ${view.noun} "${service.name}"?`,
+        message: "Its stored API key is deleted too.",
+        confirmLabel: "Delete",
+        danger: true,
+    });
+    if (!confirmed) return;
     try {
         await adminMutationRequest(view.url(service.id), { method: "DELETE" });
         showToast(`Deleted ${service.name}.`, "success");
@@ -316,12 +323,14 @@ export function bindEmbeddingServicesEvents() {
     elements.editEmbeddingService?.addEventListener("change", () => syncModelDiscoveryPanel());
     elements.linkEmbeddingServices?.addEventListener("click", (event) => {
         event.preventDefault();
-        closeInspector();
-        switchView("embedding-services");
+        requestCloseInspector().then((closed) => {
+            if (closed) switchView("embedding-services");
+        });
     });
     document.getElementById("linkChatServices")?.addEventListener("click", (event) => {
         event.preventDefault();
-        closeInspector();
-        switchView("chat-services");
+        requestCloseInspector().then((closed) => {
+            if (closed) switchView("chat-services");
+        });
     });
 }

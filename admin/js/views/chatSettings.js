@@ -1,5 +1,6 @@
 import { adminMutationRequest, apiRequest } from "../api.js";
 import { canAdminAction } from "../auth.js";
+import { confirmDialog } from "../dialog.js";
 import { clearNode, createEl, setButtonLoading, showErrorToast, showToast } from "../dom.js";
 import { API, state } from "../state.js";
 import { loadModelDiscovery, renderChatLlmStatus } from "./editor.js";
@@ -175,7 +176,12 @@ export async function saveChatSettings() {
 }
 
 export async function resetChatSettings() {
-    if (!confirm("Stop using your chat choice? Query then uses the chat LLM from .env / config, or is disabled when there is none.")) return;
+    const confirmed = await confirmDialog({
+        title: "Use the server default?",
+        message: "Query then uses the chat LLM set in the server settings, or answers are disabled when there is none.",
+        confirmLabel: "Use server default",
+    });
+    if (!confirmed) return;
     try {
         const data = await adminMutationRequest(chatSettingsUrl(), { method: "DELETE" });
         state.chatSettings.data = data?.settings ?? null;

@@ -9,7 +9,7 @@ import { API, elements, state } from "../state.js";
 import { chatServiceName, loadChatSettings } from "./chatSettings.js";
 import { loadAdminCollectionDetail, loadCollections, mergeCollectionIntoState } from "./collections.js";
 import { loadCollectionFiles, resetFilesTab } from "./documents.js";
-import { clearEditorForm, embeddingServiceName, hasUnsavedCollectionChanges, hasValidationBlockers, hasValidationWarnings, loadConfigDefaults, loadModelDiscovery, providerName, setupEditorTab, validateCollectionOnServer, viaEmbeddingService } from "./editor.js";
+import { clearEditorForm, embeddingServiceName, hasUnsavedCollectionChanges, hasValidationBlockers, hasValidationWarnings, loadConfigDefaults, loadModelDiscovery, providerName, setupEditorTab, validateCollectionOnServer } from "./editor.js";
 import { appendIssueSection } from "./health.js";
 import { loadJobs } from "./jobs.js";
 
@@ -92,8 +92,6 @@ export function clearCollectionIndexStateBanner() {
     clearNode(elements.collectionIndexStateTitle);
     clearNode(elements.collectionIndexStateSummary);
     clearNode(elements.collectionIndexStateContent);
-    elements.indexedSettings?.classList.add("hidden");
-    clearNode(elements.indexedSettingsBody);
 }
 
 export function renderCollectionIndexStateBanner() {
@@ -111,8 +109,6 @@ export function renderCollectionIndexStateBanner() {
     const hasActiveJob = Boolean(activeJob && (activeJob.status === "queued" || activeJob.status === "running"));
     const isIndexing = hasActiveJob || collection.status === "indexing";
     const changedFields = Array.isArray(indexState?.changedFields) ? indexState.changedFields : [];
-
-    renderIndexedSettings(collection, indexState);
 
     // The box only shows when something needs attention; an up-to-date collection says so in its status badge.
     let title = null;
@@ -161,12 +157,16 @@ export function renderCollectionIndexStateBanner() {
 
     // Before the first index every field is "pending"; listing them all says nothing, so only after one.
     if (changedFields.length > 0 && indexState?.status === "reindex_required") {
-        const fieldWrap = createEl("div", "flex flex-wrap items-center gap-2 text-xs");
-        fieldWrap.appendChild(createEl("span", "font-semibold", "Changed:"));
+        const list = createEl("ul", "space-y-1 text-xs");
         changedFields.forEach((field) => {
-            fieldWrap.appendChild(createBadge(formatValidationFieldLabel(field), getStatusColor("warn")));
+            const from = describeIndexedValue(field, indexState.activeSnapshot?.[field]);
+            const to = describeIndexedValue(field, indexState.desiredSnapshot?.[field] ?? collection[field]);
+            const item = createEl("li", "");
+            item.appendChild(createEl("span", "font-semibold", `${formatValidationFieldLabel(field)}: `));
+            item.appendChild(createEl("span", "", `${from} \u2192 ${to}`));
+            list.appendChild(item);
         });
-        elements.collectionIndexStateContent.appendChild(fieldWrap);
+        elements.collectionIndexStateContent.appendChild(list);
     }
 
     if (dependencyDown && blockers.length > 0) {
@@ -176,36 +176,6 @@ export function renderCollectionIndexStateBanner() {
         });
         elements.collectionIndexStateContent.appendChild(list);
     }
-}
-
-/** Settings tab: the saved settings next to the ones the current index was built with (differences marked). */
-export function renderIndexedSettings(collection, indexState) {
-    if (!elements.indexedSettings || !elements.indexedSettingsBody) return;
-    clearNode(elements.indexedSettingsBody);
-    elements.indexedSettings.classList.remove("hidden");
-    const saved = indexState?.desiredSnapshot ?? {};
-    const active = indexState?.activeSnapshot ?? null;
-    const describeEmbedding = (snapshot) => `${providerName(snapshot.embeddingProvider)}, ${snapshot.embeddingModel ?? "-"}${viaEmbeddingService(snapshot.embeddingServiceId)}`;
-    const rows = [
-        ["Documents", saved.sourcePath ?? collection.sourcePath, active?.sourcePath],
-        ["Chunk size", saved.chunkSize ?? collection.chunkSize, active?.chunkSize],
-        ["Chunk overlap", saved.chunkOverlap ?? collection.chunkOverlap, active?.chunkOverlap],
-        ["Embedding", describeEmbedding({ ...saved, embeddingProvider: saved.embeddingProvider ?? collection.embeddingProvider, embeddingModel: saved.embeddingModel ?? collection.embeddingModel }), active ? describeEmbedding(active) : null],
-        ["Distance metric", saved.distanceMetric ?? collection.distanceMetric, active?.distanceMetric],
-    ];
-    const table = createEl("table", "w-full text-left text-xs");
-    const head = createEl("tr", "text-slate-500");
-    ["Setting", "Saved", "In the current index"].forEach((label) => head.appendChild(createEl("th", "py-1 pr-3 font-semibold", label)));
-    table.appendChild(head);
-    rows.forEach(([label, savedValue, activeValue]) => {
-        const differs = Boolean(active) && String(savedValue ?? "") !== String(activeValue ?? "");
-        const row = createEl("tr", `border-t border-slate-100 ${differs ? "bg-amber-50" : ""}`);
-        row.appendChild(createEl("td", "py-1 pr-3 text-slate-600", label));
-        row.appendChild(createEl("td", "py-1 pr-3 break-all-words text-slate-800", stringifyForDisplay(savedValue ?? "-")));
-        row.appendChild(createEl("td", "py-1 break-all-words text-slate-800", active ? stringifyForDisplay(activeValue ?? "-") : "Not indexed yet"));
-        table.appendChild(row);
-    });
-    elements.indexedSettingsBody.appendChild(table);
 }
 
 /** A progress bar for the running job (phase of the build and the last step it reported). */
@@ -992,4 +962,12 @@ export function findReadinessIssue(code) {
         if (issue) return issue;
     }
     return null;
+}
+
+/** A setting's value in words, for "Chunk size: 500 -> 300" (providers and services by name). */
+export function describeIndexedValue(field, value) {
+    if (value === undefined || value === null || value === "") return field === "embeddingServiceId" ? "server default" : "-";
+    if (field === "embeddingProvider") return providerName(value);
+    if (field === "embeddingServiceId") return embeddingServiceName(value);
+    return String(value);
 }

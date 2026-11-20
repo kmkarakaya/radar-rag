@@ -224,7 +224,9 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("function renderCollectionIndexStateBanner()"));
     // The status box shows only when something needs attention; saved vs indexed settings live in Settings.
     assert.ok(js.includes('elements.collectionIndexState.classList.add("hidden");'));
-    assert.ok(html.includes('id="indexedSettings"') && html.indexOf('id="indexedSettings"') < html.indexOf('id="editAdvanced"'));
+    // Re-index needed lists each changed setting with the value in the index and the saved one.
+    assert.ok(js.includes("export function describeIndexedValue(field, value)"));
+    assert.ok(!html.includes('id="indexedSettings"'));
     assert.ok(js.includes("collectionIndexState"));
     assert.ok(js.includes("return apiRequest(url, {"));
     assert.ok(!js.includes("return adminMutationRequest(url, {"));

@@ -146,8 +146,6 @@ export const elements = {
     jobsStatusFilter: document.getElementById("jobsStatusFilter"),
     jobsRefreshList: document.getElementById("jobsRefreshList"),
     jobsListNotice: document.getElementById("jobsListNotice"),
-    indexedSettings: document.getElementById("indexedSettings"),
-    indexedSettingsBody: document.getElementById("indexedSettingsBody"),
     jobDetail: document.getElementById("jobDetail"),
     jobDetailTitle: document.getElementById("jobDetailTitle"),
     jobDetailSummary: document.getElementById("jobDetailSummary"),

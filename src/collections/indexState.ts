@@ -87,7 +87,7 @@ export function buildCollectionIndexState(
       desiredSnapshot,
       changedFields: [...INDEX_SNAPSHOT_FIELDS],
       documentsChanged,
-      note: "No active index exists yet. Run re-index after saving the collection.",
+      note: "Not indexed yet. Add documents, then re-index to make the collection searchable.",
     };
   }
 
@@ -99,7 +99,7 @@ export function buildCollectionIndexState(
       desiredSnapshot,
       changedFields: [...INDEX_SNAPSHOT_FIELDS],
       documentsChanged,
-      note: "The active indexed snapshot is unavailable. Re-index required to verify the saved settings.",
+      note: "The settings of the current index are not known. Re-index to apply the saved settings.",
     };
   }
 
@@ -112,7 +112,7 @@ export function buildCollectionIndexState(
       desiredSnapshot,
       changedFields,
       documentsChanged,
-      note: "Saved indexing settings differ from the active indexed snapshot. Re-index required to apply them.",
+      note: "Some saved settings differ from the ones the current index was built with. Re-index to apply them; until then searches use the current index.",
     };
   }
 
@@ -135,7 +135,7 @@ export function buildCollectionIndexState(
     desiredSnapshot,
     changedFields: [],
     documentsChanged,
-    note: "Saved settings are aligned with the active indexed snapshot.",
+    note: "The index matches the saved settings.",
   };
 }
 

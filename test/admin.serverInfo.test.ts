@@ -44,9 +44,13 @@ describe("server facts for API clients", () => {
     registry = undefined;
   });
 
-  async function start(options: { adminAuth?: ResolvedConfig["adminAuth"] } = {}) {
+  async function start(options: { adminAuth?: ResolvedConfig["adminAuth"]; overrides?: Partial<ResolvedConfig> } = {}) {
     registry = createSqliteCollectionRegistry({ dbPath: ":memory:" });
-    const runtimeConfig: ResolvedConfig = { ...config, ...(options.adminAuth ? { adminAuth: options.adminAuth } : {}) };
+    const runtimeConfig: ResolvedConfig = {
+      ...config,
+      ...(options.adminAuth ? { adminAuth: options.adminAuth } : {}),
+      ...(options.overrides ?? {}),
+    };
     const adminAuth = options.adminAuth
       ? createAdminAuthService({ config: options.adminAuth, env: { RAG_ADMIN_SESSION_SECRET: "session-secret" } })
       : undefined;
@@ -99,6 +103,20 @@ describe("server facts for API clients", () => {
     assert.deepEqual(openrouter.kinds, ["chat"]);
   });
 
+  it("reports the configured upload size limit and complete service presets", async () => {
+    await start({ overrides: { uploadMaxFileSizeBytes: 5 * 1024 * 1024 } });
+    const body = await (await fetch(`${baseUrl}/v1/admin/server-info`)).json() as any;
+    assert.equal(body.uploads.maxFileSizeBytes, 5 * 1024 * 1024);
+    assert.deepEqual(body.servicePresets.map((preset: any) => preset.id), ["ollama", "lmstudio", "openai", "openrouter"]);
+    for (const preset of body.servicePresets) {
+      assert.equal(typeof preset.label, "string");
+      assert.equal(typeof preset.name, "string");
+      assert.match(preset.baseUrl, /^https?:\/\//);
+      assert.equal(typeof preset.apiKeyRequired, "boolean");
+      assert.ok(preset.kinds.length > 0 && preset.kinds.every((kind: string) => kind === "embedding" || kind === "chat"));
+    }
+  });
+
   it("returns every capability in the session when admin auth is off", async () => {
     await start();
     const body = await (await fetch(`${baseUrl}/v1/admin/auth/session`)).json() as any;
@@ -119,8 +137,9 @@ describe("server facts for API clients", () => {
     assert.equal((await fetch(`${baseUrl}/v1/admin/audit-log/operations`, { headers: { cookie: viewer.cookie } })).status, 200);
 
     const operator = await login("operator");
-    assert.ok(operator.body.capabilities.includes("reindexCollection"));
-    assert.ok(!operator.body.capabilities.includes("deleteCollection"));
+    assert.deepEqual(operator.body.capabilities, [
+      "read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob", "manageDocuments",
+    ]);
 
     const admin = await login("admin");
     assert.deepEqual(admin.body.capabilities, allAdminCapabilities());
@@ -128,6 +147,26 @@ describe("server facts for API clients", () => {
     // Without a session both new routes are protected like the rest of the admin API.
     assert.equal((await fetch(`${baseUrl}/v1/admin/server-info`)).status, 401);
     assert.equal((await fetch(`${baseUrl}/v1/admin/audit-log/operations`)).status, 401);
+  });
+
+  it("audit operations are empty for a new log and follow the session's tenant when auth is on", async () => {
+    await start({ adminAuth: authConfig(hashPassword("secret")) });
+    const admin = await login("admin");
+    const empty = await (await fetch(`${baseUrl}/v1/admin/audit-log/operations`, { headers: { cookie: admin.cookie } })).json() as any;
+    // Signing in may itself be logged; nothing from another tenant may appear.
+    assert.ok(Array.isArray(empty.operations));
+    await registry!.appendOperationalLog!({ tenantId: "tenant-b", operation: "chat_service_create", status: "succeeded" });
+    await registry!.appendOperationalLog!({ tenantId: "tenant-a", operation: "document_upload", status: "succeeded" });
+    // A tenant header cannot widen a signed-in session to another tenant.
+    const body = await (await fetch(`${baseUrl}/v1/admin/audit-log/operations`, { headers: { cookie: admin.cookie, "x-tenant-id": "tenant-b" } })).json() as any;
+    assert.ok(body.operations.includes("document_upload"));
+    assert.ok(!body.operations.includes("chat_service_create"));
+  });
+
+  it("audit operations are an empty list for an empty log", async () => {
+    await start();
+    const body = await (await fetch(`${baseUrl}/v1/admin/audit-log/operations`, { headers: { "x-tenant-id": "nobody" } })).json() as any;
+    assert.deepEqual(body.operations, []);
   });
 
   it("GET /v1/admin/audit-log/operations lists the tenant's distinct operations, sorted", async () => {

@@ -1,27 +1,13 @@
 import { adminCollectionFilesUrl, adminMutationRequest, apiRequest } from "../api.js";
 import { canAdminAction } from "../auth.js";
-import { appendText, clearNode, createButton, createEl, formatCount, formatDateTime, showErrorToast, showToast } from "../dom.js";
+import { appendText, clearNode, createButton, createEl, formatBytes, formatCount, formatDateTime, showErrorToast, showToast } from "../dom.js";
+import { describeUploadLimits } from "../serverInfo.js";
 import { elements, state } from "../state.js";
 import { loadAdminCollectionDetail, mergeCollectionIntoState } from "./collections.js";
 import { syncSourceKindFields } from "./editor.js";
 import { reindexCollection, renderCollectionIndexStateBanner } from "./inspector.js";
 
 // ---- Documents tab (a client of the files API) ----
-
-export const MAX_FILES_PER_UPLOAD = 20;
-
-export function formatBytes(bytes) {
-    if (!Number.isFinite(bytes)) return "-";
-    if (bytes < 1024) return `${bytes} B`;
-    const units = ["KB", "MB", "GB"];
-    let value = bytes / 1024;
-    let unit = 0;
-    while (value >= 1024 && unit < units.length - 1) {
-        value /= 1024;
-        unit += 1;
-    }
-    return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
-}
 
 export function resetFilesTab() {
     state.files = { collectionId: null, data: null, loading: false, uploading: false, error: null, rejected: [] };
@@ -85,7 +71,7 @@ export function renderCollectionFiles() {
     elements.filesDropZone.classList.toggle("hidden", !writable || !canManage);
     elements.filesDropZone.classList.toggle("opacity-50", Boolean(files.uploading));
     elements.filesDropZone.classList.toggle("pointer-events-none", Boolean(files.uploading));
-    elements.filesDropHint.textContent = `.txt, .md, .pdf, .doc, .docx · up to ${MAX_FILES_PER_UPLOAD} files at a time`;
+    elements.filesDropHint.textContent = describeUploadLimits();
 
     const indexState = data.indexState || state.selectedCollection?.indexState;
     const fileCount = Array.isArray(data.files) ? data.files.length : 0;
@@ -182,9 +168,10 @@ export async function uploadCollectionDocuments(fileList) {
     renderCollectionFiles();
     const uploaded = [];
     try {
-        // One request per batch; each mutation gets its own action token.
-        for (let start = 0; start < files.length; start += MAX_FILES_PER_UPLOAD) {
-            const batch = files.slice(start, start + MAX_FILES_PER_UPLOAD);
+        // One request per batch of the server's per-request limit; each mutation gets its own action token.
+        const batchSize = state.serverInfo?.uploads?.maxFilesPerRequest || files.length;
+        for (let start = 0; start < files.length; start += batchSize) {
+            const batch = files.slice(start, start + batchSize);
             setFilesUploadStatus(`Uploading ${start + 1}-${start + batch.length} of ${files.length}...`);
             const form = new FormData();
             batch.forEach((file) => form.append("files", file, file.name));

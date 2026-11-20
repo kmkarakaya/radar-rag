@@ -18,22 +18,6 @@ export const JOB_LIST_LIMIT = 25;
 
 export const AUDIT_LOG_LIMIT = 25;
 
-export const AUDIT_LOG_OPERATION_OPTIONS = [
-    { value: "query", label: "Query" },
-    { value: "retrieve", label: "Retrieve" },
-    { value: "reindex", label: "Reindex" },
-    { value: "delete", label: "Delete collection" },
-    { value: "index_job", label: "Index job" },
-    { value: "job_delete_batch", label: "Bulk delete jobs" },
-    { value: "job_delete", label: "Delete job" },
-    { value: "job", label: "Job detail" },
-    { value: "job_events", label: "Job events" },
-    { value: "collection_readiness", label: "Collection readiness" },
-    { value: "index_build", label: "Index build" },
-    { value: "cleanup", label: "Cleanup" },
-    { value: "load_file", label: "Load file" },
-];
-
 export const AUDIT_COLLECTION_PANEL_WIDTH_CLASS = "w-[min(92vw,34rem)]";
 
 export const EDIT_FIELD_IDS = {
@@ -61,9 +45,15 @@ export let state = {
         enabled: false,
         authenticated: false,
         session: null,
+        // What this session may do, from the server (POST /auth/login, GET /auth/session).
+        capabilities: [],
         loading: false,
         error: null,
     },
+    // GET /v1/admin/server-info (null until loaded).
+    serverInfo: null,
+    // GET /v1/admin/audit-log/operations: the operations in this tenant's log.
+    auditOperations: [],
     collections: [],
     selectedCollection: null,
     selectedReadiness: null,
@@ -142,6 +132,9 @@ export const elements = {
     jobsStatusFilter: document.getElementById("jobsStatusFilter"),
     jobsRefreshList: document.getElementById("jobsRefreshList"),
     jobsListNotice: document.getElementById("jobsListNotice"),
+    appVersion: document.getElementById("appVersion"),
+    esPresets: document.getElementById("esPresets"),
+    csPresets: document.getElementById("csPresets"),
     jobsPrevPage: document.getElementById("jobsPrevPage"),
     jobsNextPage: document.getElementById("jobsNextPage"),
     jobsPageInfo: document.getElementById("jobsPageInfo"),

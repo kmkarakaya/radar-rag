@@ -1,6 +1,7 @@
 import { clearNode } from "./dom.js";
 import { elements, state } from "./state.js";
-import { closeAuditPickers, loadAuditLog, renderAuditFilterControls } from "./views/audit.js";
+import { closeAuditPickers, loadAuditLog, loadAuditOperations, renderAuditFilterControls } from "./views/audit.js";
+import { loadServerInfo } from "./serverInfo.js";
 import { emptyChatSettingsState, loadChatServicesView, loadChatSettings } from "./views/chatSettings.js";
 import { loadCollections } from "./views/collections.js";
 import { loadCollectionFiles } from "./views/documents.js";
@@ -112,6 +113,7 @@ export async function initializeDashboard() {
     setPlaygroundMode("retrieve");
     resetReadinessAndPlayground("Select a collection to inspect readiness.");
     renderJobs();
+    loadServerInfo();
     loadConfigDefaults();
     loadModelDiscovery();
     loadChatSettings();
@@ -148,6 +150,9 @@ export function switchView(viewId) {
     if (viewId === "jobs") loadJobs();
     if (viewId === "embedding-services") loadServices(SERVICE_VIEWS.embedding);
     if (viewId === "chat-services") loadChatServicesView();
-    if (viewId === "audit") loadAuditLog({ cursor: state.auditLogCursor, resetHistory: false });
+    if (viewId === "audit") {
+        loadAuditOperations();
+        loadAuditLog({ cursor: state.auditLogCursor, resetHistory: false });
+    }
     if (viewId === "health") loadHealth();
 }

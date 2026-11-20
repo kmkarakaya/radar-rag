@@ -48,8 +48,13 @@ describe("admin panel static contract", () => {
     // Uploads collections are created without a sourcePath; a server folder is the advanced option.
     assert.ok(html.includes('name="sourceKind" value="uploads"'));
     assert.ok(js.includes('if (getSelectedSourceKind() === "folder") addIfText(payload, "sourcePath", values.sourcePath);'));
-    // The client role table mirrors the server's manageDocuments capability.
-    assert.ok(js.includes('"cancelJob", "manageDocuments"'));
+    // What the session may do comes from the server; the panel keeps no role table.
+    assert.ok(js.includes("return state.auth.capabilities.includes(capability);"));
+    assert.ok(!js.includes('"cancelJob", "manageDocuments"'));
+    // Upload limits and file types come from GET /v1/admin/server-info.
+    assert.ok(js.includes("const batchSize = state.serverInfo?.uploads?.maxFilesPerRequest || files.length;"));
+    assert.ok(!js.includes("MAX_FILES_PER_UPLOAD"));
+    assert.ok(!html.includes('accept=".txt'));
     // The external embedding provider is only selectable once the server has a service configured.
     assert.ok(js.includes("function syncExternalProviderOption()"));
     assert.ok(js.includes("Add one under Embedding services in the left menu"));
@@ -72,8 +77,11 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes('apiRequest(`${view.url()}/test`, { method: "POST", body: JSON.stringify(body) })'));
     assert.ok(js.includes('await adminMutationRequest(id ? view.url(id) : view.url(), {'));
     assert.ok(js.includes('await adminMutationRequest(view.url(service.id), { method: "DELETE" });'));
-    // Only admins manage services (mirrors src/http/adminAuth.ts); the warning comes from the API response.
-    assert.ok(js.includes('"bulkDeleteJobs", "manageEmbeddingServices", "manageChatServices"]'));
+    // Only admins manage services: the capability comes with the session; the warning comes from the API response.
+    assert.ok(js.includes('capability: "manageEmbeddingServices",'));
+    // Service presets come from GET /v1/admin/server-info.
+    assert.ok(js.includes("findServicePreset("));
+    assert.ok(!js.includes("SERVICE_PRESETS"));
     assert.ok(js.includes("services.warnings = Array.isArray(data?.warnings) ? data.warnings : [];"));
     // Collections send the chosen service; the model list comes from that service.
     assert.ok(js.includes('addIfText(payload, "embeddingServiceId", values.embeddingServiceId)'));

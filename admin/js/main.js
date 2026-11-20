@@ -1,7 +1,7 @@
 import { loadAdminSession, loginAdmin, logoutAdmin, setDashboardVisible, syncAuthChrome } from "./auth.js";
 import { initializeDashboard, switchView } from "./dashboard.js";
-import { AUDIT_LOG_OPERATION_OPTIONS, elements, state } from "./state.js";
-import { applyAuditLogFilters, clearAuditLogFilters, closeAuditPickers, getAuditVisibleCollections, goToNextAuditLogPage, goToPreviousAuditLogPage, openAuditLogForCollection, refreshAuditLog, renderAuditCollectionPickerList, renderAuditFilterControls, renderAuditOperationPickerList, setAuditCollectionFilterValues, setAuditOperationFilterValues, toggleAuditPicker } from "./views/audit.js";
+import { elements, state } from "./state.js";
+import { applyAuditLogFilters, auditOperationOptions, clearAuditLogFilters, closeAuditPickers, getAuditVisibleCollections, goToNextAuditLogPage, goToPreviousAuditLogPage, openAuditLogForCollection, refreshAuditLog, renderAuditCollectionPickerList, renderAuditFilterControls, renderAuditOperationPickerList, setAuditCollectionFilterValues, setAuditOperationFilterValues, toggleAuditPicker } from "./views/audit.js";
 import { loadCollections } from "./views/collections.js";
 import { bindDocumentsTabEvents, loadCollectionFiles } from "./views/documents.js";
 import { loadModelDiscovery, saveCollection, setModelFromSelect, syncModelDiscoveryPanel } from "./views/editor.js";
@@ -108,7 +108,7 @@ export function bindEvents() {
     }
     if (elements.auditOperationAll) {
         elements.auditOperationAll.addEventListener("click", () => {
-            setAuditOperationFilterValues(AUDIT_LOG_OPERATION_OPTIONS.map((option) => option.value));
+            setAuditOperationFilterValues(auditOperationOptions().map((option) => option.value));
             renderAuditFilterControls();
             if (state.currentView === "audit") void applyAuditLogFilters();
         });

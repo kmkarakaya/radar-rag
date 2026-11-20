@@ -138,8 +138,8 @@ export function syncExternalProviderOption() {
     const unavailable = discovery.loaded && discovery.services.length === 0 && select.value !== "openai-compatible";
     option.disabled = unavailable;
     option.textContent = unavailable
-        ? "openai-compatible (external service; add one under Embedding services)"
-        : "openai-compatible (external service)";
+        ? "External service (add one under Embedding services first)"
+        : "External service (OpenAI-compatible API)";
 }
 
 /**

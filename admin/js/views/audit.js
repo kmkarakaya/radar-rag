@@ -1,7 +1,8 @@
 import { adminAuditLogUrl, apiRequest, normalizeError } from "../api.js";
+import { capitalizeWord } from "../serverInfo.js";
 import { switchView } from "../dashboard.js";
 import { appendChildren, clearNode, createBadge, createEl, formatDateTime, getStatusColor, isRecord, renderApiErrorContent, shortId, stringifyForDisplay } from "../dom.js";
-import { AUDIT_LOG_LIMIT, AUDIT_LOG_OPERATION_OPTIONS, elements, loadTokens, state } from "../state.js";
+import { API, AUDIT_LOG_LIMIT, elements, loadTokens, state } from "../state.js";
 import { collectionNameById } from "./collections.js";
 import { closeInspector } from "./inspector.js";
 
@@ -37,8 +38,34 @@ export function normalizeAuditCollectionValues(values = []) {
     return normalizeAuditSelectionValues(values, getAuditVisibleCollections().map((collection) => collection.id));
 }
 
+/** Readable names for a few operation names that are unclear on their own; others are shown from the name. */
+const AUDIT_OPERATION_LABELS = {
+    delete: "Delete collection",
+    job: "Job detail",
+};
+
+/** The operations in this tenant's log (GET /v1/admin/audit-log/operations), with readable labels. */
+export function auditOperationOptions() {
+    return state.auditOperations.map((value) => ({
+        value,
+        label: AUDIT_OPERATION_LABELS[value] ?? capitalizeWord(String(value).replace(/_/g, " ")),
+    }));
+}
+
+export async function loadAuditOperations() {
+    try {
+        const data = await apiRequest(`${API.admin}/audit-log/operations`);
+        state.auditOperations = Array.isArray(data?.operations) ? data.operations : [];
+    } catch (error) {
+        console.warn("Could not load the audit operations", error);
+    }
+    renderAuditFilterControls();
+}
+
 export function normalizeAuditOperationValues(values = []) {
-    return normalizeAuditSelectionValues(values, AUDIT_LOG_OPERATION_OPTIONS.map((option) => option.value));
+    // Until the operations are known, keep the selection as it is.
+    if (state.auditOperations.length === 0) return normalizeAuditSelectionValues(values, values.flatMap((value) => String(value).split(",")).map((value) => value.trim()));
+    return normalizeAuditSelectionValues(values, auditOperationOptions().map((option) => option.value));
 }
 
 export function getAuditCollectionFilterValues() {
@@ -79,16 +106,17 @@ export function getAuditCollectionDetailText() {
 
 export function getAuditOperationSummaryText() {
     const selectedCount = getAuditOperationFilterValues().length;
-    if (selectedCount === 0 || selectedCount === AUDIT_LOG_OPERATION_OPTIONS.length) return "All operations";
+    if (selectedCount === 0 || selectedCount === state.auditOperations.length) return "All operations";
     return `${selectedCount} operation${selectedCount === 1 ? "" : "s"} selected`;
 }
 
 export function getAuditOperationDetailText() {
     const selectedCount = getAuditOperationFilterValues().length;
-    if (selectedCount === 0 || selectedCount === AUDIT_LOG_OPERATION_OPTIONS.length) {
-        return `${AUDIT_LOG_OPERATION_OPTIONS.length} available operations`;
+    const total = state.auditOperations.length;
+    if (selectedCount === 0 || selectedCount === total) {
+        return `${total} operation${total === 1 ? "" : "s"} in the log`;
     }
-    return `${selectedCount} of ${AUDIT_LOG_OPERATION_OPTIONS.length} selected`;
+    return `${selectedCount} of ${total} selected`;
 }
 
 export function renderAuditCollectionPickerList() {
@@ -150,7 +178,7 @@ export function renderAuditOperationPickerList() {
 
     const search = (elements.auditOperationSearch?.value || "").trim().toLowerCase();
     const selectedValues = new Set(getAuditOperationFilterValues());
-    const operations = AUDIT_LOG_OPERATION_OPTIONS.filter((option) => {
+    const operations = auditOperationOptions().filter((option) => {
         if (!search) return true;
         return [option.label, option.value]
             .filter(Boolean)

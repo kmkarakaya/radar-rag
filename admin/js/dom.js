@@ -312,3 +312,16 @@ export function showErrorToast(error, fallback = "Request failed") {
         durationMs: 7000,
     });
 }
+
+export function formatBytes(bytes) {
+    if (!Number.isFinite(bytes)) return "-";
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ["KB", "MB", "GB"];
+    let value = bytes / 1024;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit += 1;
+    }
+    return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
+}

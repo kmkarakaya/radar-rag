@@ -2,6 +2,7 @@ import { adminMutationRequest, apiRequest } from "../api.js";
 import { canAdminAction } from "../auth.js";
 import { switchView } from "../dashboard.js";
 import { clearNode, createButton, createEl, formatCount, setButtonLoading, showErrorToast, showToast } from "../dom.js";
+import { findServicePreset } from "../serverInfo.js";
 import { API, elements, state } from "../state.js";
 import { bindChatSettingsEvents, loadChatSettings } from "./chatSettings.js";
 import { loadModelDiscovery, syncModelDiscoveryPanel } from "./editor.js";
@@ -28,13 +29,6 @@ export function chatServicesUrl(id) {
     const base = `${API.admin}/chat-services`;
     return id === undefined ? base : `${base}/${encodeURIComponent(id)}`;
 }
-
-export const SERVICE_PRESETS = {
-    ollama: { name: "Ollama", baseUrl: "http://host.docker.internal:11434/v1" },
-    openai: { name: "OpenAI", baseUrl: "https://api.openai.com/v1" },
-    openrouter: { name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
-    lmstudio: { name: "LM Studio", baseUrl: "http://host.docker.internal:1234/v1" },
-};
 
 export const SERVICE_VIEWS = {
     embedding: {
@@ -305,14 +299,13 @@ export function bindServiceViewEvents(view) {
         event.preventDefault();
         saveService(view);
     });
-    document.querySelectorAll(`[data-${view.prefix}-preset]`).forEach((button) => {
-        button.addEventListener("click", () => {
-            const preset = SERVICE_PRESETS[button.dataset[`${view.prefix}Preset`]];
-            if (!preset) return;
-            if (!serviceEl(view, "Name").value.trim()) serviceEl(view, "Name").value = preset.name;
-            serviceEl(view, "BaseUrl").value = preset.baseUrl;
-            setServiceTestResult(view, null);
-        });
+    // Preset buttons come from GET /v1/admin/server-info and are re-rendered, so listen on their container.
+    serviceEl(view, "Presets")?.addEventListener("click", (event) => {
+        const preset = findServicePreset(event.target?.closest?.("[data-preset-id]")?.dataset.presetId);
+        if (!preset) return;
+        if (!serviceEl(view, "Name").value.trim()) serviceEl(view, "Name").value = preset.name;
+        serviceEl(view, "BaseUrl").value = preset.baseUrl;
+        setServiceTestResult(view, null);
     });
 }
 

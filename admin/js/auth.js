@@ -8,10 +8,11 @@ export function getAdminSessionSummary() {
     return state.auth.session;
 }
 
-export function setAdminSession(session, enabled = state.auth.enabled) {
+export function setAdminSession(session, enabled = state.auth.enabled, capabilities = []) {
     state.auth.enabled = Boolean(enabled);
     state.auth.authenticated = Boolean(session);
     state.auth.session = session || null;
+    state.auth.capabilities = Array.isArray(capabilities) ? capabilities : [];
     state.auth.error = null;
     syncAuthChrome();
 }
@@ -19,6 +20,7 @@ export function setAdminSession(session, enabled = state.auth.enabled) {
 export function clearAdminSession() {
     state.auth.authenticated = false;
     state.auth.session = null;
+    state.auth.capabilities = [];
     syncAuthChrome();
 }
 
@@ -101,20 +103,9 @@ export function normalizeAdminActionPath(url) {
     return normalizeRequestPath(url);
 }
 
+/** Whether the session may do this, from the capabilities the server returned (the server checks every request). */
 export function canAdminAction(capability) {
-    if (!state.auth.enabled) {
-        return true;
-    }
-    const role = state.auth.session?.role;
-    if (!role) {
-        return false;
-    }
-    const permissions = {
-        viewer: ["read"],
-        operator: ["read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob", "manageDocuments"],
-        admin: ["read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob", "manageDocuments", "deleteCollection", "deleteJob", "bulkDeleteJobs", "manageEmbeddingServices", "manageChatServices"],
-    };
-    return (permissions[role] || []).includes(capability);
+    return state.auth.capabilities.includes(capability);
 }
 
 export async function loadAdminSession() {
@@ -125,10 +116,10 @@ export async function loadAdminSession() {
         const data = await apiRequest(adminAuthSessionUrl());
         state.auth.enabled = Boolean(data?.enabled);
         if (data?.authenticated && data?.session) {
-            setAdminSession(data.session, data.enabled);
+            setAdminSession(data.session, data.enabled, data.capabilities);
             return true;
         }
-        setAdminSession(null, data?.enabled);
+        setAdminSession(null, data?.enabled, data?.enabled ? [] : data?.capabilities);
         return !data?.enabled;
     } catch (error) {
         const normalized = normalizeError(error);
@@ -166,7 +157,7 @@ export async function loginAdmin(event) {
             throw normalizeError(null, { status: 0, code: "INVALID_AUTH_RESPONSE", message: "Admin login response did not include session." });
         }
         state.auth.enabled = true;
-        setAdminSession(data.session, true);
+        setAdminSession(data.session, true, data.capabilities);
         resetAuthForm();
         resetDashboardState();
         setDashboardVisible(true);

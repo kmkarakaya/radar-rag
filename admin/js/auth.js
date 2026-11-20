@@ -43,38 +43,30 @@ export function syncAuthChrome() {
         }
     }
     if (elements.authSessionSummary) {
-        elements.authSessionSummary.textContent = session
-            ? `${session.username} on ${session.tenantId}`
-            : state.auth.enabled
-                ? "No active admin session"
-                : "Admin auth is disabled";
-    }
-    if (elements.authSessionRole) {
-        elements.authSessionRole.textContent = session?.role || "-";
+        elements.authSessionSummary.textContent = session ? session.username : "";
     }
     if (elements.authSessionTenant) {
         elements.authSessionTenant.textContent = session?.tenantId || "-";
     }
     if (elements.authSessionExpiry) {
-        elements.authSessionExpiry.textContent = session?.expiresAt ? formatDateTime(session.expiresAt) : "-";
+        elements.authSessionExpiry.textContent = session?.expiresAt ? `signed in until ${formatDateTime(session.expiresAt)}` : "";
     }
+    // With auth off there is no session: only a small "Auth off" badge, no session line or sign-out button.
+    const signedIn = state.auth.enabled && state.auth.authenticated && Boolean(session);
+    elements.authSessionBlock?.classList.toggle("lg:block", signedIn);
     if (elements.authBadge) {
-        elements.authBadge.textContent = state.auth.authenticated && session
-            ? `${session.role} - ${session.username}`
-            : state.auth.enabled
-                ? "Signed out"
-                : "Auth off";
+        elements.authBadge.textContent = signedIn ? session.role : state.auth.enabled ? "Signed out" : "Auth off";
+        if (state.auth.enabled) elements.authBadge.removeAttribute("title");
     }
     if (elements.authLogoutButton) {
-        elements.authLogoutButton.disabled = !state.auth.authenticated;
+        elements.authLogoutButton.classList.toggle("hidden", !signedIn);
+        elements.authLogoutButton.disabled = !signedIn;
     }
     if (elements.btnCreateCollection) {
         const allowed = canAdminAction("createCollection");
         elements.btnCreateCollection.disabled = !allowed;
         if (!allowed) {
-            elements.btnCreateCollection.title = state.auth.enabled
-                ? "Create collection requires operator access."
-                : "Create collection";
+            elements.btnCreateCollection.title = "Creating a collection needs the operator role.";
         } else {
             elements.btnCreateCollection.removeAttribute("title");
         }

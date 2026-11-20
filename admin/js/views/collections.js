@@ -36,8 +36,19 @@ export async function loadAdminCollectionDetail(collectionId) {
  * Loads GET /v1/rag/collections. `quiet` (background refresh): no loading state or toast, nothing redrawn when
  * the list did not change, and a failure keeps the last list with a notice saying when it was loaded.
  */
-export async function loadCollections({ quiet = false } = {}) {
-    if (state.isLoading.collections) return;
+let collectionsRequest = null;
+
+/** One request at a time: a call while the list is loading waits for that request instead of returning early. */
+export function loadCollections(options = {}) {
+    if (!collectionsRequest) {
+        collectionsRequest = fetchCollections(options).finally(() => {
+            collectionsRequest = null;
+        });
+    }
+    return collectionsRequest;
+}
+
+async function fetchCollections({ quiet = false } = {}) {
     const previous = JSON.stringify(state.collections);
     const hadError = Boolean(state.collectionError);
     state.isLoading.collections = true;

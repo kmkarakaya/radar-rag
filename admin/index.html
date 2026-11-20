@@ -79,15 +79,15 @@
             </a>
             <a href="#" data-view="jobs" class="nav-item flex items-center gap-3 px-3 py-2 rounded-md transition-colors hover:text-white hover:bg-slate-800">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                Job Monitor
+                Jobs
             </a>
             <a href="#" data-view="audit" class="nav-item flex items-center gap-3 px-3 py-2 rounded-md transition-colors hover:text-white hover:bg-slate-800">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6M9 8h6M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"></path></svg>
-                Audit Log
+                Audit log
             </a>
             <a href="#" data-view="health" class="nav-item flex items-center gap-3 px-3 py-2 rounded-md transition-colors hover:text-white hover:bg-slate-800">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                System Health
+                System health
             </a>
         </nav>
 
@@ -102,18 +102,16 @@
         <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between gap-4 px-8 shrink-0">
             <h2 id="viewTitle" class="text-lg font-semibold text-slate-800">Collections</h2>
             <div id="authBar" class="flex items-center gap-3">
-                <div class="hidden text-right lg:block">
+                <div id="authSessionBlock" class="hidden text-right lg:block">
                     <div id="authSessionSummary" class="text-sm font-semibold text-slate-800">No active admin session</div>
                     <div class="mt-0.5 text-xs text-slate-500">
-                        <span id="authSessionRole">-</span>
-                        <span class="mx-1">·</span>
                         <span id="authSessionTenant">-</span>
                         <span class="mx-1">·</span>
                         <span id="authSessionExpiry">-</span>
                     </div>
                 </div>
-                <span id="authBadge" class="auth-badge">Auth off</span>
-                <button id="authLogoutButton" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+                <span id="authBadge" class="auth-badge" title="Admin auth is off: anyone who can reach this server can use the panel.">Auth off</span>
+                <button id="authLogoutButton" type="button" class="hidden rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
                     Sign out
                 </button>
             </div>
@@ -121,9 +119,9 @@
                 <button id="btnRefresh" type="button" class="p-2 text-slate-500 hover:text-indigo-600 transition-colors rounded-full hover:bg-slate-100" title="Refresh Data" aria-label="Refresh data">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11V5a8 8 0 00-16 0v12a8 8 0 008 8 8 8 0 008-8z"></path></svg>
                 </button>
-                <button id="btnCreateCollection" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2" title="Create a new collection">
+                <button id="btnCreateCollection" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2" >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                    New Collection
+                    New collection
                 </button>
             </div>
         </header>

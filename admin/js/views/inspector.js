@@ -128,43 +128,38 @@ export function renderCollectionIndexStateBanner() {
     const isIndexing = hasActiveJob || collection.status === "indexing";
     const changedFields = Array.isArray(indexState?.changedFields) ? indexState.changedFields : [];
 
-    let title = "Immediate effect / synced";
-    let badgeLabel = "SYNCED";
+    let title = "Up to date";
+    let badgeLabel = "UP TO DATE";
     let badgeTone = "ok";
-    let summary = indexState?.note || "Saved settings are aligned with the active indexed snapshot.";
+    let summary = "The index matches the saved settings.";
 
     if (dependencyDown) {
-        title = "Backend dependency down";
-        badgeLabel = "DEPENDENCY DOWN";
+        title = "A service is not available";
+        badgeLabel = "UNAVAILABLE";
         badgeTone = "fail";
-        summary = "Chroma or the embedding service is unavailable. Re-index and playground actions should wait until the dependency is healthy.";
+        summary = "The vector store or the embedding service cannot be reached. Searching and re-indexing wait until it is back.";
     } else if (isIndexing) {
-        title = "Indexing in progress";
+        title = "Indexing";
         badgeLabel = "INDEXING";
         badgeTone = "info";
         summary = activeJob
-            ? `Active job ${shortId(activeJob.id)} is ${activeJob.status}.`
-            : "The collection is currently indexing.";
+            ? `Indexing is ${activeJob.status === "queued" ? "queued" : "running"} (job ${shortId(activeJob.id)}). Searches use the previous index until it finishes.`
+            : "Indexing is running. Searches use the previous index until it finishes.";
     } else if (!indexState) {
-        title = "Index state unavailable";
+        title = "Index state unknown";
         badgeLabel = "UNKNOWN";
         badgeTone = "warn";
-        summary = "Backend did not return a persisted index snapshot. Restart the backend after deploying the schema change.";
+        summary = "The server did not return the index state of this collection.";
     } else if (indexState.status === "no_active_index") {
-        title = "Indexing required";
-        badgeLabel = "INDEXING REQUIRED";
+        title = "Not indexed yet";
+        badgeLabel = "NOT INDEXED";
         badgeTone = "warn";
-        summary = indexState.note || "No active index exists yet. Open details to re-index.";
-    } else if (indexState?.reindexRequired) {
-        title = "Re-index required";
-        badgeLabel = "RE-INDEX REQUIRED";
+        summary = indexState.note || "Nothing can be searched until the collection is indexed. Add documents, then re-index.";
+    } else if (indexState.reindexRequired) {
+        title = "Re-index needed";
+        badgeLabel = "RE-INDEX NEEDED";
         badgeTone = "warn";
-        summary = indexState.note || "Saved settings differ from the active indexed snapshot.";
-    } else if (indexState?.status === "synced") {
-        title = "Immediate effect / synced";
-        badgeLabel = "SYNCED";
-        badgeTone = "ok";
-        summary = indexState.note || "Saved settings are aligned with the active indexed snapshot.";
+        summary = indexState.note || "The saved settings or documents changed since the last index. Searches use the previous index until you re-index.";
     }
 
     elements.collectionIndexState.classList.remove("hidden");
@@ -176,61 +171,50 @@ export function renderCollectionIndexStateBanner() {
     elements.collectionIndexStateBadge.appendChild(createBadge(badgeLabel, getStatusColor(badgeTone)));
 
     clearNode(elements.collectionIndexStateContent);
-    const detail = createEl("div", "rounded-lg border border-slate-100 bg-white p-3 text-xs text-slate-700");
-    detail.appendChild(createEl("div", "font-semibold text-slate-800", "Index snapshot"));
-    detail.appendChild(createEl("div", "mt-1 break-all-words text-slate-500", indexState?.note || "Ground truth is provided by the backend index state."));
 
-    const snapshotGrid = createEl("div", "mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2");
-    snapshotGrid.appendChild(createMetaItem("Saved source path", indexState?.desiredSnapshot?.sourcePath ?? collection.sourcePath));
-    snapshotGrid.appendChild(createMetaItem("Saved chunk size", indexState?.desiredSnapshot?.chunkSize ?? collection.chunkSize));
-    snapshotGrid.appendChild(createMetaItem("Saved chunk overlap", indexState?.desiredSnapshot?.chunkOverlap ?? collection.chunkOverlap));
-    snapshotGrid.appendChild(createMetaItem(
-        "Saved embedding",
-        `${indexState?.desiredSnapshot?.embeddingProvider ?? collection.embeddingProvider ?? "-"} / ${indexState?.desiredSnapshot?.embeddingModel ?? collection.embeddingModel}`
-            + viaEmbeddingService(indexState?.desiredSnapshot?.embeddingServiceId),
-    ));
-    snapshotGrid.appendChild(createMetaItem("Saved distance metric", indexState?.desiredSnapshot?.distanceMetric ?? collection.distanceMetric));
-
-    detail.appendChild(snapshotGrid);
-
-    if (indexState?.activeSnapshot) {
-        const activeSection = createEl("div", "mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs text-slate-700");
-        activeSection.appendChild(createEl("div", "font-semibold text-slate-800", "Active indexed snapshot"));
-        const activeGrid = createEl("div", "mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2");
-        activeGrid.appendChild(createMetaItem("Active source path", indexState.activeSnapshot.sourcePath));
-        activeGrid.appendChild(createMetaItem("Active chunk size", indexState.activeSnapshot.chunkSize));
-        activeGrid.appendChild(createMetaItem("Active chunk overlap", indexState.activeSnapshot.chunkOverlap));
-        activeGrid.appendChild(createMetaItem("Active embedding", `${indexState.activeSnapshot.embeddingProvider} / ${indexState.activeSnapshot.embeddingModel}`
-            + viaEmbeddingService(indexState.activeSnapshot.embeddingServiceId)));
-        activeGrid.appendChild(createMetaItem("Active distance metric", indexState.activeSnapshot.distanceMetric));
-        activeSection.appendChild(activeGrid);
-        detail.appendChild(activeSection);
-    }
-
+    // What needs attention stays visible: the fields that need a re-index and the unavailable services.
     if (changedFields.length > 0) {
-        const fieldSection = createEl("div", "mt-3 rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800");
-        fieldSection.appendChild(createEl("div", "font-semibold", indexState?.status === "no_active_index" ? "Pending index fields" : "Fields requiring re-index"));
+        const fieldSection = createEl("div", "rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800");
+        fieldSection.appendChild(createEl("div", "font-semibold", indexState?.status === "no_active_index" ? "Settings used by the first index" : "Changed since the last index"));
         const fieldWrap = createEl("div", "mt-2 flex flex-wrap gap-2");
         changedFields.forEach((field) => {
             fieldWrap.appendChild(createBadge(formatValidationFieldLabel(field), getStatusColor("warn")));
         });
         fieldSection.appendChild(fieldWrap);
-        detail.appendChild(fieldSection);
+        elements.collectionIndexStateContent.appendChild(fieldSection);
     }
 
     if (dependencyDown && blockers.length > 0) {
-        const blockerSection = createEl("div", "mt-3 rounded-lg border border-rose-100 bg-rose-50 p-3 text-xs text-rose-800");
-        blockerSection.appendChild(createEl("div", "font-semibold", "Dependency blockers"));
-        const list = createEl("ul", "mt-2 list-disc space-y-1 pl-4");
+        const blockerSection = createEl("div", "rounded-lg border border-rose-100 bg-rose-50 p-3 text-xs text-rose-800");
+        const list = createEl("ul", "list-disc space-y-1 pl-4");
         blockers.forEach((issue) => {
-            const row = createEl("li", "", isRecord(issue) ? `${issue.code || "BLOCKER"}: ${issue.message || stringifyForDisplay(issue)}` : stringifyForDisplay(issue));
-            list.appendChild(row);
+            list.appendChild(createEl("li", "", isRecord(issue) ? issue.message || stringifyForDisplay(issue) : stringifyForDisplay(issue)));
         });
         blockerSection.appendChild(list);
-        detail.appendChild(blockerSection);
+        elements.collectionIndexStateContent.appendChild(blockerSection);
     }
 
-    elements.collectionIndexStateContent.appendChild(detail);
+    // The saved and the indexed settings side by side, folded away.
+    const details = createEl("details", "rounded-lg border border-slate-100 bg-white p-3 text-xs text-slate-700");
+    details.appendChild(createEl("summary", "cursor-pointer font-semibold text-slate-700", "Indexed settings"));
+    const snapshotGrid = createEl("div", "mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2");
+    const saved = indexState?.desiredSnapshot ?? {};
+    const active = indexState?.activeSnapshot ?? null;
+    const describeEmbedding = (snapshot) => (snapshot
+        ? `${snapshot.embeddingProvider ?? "-"} / ${snapshot.embeddingModel ?? "-"}${viaEmbeddingService(snapshot.embeddingServiceId)}`
+        : "-");
+    [
+        ["Documents", saved.sourcePath ?? collection.sourcePath, active?.sourcePath],
+        ["Chunk size", saved.chunkSize ?? collection.chunkSize, active?.chunkSize],
+        ["Chunk overlap", saved.chunkOverlap ?? collection.chunkOverlap, active?.chunkOverlap],
+        ["Embedding", describeEmbedding({ ...saved, embeddingProvider: saved.embeddingProvider ?? collection.embeddingProvider, embeddingModel: saved.embeddingModel ?? collection.embeddingModel }), active ? describeEmbedding(active) : null],
+        ["Distance metric", saved.distanceMetric ?? collection.distanceMetric, active?.distanceMetric],
+    ].forEach(([label, savedValue, activeValue]) => {
+        snapshotGrid.appendChild(createMetaItem(`${label} (saved)`, savedValue));
+        snapshotGrid.appendChild(createMetaItem(`${label} (in the index)`, active ? activeValue : "Not indexed yet"));
+    });
+    details.appendChild(snapshotGrid);
+    elements.collectionIndexStateContent.appendChild(details);
 }
 
 export function renderCollectionValidation(validation, title) {

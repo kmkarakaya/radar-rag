@@ -137,7 +137,7 @@ describe("admin panel static contract", () => {
     assert.ok(html.includes('id="authLoginButton"'));
     assert.ok(html.includes('id="authLogoutButton"'));
     assert.ok(html.includes('id="authSessionSummary"'));
-    assert.ok(html.includes('id="authSessionRole"'));
+    assert.ok(html.includes('id="authBadge"'), "the role shows in the header badge");
     assert.ok(html.includes('id="authSessionTenant"'));
     assert.ok(html.includes('id="authSessionExpiry"'));
     assert.ok(js.includes("function adminAuthSessionUrl()"));
@@ -321,7 +321,7 @@ describe("admin panel static contract", () => {
     assert.ok(html.includes('id="auditLogTableBody"'));
     assert.ok(html.includes('id="btnViewHistory"'));
     assert.ok(html.includes("View history"));
-    assert.ok(html.includes("Audit Log"));
+    assert.ok(html.includes("Audit log"));
     assert.ok(js.includes("function adminAuditLogUrl(options = {})"));
     assert.ok(js.includes("data?.auditLog"), "Audit log history should read the data.auditLog wrapper");
     assert.ok(js.includes("openAuditLogForCollection"));

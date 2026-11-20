@@ -144,13 +144,15 @@ export function switchView(viewId) {
 
     const titles = {
         collections: "Collections",
-        jobs: "Job Monitor",
+        jobs: "Jobs",
         "embedding-services": "Embedding services",
         "chat-services": "Chat services",
-        audit: "Audit Log",
-        health: "System Health",
+        audit: "Audit log",
+        health: "System health",
     };
     elements.viewTitle.textContent = titles[viewId] || "Dashboard";
+    // The header's main action belongs to the collections view; the other views have their own buttons.
+    elements.btnCreateCollection?.classList.toggle("hidden", viewId !== "collections");
     recordRoute();
 
     if (viewId === "jobs") loadJobs();

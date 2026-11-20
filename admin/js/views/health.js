@@ -2,14 +2,19 @@ import { apiRequest, normalizeError } from "../api.js";
 import { appendJsonDetails, appendText, clearNode, createBadge, createEl, createMetaItem, formatBoolean, formatCount, formatDateTime, formatDurationSeconds, getStatusColor, isRecord, showErrorToast, stringifyForDisplay } from "../dom.js";
 import { API, elements, state } from "../state.js";
 
-export async function loadHealth() {
+/** `quiet` (background refresh): no "refreshing" banners and no toasts. */
+export async function loadHealth({ quiet = false } = {}) {
     if (state.isLoading.health) return;
     const hasSnapshot = Boolean(state.healthStatus || state.readiness || state.readinessDetails);
     state.isLoading.health = true;
 
     if (hasSnapshot) {
+        if (quiet) {
+            // Keep the current view; it is redrawn when the results arrive.
+        } else {
         renderHealthSummary(state.healthStatus, state.readiness, state.readinessDetails, { refreshing: true });
         renderReadinessDetail(state.readiness, state.readinessDetails, null, { refreshing: true });
+        }
     } else {
         renderHealthLoadingState();
         renderReadinessLoadingState();
@@ -40,10 +45,12 @@ export async function loadHealth() {
             lastUpdatedAt: state.healthLastUpdatedAt,
         });
 
-        [healthResult, readyResult].forEach((result) => {
-            if (result.status === "rejected") showErrorToast(result.reason, "Health summary failed");
-        });
-        if (detailsResult.status === "rejected") showErrorToast(detailsResult.reason, "Health details failed");
+        if (!quiet) {
+            [healthResult, readyResult].forEach((result) => {
+                if (result.status === "rejected") showErrorToast(result.reason, "Health summary failed");
+            });
+            if (detailsResult.status === "rejected") showErrorToast(detailsResult.reason, "Health details failed");
+        }
     } finally {
         state.isLoading.health = false;
     }

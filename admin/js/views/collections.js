@@ -32,24 +32,40 @@ export async function loadAdminCollectionDetail(collectionId) {
     return data.collection;
 }
 
-export async function loadCollections() {
+/**
+ * Loads GET /v1/rag/collections. `quiet` (background refresh): no loading state or toast, nothing redrawn when
+ * the list did not change, and a failure keeps the last list with a notice saying when it was loaded.
+ */
+export async function loadCollections({ quiet = false } = {}) {
     if (state.isLoading.collections) return;
+    const previous = JSON.stringify(state.collections);
+    const hadError = Boolean(state.collectionError);
     state.isLoading.collections = true;
-    state.collectionError = null;
-    renderCollections();
+    if (!quiet) {
+        state.collectionError = null;
+        renderCollections();
+    }
 
+    let changed = true;
     try {
         const data = await apiRequest(`${API.rag}/collections`);
         state.collections = Array.isArray(data?.collections) ? data.collections : [];
+        state.collectionError = null;
+        state.collectionsLoadedAt = new Date().toISOString();
+        changed = !quiet || hadError || JSON.stringify(state.collections) !== previous;
     } catch (error) {
         state.collectionError = error;
-        state.collections = [];
-        showErrorToast(error, "Failed to load collections");
+        if (!quiet) {
+            state.collections = [];
+            showErrorToast(error, "Failed to load collections");
+        }
     } finally {
         state.isLoading.collections = false;
-        state.auditLogCollectionFilter = normalizeAuditCollectionValues(state.auditLogCollectionFilter);
-        renderAuditFilterControls();
-        renderCollections();
+        if (changed) {
+            state.auditLogCollectionFilter = normalizeAuditCollectionValues(state.auditLogCollectionFilter);
+            renderAuditFilterControls();
+            renderCollections();
+        }
     }
 }
 
@@ -57,12 +73,18 @@ export function renderCollections() {
     const grid = elements.collectionsGrid;
     clearNode(grid);
 
-    if (state.isLoading.collections) {
-        grid.appendChild(createEl("div", "col-span-full py-12 text-center text-slate-400 italic", "Loading collections..."));
+    if (state.isLoading.collections && state.collections.length === 0) {
+        grid.appendChild(createEl("div", "col-span-full py-12 text-center text-slate-500 italic", "Loading collections..."));
         return;
     }
 
-    if (state.collectionError) {
+    if (state.collectionError && state.collections.length > 0) {
+        grid.appendChild(createEl(
+            "div",
+            "col-span-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800",
+            `Could not refresh the collections (${normalizeError(state.collectionError).message}). Showing the list loaded at ${formatDateTime(state.collectionsLoadedAt)}.`,
+        ));
+    } else if (state.collectionError) {
         const errorBox = createEl("div", "col-span-full");
         renderApiErrorContent(errorBox, state.collectionError, "Failed to load collections");
         grid.appendChild(errorBox);

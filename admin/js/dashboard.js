@@ -26,21 +26,21 @@ export function startDashboardPolling() {
         return;
     }
 
+    // Background refreshes poll only what is on screen, show no toasts and redraw only when data changed.
     dashboardPollingHandles.push(setInterval(() => {
-        if (!document.hidden) loadJobs();
+        if (document.hidden) return;
+        if (state.inspectorOpen && state.selectedCollection) {
+            updateReadinessTab({ quiet: true });
+            if (state.activeTab === "files") loadCollectionFiles({ quiet: true });
+        } else if (state.currentView === "collections") {
+            loadCollections({ quiet: true });
+        } else if (state.currentView === "jobs") {
+            loadJobs({ quiet: true });
+        }
     }, 10000));
 
     dashboardPollingHandles.push(setInterval(() => {
-        if (!document.hidden) loadCollections();
-    }, 10000));
-
-    dashboardPollingHandles.push(setInterval(() => {
-        if (!document.hidden && state.selectedCollection) updateReadinessTab();
-        if (!document.hidden && state.selectedCollection && state.activeTab === "files") loadCollectionFiles({ quiet: true });
-    }, 10000));
-
-    dashboardPollingHandles.push(setInterval(() => {
-        if (!document.hidden) loadHealth();
+        if (!document.hidden && state.currentView === "health" && !state.inspectorOpen) loadHealth({ quiet: true });
     }, 30000));
 }
 

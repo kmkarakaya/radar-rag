@@ -281,7 +281,8 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("Refreshing system health..."), "Health dashboard should keep the last snapshot visible during refresh");
     assert.ok(js.includes("Loading system health details..."), "Health detail panel should show loading feedback");
     assert.ok(js.includes("const hasSnapshot = Boolean(state.selectedReadiness);"), "Readiness refresh should preserve the last known snapshot during refresh");
-    assert.ok(js.includes("setReadinessRefreshNotice(\"Refreshing readiness snapshot...\""), "Readiness refresh should show a non-blocking notice");
+    assert.ok(js.includes("if (!quiet) setReadinessRefreshNotice(\"Refreshing readiness...\""), "A refresh the user asked for shows a non-blocking notice; background refreshes show none");
+    assert.ok(js.includes("if (!quiet || JSON.stringify(readinessResult.value) !== previousReadiness) renderReadinessData"), "Background refreshes redraw readiness only when it changed");
     assert.ok(!js.includes("if (state.isLoading.readiness) return { enabled: false, reason: \"Readiness is loading.\" };"), "Playground capability should not be disabled just because readiness is refreshing");
     assert.ok(!js.includes("strict=true"), "Health dashboard should not use ready?strict=true");
     assert.ok(js.includes("Promise.allSettled"), "Health dashboard should preserve summaries if details fail");

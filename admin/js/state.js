@@ -56,6 +56,8 @@ export let state = {
     auditOperations: [],
     collections: [],
     selectedCollection: null,
+    // Whether the collection inspector is open (its data is polled only then).
+    inspectorOpen: false,
     selectedReadiness: null,
     selectedPhysicalCollections: null,
     selectedPhysicalCollectionsError: null,
@@ -95,6 +97,8 @@ export let state = {
         auditLog: false,
     },
     collectionError: null,
+    // When the collections were last loaded from the server.
+    collectionsLoadedAt: null,
     healthStatus: null,
     readiness: null,
     readinessDetails: null,

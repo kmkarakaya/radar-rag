@@ -306,6 +306,7 @@ export function renderCollectionValidation(validation, title) {
 }
 
 export function openPanel() {
+    state.inspectorOpen = true;
     elements.inspectorOverlay.classList.remove("hidden");
     requestAnimationFrame(() => elements.inspectorOverlay.classList.add("opacity-100"));
     elements.inspectorPanel.classList.remove("translate-x-full");
@@ -379,6 +380,7 @@ export async function openInspector(id) {
 }
 
 export function closeInspector() {
+    state.inspectorOpen = false;
     elements.inspectorPanel.classList.add("translate-x-full");
     elements.inspectorOverlay.classList.remove("opacity-100");
     clearCollectionIndexStateBanner();
@@ -633,15 +635,18 @@ export async function loadPhysicalCollections(collectionId) {
     return data.physicalCollections;
 }
 
-export async function updateReadinessTab() {
+/** `quiet` (background refresh): no loading notices, and nothing is redrawn when the data did not change. */
+export async function updateReadinessTab({ quiet = false } = {}) {
     if (!state.selectedCollection || state.isLoading.readiness || state.isLoading.physicalCollections) return;
     const collectionId = state.selectedCollection.id;
     const hasSnapshot = Boolean(state.selectedReadiness);
     const hasPhysicalSnapshot = Array.isArray(state.selectedPhysicalCollections);
+    const previousReadiness = JSON.stringify(state.selectedReadiness);
+    const previousPhysical = JSON.stringify(state.selectedPhysicalCollections);
     state.isLoading.readiness = true;
     state.isLoading.physicalCollections = true;
     if (hasSnapshot) {
-        setReadinessRefreshNotice("Refreshing readiness snapshot...", "warning");
+        if (!quiet) setReadinessRefreshNotice("Refreshing readiness...", "warning");
     } else {
         clearReadinessRefreshNotice();
         clearNode(elements.readinessStatusGrid);
@@ -650,7 +655,7 @@ export async function updateReadinessTab() {
     if (!hasPhysicalSnapshot) {
         renderPhysicalCollectionsPlaceholder("Loading physical collection lifecycle...");
     }
-    updatePlaygroundCapabilityState(hasSnapshot ? "Refreshing readiness snapshot..." : "Readiness is loading.");
+    if (!quiet || !hasSnapshot) updatePlaygroundCapabilityState(hasSnapshot ? "Refreshing readiness..." : "Readiness is loading.");
 
     try {
         const results = await Promise.allSettled([
@@ -664,7 +669,8 @@ export async function updateReadinessTab() {
 
         if (readinessResult.status === "fulfilled") {
             state.selectedReadiness = readinessResult.value;
-            renderReadinessData(readinessResult.value);
+            if (!quiet || JSON.stringify(readinessResult.value) !== previousReadiness) renderReadinessData(readinessResult.value);
+            else updatePlaygroundCapabilityState();
             clearReadinessRefreshNotice();
         } else {
             const error = readinessResult.reason;
@@ -678,15 +684,15 @@ export async function updateReadinessTab() {
                 clearReadinessRefreshNotice();
                 updatePlaygroundCapabilityState("Readiness failed to load.");
             } else {
-                setReadinessRefreshNotice("Readiness refresh failed. Showing the last known snapshot.", "error");
-                updatePlaygroundCapabilityState("Refresh failed. Showing the last known readiness.");
+                setReadinessRefreshNotice(`Could not refresh readiness (${normalizeError(error).message}). Showing the last loaded state.`, "error");
+                updatePlaygroundCapabilityState("Could not refresh. Showing the last loaded readiness.");
             }
         }
 
         if (physicalCollectionsResult.status === "fulfilled") {
             state.selectedPhysicalCollections = physicalCollectionsResult.value;
             state.selectedPhysicalCollectionsError = null;
-            renderPhysicalCollectionsData(physicalCollectionsResult.value);
+            if (!quiet || JSON.stringify(physicalCollectionsResult.value) !== previousPhysical) renderPhysicalCollectionsData(physicalCollectionsResult.value);
         } else {
             state.selectedPhysicalCollections = hasPhysicalSnapshot ? state.selectedPhysicalCollections : null;
             state.selectedPhysicalCollectionsError = normalizeError(physicalCollectionsResult.reason);

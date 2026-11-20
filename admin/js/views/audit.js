@@ -404,7 +404,7 @@ export function renderAuditLogTable() {
         const row = createEl("tr");
         const cell = createEl("td", "px-4 py-4");
         cell.colSpan = 8;
-        renderApiErrorContent(cell, state.auditLogError, "Failed to load audit log");
+        renderApiErrorContent(cell, state.auditLogError, "Could not load the audit log", { onRetry: () => refreshAuditLog() });
         row.appendChild(cell);
         elements.auditLogTableBody.appendChild(row);
         return;
@@ -414,7 +414,7 @@ export function renderAuditLogTable() {
         const row = createEl("tr");
         const cell = createEl("td", "px-4 py-4");
         cell.colSpan = 8;
-        renderApiErrorContent(cell, state.auditLogError, "Audit log refresh failed");
+        renderApiErrorContent(cell, state.auditLogError, "Could not refresh the audit log", { onRetry: () => refreshAuditLog() });
         row.appendChild(cell);
         elements.auditLogTableBody.appendChild(row);
     }

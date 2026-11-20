@@ -121,7 +121,7 @@
                 </button>
                 <button id="btnCreateCollection" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2" >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                    New collection
+                    <span id="headerActionLabel">New collection</span>
                 </button>
             </div>
         </header>
@@ -170,6 +170,16 @@
                         </button>
                     </div>
                 </div>
+                <section id="jobDetail" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3" aria-labelledby="jobDetailTitle">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <h3 id="jobDetailTitle" class="text-sm font-semibold text-slate-800">Job</h3>
+                            <p id="jobDetailSummary" class="mt-1 text-xs text-slate-600"></p>
+                        </div>
+                        <a id="jobDetailClose" href="#/jobs" class="text-sm text-slate-500 hover:text-slate-700">Close</a>
+                    </div>
+                    <div id="jobDetailBody"></div>
+                </section>
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm table-responsive">
                     <table class="w-full min-w-[1120px] text-left text-sm">
                         <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-xs font-semibold">
@@ -200,7 +210,8 @@
                 <div id="esWarnings" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"></div>
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p class="text-sm text-slate-600">The embeddings your collections can use. <span class="font-semibold">Built-in</span> runs inside the backend and needs no setup. The others are connections to OpenAI-compatible embedding APIs such as Ollama, OpenAI or LM Studio; a collection that uses an external service picks one of them. Changes take effect at once, without a restart.</p>
-                    <button id="btnAddEmbeddingService" type="button" class="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm">Add service</button>
+                    <p id="esRoleNote" class="hidden shrink-0 text-xs text-slate-500">Only the admin role can add or change embedding services.</p>
+                    <button id="btnAddEmbeddingService" type="button" class="hidden shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm">Add service</button>
                 </div>
                 <form id="esForm" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
                     <input type="hidden" id="esFormId">
@@ -281,7 +292,8 @@
                 </div>
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p class="text-sm text-slate-600">Connections to OpenAI-compatible chat APIs such as Ollama, OpenAI, OpenRouter or LM Studio. Add one, test it, then choose it with a model under Answer generation. Changes take effect at once, without a restart.</p>
-                    <button id="btnAddChatService" type="button" class="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm">Add service</button>
+                    <p id="csRoleNote" class="hidden shrink-0 text-xs text-slate-500">Only the admin role can add or change chat services and the chat choice.</p>
+                    <button id="btnAddChatService" type="button" class="hidden shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm">Add service</button>
                 </div>
                 <form id="csForm" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
                     <input type="hidden" id="csFormId">
@@ -452,15 +464,10 @@
         </div>
 
         <div class="flex-grow overflow-y-auto p-6">
-            <div id="collectionIndexState" class="hidden mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <div id="collectionIndexStateTitle" class="text-xs font-bold uppercase tracking-wider text-slate-500">Index State</div>
-                        <div id="collectionIndexStateSummary" class="mt-1 text-sm text-slate-700"></div>
-                    </div>
-                    <span id="collectionIndexStateBadge" class="shrink-0"></span>
-                </div>
-                <div id="collectionIndexStateContent" class="mt-4 space-y-4"></div>
+            <div id="collectionIndexState" class="hidden mb-6 rounded-lg border p-4" role="status">
+                <div id="collectionIndexStateTitle" class="text-sm font-semibold"></div>
+                <div id="collectionIndexStateSummary" class="mt-1 text-sm"></div>
+                <div id="collectionIndexStateContent" class="mt-3 space-y-3 empty:hidden"></div>
             </div>
 
             <div id="collectionValidation" class="hidden mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -626,6 +633,12 @@
                         <p id="chatLlmStatus" class="rounded-lg border border-slate-200 bg-slate-50 p-2 text-sm text-slate-600">Loading the chat choice...</p>
                         <p class="text-xs text-slate-500">One chat LLM writes the answers for every collection; Retrieve never needs it. Choose it under <a href="#" id="linkChatServices" class="text-indigo-600 underline">Chat services</a>.</p>
                     </section>
+
+                    <details id="indexedSettings" class="hidden rounded-lg border border-slate-200 p-4">
+                        <summary class="cursor-pointer text-sm font-semibold text-slate-700">Saved settings and the current index</summary>
+                        <p class="mt-2 text-xs text-slate-500">Searches use the settings of the current index until the next re-index.</p>
+                        <div id="indexedSettingsBody" class="mt-3"></div>
+                    </details>
 
                     <details id="editAdvanced" class="rounded-lg border border-slate-200 p-4">
                         <summary class="cursor-pointer text-sm font-semibold text-slate-700">Advanced: chunking and retrieval</summary>

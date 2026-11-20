@@ -3,7 +3,7 @@ import { canAdminAction } from "../auth.js";
 import { appendChildren, clearNode, createEl, formatCount, formatDateTime, getCollectionCardStatusBadge, getCollectionCardStatusNote, renderApiErrorContent, showErrorToast } from "../dom.js";
 import { API, elements, state } from "../state.js";
 import { normalizeAuditCollectionValues, renderAuditFilterControls } from "./audit.js";
-import { openInspector, renderCollectionIndexStateBanner } from "./inspector.js";
+import { findReadinessIssue, openInspector, renderCollectionIndexStateBanner } from "./inspector.js";
 
 export function collectionNameById(collectionId) {
     return state.collections.find((collection) => collection.id === collectionId)?.displayName || null;
@@ -98,7 +98,7 @@ export function renderCollections() {
         ));
     } else if (state.collectionError) {
         const errorBox = createEl("div", "col-span-full");
-        renderApiErrorContent(errorBox, state.collectionError, "Failed to load collections");
+        renderApiErrorContent(errorBox, state.collectionError, "Could not load the collections", { onRetry: () => loadCollections() });
         grid.appendChild(errorBox);
         return;
     }
@@ -166,7 +166,8 @@ export function renderGettingStarted() {
         answersReady ? "A chat LLM writes answers for Query." : "Without a chat LLM, Retrieve works and Query is off.",
         answersReady ? null : { label: "Choose one under Chat services", href: "#/services/chat" },
     );
-    item(null, "Create your first collection", "Then upload documents and re-index it.");
+    const download = findReadinessIssue("EMBEDDING_MODEL_NOT_DOWNLOADED");
+    item(null, "Create your first collection", `Then upload documents and re-index it.${download ? ` ${download.message}` : ""}`);
     box.appendChild(list);
 
     if (canAdminAction("createCollection")) {

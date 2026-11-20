@@ -1,5 +1,5 @@
 import { adminAuthLoginUrl, adminAuthLogoutUrl, adminAuthSessionUrl, apiRequest, normalizeError, normalizeRequestPath } from "./api.js";
-import { initializeDashboard, resetDashboardState, stopDashboardPolling } from "./dashboard.js";
+import { initializeDashboard, resetDashboardState, stopDashboardPolling, syncHeaderAction } from "./dashboard.js";
 import { formatDateTime, setButtonLoading } from "./dom.js";
 import { elements, state } from "./state.js";
 import { syncSaveButtonAccess } from "./views/inspector.js";
@@ -62,15 +62,7 @@ export function syncAuthChrome() {
         elements.authLogoutButton.classList.toggle("hidden", !signedIn);
         elements.authLogoutButton.disabled = !signedIn;
     }
-    if (elements.btnCreateCollection) {
-        const allowed = canAdminAction("createCollection");
-        elements.btnCreateCollection.disabled = !allowed;
-        if (!allowed) {
-            elements.btnCreateCollection.title = "Creating a collection needs the operator role.";
-        } else {
-            elements.btnCreateCollection.removeAttribute("title");
-        }
-    }
+    syncHeaderAction();
     syncSaveButtonAccess();
 }
 

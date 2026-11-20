@@ -3,6 +3,7 @@ import { showToast } from "./dom.js";
 import { state } from "./state.js";
 import { loadCollections } from "./views/collections.js";
 import { activateTab, closeInspector, openInspector, requestCloseInspector } from "./views/inspector.js";
+import { changeJobsStatusFilter, closeJobDetail, openJobDetail } from "./views/jobs.js";
 
 /**
  * Hash routes, so reload, back/forward and shared links keep the place in the panel:
@@ -31,6 +32,11 @@ export function routeFromState() {
         if (!state.selectedCollection) return "#/collections/new";
         return `#/collections/${encodeURIComponent(state.selectedCollection.id)}/${TAB_ROUTES[state.activeTab] || "readiness"}`;
     }
+    if (state.currentView === "jobs") {
+        const job = state.jobDetailId ? `/${encodeURIComponent(state.jobDetailId)}` : "";
+        const status = state.jobListStatusFilter && state.jobListStatusFilter !== "all" ? `?status=${encodeURIComponent(state.jobListStatusFilter)}` : "";
+        return `#/jobs${job}${status}`;
+    }
     return `#/${VIEW_ROUTES[state.currentView] || "collections"}`;
 }
 
@@ -42,7 +48,10 @@ export function recordRoute() {
 }
 
 function parseRoute(hash) {
-    const parts = (hash || "").replace(/^#\/?/, "").split("/").filter(Boolean).map((part) => decodeURIComponent(part));
+    const [pathPart, queryPart = ""] = (hash || "").replace(/^#\/?/, "").split("?");
+    const parts = pathPart.split("/").filter(Boolean).map((part) => decodeURIComponent(part));
+    const query = new URLSearchParams(queryPart);
+    if (parts[0] === "jobs") return { view: "jobs", jobId: parts[1] || null, status: query.get("status") || "all" };
     if (parts[0] === "collections" && parts[1] === "new") return { view: "collections", create: true };
     if (parts[0] === "collections" && parts[1]) {
         return { view: "collections", collectionId: parts[1], tab: ROUTE_TABS[parts[2]] || "ready" };
@@ -58,6 +67,11 @@ export async function applyRoute() {
     applying = true;
     try {
         if (state.currentView !== route.view) switchView(route.view);
+        if (route.view === "jobs") {
+            if (state.jobListStatusFilter !== route.status) await changeJobsStatusFilter(route.status);
+            if (route.jobId && route.jobId !== state.jobDetailId) await openJobDetail(route.jobId);
+            if (!route.jobId && state.jobDetailId) closeJobDetail();
+        }
         if (route.create) {
             if (!(state.inspectorOpen && !state.selectedCollection)) await openInspector(null);
         } else if (route.collectionId) {

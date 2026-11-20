@@ -259,7 +259,7 @@ export function renderIssuesList(parent, issues) {
     if (!Array.isArray(issues) || issues.length === 0) return;
     const list = createEl("ul", "mt-2 list-disc space-y-1 pl-5 text-xs");
     issues.forEach((issue) => {
-        const path = Array.isArray(issue.path) ? issue.path.join(".") : "";
+        const path = Array.isArray(issue.path) && issue.path.length > 0 ? formatValidationFieldLabel(String(issue.path[issue.path.length - 1])) : "";
         const message = issue.message || stringifyForDisplay(issue);
         const item = createEl("li", "", path ? `${path}: ${message}` : message);
         list.appendChild(item);
@@ -271,7 +271,7 @@ export function renderIssuesList(parent, issues) {
  * An error box: a title, the server's message and any field issues; code, status, request id and details
  * are folded under "Technical details".
  */
-export function renderErrorBox(parent, error, title = "Request failed") {
+export function renderErrorBox(parent, error, title = "Request failed", options = {}) {
     const normalized = normalizeError(error);
     const box = createEl("div", "rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800");
     appendChildren(box, [
@@ -279,6 +279,12 @@ export function renderErrorBox(parent, error, title = "Request failed") {
         createEl("div", "mt-1 break-all-words", normalized.message),
     ]);
     renderIssuesList(box, normalized.issues);
+    if (options.onRetry) {
+        const retry = createEl("button", "mt-3 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100", "Try again");
+        retry.type = "button";
+        retry.addEventListener("click", () => options.onRetry());
+        box.appendChild(retry);
+    }
 
     const technical = createEl("details", "mt-3 text-xs text-slate-600");
     technical.appendChild(createEl("summary", "cursor-pointer font-semibold text-rose-700", "Technical details"));
@@ -292,9 +298,9 @@ export function renderErrorBox(parent, error, title = "Request failed") {
     parent.appendChild(box);
 }
 
-export function renderApiErrorContent(parent, error, title = "Request failed") {
+export function renderApiErrorContent(parent, error, title = "Request failed", options = {}) {
     clearNode(parent);
-    renderErrorBox(parent, error, title);
+    renderErrorBox(parent, error, title, options);
 }
 
 export function showToast(message, type = "info", options = {}) {
@@ -320,14 +326,19 @@ export function showToast(message, type = "info", options = {}) {
         toast.appendChild(createEl("div", "mt-1 text-xs opacity-80", `Request ID: ${options.requestId}`));
     }
     renderIssuesList(toast, options.issues);
-    if (options.action) {
-        const action = createEl("button", "mt-2 rounded bg-white/20 px-2 py-1 text-xs font-semibold hover:bg-white/30", options.action.label);
-        action.type = "button";
-        action.addEventListener("click", () => {
-            options.action.onClick();
-            toast.remove();
+    const actions = [...(options.actions || []), ...(options.action ? [options.action] : [])];
+    if (actions.length > 0) {
+        const row = createEl("div", "mt-2 flex flex-wrap gap-2");
+        actions.forEach((item) => {
+            const action = createEl("button", "rounded bg-white/20 px-2 py-1 text-xs font-semibold hover:bg-white/30", item.label);
+            action.type = "button";
+            action.addEventListener("click", () => {
+                item.onClick();
+                toast.remove();
+            });
+            row.appendChild(action);
         });
-        toast.appendChild(action);
+        toast.appendChild(row);
     }
     elements.toastContainer.appendChild(toast);
     setTimeout(() => {
@@ -358,4 +369,23 @@ export function formatBytes(bytes) {
         unit += 1;
     }
     return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
+}
+
+/** The form's names for collection fields, for messages that name a field (server issues use the API names). */
+export const VALIDATION_FIELD_LABELS = {
+    displayName: "Name",
+    description: "Description",
+    sourcePath: "Folder on the server",
+    distanceMetric: "Distance metric",
+    chunkSize: "Chunk size",
+    chunkOverlap: "Chunk overlap",
+    retrievalK: "Results per search (K)",
+    retrievalDistanceThreshold: "Distance threshold",
+    embeddingProvider: "Embedding provider",
+    embeddingModel: "Embedding model",
+    embeddingServiceId: "Embedding service",
+};
+
+export function formatValidationFieldLabel(field) {
+    return VALIDATION_FIELD_LABELS[field] || field;
 }

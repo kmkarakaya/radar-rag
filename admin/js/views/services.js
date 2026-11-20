@@ -111,13 +111,8 @@ export function renderServices(view) {
     clearNode(warningsBox);
     services.warnings.forEach((warning) => warningsBox.appendChild(createEl("p", "", warning)));
 
-    const addButton = document.getElementById(view.addButtonId);
-    if (addButton) {
-        addButton.disabled = !canManage;
-        addButton.classList.toggle("opacity-50", !canManage);
-        if (!canManage) addButton.title = `Managing ${view.noun}s requires admin access.`;
-        else addButton.removeAttribute("title");
-    }
+    // Adding is the header's action; without the capability, say so here in words.
+    serviceEl(view, "RoleNote")?.classList.toggle("hidden", canManage);
 
     clearNode(tableBody);
     if (services.loading && services.items.length === 0) {

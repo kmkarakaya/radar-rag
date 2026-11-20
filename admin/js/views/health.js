@@ -41,8 +41,10 @@ export async function loadHealth({ quiet = false } = {}) {
             state.healthLastUpdatedAt = new Date().toISOString();
         }
 
+        const failure = [healthResult, readyResult, detailsResult].find((result) => result.status === "rejected");
         renderHealthSummary(state.healthStatus, state.readiness, state.readinessDetails, {
             lastUpdatedAt: state.healthLastUpdatedAt,
+            failed: failure ? normalizeError(failure.reason).message : null,
         });
         renderReadinessDetail(state.readiness, state.readinessDetails, detailsResult.status === "rejected" ? detailsResult.reason : null, {
             lastUpdatedAt: state.healthLastUpdatedAt,
@@ -175,7 +177,7 @@ export function renderOperationsSummaryCards(grid, operations) {
         ["Delete pending", formatCount(operations.physicalCollections?.deletePending)],
         ["Cleanup failed", formatCount(operations.physicalCollections?.cleanupFailed)],
         ["Failed build", formatCount(operations.physicalCollections?.failedBuild)],
-        ["Active physical", formatCount(operations.physicalCollections?.active)],
+        ["Active index versions", formatCount(operations.physicalCollections?.active)],
         ["Oldest due", formatDateTime(operations.physicalCollections?.oldestDueDeleteAt)],
     ]));
 }
@@ -219,7 +221,7 @@ export function renderOperationsDetail(container, operations) {
     ]);
 
     appendMetricSection(container, "Index versions", [
-        ["Total physical", formatCount(operations.physicalCollections?.total)],
+        ["Total", formatCount(operations.physicalCollections?.total)],
         ["Building", formatCount(operations.physicalCollections?.building)],
         ["Active", formatCount(operations.physicalCollections?.active)],
         ["Failed build", formatCount(operations.physicalCollections?.failedBuild)],
@@ -256,6 +258,11 @@ export function renderHealthSummary(health, ready, details, options = {}) {
             tone: "warning",
             showBar: true,
         }));
+    } else if (options.failed) {
+        grid.appendChild(createHealthStatusBanner("Could not refresh system health.", {
+            detail: `${options.failed}${state.healthLastUpdatedAt ? ` Showing the data loaded at ${formatDateTime(state.healthLastUpdatedAt)}.` : ""}`,
+            tone: "warning",
+        }));
     } else if (options.lastUpdatedAt) {
         grid.appendChild(createHealthStatusBanner("System health loaded.", {
             detail: `Last updated ${formatDateTime(options.lastUpdatedAt)}.`,
@@ -291,7 +298,8 @@ export function renderHealthSummary(health, ready, details, options = {}) {
     depsCard.appendChild(createEl("h3", "mb-3 text-sm font-bold uppercase text-slate-500", "Dependencies"));
     const deps = details?.dependencies || ready?.dependencies || {};
     const depList = createEl("div", "space-y-2");
-    ["registry", "chroma", "embedding", "chat"].forEach((key) => {
+    // Whatever dependencies the server reports, in its order.
+    Object.keys(deps).forEach((key) => {
         const row = createEl("div", "flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 p-2 text-xs");
         row.appendChild(createEl("span", "font-semibold capitalize text-slate-600", key === "chat" ? "chat LLM" : key));
         // An unconfigured chat LLM is a valid retrieve-only setup, not a failure.
@@ -317,13 +325,13 @@ export function appendIssueSection(container, title, items, emptyText, colorClas
     items.forEach((item) => {
         const row = createEl("div", "rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs text-slate-700");
         if (isRecord(item)) {
+            if (item.code) row.title = item.code;
             const header = createEl("div", "flex flex-wrap items-center justify-between gap-2");
-            header.appendChild(createEl("div", "font-semibold", item.code || item.name || "Issue"));
+            header.appendChild(createEl("div", "font-semibold break-all-words", item.message || item.name || stringifyForDisplay(item)));
             if (item.severity) {
                 header.appendChild(createBadge(item.severity, getStatusColor(item.severity)));
             }
             row.appendChild(header);
-            row.appendChild(createEl("div", "mt-1 break-all-words", item.message || stringifyForDisplay(item)));
             if (item.recommendedAction) row.appendChild(createEl("div", "mt-1 break-all-words text-slate-500", item.recommendedAction));
         } else {
             appendText(row, item);
@@ -346,15 +354,15 @@ export function renderChecks(container, checks) {
     checks.forEach((check) => {
         const row = createEl("div", "rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs");
         const top = createEl("div", "flex flex-wrap items-center justify-between gap-2");
-        top.appendChild(createEl("span", "font-semibold text-slate-700", check.name || check.code || "Check"));
+        if (check.code) row.title = check.code;
+        top.appendChild(createEl("span", "font-semibold text-slate-700", check.name || check.message || "Check"));
         top.appendChild(createBadge(check.status || "unknown", getStatusColor(check.status)));
         row.appendChild(top);
-        row.appendChild(createEl("div", "mt-1 break-all-words text-slate-500", check.code || ""));
-        row.appendChild(createEl("div", "mt-1 break-all-words text-slate-700", check.message || "-"));
+        if (check.name && check.message) row.appendChild(createEl("div", "mt-1 break-all-words text-slate-700", check.message));
         if (Array.isArray(check.capabilities)) {
             row.appendChild(createEl("div", "mt-1 text-slate-500", `Capabilities: ${check.capabilities.join(", ")}`));
         }
-        if (check.details) appendJsonDetails(row, "Check details", check.details);
+        if (check.details) appendJsonDetails(row, "Technical details", check.details);
         list.appendChild(row);
     });
     section.appendChild(list);
@@ -420,7 +428,7 @@ export function renderReadinessDetail(ready, details, detailsError, options = {}
         grid.appendChild(createMetaItem("Error", dataSource.error || "-"));
         grid.appendChild(createMetaItem("Latency", dataSource.latencyMs !== undefined ? `${dataSource.latencyMs} ms` : "-"));
         dataSourceSection.appendChild(grid);
-        appendJsonDetails(dataSourceSection, "Data source details", dataSource.details);
+        appendJsonDetails(dataSourceSection, "Technical details", dataSource.details);
     } else {
         dataSourceSection.appendChild(createEl("p", "text-xs italic text-slate-500", "No data source details available."));
     }
@@ -429,5 +437,5 @@ export function renderReadinessDetail(ready, details, detailsError, options = {}
     renderOperationsDetail(container, operations);
 
     const deps = details?.dependencies;
-    if (deps) appendJsonDetails(container, "Dependency diagnostics", deps);
+    if (deps) appendJsonDetails(container, "Technical details (JSON)", deps);
 }

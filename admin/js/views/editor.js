@@ -1,6 +1,6 @@
 import { adminCollectionUrl, adminCollectionValidateUrl, adminMutationRequest, apiRequest, normalizeError } from "../api.js";
 import { canAdminAction } from "../auth.js";
-import { clearNode, createEl, getStatusBadge, setButtonLoading, showErrorToast, showToast } from "../dom.js";
+import { clearNode, createEl, formatValidationFieldLabel, getStatusBadge, setButtonLoading, showErrorToast, showToast } from "../dom.js";
 import { API, EDIT_FIELD_IDS, elements, loadTokens, state } from "../state.js";
 import { describeChatSettings, syncChatSettingsModels } from "./chatSettings.js";
 import { loadAdminCollectionDetail, loadCollections, mergeCollectionIntoState } from "./collections.js";
@@ -86,21 +86,21 @@ export function syncModelDiscoveryPanel() {
 
     if (elements.modelDiscoverySummary) {
         const defaultText = discovery.defaultProvider
-            ? `Default for new collections: ${discovery.defaultProvider} / ${discovery.defaultModel}.`
+            ? `Default for new collections: ${providerName(discovery.defaultProvider)}, ${discovery.defaultModel}.`
             : "";
         let providerText;
         if (discovery.error) {
             providerText = `Model suggestions could not be loaded (${discovery.error}). You can still type a model name.`;
         } else if (provider === "builtin") {
-            providerText = `builtin: ${discovery.builtinModels.length} built-in model(s), run inside the backend and downloaded on first use.`;
+            providerText = `Built-in: ${discovery.builtinModels.length} model${discovery.builtinModels.length === 1 ? "" : "s"}, run inside the backend and downloaded on first use.`;
         } else if (discovery.services.length === 0) {
             providerText = EXTERNAL_EMBEDDING_SETUP_HINT;
         } else if (!service) {
-            providerText = "openai-compatible: pick an embedding service.";
+            providerText = "External service: pick an embedding service.";
         } else if (!online) {
-            providerText = `openai-compatible: ${service.name} is not reachable${service.error ? ` (${service.error})` : ""}.`;
+            providerText = `${service.name} is not reachable${service.error ? ` (${service.error})` : ""}.`;
         } else {
-            providerText = `openai-compatible: ${service.models.length} model(s) at ${service.name}. Pick an embedding model (chat models fail at indexing).`;
+            providerText = `${service.models.length} model${service.models.length === 1 ? "" : "s"} at ${service.name}. Pick an embedding model (chat models fail at indexing).`;
         }
         elements.modelDiscoverySummary.textContent = `${providerText} ${defaultText}`.trim();
     }
@@ -121,7 +121,7 @@ export function syncEmbeddingReindexNote() {
 }
 
 // External embedding services are managed in the "Embedding services" view (or set in .env / config as "server").
-export const EXTERNAL_EMBEDDING_SETUP_HINT = "openai-compatible: no embedding service yet. "
+export const EXTERNAL_EMBEDDING_SETUP_HINT = "No external embedding service yet. "
     + "Add one under Embedding services in the left menu (for example Ollama on this computer at http://host.docker.internal:11434/v1), "
     + "or set an embedding URL in the server settings. Then pick it and its model here.";
 
@@ -215,7 +215,7 @@ export function setCreateFieldDefault(field, value) {
 
 /**
  * The empty option of the provider and metric selects means "let the server pick its default" and only
- * exists when creating: name the default ("Server default (builtin)"). A saved collection always has a
+ * exists when creating: name the default ("Server default (built-in)"). A saved collection always has a
  * concrete value, so in edit mode the option is hidden.
  */
 export function syncDefaultSelectOptions(isCreateMode, collectionDefaults, modelDefaults) {
@@ -463,7 +463,8 @@ export function readOptionalInteger(id) {
     const value = document.getElementById(id)?.value.trim() || "";
     if (value === "") return undefined;
     const number = Number(value);
-    return Number.isInteger(number) ? number : NaN;
+    // Not a number: NaN (reported by the form). Whether it must be a whole number is the server's rule.
+    return Number.isFinite(number) ? number : NaN;
 }
 
 export function readOptionalNumber(id) {
@@ -489,30 +490,20 @@ export function readEditorValues() {
     };
 }
 
+/**
+ * Only what the panel must know to build the request: a number field that is not a number, and a folder
+ * path when "Use a folder" is chosen. Every rule (ranges, overlap < chunk size, allowed metrics...) is the
+ * server's: it checks the request (POST /v1/admin/collections/validate) and its issues are shown.
+ */
 export function validateCollectionForm(mode) {
     const values = readEditorValues();
     const errors = [];
-    if (mode === "create" && !values.displayName) errors.push("displayName is required for new collections.");
     if (mode === "create" && getSelectedSourceKind() === "folder" && !values.sourcePath) {
         errors.push("Enter the server folder path (for example data/my-docs), or choose Upload files.");
     }
-    if (mode === "update" && !values.displayName) errors.push("displayName cannot be empty.");
-    if (values.chunkSize !== undefined && (!Number.isInteger(values.chunkSize) || values.chunkSize <= 0)) errors.push("chunkSize must be a positive integer.");
-    if (values.chunkOverlap !== undefined && (!Number.isInteger(values.chunkOverlap) || values.chunkOverlap < 0)) errors.push("chunkOverlap must be a nonnegative integer.");
-    if (
-        values.chunkSize !== undefined &&
-        values.chunkOverlap !== undefined &&
-        !Number.isNaN(values.chunkSize) &&
-        !Number.isNaN(values.chunkOverlap) &&
-        values.chunkOverlap >= values.chunkSize
-    ) {
-        errors.push("chunkOverlap must be less than chunkSize.");
+    for (const field of ["chunkSize", "chunkOverlap", "retrievalK", "retrievalDistanceThreshold"]) {
+        if (Number.isNaN(values[field])) errors.push(`${formatValidationFieldLabel(field)} must be a number.`);
     }
-    if (values.retrievalK !== undefined && (!Number.isInteger(values.retrievalK) || values.retrievalK <= 0)) errors.push("retrievalK must be a positive integer.");
-    if (values.retrievalDistanceThreshold !== undefined && (!Number.isFinite(values.retrievalDistanceThreshold) || values.retrievalDistanceThreshold < 0)) {
-        errors.push("retrievalDistanceThreshold must be a nonnegative number.");
-    }
-    if (values.distanceMetric && !["l2", "cosine", "ip"].includes(values.distanceMetric)) errors.push("distanceMetric must be l2, cosine, or ip.");
     return errors;
 }
 
@@ -721,4 +712,11 @@ export function syncSourceKindFields(collection) {
             ? `Documents: uploaded files, stored in ${collection.sourcePath}. Manage them in the Documents tab.`
             : "";
     }
+}
+
+/** A provider value from the API in words ("builtin" -> "Built-in"). */
+export function providerName(provider) {
+    if (provider === "builtin") return "Built-in";
+    if (provider === "openai-compatible") return "External service";
+    return provider || "-";
 }

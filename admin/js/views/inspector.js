@@ -2,34 +2,16 @@ import { adminCollectionPhysicalCollectionsUrl, adminCollectionUrl, adminMutatio
 import { canAdminAction } from "../auth.js";
 import { switchView } from "../dashboard.js";
 import { confirmDialog } from "../dialog.js";
-import { appendChildren, appendText, clearNode, createBadge, createButton, createEl, createMetaItem, formatCount, formatDateTime, getStatusBadge, getStatusColor, isRecord, renderApiErrorContent, setButtonLoading, shortId, showErrorToast, showToast, stringifyForDisplay } from "../dom.js";
-import { loadJobProgress, watchJob } from "../jobWatch.js";
+import { appendChildren, appendText, clearNode, createBadge, createButton, createEl, createMetaItem, formatCount, formatDateTime, formatValidationFieldLabel, getStatusBadge, getStatusColor, isRecord, renderApiErrorContent, setButtonLoading, showErrorToast, showToast, stringifyForDisplay } from "../dom.js";
+import { jobRoute, loadJobProgress, watchJob } from "../jobWatch.js";
 import { recordRoute } from "../router.js";
 import { API, elements, state } from "../state.js";
 import { chatServiceName, loadChatSettings } from "./chatSettings.js";
 import { loadAdminCollectionDetail, loadCollections, mergeCollectionIntoState } from "./collections.js";
 import { loadCollectionFiles, resetFilesTab } from "./documents.js";
-import { clearEditorForm, embeddingServiceName, hasUnsavedCollectionChanges, hasValidationBlockers, hasValidationWarnings, loadConfigDefaults, loadModelDiscovery, setupEditorTab, validateCollectionOnServer, viaEmbeddingService } from "./editor.js";
+import { clearEditorForm, embeddingServiceName, hasUnsavedCollectionChanges, hasValidationBlockers, hasValidationWarnings, loadConfigDefaults, loadModelDiscovery, providerName, setupEditorTab, validateCollectionOnServer, viaEmbeddingService } from "./editor.js";
 import { appendIssueSection } from "./health.js";
 import { loadJobs } from "./jobs.js";
-
-export const VALIDATION_FIELD_LABELS = {
-    displayName: "Display name",
-    description: "Description",
-    sourcePath: "Source path",
-    distanceMetric: "Distance metric",
-    chunkSize: "Chunk size",
-    chunkOverlap: "Chunk overlap",
-    retrievalK: "Retrieval k",
-    retrievalDistanceThreshold: "Retrieval distance threshold",
-    embeddingProvider: "Embedding provider",
-    embeddingModel: "Embedding model",
-    embeddingServiceId: "Embedding service",
-};
-
-export function formatValidationFieldLabel(field) {
-    return VALIDATION_FIELD_LABELS[field] || field;
-}
 
 export const VALIDATION_DEPENDENCY_BLOCKERS = new Set([
     "CHROMA_UNREACHABLE",
@@ -109,8 +91,9 @@ export function clearCollectionIndexStateBanner() {
     }
     clearNode(elements.collectionIndexStateTitle);
     clearNode(elements.collectionIndexStateSummary);
-    clearNode(elements.collectionIndexStateBadge);
     clearNode(elements.collectionIndexStateContent);
+    elements.indexedSettings?.classList.add("hidden");
+    clearNode(elements.indexedSettingsBody);
 }
 
 export function renderCollectionIndexStateBanner() {
@@ -129,98 +112,100 @@ export function renderCollectionIndexStateBanner() {
     const isIndexing = hasActiveJob || collection.status === "indexing";
     const changedFields = Array.isArray(indexState?.changedFields) ? indexState.changedFields : [];
 
-    let title = "Up to date";
-    let badgeLabel = "UP TO DATE";
-    let badgeTone = "ok";
-    let summary = "The index matches the saved settings.";
+    renderIndexedSettings(collection, indexState);
 
+    // The box only shows when something needs attention; an up-to-date collection says so in its status badge.
+    let title = null;
+    let tone = "warn";
+    let summary = "";
     if (dependencyDown) {
         title = "A service is not available";
-        badgeLabel = "UNAVAILABLE";
-        badgeTone = "fail";
+        tone = "fail";
         summary = "The vector store or the embedding service cannot be reached. Searching and re-indexing wait until it is back.";
     } else if (isIndexing) {
         title = "Indexing";
-        badgeLabel = "INDEXING";
-        badgeTone = "info";
+        tone = "info";
         summary = activeJob
-            ? `Indexing is ${activeJob.status === "queued" ? "queued" : "running"} (job ${shortId(activeJob.id)}). Searches use the previous index until it finishes.`
+            ? `Indexing is ${activeJob.status === "queued" ? "queued" : "running"}. Searches use the previous index until it finishes.`
             : "Indexing is running. Searches use the previous index until it finishes.";
     } else if (!indexState) {
         title = "Index state unknown";
-        badgeLabel = "UNKNOWN";
-        badgeTone = "warn";
         summary = "The server did not return the index state of this collection.";
     } else if (indexState.status === "no_active_index") {
         title = "Not indexed yet";
-        badgeLabel = "NOT INDEXED";
-        badgeTone = "warn";
         summary = indexState.note || "Nothing can be searched until the collection is indexed. Add documents, then re-index.";
     } else if (indexState.reindexRequired) {
         title = "Re-index needed";
-        badgeLabel = "RE-INDEX NEEDED";
-        badgeTone = "warn";
         summary = indexState.note || "The saved settings or documents changed since the last index. Searches use the previous index until you re-index.";
     }
 
-    elements.collectionIndexState.classList.remove("hidden");
     clearNode(elements.collectionIndexStateTitle);
-    elements.collectionIndexStateTitle.appendChild(createEl("span", "", title));
     clearNode(elements.collectionIndexStateSummary);
-    elements.collectionIndexStateSummary.appendChild(createEl("span", "", summary));
-    clearNode(elements.collectionIndexStateBadge);
-    elements.collectionIndexStateBadge.appendChild(createBadge(badgeLabel, getStatusColor(badgeTone)));
-
     clearNode(elements.collectionIndexStateContent);
+    if (!title) {
+        elements.collectionIndexState.classList.add("hidden");
+        return;
+    }
+    const toneClasses = {
+        fail: "border-rose-200 bg-rose-50 text-rose-900",
+        info: "border-sky-200 bg-sky-50 text-sky-900",
+        warn: "border-amber-200 bg-amber-50 text-amber-900",
+    };
+    elements.collectionIndexState.className = `mb-6 rounded-lg border p-4 ${toneClasses[tone]}`;
+    elements.collectionIndexStateTitle.textContent = title;
+    elements.collectionIndexStateSummary.textContent = summary;
 
-    // What needs attention stays visible: the fields that need a re-index and the unavailable services.
+    if (isIndexing) {
+        elements.collectionIndexStateContent.appendChild(createJobProgress(state.activeJobProgress));
+    }
+
     // Before the first index every field is "pending"; listing them all says nothing, so only after one.
     if (changedFields.length > 0 && indexState?.status === "reindex_required") {
-        const fieldSection = createEl("div", "rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800");
-        fieldSection.appendChild(createEl("div", "font-semibold", "Changed since the last index"));
-        const fieldWrap = createEl("div", "mt-2 flex flex-wrap gap-2");
+        const fieldWrap = createEl("div", "flex flex-wrap items-center gap-2 text-xs");
+        fieldWrap.appendChild(createEl("span", "font-semibold", "Changed:"));
         changedFields.forEach((field) => {
             fieldWrap.appendChild(createBadge(formatValidationFieldLabel(field), getStatusColor("warn")));
         });
-        fieldSection.appendChild(fieldWrap);
-        elements.collectionIndexStateContent.appendChild(fieldSection);
+        elements.collectionIndexStateContent.appendChild(fieldWrap);
     }
 
     if (dependencyDown && blockers.length > 0) {
-        const blockerSection = createEl("div", "rounded-lg border border-rose-100 bg-rose-50 p-3 text-xs text-rose-800");
-        const list = createEl("ul", "list-disc space-y-1 pl-4");
+        const list = createEl("ul", "list-disc space-y-1 pl-4 text-xs");
         blockers.forEach((issue) => {
             list.appendChild(createEl("li", "", isRecord(issue) ? issue.message || stringifyForDisplay(issue) : stringifyForDisplay(issue)));
         });
-        blockerSection.appendChild(list);
-        elements.collectionIndexStateContent.appendChild(blockerSection);
+        elements.collectionIndexStateContent.appendChild(list);
     }
+}
 
-    // The saved and the indexed settings side by side, folded away.
-    const details = createEl("details", "rounded-lg border border-slate-100 bg-white p-3 text-xs text-slate-700");
-    details.appendChild(createEl("summary", "cursor-pointer font-semibold text-slate-700", "Indexed settings"));
-    const snapshotGrid = createEl("div", "mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2");
+/** Settings tab: the saved settings next to the ones the current index was built with (differences marked). */
+export function renderIndexedSettings(collection, indexState) {
+    if (!elements.indexedSettings || !elements.indexedSettingsBody) return;
+    clearNode(elements.indexedSettingsBody);
+    elements.indexedSettings.classList.remove("hidden");
     const saved = indexState?.desiredSnapshot ?? {};
     const active = indexState?.activeSnapshot ?? null;
-    const describeEmbedding = (snapshot) => (snapshot
-        ? `${snapshot.embeddingProvider ?? "-"} / ${snapshot.embeddingModel ?? "-"}${viaEmbeddingService(snapshot.embeddingServiceId)}`
-        : "-");
-    [
+    const describeEmbedding = (snapshot) => `${providerName(snapshot.embeddingProvider)}, ${snapshot.embeddingModel ?? "-"}${viaEmbeddingService(snapshot.embeddingServiceId)}`;
+    const rows = [
         ["Documents", saved.sourcePath ?? collection.sourcePath, active?.sourcePath],
         ["Chunk size", saved.chunkSize ?? collection.chunkSize, active?.chunkSize],
         ["Chunk overlap", saved.chunkOverlap ?? collection.chunkOverlap, active?.chunkOverlap],
         ["Embedding", describeEmbedding({ ...saved, embeddingProvider: saved.embeddingProvider ?? collection.embeddingProvider, embeddingModel: saved.embeddingModel ?? collection.embeddingModel }), active ? describeEmbedding(active) : null],
         ["Distance metric", saved.distanceMetric ?? collection.distanceMetric, active?.distanceMetric],
-    ].forEach(([label, savedValue, activeValue]) => {
-        snapshotGrid.appendChild(createMetaItem(`${label} (saved)`, savedValue));
-        snapshotGrid.appendChild(createMetaItem(`${label} (in the index)`, active ? activeValue : "Not indexed yet"));
+    ];
+    const table = createEl("table", "w-full text-left text-xs");
+    const head = createEl("tr", "text-slate-500");
+    ["Setting", "Saved", "In the current index"].forEach((label) => head.appendChild(createEl("th", "py-1 pr-3 font-semibold", label)));
+    table.appendChild(head);
+    rows.forEach(([label, savedValue, activeValue]) => {
+        const differs = Boolean(active) && String(savedValue ?? "") !== String(activeValue ?? "");
+        const row = createEl("tr", `border-t border-slate-100 ${differs ? "bg-amber-50" : ""}`);
+        row.appendChild(createEl("td", "py-1 pr-3 text-slate-600", label));
+        row.appendChild(createEl("td", "py-1 pr-3 break-all-words text-slate-800", stringifyForDisplay(savedValue ?? "-")));
+        row.appendChild(createEl("td", "py-1 break-all-words text-slate-800", active ? stringifyForDisplay(activeValue ?? "-") : "Not indexed yet"));
+        table.appendChild(row);
     });
-    details.appendChild(snapshotGrid);
-    elements.collectionIndexStateContent.appendChild(details);
-
-    if (isIndexing) {
-        elements.collectionIndexStateContent.prepend(createJobProgress(state.activeJobProgress));
-    }
+    elements.indexedSettingsBody.appendChild(table);
 }
 
 /** A progress bar for the running job (phase of the build and the last step it reported). */
@@ -240,7 +225,10 @@ export function createJobProgress(progress) {
     bar.appendChild(fill);
     box.appendChild(bar);
     const step = progress?.phase && progress?.phaseCount ? `Step ${progress.phase} of ${progress.phaseCount}: ` : "";
-    box.appendChild(createEl("div", "mt-2", `${step}${progress?.message || "Starting..."}`));
+    box.appendChild(createEl("div", "mt-2", `${step}${progress?.message || "Starting..."}${progress?.counts ? ` (${progress.counts})` : ""}`));
+    // The first index with the built-in model downloads it: say so, from the server's readiness warning.
+    const download = findReadinessIssue("EMBEDDING_MODEL_NOT_DOWNLOADED");
+    if (download) box.appendChild(createEl("div", "mt-1 text-sky-800", download.message));
     return box;
 }
 
@@ -275,7 +263,7 @@ export function renderCollectionValidation(validation, title) {
     const hasWarnings = warnings.length > 0;
     const badgeState = dependencyDown ? "fail" : hasBlockers ? "fail" : hasWarnings ? "warn" : hasImpact && impact?.reindexRequired ? "warn" : hasImpact ? "info" : "ok";
     const badgeLabel = dependencyDown
-        ? "DEPENDENCY DOWN"
+        ? "UNAVAILABLE"
         : hasBlockers
             ? "BLOCKED"
             : hasWarnings
@@ -288,7 +276,7 @@ export function renderCollectionValidation(validation, title) {
     elements.collectionValidationBadge.appendChild(createBadge(badgeLabel, getStatusColor(badgeState)));
 
     const summaryText = dependencyDown
-        ? "A backend dependency is unavailable. Fix it before saving or re-indexing."
+        ? "A service the server needs is not available. Saving and re-indexing wait until it is back."
         : hasBlockers
             ? "Blocking issues were found. Fix them before saving or re-indexing."
         : hasWarnings
@@ -300,7 +288,7 @@ export function renderCollectionValidation(validation, title) {
 
     if (dependencyDown) {
         const banner = createEl("div", "mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800");
-        banner.appendChild(createEl("div", "font-semibold", "Backend dependency down"));
+        banner.appendChild(createEl("div", "font-semibold", "A service is not available"));
         banner.appendChild(createEl("div", "mt-1 break-all-words", "The vector store or the embedding service cannot be reached. Checks that need them wait until they are back."));
         elements.collectionValidationContent.appendChild(banner);
     }
@@ -692,8 +680,8 @@ export function renderReadinessIssueList(listElement, items) {
     items.forEach((item) => {
         const row = createEl("li", "list-none rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700");
         if (isRecord(item)) {
-            row.appendChild(createEl("div", "font-semibold text-slate-800", item.code || item.name || "Issue"));
-            row.appendChild(createEl("div", "mt-1 break-all-words", item.message || stringifyForDisplay(item)));
+            if (item.code) row.title = item.code;
+            row.appendChild(createEl("div", "font-semibold break-all-words text-slate-800", item.message || item.name || stringifyForDisplay(item)));
             if (item.recommendedAction) {
                 row.appendChild(createEl("div", "mt-1 break-all-words text-slate-500", item.recommendedAction));
             }
@@ -764,7 +752,7 @@ export async function updateReadinessTab({ quiet = false } = {}) {
             const error = readinessResult.reason;
             if (!hasSnapshot) {
                 state.selectedReadiness = null;
-                renderApiErrorContent(elements.readinessStatusGrid, error, "Failed to load readiness");
+                renderApiErrorContent(elements.readinessStatusGrid, error, "Could not load readiness", { onRetry: () => updateReadinessTab() });
                 clearNode(elements.blockerList);
                 elements.readinessBlockers.classList.add("hidden");
                 clearNode(elements.warningList);
@@ -876,9 +864,11 @@ export function getCapabilityState(mode) {
         }
         if (chatIssue?.message) return { enabled, reason: chatIssue.message };
     }
+    // The server's own reason (first blocker), else a general one.
+    const blocker = (state.selectedReadiness.blockers || []).find((issue) => typeof issue?.message === "string" && issue.message);
     return {
         enabled,
-        reason: `${mode === "query" ? "Query" : "Retrieve"} is not available for this collection.`,
+        reason: blocker?.message || `${mode === "query" ? "Query" : "Retrieve"} is not available for this collection.`,
     };
 }
 
@@ -938,12 +928,18 @@ export async function reindexCollection() {
 
         const data = await adminMutationRequest(`${API.admin}/collections/${state.selectedCollection.id}/reindex`, { method: "POST" });
         watchJob(data?.job, state.selectedCollection.displayName);
-        showToast("Re-indexing started. You can keep working; a message appears when it finishes.", "success");
+        showToast("Re-indexing started. You can keep working; a message appears when it finishes.", "success", data?.job?.id
+            ? { action: { label: "View progress", onClick: () => { location.hash = jobRoute(data.job.id); } } }
+            : {});
         await Promise.all([loadCollections(), loadJobs(), updateReadinessTab()]);
     } catch (error) {
         const normalized = normalizeError(error);
         if (normalized.code === "COLLECTION_INDEX_ALREADY_RUNNING") {
-            showToast("A re-index job is already running for this collection. Refreshing readiness and jobs.", "error", { code: normalized.code });
+            const runningJobId = normalized.details?.jobId;
+            if (runningJobId) watchJob({ id: runningJobId, status: normalized.details?.status, collectionId: state.selectedCollection?.id }, state.selectedCollection?.displayName);
+            showToast(normalized.message, "info", runningJobId
+                ? { action: { label: "View job", onClick: () => { location.hash = jobRoute(runningJobId); } } }
+                : {});
             await Promise.allSettled([updateReadinessTab(), loadJobs()]);
         } else {
             showErrorToast(error, "Re-index failed");
@@ -983,4 +979,17 @@ export async function deleteCollection() {
     } finally {
         setButtonLoading(elements.btnDeleteCol, false);
     }
+}
+
+/** A readiness issue with this code from the open collection or the system readiness, if the server reported one. */
+export function findReadinessIssue(code) {
+    const lists = [
+        state.selectedReadiness?.warnings, state.selectedReadiness?.blockers,
+        state.readinessDetails?.warnings, state.readiness?.warnings,
+    ];
+    for (const list of lists) {
+        const issue = Array.isArray(list) ? list.find((item) => item?.code === code) : null;
+        if (issue) return issue;
+    }
+    return null;
 }

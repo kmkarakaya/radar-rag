@@ -220,9 +220,11 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("Re-index required"));
     assert.ok(js.includes("Takes effect immediately"));
     assert.ok(js.includes("function isDependencyBlocker(issue)"));
-    assert.ok(js.includes("DEPENDENCY DOWN"));
-    assert.ok(js.includes("Backend dependency down"));
+    assert.ok(js.includes('"A service is not available"'));
     assert.ok(js.includes("function renderCollectionIndexStateBanner()"));
+    // The status box shows only when something needs attention; saved vs indexed settings live in Settings.
+    assert.ok(js.includes('elements.collectionIndexState.classList.add("hidden");'));
+    assert.ok(html.includes('id="indexedSettings"') && html.indexOf('id="indexedSettings"') < html.indexOf('id="editAdvanced"'));
     assert.ok(js.includes("collectionIndexState"));
     assert.ok(js.includes("return apiRequest(url, {"));
     assert.ok(!js.includes("return adminMutationRequest(url, {"));
@@ -352,8 +354,8 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("createAuditLogRow"));
     assert.ok(js.includes("renderAuditLogTable"));
     assert.ok(js.includes("renderAuditFilterControls"));
-    assert.ok(js.includes("renderApiErrorContent(cell, state.auditLogError, \"Failed to load audit log\")"));
-    assert.ok(js.includes("renderApiErrorContent(cell, state.auditLogError, \"Audit log refresh failed\")"));
+    assert.ok(js.includes('renderApiErrorContent(cell, state.auditLogError, "Could not load the audit log", { onRetry: () => refreshAuditLog() });'));
+    assert.ok(js.includes('renderApiErrorContent(cell, state.auditLogError, "Could not refresh the audit log", { onRetry: () => refreshAuditLog() });'));
     assert.ok(js.includes("function getAuditLogEmptyMessage()"));
     assert.ok(js.includes("No audit log entries have been recorded since this deployment."));
     assert.ok(js.includes("No audit log entries found for the current filters."));
@@ -382,6 +384,26 @@ describe("admin panel static contract", () => {
     const labels = [...html.matchAll(/<label class="block[^"]*"(?: for="([^"]+)")?>/g)];
     // (A label with class "block" only wraps its input, which ties them too.)
     assert.ok(labels.length > 0 && labels.every((match) => match[1] || match[0] === '<label class="block">'), "every block label has a for= attribute");
+  });
+
+  it("keeps no copies of server rules or lists and links jobs to their details", async () => {
+    const [html, js] = await Promise.all([readAdminFile("index.html"), readAdminScripts()]);
+    // Collection rules are the server's (POST .../validate); the form only reports fields that are not numbers.
+    assert.ok(!js.includes('["l2", "cosine", "ip"]'));
+    assert.ok(!js.includes("chunkOverlap must be less than chunkSize."));
+    // The dependencies are whatever the server reports.
+    assert.ok(!js.includes('["registry", "chroma", "embedding", "chat"]'));
+    // A job's steps come from its events; the address names the job and the status filter.
+    assert.ok(js.includes("`${API.admin}/jobs/${encodeURIComponent(jobId)}/events`"));
+    assert.ok(js.includes('if (parts[0] === "jobs") return { view: "jobs", jobId: parts[1] || null, status: query.get("status") || "all" };'));
+    assert.ok(html.includes('id="jobDetail"'));
+    // One header action per view, shown only when the session may use it.
+    assert.ok(js.includes("const HEADER_ACTIONS = {"));
+    assert.ok(html.includes('id="esRoleNote"') && html.includes('id="csRoleNote"'));
+    // The server's note about the one-time model download is shown.
+    assert.ok(js.includes('findReadinessIssue("EMBEDDING_MODEL_NOT_DOWNLOADED")'));
+    // Load errors offer to try again.
+    assert.ok(js.includes('{ onRetry: () => loadCollections() }'));
   });
 
   it("works offline: no CDN, the Tailwind CSS is built locally", async () => {

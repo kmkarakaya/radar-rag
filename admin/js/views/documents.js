@@ -186,7 +186,7 @@ export async function uploadCollectionDocuments(fileList) {
             }
         }
         if (uploaded.length > 0) {
-            showToast(`Uploaded ${uploaded.length} document${uploaded.length === 1 ? "" : "s"}. Re-index to make them searchable.`, "success");
+            showToast(uploaded.length === 1 ? "Uploaded 1 document. Re-index to make it searchable." : `Uploaded ${uploaded.length} documents. Re-index to make them searchable.`, "success");
         }
         if (state.files.rejected.length > 0) {
             showToast(`${state.files.rejected.length} file(s) were not uploaded. See the Documents tab.`, "error");

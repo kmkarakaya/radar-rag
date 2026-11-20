@@ -35,14 +35,17 @@ export async function pollWatchedJobs() {
 }
 
 function notifyFinished(job, watched) {
-    const open = { label: "Open", onClick: () => { location.hash = `#/collections/${encodeURIComponent(watched.collectionId)}/readiness`; } };
+    const actions = [
+        { label: "Open collection", onClick: () => { location.hash = `#/collections/${encodeURIComponent(watched.collectionId)}/readiness`; } },
+        { label: "View job", onClick: () => { location.hash = jobRoute(job.id); } },
+    ];
     if (job.status === "succeeded") {
         const chunks = Number.isFinite(job.chunkCount) ? ` (${job.chunkCount} chunk${job.chunkCount === 1 ? "" : "s"})` : "";
-        showToast(`Indexing finished: ${watched.collectionName}${chunks}. It is searchable now.`, "success", { action: open, durationMs: 8000 });
+        showToast(`Indexing finished: ${watched.collectionName}${chunks}. It is searchable now.`, "success", { actions, durationMs: 8000 });
     } else if (job.status === "failed") {
-        showToast(`Indexing failed: ${watched.collectionName}. ${job.error || ""}`.trim(), "error", { action: open, durationMs: 12000 });
+        showToast(`Indexing failed: ${watched.collectionName}. ${job.error || ""}`.trim(), "error", { actions, durationMs: 12000 });
     } else {
-        showToast(`Indexing cancelled: ${watched.collectionName}.`, "info", { action: open });
+        showToast(`Indexing cancelled: ${watched.collectionName}.`, "info", { actions });
     }
 }
 
@@ -59,8 +62,20 @@ export async function loadJobProgress(jobId) {
             const within = itemsTotal > 0 ? Math.min(1, itemsCompleted / itemsTotal) : 0;
             fraction = Math.max(0, Math.min(1, (phase - 1 + within) / phaseCount));
         }
-        return { message: last.message, fraction, phase: withProgress?.progress?.phase ?? null, phaseCount: withProgress?.progress?.phaseCount ?? null };
+        const latest = (key) => [...events].reverse().map((event) => event.details?.[key]).find((value) => Number.isFinite(value));
+        const documents = latest("documentCount");
+        const chunks = latest("chunkCount");
+        const counts = [
+            documents !== undefined ? `${documents} document${documents === 1 ? "" : "s"}` : null,
+            chunks !== undefined ? `${chunks} chunk${chunks === 1 ? "" : "s"}` : null,
+        ].filter(Boolean).join(", ");
+        return { message: last.message, counts, fraction, phase: withProgress?.progress?.phase ?? null, phaseCount: withProgress?.progress?.phaseCount ?? null };
     } catch {
         return null;
     }
+}
+
+/** The address of a job's detail in the jobs view. */
+export function jobRoute(jobId) {
+    return `#/jobs/${encodeURIComponent(jobId)}`;
 }

@@ -1,6 +1,6 @@
 import { setUnauthorizedHandler } from "./api.js";
 import { handleSessionExpired, loadAdminSession, loginAdmin, logoutAdmin, setDashboardVisible, syncAuthChrome } from "./auth.js";
-import { initializeDashboard, switchView } from "./dashboard.js";
+import { initializeDashboard, runHeaderAction, switchView } from "./dashboard.js";
 import { onWatchedJobFinished } from "./jobWatch.js";
 import { bindRouter } from "./router.js";
 import { elements, state } from "./state.js";
@@ -9,7 +9,7 @@ import { loadCollections } from "./views/collections.js";
 import { bindDocumentsTabEvents } from "./views/documents.js";
 import { loadModelDiscovery, saveCollection, syncModelDiscoveryPanel } from "./views/editor.js";
 import { loadHealth } from "./views/health.js";
-import { activateTab, deleteCollection, handleOverlayClick, openInspector, reindexCollection, requestCloseInspector, updateReadinessTab } from "./views/inspector.js";
+import { activateTab, deleteCollection, handleOverlayClick, reindexCollection, requestCloseInspector, updateReadinessTab } from "./views/inspector.js";
 import { changeJobsStatusFilter, getVisibleSelectableJobIds, goToNextJobsPage, goToPreviousJobsPage, loadJobs, refreshJobsList, removeSelectedJobs, renderJobs } from "./views/jobs.js";
 import { runPlayground, setPlaygroundMode } from "./views/playground.js";
 import { bindEmbeddingServicesEvents } from "./views/services.js";
@@ -175,7 +175,7 @@ export function bindEvents() {
     if (elements.editEmbeddingProvider) {
         elements.editEmbeddingProvider.addEventListener("change", () => syncModelDiscoveryPanel());
     }
-    elements.btnCreateCollection.addEventListener("click", () => openInspector(null));
+    elements.btnCreateCollection.addEventListener("click", () => runHeaderAction());
     elements.btnCloseInspector.addEventListener("click", () => void requestCloseInspector());
     elements.inspectorOverlay.addEventListener("click", handleOverlayClick);
     elements.btnCancelEdit.addEventListener("click", () => void requestCloseInspector());

@@ -1,3 +1,4 @@
+import { canAdminAction } from "./auth.js";
 import { clearNode } from "./dom.js";
 import { pollWatchedJobs } from "./jobWatch.js";
 import { applyRoute, leaveLoginAddress, recordRoute } from "./router.js";
@@ -10,9 +11,9 @@ import { loadCollectionFiles } from "./views/documents.js";
 import { loadConfigDefaults, loadModelDiscovery } from "./views/editor.js";
 import { loadHealth } from "./views/health.js";
 import { resetReadinessAndPlayground, updateReadinessTab } from "./views/inspector.js";
-import { loadJobs, renderJobs } from "./views/jobs.js";
+import { isTerminalJobStatus, loadJobs, openJobDetail, renderJobs } from "./views/jobs.js";
 import { setPlaygroundMode } from "./views/playground.js";
-import { SERVICE_VIEWS, closeServiceForm, emptyEmbeddingServicesState, emptyServiceViewState, loadServices, serviceEl } from "./views/services.js";
+import { SERVICE_VIEWS, closeServiceForm, emptyEmbeddingServicesState, emptyServiceViewState, loadServices, openServiceForm, serviceEl } from "./views/services.js";
 
 export let dashboardPollingHandles = [];
 
@@ -38,6 +39,7 @@ export function startDashboardPolling() {
             loadCollections({ quiet: true });
         } else if (state.currentView === "jobs") {
             loadJobs({ quiet: true });
+            if (state.jobDetailId && !isTerminalJobStatus(state.jobDetail?.job?.status)) openJobDetail(state.jobDetailId, { quiet: true });
         }
     }, 10000));
 
@@ -52,6 +54,9 @@ export function startDashboardPolling() {
 }
 
 export function resetDashboardState() {
+    state.jobDetailId = null;
+    state.jobDetail = null;
+    elements.jobDetail?.classList.add("hidden");
     state.watchedJobs.clear();
     state.activeJobProgress = null;
     state.dashboardReady = false;
@@ -159,8 +164,7 @@ export function switchView(viewId) {
         health: "System health",
     };
     elements.viewTitle.textContent = titles[viewId] || "Dashboard";
-    // The header's main action belongs to the collections view; the other views have their own buttons.
-    elements.btnCreateCollection?.classList.toggle("hidden", viewId !== "collections");
+    syncHeaderAction();
     recordRoute();
 
     if (viewId === "jobs") loadJobs();
@@ -171,4 +175,27 @@ export function switchView(viewId) {
         loadAuditLog({ cursor: state.auditLogCursor, resetHistory: false });
     }
     if (viewId === "health") loadHealth();
+}
+
+/** The header's main action for each view (views without one show none). */
+const HEADER_ACTIONS = {
+    collections: { label: "New collection", capability: "createCollection", run: () => { location.hash = "#/collections/new"; } },
+    "embedding-services": { label: "Add service", capability: "manageEmbeddingServices", run: () => openServiceForm(SERVICE_VIEWS.embedding) },
+    "chat-services": { label: "Add service", capability: "manageChatServices", run: () => openServiceForm(SERVICE_VIEWS.chat) },
+};
+
+/** Shows the current view's action, only when the session may use it (the views say so when it may not). */
+export function syncHeaderAction() {
+    const button = elements.btnCreateCollection;
+    if (!button) return;
+    const action = HEADER_ACTIONS[state.currentView];
+    const allowed = Boolean(action) && canAdminAction(action.capability);
+    button.classList.toggle("hidden", !allowed);
+    button.disabled = !allowed;
+    if (action && elements.headerActionLabel) elements.headerActionLabel.textContent = action.label;
+}
+
+export function runHeaderAction() {
+    const action = HEADER_ACTIONS[state.currentView];
+    if (action && canAdminAction(action.capability)) action.run();
 }

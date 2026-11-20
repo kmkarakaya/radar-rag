@@ -3,8 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Radar RAG Public API Example</title>
+    <title>RAGStation Public API Example</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="brand/icon-app-32.png" />
     <style>
+      .brand-title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand-title img {
+        border-radius: 10px;
+        flex: none;
+      }
+
       :root {
         color-scheme: light;
         --bg: #edf3f1;
@@ -472,7 +484,7 @@
     <main>
       <header>
         <div>
-          <h1>Radar RAG Public API Example</h1>
+          <h1 class="brand-title"><img src="brand/icon-app-128.png" alt="" width="40" height="40" />RAGStation Public API Example</h1>
           <p class="subtitle">
             Static browser example aligned with the current <code>/v1/rag</code> contract.
             It sends tenant and user headers, checks collection readiness before enabling

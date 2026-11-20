@@ -1,4 +1,4 @@
-# Radar RAG image. Used by docker-compose.yml together with Chroma.
+# RAGStation image. Used by docker-compose.yml together with Chroma.
 # Must stay glibc-based (Debian): onnxruntime-node, used by the built-in embedding model, has no musl/Alpine build.
 
 # ---- build: compile TypeScript and install production dependencies ----

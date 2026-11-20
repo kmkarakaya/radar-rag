@@ -126,7 +126,7 @@ describe("embedding services in the registry", () => {
   });
 
   it("keeps collections indexed before embedding services in sync (no false re-index)", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "radar-rag-es-legacy-"));
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ragstation-es-legacy-"));
     const dbPath = path.join(dir, "registry.sqlite");
     try {
       const registry = createSqliteCollectionRegistry({ dbPath });

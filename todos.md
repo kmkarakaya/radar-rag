@@ -8,15 +8,15 @@ Bu dosya, mevcut multi-collection RAG backend'in ustune hangi eksiklerin kaldigi
 
 Durum:
 
-- **Proje adi: Radar RAG** ("an LLM-agnostic retrieval server that finds the evidence in your documents"). Repo `kmkarakaya/radar-rag` (eski adi `vanilla_rag_backend`; GitHub eski adresleri yonlendiriyor), imaj `ghcr.io/kmkarakaya/radar-rag`, npm paket adi `radar-rag`, mimari dokumani `radar_rag_mimarisi.md`. `notes/` altindaki eski kayitlar eski adla kaldi.
+- **Proje adi: RAGStation** (2026-11-19'da Radar RAG'den degisti; "ragradar" adli baska bir proje vardi) ("an LLM-agnostic retrieval server that finds the evidence in your documents"). Repo `kmkarakaya/ragstation` (eski adlari `radar-rag`, `vanilla_rag_backend`; GitHub eski adresleri yonlendiriyor), imaj `ghcr.io/kmkarakaya/ragstation`, npm paket adi `ragstation`, mimari dokumani `ragstation_mimarisi.md`. `notes/` altindaki eski kayitlar eski adla kaldi.
 - **Repo ve ghcr paketi public.** Eski `vanilla_rag_backend` paketi silindi.
 - **Kolay ilk calistirma** main'de:
   - Config dosyasi istege bagli: her ayarin semada varsayilani var; dosya yoksa varsayilanlar kullaniliyor.
-  - Ilk acilista "Sample documents" koleksiyonu (`data/sample`, Ingilizce: Radar RAG ve RAG kavramlari) olusturulup indeksleniyor; bir kez, silinirse geri gelmez; `RAG_SAMPLE_COLLECTION=false` ile kapanir.
+  - Ilk acilista "Sample documents" koleksiyonu (`data/sample`, Ingilizce: RAGStation ve RAG kavramlari) olusturulup indeksleniyor; bir kez, silinirse geri gelmez; `RAG_SAMPLE_COLLECTION=false` ile kapanir.
   - Onboarding varsayilan olarak sadece embedding, chat LLM ve admin auth soruyor; `--advanced` her seyi.
   - GitHub Actions: test (her push/PR) + main'de imaj yayini (amd64 + arm64). Compose bu imaji cekiyor; tek basina (clone'suz) calisiyor, `./config` istege bagli klasor.
   - README seviyeli (Level 1-7). Referans icerik `docs/configuration.md`, `docs/admin_auth.md`, `docs/operations.md`'de.
-- **Dogrulama (2026-11-17):** 231/231 test; CI (test + publish) yesil; README Level 1 dis kullanici gibi bos bir klasorde birebir denendi: `curl` ile compose indi, imaj girissiz cekildi, config'siz acildi, ornek koleksiyon indekslendi (3 dokuman, 15 parca), "What is Radar RAG?" dogru dokumani ilk sirada getirdi.
+- **Dogrulama (2026-11-17):** 231/231 test; CI (test + publish) yesil; README Level 1 dis kullanici gibi bos bir klasorde birebir denendi: `curl` ile compose indi, imaj girissiz cekildi, config'siz acildi, ornek koleksiyon indekslendi (3 dokuman, 15 parca), "What is RAGStation?" dogru dokumani ilk sirada getirdi.
 - Yerel `config/rag.config.yaml` (+ `.bak`) kisisel ayarlarla degisik; commit'lenmemeli.
 
 Devam edilecekler (sirayla):

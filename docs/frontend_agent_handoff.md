@@ -203,7 +203,7 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T | void> {
 ## Recommended Prompt For A Coding Agent
 
 ```text
-You are building a frontend for the Radar RAG backend in this repository.
+You are building a frontend for the RAGStation backend in this repository.
 
 Read these files in order:
 1. docs/frontend_agent_handoff.md

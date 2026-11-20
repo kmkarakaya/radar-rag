@@ -27,7 +27,7 @@ Example response:
 
 ```json
 {
-  "name": "Radar RAG",
+  "name": "RAGStation",
   "status": "ok",
   "message": "Use the versioned multi-collection API under /v1/rag/collections.",
   "endpoints": {

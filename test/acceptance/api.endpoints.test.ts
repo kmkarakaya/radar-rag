@@ -746,7 +746,7 @@ describe("v1 admin and rag api endpoints", () => {
   });
 
   it("persists audit log entries, filters them and survives registry reopen", async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "radar-rag-audit-"));
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "ragstation-audit-"));
     const dbPath = path.join(tempDir, "audit.sqlite");
     const auditRegistry = createSqliteCollectionRegistry({ dbPath });
     const auditContext = { tenantId: "default", userId: "local-dev", requestId: "audit-test" };

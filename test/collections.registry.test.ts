@@ -38,7 +38,7 @@ const collectionInput: CreateCollectionInput = {
 };
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(path.join(os.tmpdir(), "radar-rag-registry-"));
+  tempDir = await mkdtemp(path.join(os.tmpdir(), "ragstation-registry-"));
   dbPath = path.join(tempDir, "registry.sqlite");
   registry = createSqliteCollectionRegistry({
     dbPath,

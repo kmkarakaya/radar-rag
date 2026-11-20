@@ -1,12 +1,21 @@
-# Radar RAG
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/github-readme-banner.png">
+    <img src="assets/brand/github-readme-banner-light.png" alt="RAGStation: a self-hosted, LLM-agnostic RAG server with easy multi-collection management and a web admin panel" width="100%">
+  </picture>
+</p>
 
-An LLM-agnostic retrieval server that finds the evidence in your documents. Run it on your own computer or server and point it at a folder of documents (TXT, MD, PDF, DOC, DOCX); it indexes them, and your application, script or AI assistant asks it for the passages most relevant to a question. You choose the language model; Radar RAG can also generate grounded answers with any OpenAI-compatible chat API, but that is optional.
+# RAGStation
+
+An LLM-agnostic retrieval server that finds the evidence in your documents. Run it on your own computer or server and point it at a folder of documents (TXT, MD, PDF, DOC, DOCX); it indexes them, and your application, script or AI assistant asks it for the passages most relevant to a question. You choose the language model; RAGStation can also generate grounded answers with any OpenAI-compatible chat API, but that is optional.
 
 Who it is for:
 
 - **Developers** building a chatbot or internal tool who want retrieval over their own documents.
 - **People connecting documents to an AI assistant or agent.**
 - **Learners** who want a small, readable reference implementation of retrieval-augmented generation (RAG).
+
+![RAGStation features: multi-collection management, per-collection embedding models, web admin panel, built-in or external embeddings, REST API for apps and agents, and optional grounded answers](assets/brand/github-feature-highlights-1536x1024.png)
 
 The guide below goes from the quickest start to the more advanced setups. Stop at the level you need.
 
@@ -32,16 +41,16 @@ Check it in a terminal: `docker --version` and `docker compose version` must bot
 macOS / Linux (Terminal):
 
 ```bash
-mkdir radar-rag && cd radar-rag
-curl -O https://raw.githubusercontent.com/kmkarakaya/radar-rag/main/docker-compose.yml
+mkdir ragstation && cd ragstation
+curl -O https://raw.githubusercontent.com/kmkarakaya/ragstation/main/docker-compose.yml
 docker compose up -d
 ```
 
 Windows (PowerShell):
 
 ```powershell
-mkdir radar-rag; cd radar-rag
-curl.exe -O https://raw.githubusercontent.com/kmkarakaya/radar-rag/main/docker-compose.yml
+mkdir ragstation; cd ragstation
+curl.exe -O https://raw.githubusercontent.com/kmkarakaya/ragstation/main/docker-compose.yml
 docker compose up -d
 ```
 
@@ -55,7 +64,7 @@ Good to know:
 
 - Everything lives next to `docker-compose.yml`: your uploaded documents (`./data/collections`) and the registry in `./data`, the vectors in `./chroma_data`, the downloaded model in `./models`. `docker compose down` stops the stack and keeps all of it; `docker compose up -d` starts it again in seconds.
 - Port already in use? Create a `.env` file next to `docker-compose.yml` with `BACKEND_HOST_PORT=3020` (and/or `CHROMA_HOST_PORT=8020`) and open that port instead. The startup log still prints `localhost:3010`, its port inside the container.
-- Prefer the source code? `git clone https://github.com/kmkarakaya/radar-rag.git`, `cd radar-rag`, `docker compose up -d`. The clone also contains `data/dataset1` and `data/dataset2`, two small Turkish sample folders. `docker compose up -d --build` builds the image from your working copy.
+- Prefer the source code? `git clone https://github.com/kmkarakaya/ragstation.git`, `cd ragstation`, `docker compose up -d`. The clone also contains `data/dataset1` and `data/dataset2`, two small Turkish sample folders. `docker compose up -d --build` builds the image from your working copy.
 - Don't want the sample collection? Delete it in the admin panel (it is not recreated), or put `RAG_SAMPLE_COLLECTION=false` in `.env` before the first start.
 
 ## Level 2 — Search your own documents
@@ -283,15 +292,15 @@ Answer generation (optional)
 - Each re-index builds a new Chroma collection and switches to it only when it succeeds (blue/green), so searches never see a half-built index: [src/indexing/](src/indexing/).
 - Collections, jobs and logs live in a small SQLite registry with hand-written queries: [src/collections/sqliteRegistry.ts](src/collections/sqliteRegistry.ts).
 - HTTP routes: [src/http/ragRouter.ts](src/http/ragRouter.ts) (public) and [src/http/adminRouter.ts](src/http/adminRouter.ts) (admin), assembled in [src/app.ts](src/app.ts).
-- Design rationale: [radar_rag_mimarisi.md](radar_rag_mimarisi.md) (in Turkish). Contributor brief: [CLAUDE.md](CLAUDE.md).
+- Design rationale: [ragstation_mimarisi.md](ragstation_mimarisi.md) (in Turkish). Contributor brief: [CLAUDE.md](CLAUDE.md).
 
 ### Developing locally
 
 Prerequisites: Node.js 20 or newer (22 recommended), Git, and Docker for Chroma.
 
 ```bash
-git clone https://github.com/kmkarakaya/radar-rag.git
-cd radar-rag
+git clone https://github.com/kmkarakaya/ragstation.git
+cd ragstation
 docker compose up -d chroma
 npm install
 npm run onboard
@@ -314,7 +323,7 @@ All settings, environment variables and onboarding flags are described in [docs/
 | Installing Docker Desktop on Windows shows "This app can't run on your PC" | The ARM64 installer was downloaded for an Intel/AMD PC | Download the AMD64 installer |
 | `docker compose up` fails with `open //./pipe/dockerDesktopLinuxEngine`, `open //./pipe/docker_engine` or `Cannot connect to the Docker daemon` | Docker Desktop (or the Docker service) is not running | Start Docker Desktop, wait for "Engine running", try again |
 | Docker Desktop says "Virtualization is disabled in firmware" | Hardware virtualization is off in the BIOS/UEFI | Turn on Intel Virtualization Technology (VT-x) or AMD-V/SVM in the BIOS/UEFI and restart; on a managed computer, ask your IT administrator |
-| `no configuration file provided: not found` | `docker compose` was run in a folder without `docker-compose.yml` | `cd` into the folder with the downloaded file (Level 1: `radar-rag`) |
+| `no configuration file provided: not found` | `docker compose` was run in a folder without `docker-compose.yml` | `cd` into the folder with the downloaded file (Level 1: `ragstation`) |
 | The first re-index takes minutes, or fails with `EMBEDDING_PROVIDER_UNREACHABLE` on the built-in model | The built-in model (~350 MB) downloads on the first indexing and needs internet access | Wait for the download (once), or check the network; the model is then kept in `./models` |
 | Creating a collection or re-indexing returns `422 UNAVAILABLE_MODEL` | The external embedding service does not offer that model | Pick a model from `details.availableModels`; for Ollama, `ollama pull <model>` first |
 | `503 EMBEDDING_PROVIDER_UNREACHABLE` or `422 EMBEDDING_PROVIDER_NOT_CONFIGURED` | The collection's embedding service is down, its URL or key is wrong, it was deleted, or there is none | Start it, then check it under **Embedding services** → **Test** (or `RAG_EMBEDDING_BASE_URL` for the .env / config one; in Docker use `host.docker.internal`, not `localhost`); or switch the collection to another service or to `builtin` |

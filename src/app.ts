@@ -1,6 +1,6 @@
 ﻿import path from "node:path";
 import express, { type Express } from "express";
-import type { CollectionRegistry, SystemOperationsAggregateSummary } from "./collections/types.js";
+import type { CollectionRegistry, RequestContext, SystemOperationsAggregateSummary } from "./collections/types.js";
 import { resolveReadableCollection } from "./collections/resolveReadableCollection.js";
 import { config, type ResolvedConfig } from "./config.js";
 import { errorHandler, notFoundHandler, sendErrorResponse } from "./http/errors.js";
@@ -17,7 +17,8 @@ import {
   createPersistentOperationalLogSink,
   type OperationalLogSink,
 } from "./observability/logger.js";
-import { checkChatProvider } from "./chat.js";
+import { checkChatProvider, listChatConnectionModels, serverChatTarget } from "./chat.js";
+import { resolveChatTarget } from "./chatServices.js";
 import {
   capabilitySummary,
   describeChatReadiness,
@@ -58,6 +59,8 @@ export type AppDependencies = {
     checkEmbeddingConnection?: typeof listConnectionModels;
     /** Free GET /models check of the optional chat LLM (never a generation). */
     checkChatProvider?: typeof checkChatProvider;
+    /** Free GET /models check of one chat service (POST /v1/admin/chat-services/test, GET /v1/admin/models). */
+    checkChatConnection?: typeof listChatConnectionModels;
     checkIndexingSourceHealth?: typeof checkIndexingSourceHealth;
   };
   /** Removes a deleted document's chunks from the active index (Chroma). */
@@ -353,7 +356,7 @@ function configureApp(app: Express): void {
   app.use("/admin", express.static(path.resolve(process.cwd(), "admin")));
   app.use("/test-frontend", express.static(path.resolve(process.cwd(), "test_frontend")));
 
-async function getReadinessPayload(registry?: CollectionRegistry) {
+async function getReadinessPayload(registry: CollectionRegistry | undefined, context: RequestContext) {
   const healthChecks = deps.healthChecks;
   const observedAt = new Date().toISOString();
   const defaultEmbedding = defaultEmbeddingTarget(runtimeConfig);
@@ -371,8 +374,11 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
   const operations = buildReadyOperationsSummary(operationsAggregate, runtimeConfig);
   const operationalAlerts = buildOperationalAlerts(operations);
 
-  const chatEnabled = runtimeConfig.chat.enabled;
-  const chatProvider = await (healthChecks?.checkChatProvider ?? checkChatProvider)(runtimeConfig);
+  // The chat LLM of the request's tenant (x-tenant-id): its choice, else the server's, else none.
+  const chatTarget = await resolveChatTarget({ registry, runtimeConfig, context })
+    .catch(() => serverChatTarget(runtimeConfig));
+  const chatEnabled = chatTarget.source !== "none";
+  const chatProvider = await (healthChecks?.checkChatProvider ?? checkChatProvider)(runtimeConfig, { target: chatTarget });
   const checks: ReadinessCheck[] = [];
 
   checks.push({
@@ -415,7 +421,7 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
     ...describeEmbeddingReadiness(embeddingStatus),
   });
 
-  checks.push({ name: "Chat LLM", capabilities: ["query"], ...describeChatReadiness(chatProvider, runtimeConfig) });
+  checks.push({ name: "Chat LLM", capabilities: ["query"], ...describeChatReadiness(chatProvider, chatTarget) });
 
   checks.push({
     code: dataSource.ok ? "INDEXING_SOURCE_READABLE" : "INDEXING_SOURCE_UNREADABLE",
@@ -533,7 +539,9 @@ async function getReadinessPayload(registry?: CollectionRegistry) {
           .filter((action): action is string => Boolean(action)),
       ),
       port: runtimeConfig.port,
-      chatModel: chatEnabled ? runtimeConfig.chat.model : null,
+      chatModel: chatEnabled ? chatTarget.model : null,
+      chatServiceId: chatEnabled ? chatTarget.serviceId : null,
+      chatSource: chatTarget.source,
       embeddingProvider: runtimeConfig.embedding.provider,
       embeddingModel: runtimeConfig.embedding.model,
       chromaUrl: runtimeConfig.chromaUrl,
@@ -622,6 +630,8 @@ function summarizeReadinessPayload(payload: ReadinessPayload) {
     config: {
       port: payload.port,
       chatModel: payload.chatModel,
+      chatServiceId: payload.chatServiceId,
+      chatSource: payload.chatSource,
       embeddingProvider: payload.embeddingProvider,
       embeddingModel: payload.embeddingModel,
       chromaUrl: payload.chromaUrl,
@@ -650,7 +660,7 @@ app.get("/ready", async (req, res) => {
   const isStrict = truthyQuery(req.query.strict);
   const wantsDetails = truthyQuery(req.query.details);
 
-  const payload = await getReadinessPayload(app.locals.dependencies?.registry);
+  const payload = await getReadinessPayload(app.locals.dependencies?.registry, res.locals.requestContext as RequestContext);
 
   res
     .status(isStrict && !payload.ready ? 503 : 200)

@@ -25,21 +25,96 @@ export { redactSecret };
  * do not implement.
  */
 
+export const SERVER_CHAT_SERVICE_ID = "server";
+export const SERVER_CHAT_SERVICE_NAME = "Server (.env / config)";
+
+/** A resolved connection to an OpenAI-compatible chat API. */
+export type ChatConnection = {
+  serviceId: string;
+  baseUrl: string;
+  apiKey?: string;
+  /** Changes whenever the URL or key changes, so cached checks are never reused for a new setting. */
+  version: string;
+};
+
+/**
+ * The chat LLM that answers /query for a tenant (see resolveChatTarget in chatServices.ts).
+ * - tenant: the tenant chose a chat service and model (PUT /v1/admin/chat-settings);
+ * - server: no choice, the chat LLM from .env / config is used;
+ * - none: no chat LLM at all (retrieve-only).
+ */
+export type ChatTarget = {
+  source: "tenant" | "server" | "none";
+  serviceId: string | null;
+  model: string | null;
+  /** null when there is no usable connection: none, or the chosen service is gone (never a fallback). */
+  connection: ChatConnection | null;
+  /** Why a chosen service has no connection. */
+  connectionError?: string;
+};
+
+export type ReadyChatTarget = ChatTarget & { connection: ChatConnection; model: string };
+
+/** The "server" chat service (chat.baseUrl / RAG_CHAT_BASE_URL), or null when none is configured. */
+export function serverChatConnection(runtimeConfig: ResolvedConfig): ChatConnection | null {
+  const chat = runtimeConfig.chat;
+  if (!chat.baseUrl) return null;
+  return {
+    serviceId: SERVER_CHAT_SERVICE_ID,
+    baseUrl: chat.baseUrl,
+    apiKey: chat.apiKey,
+    version: `config:${chat.apiKeySource}`,
+  };
+}
+
+/** The chat LLM from .env / config, used when the tenant has not chosen one. */
+export function serverChatTarget(runtimeConfig: ResolvedConfig): ChatTarget {
+  if (!runtimeConfig.chat.enabled) {
+    return { source: "none", serviceId: null, model: null, connection: null };
+  }
+  return {
+    source: "server",
+    serviceId: SERVER_CHAT_SERVICE_ID,
+    model: runtimeConfig.chat.model,
+    connection: serverChatConnection(runtimeConfig),
+  };
+}
+
+export function isChatTargetReady(target: ChatTarget): target is ReadyChatTarget {
+  return Boolean(target.connection && target.model);
+}
+
+export const CHAT_SETUP_HINT = "choose a chat service and model with PUT /v1/admin/chat-settings (admin panel: Chat services), "
+  + "or set RAG_CHAT_BASE_URL and RAG_CHAT_MODEL (npm run onboard).";
+
+/** The CHAT_NOT_CONFIGURED message for a target that cannot generate. */
+export function chatNotConfiguredMessage(target: ChatTarget): string {
+  if (target.connectionError) {
+    return `Answer generation is unavailable: ${target.connectionError}`;
+  }
+  return `Answer generation is disabled: no chat LLM is configured. Use /retrieve, or ${CHAT_SETUP_HINT}`;
+}
+
 export function createChatModel(
   runtimeConfig: ResolvedConfig,
-  options: { fetch?: FetchLike } = {},
+  options: { fetch?: FetchLike; target?: ChatTarget } = {},
 ): ChatOpenAICompletions {
-  const chat = runtimeConfig.chat;
-  if (!chat.enabled) {
-    throw new Error("Chat LLM is not configured (chat.baseUrl and chat.model are required).");
+  const target = options.target ?? serverChatTarget(runtimeConfig);
+  if (!isChatTargetReady(target)) {
+    throw new Error(target.connectionError ?? "Chat LLM is not configured (chat.baseUrl and chat.model are required).");
   }
+  const chat = runtimeConfig.chat;
+  const baseFetch = options.fetch ?? fetch;
 
   return new ChatOpenAICompletions({
-    model: chat.model,
-    apiKey: chat.apiKey ?? PLACEHOLDER_API_KEY,
+    model: target.model,
+    apiKey: target.connection.apiKey ?? PLACEHOLDER_API_KEY,
     configuration: {
-      baseURL: chat.baseUrl,
-      ...(options.fetch ? { fetch: options.fetch } : {}),
+      baseURL: target.connection.baseUrl,
+      // Redirects are not followed (as in the GET /models checks): questions, document text and the key
+      // only go to the URL the admin entered; a redirect fails as an HTTP error instead.
+      fetch: ((url: Parameters<FetchLike>[0], init?: Parameters<FetchLike>[1]) =>
+        baseFetch(url, { ...init, redirect: "manual" })) as FetchLike,
     },
     // Reliability settings of this service, not model parameters: fail fast instead of
     // LangChain's default 6 retries, and never wait longer than a RAG request may take.
@@ -67,17 +142,61 @@ function errorMessage(error: unknown): string {
  */
 export async function checkChatProvider(
   runtimeConfig: ResolvedConfig,
-  options: { fetch?: FetchLike; useCache?: boolean } = {},
+  options: { fetch?: FetchLike; useCache?: boolean; target?: ChatTarget } = {},
 ): Promise<ChatProviderStatus> {
-  const chat = runtimeConfig.chat;
-  if (!chat.enabled) {
-    return notConfiguredStatus(chat.baseUrl, chat.model);
+  const target = options.target ?? serverChatTarget(runtimeConfig);
+  if (!isChatTargetReady(target)) {
+    const status = target.source === "none"
+      ? notConfiguredStatus(runtimeConfig.chat.baseUrl, runtimeConfig.chat.model)
+      : notConfiguredStatus(target.connection?.baseUrl ?? "", target.model ?? "");
+    return target.connectionError ? { ...status, error: target.connectionError } : status;
   }
 
   return checkOpenAICompatibleProvider(
-    { baseUrl: chat.baseUrl, model: chat.model, apiKey: chat.apiKey, apiKeySource: chat.apiKeySource },
+    {
+      baseUrl: target.connection.baseUrl,
+      model: target.model,
+      apiKey: target.connection.apiKey,
+      // The cache is keyed by service and version: a changed URL or key is checked again at once.
+      apiKeySource: `${target.connection.serviceId}|${target.connection.version}`,
+    },
     { timeoutMs: runtimeConfig.readyTimeoutMs, fetch: options.fetch, useCache: options.useCache, serviceLabel: "chat provider" },
   );
+}
+
+export type ChatServiceModels = {
+  id: string;
+  name: string;
+  reachable: boolean;
+  authOk: boolean;
+  models: string[];
+  error?: string;
+};
+
+/** Reachability and model list of one chat service (free GET /models; never runs a generation). */
+export async function listChatConnectionModels(
+  runtimeConfig: ResolvedConfig,
+  connection: ChatConnection,
+  name: string,
+  options: { fetch?: FetchLike; useCache?: boolean } = {},
+): Promise<ChatServiceModels> {
+  const status = await checkOpenAICompatibleProvider(
+    {
+      baseUrl: connection.baseUrl,
+      model: "",
+      apiKey: connection.apiKey,
+      apiKeySource: `${connection.serviceId}|${connection.version}`,
+    },
+    { timeoutMs: runtimeConfig.readyTimeoutMs, fetch: options.fetch, useCache: options.useCache, serviceLabel: "chat provider" },
+  );
+  return {
+    id: connection.serviceId,
+    name,
+    reachable: status.reachable,
+    authOk: status.authOk,
+    models: status.availableModels ?? [],
+    ...(status.error ? { error: status.error } : {}),
+  };
 }
 
 export type ChatGenerationCheck = {

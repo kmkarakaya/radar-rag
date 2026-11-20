@@ -23,6 +23,8 @@ tags:
   - name: Public RAG
   - name: Admin Auth
   - name: Admin Collections
+  - name: Admin Embedding Services
+  - name: Admin Chat Services
   - name: Admin Jobs
   - name: Admin Audit
 paths:
@@ -1122,6 +1124,244 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
+  /v1/admin/chat-services:
+    get:
+      tags: [Admin Chat Services]
+      operationId: listChatServices
+      summary: List the tenant's chat services, including the read-only "server" one
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+      responses:
+        "200":
+          description: Services and management warnings (admin auth off)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatServicesListResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+    post:
+      tags: [Admin Chat Services]
+      operationId: createChatService
+      summary: Add a chat service (admin; takes effect at once)
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XAdminActionToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingServiceCreateRequest"
+      responses:
+        "201":
+          description: Created (warnings include a duplicate URL)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatServiceResponse"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/chat-services/test:
+    post:
+      tags: [Admin Chat Services]
+      operationId: testChatService
+      summary: Check a saved or unsaved chat service with a free GET /models (never generates)
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingServiceTestRequest"
+      responses:
+        "200":
+          description: Reachability and the models the service lists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbeddingServiceTestResponse"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/chat-services/{serviceId}:
+    parameters:
+      - name: serviceId
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      tags: [Admin Chat Services]
+      operationId: updateChatService
+      summary: Change a chat service's name, URL or key (the next /query uses it)
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XAdminActionToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingServiceUpdateRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatServiceResponse"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "409":
+          description: CHAT_SERVICE_READ_ONLY for "server"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+    delete:
+      tags: [Admin Chat Services]
+      operationId: deleteChatService
+      summary: Delete a chat service that is not the tenant's chat choice
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XAdminActionToken"
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          $ref: "#/components/responses/ApiError"
+        "409":
+          description: CHAT_SERVICE_IN_USE (details.chatSettings) or CHAT_SERVICE_READ_ONLY
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /v1/admin/chat-settings:
+    get:
+      tags: [Admin Chat Services]
+      operationId: getChatSettings
+      summary: The chat LLM that answers /query for the tenant, with a free availability check
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+      responses:
+        "200":
+          description: The effective choice (tenant, server or none)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatSettings"
+        "401":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+    put:
+      tags: [Admin Chat Services]
+      operationId: setChatSettings
+      summary: Choose the chat service and model for the tenant (admin; takes effect at once)
+      description: >-
+        Refuses a model the service does not list (422 CHAT_MODEL_MISSING). When the service is unreachable or
+        rejects the key, the choice is still saved and warnings says why it cannot be used yet.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XAdminActionToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatSettingsRequest"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatSettingsUpdateResponse"
+        "400":
+          $ref: "#/components/responses/ApiError"
+        "403":
+          $ref: "#/components/responses/ApiError"
+        "404":
+          description: CHAT_SERVICE_NOT_FOUND (unknown service, or "server" while RAG_CHAT_BASE_URL is not set)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "422":
+          description: CHAT_MODEL_MISSING (details.availableModels)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+    delete:
+      tags: [Admin Chat Services]
+      operationId: resetChatSettings
+      summary: Remove the tenant's choice (back to the server's chat LLM, or retrieve-only)
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XAdminActionToken"
+      responses:
+        "200":
+          description: The effective choice after the reset
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [settings]
+                properties:
+                  settings:
+                    $ref: "#/components/schemas/ChatSettings"
+        "403":
+          $ref: "#/components/responses/ApiError"
   /v1/admin/audit-log:
     get:
       tags: [Admin Audit]
@@ -1495,6 +1735,10 @@ components:
             - EMBEDDING_SERVICE_NOT_FOUND
             - EMBEDDING_SERVICE_IN_USE
             - EMBEDDING_SERVICE_READ_ONLY
+            - CHAT_SERVICE_NOT_FOUND
+            - CHAT_SERVICE_IN_USE
+            - CHAT_SERVICE_READ_ONLY
+            - CHAT_MODEL_MISSING
             - INTERNAL_ERROR
         message:
           type: string
@@ -1663,7 +1907,15 @@ components:
               type: integer
             chatModel:
               type: [string, "null"]
-              description: Global chat LLM model, or null when no chat LLM is configured (retrieve-only).
+              description: >-
+                The tenant's chat LLM model (x-tenant-id; its choice, else the server's), or null when there is none
+                (retrieve-only).
+            chatServiceId:
+              type: [string, "null"]
+              description: The chat service of that model ("server" = .env / config).
+            chatSource:
+              type: string
+              enum: [tenant, server, none]
             embeddingProvider:
               $ref: "#/components/schemas/EmbeddingProvider"
             embeddingModel:
@@ -1765,7 +2017,12 @@ components:
           type: integer
         chatModel:
           type: [string, "null"]
-          description: Global chat LLM model, or null when no chat LLM is configured (retrieve-only).
+          description: The tenant's chat LLM model (x-tenant-id), or null when there is none (retrieve-only).
+        chatServiceId:
+          type: [string, "null"]
+        chatSource:
+          type: string
+          enum: [tenant, server, none]
         embeddingProvider:
           $ref: "#/components/schemas/EmbeddingProvider"
         embeddingModel:
@@ -2271,10 +2528,15 @@ components:
             downloaded yet still counts as available (EMBEDDING_MODEL_NOT_DOWNLOADED warning).
         chatModel:
           type: [string, "null"]
-          description: Global chat LLM model (not per collection), or null when no chat LLM is configured (retrieve-only).
+          description: >-
+            The tenant's chat LLM model (its choice, else the server's; not per collection), or null when there is
+            none (retrieve-only).
+        chatServiceId:
+          type: [string, "null"]
+          description: The chat service of that model ("server" = .env / config).
         chatModelAvailable:
           type: boolean
-          description: Result of the chat provider check (GET {chat.baseUrl}/models); only affects query.
+          description: Result of the chat service check (GET {baseUrl}/models); only affects query.
         desiredEmbeddingProvider:
           $ref: "#/components/schemas/EmbeddingProvider"
         desiredEmbeddingModel:
@@ -2489,7 +2751,10 @@ components:
           description: openai-compatible only; the embedding service ("server" = the one from .env / config).
         chatModel:
           type: string
-          description: Global chat LLM model that generated the answer.
+          description: Chat LLM model that generated the answer (the tenant's choice, else the server's).
+        chatServiceId:
+          type: string
+          description: The chat service that generated the answer ("server" = .env / config).
         distanceScoreThreshold:
           type: number
         sources:
@@ -2805,13 +3070,14 @@ components:
         chat:
           type: object
           description: >-
-            Global, optional chat LLM used only by /query (configured with npm run onboard or
-            RAG_CHAT_BASE_URL / RAG_CHAT_MODEL; not a collection setting). The API key is never returned.
+            The server chat LLM from .env / config (npm run onboard or RAG_CHAT_BASE_URL / RAG_CHAT_MODEL). It
+            answers /query for tenants without a choice of their own (GET /v1/admin/chat-settings). The API key
+            is never returned.
           required: [enabled, baseUrl, model, apiKeyConfigured]
           properties:
             enabled:
               type: boolean
-              description: False means retrieve-only (/query returns 503 CHAT_NOT_CONFIGURED).
+              description: False means no server chat LLM is configured.
             baseUrl:
               type: [string, "null"]
               description: OpenAI-compatible base URL, e.g. http://localhost:11434/v1.
@@ -2921,6 +3187,18 @@ components:
         embeddingServices:
           type: array
           description: Every embedding service of the tenant with its models ("server" first when configured).
+          items:
+            $ref: "#/components/schemas/EmbeddingServiceModels"
+        defaultEmbeddingServiceId:
+          type: [string, "null"]
+          description: >-
+            The service a new openai-compatible collection gets without embeddingServiceId ("server" when
+            configured, else the tenant's only service); null when there is none or the client must choose.
+        chatServices:
+          type: array
+          description: >-
+            Every chat service of the tenant with its models ("server" first when configured), for choosing
+            the chat model with PUT /v1/admin/chat-settings.
           items:
             $ref: "#/components/schemas/EmbeddingServiceModels"
     EmbeddingServiceModels:
@@ -3054,6 +3332,130 @@ components:
           properties:
             ok:
               type: boolean
+    ChatService:
+      type: object
+      required: [id, name, baseUrl, apiKeyConfigured, source, readOnly, configured, inUse]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        baseUrl:
+          type: [string, "null"]
+        apiKeyConfigured:
+          type: boolean
+          description: The key itself is never returned.
+        source:
+          type: string
+          enum: [server, panel]
+          description: server = .env / config (read-only); panel = added via the API.
+        readOnly:
+          type: boolean
+        configured:
+          type: boolean
+        inUse:
+          type: boolean
+          description: Answers /query for the tenant now (its choice, or "server" while it has none).
+        defaultModel:
+          type: [string, "null"]
+          description: server entry only; the model from .env / config.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ChatServicesListResponse:
+      type: object
+      required: [services, warnings]
+      properties:
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatService"
+        warnings:
+          type: array
+          items:
+            type: string
+    ChatServiceResponse:
+      type: object
+      required: [service, warnings]
+      properties:
+        service:
+          $ref: "#/components/schemas/ChatService"
+        warnings:
+          type: array
+          items:
+            type: string
+    ChatSettingsRequest:
+      type: object
+      additionalProperties: false
+      required: [serviceId, model]
+      properties:
+        serviceId:
+          type: string
+          description: A chat service id, or "server" (the chat LLM from .env / config).
+        model:
+          type: string
+          minLength: 1
+          maxLength: 200
+    ChatSettings:
+      type: object
+      required: [source, serviceId, serviceName, model, queryEnabled, status, updatedAt, updatedBy]
+      properties:
+        source:
+          type: string
+          enum: [tenant, server, none]
+          description: tenant = a saved choice; server = no choice, .env / config is used; none = retrieve-only.
+        serviceId:
+          type: [string, "null"]
+        serviceName:
+          type: [string, "null"]
+        model:
+          type: [string, "null"]
+        queryEnabled:
+          type: boolean
+        status:
+          type: object
+          required: [ok, code, message, reachable, authOk, modelListed]
+          properties:
+            ok:
+              type: boolean
+            code:
+              type: string
+              description: >-
+                CHAT_MODEL_AVAILABLE, CHAT_MODEL_UNVERIFIED, CHAT_MODEL_MISSING, CHAT_PROVIDER_UNREACHABLE,
+                CHAT_PROVIDER_AUTH_FAILED, CHAT_SERVICE_NOT_FOUND or CHAT_NOT_CONFIGURED.
+            message:
+              type: string
+            reachable:
+              type: boolean
+            authOk:
+              type: boolean
+            modelListed:
+              oneOf:
+                - type: boolean
+                - type: string
+                  enum: [unknown]
+            availableModels:
+              type: array
+              items:
+                type: string
+        updatedAt:
+          type: [string, "null"]
+          format: date-time
+        updatedBy:
+          type: [string, "null"]
+    ChatSettingsUpdateResponse:
+      type: object
+      required: [settings, warnings]
+      properties:
+        settings:
+          $ref: "#/components/schemas/ChatSettings"
+        warnings:
+          type: array
+          items:
+            type: string
     CollectionFile:
       type: object
       required: [name, sizeBytes, modifiedAt, supported]

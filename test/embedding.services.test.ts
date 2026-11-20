@@ -413,7 +413,10 @@ describe("embedding services API", () => {
 
   it("lets collections use a service, chooses a default on the server, and protects services in use", async () => {
     const registry = await start();
+    assert.equal((await call("GET", "/v1/admin/models")).body.defaultEmbeddingServiceId, null, "no service: nothing to pick");
     const one = (await call("POST", "/v1/admin/embedding-services", { name: "Ollama", baseUrl: "http://ollama.test/v1" })).body.service.id;
+    // Clients learn the default from the API instead of re-implementing the rule.
+    assert.equal((await call("GET", "/v1/admin/models")).body.defaultEmbeddingServiceId, one);
 
     // No server service configured and exactly one stored service: the server picks it.
     const auto = await call("POST", "/v1/admin/collections", { displayName: "Auto", embeddingProvider: "openai-compatible", embeddingModel: "bge-m3" });
@@ -426,6 +429,7 @@ describe("embedding services API", () => {
     const ambiguous = await call("POST", "/v1/admin/collections", { displayName: "Which", embeddingProvider: "openai-compatible", embeddingModel: "bge-m3" });
     assert.equal(ambiguous.status, 400);
     assert.match(ambiguous.body.message, /embeddingServiceId/);
+    assert.equal((await call("GET", "/v1/admin/models")).body.defaultEmbeddingServiceId, null, "several services: the client must choose");
 
     assert.equal(
       (await call("POST", "/v1/admin/collections", { displayName: "Unknown", embeddingProvider: "openai-compatible", embeddingModel: "m", embeddingServiceId: "nope" })).body.code,
@@ -455,6 +459,15 @@ describe("embedding services API", () => {
     assert.equal(inUse.body.code, "EMBEDDING_SERVICE_IN_USE");
     assert.deepEqual(inUse.body.details.collections.map((c: any) => c.id), [auto.body.collection.id]);
     assert.equal((await call("DELETE", `/v1/admin/embedding-services/${one}`)).status, 204);
+  });
+
+  it("reports the server service as the default when .env / config sets one", async () => {
+    await start({ serverBaseUrl: "http://server.test/v1" });
+    await call("POST", "/v1/admin/embedding-services", { name: "Ollama", baseUrl: "http://ollama.test/v1" });
+    await call("POST", "/v1/admin/embedding-services", { name: "Second", baseUrl: "http://second.test/v1" });
+    assert.equal((await call("GET", "/v1/admin/models")).body.defaultEmbeddingServiceId, "server");
+    const created = await call("POST", "/v1/admin/collections", { displayName: "Auto", embeddingProvider: "openai-compatible", embeddingModel: "bge-m3" });
+    assert.equal(created.body.collection.embeddingServiceId, "server");
   });
 
   it("lists the built-in model read-only, with its models and the collections that use it", async () => {

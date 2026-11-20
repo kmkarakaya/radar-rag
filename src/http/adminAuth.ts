@@ -20,7 +20,8 @@ export type AdminCapability =
   | "deleteJob"
   | "bulkDeleteJobs"
   | "manageDocuments"
-  | "manageEmbeddingServices";
+  | "manageEmbeddingServices"
+  | "manageChatServices";
 
 export type AdminSessionSummary = {
   username: string;
@@ -69,13 +70,15 @@ const OPERATOR_CAPABILITIES: AdminCapability[] = [
   "cancelJob",
   "manageDocuments",
 ];
-// Embedding services decide where document text is sent, so only admins manage them.
+// Embedding and chat services (and the tenant's chat choice) decide where questions and document text are
+// sent, so only admins manage them.
 const ADMIN_CAPABILITIES: AdminCapability[] = [
   ...OPERATOR_CAPABILITIES,
   "deleteCollection",
   "deleteJob",
   "bulkDeleteJobs",
   "manageEmbeddingServices",
+  "manageChatServices",
 ];
 export const defaultAdminSessionSecretFilePath = ".local/rag_admin_session.secret";
 
@@ -104,6 +107,14 @@ const ADMIN_ROUTE_PATTERNS: Array<{
   { method: "POST", pattern: /^\/v1\/admin\/embedding-services\/?$/, capability: "manageEmbeddingServices", actionTokenRequired: true },
   { method: "PATCH", pattern: /^\/v1\/admin\/embedding-services\/[^/]+\/?$/, capability: "manageEmbeddingServices", actionTokenRequired: true },
   { method: "DELETE", pattern: /^\/v1\/admin\/embedding-services\/[^/]+\/?$/, capability: "manageEmbeddingServices", actionTokenRequired: true },
+  { method: "GET", pattern: /^\/v1\/admin\/chat-services\/?$/, capability: "read", actionTokenRequired: false },
+  { method: "POST", pattern: /^\/v1\/admin\/chat-services\/test\/?$/, capability: "manageChatServices", actionTokenRequired: false },
+  { method: "POST", pattern: /^\/v1\/admin\/chat-services\/?$/, capability: "manageChatServices", actionTokenRequired: true },
+  { method: "PATCH", pattern: /^\/v1\/admin\/chat-services\/[^/]+\/?$/, capability: "manageChatServices", actionTokenRequired: true },
+  { method: "DELETE", pattern: /^\/v1\/admin\/chat-services\/[^/]+\/?$/, capability: "manageChatServices", actionTokenRequired: true },
+  { method: "GET", pattern: /^\/v1\/admin\/chat-settings\/?$/, capability: "read", actionTokenRequired: false },
+  { method: "PUT", pattern: /^\/v1\/admin\/chat-settings\/?$/, capability: "manageChatServices", actionTokenRequired: true },
+  { method: "DELETE", pattern: /^\/v1\/admin\/chat-settings\/?$/, capability: "manageChatServices", actionTokenRequired: true },
   { method: "GET", pattern: /^\/v1\/admin\/audit-log\/?$/, capability: "read", actionTokenRequired: false },
   { method: "GET", pattern: /^\/v1\/admin\/jobs\/?$/, capability: "read", actionTokenRequired: false },
   { method: "GET", pattern: /^\/v1\/admin\/jobs\/[^/]+\/?$/, capability: "read", actionTokenRequired: false },

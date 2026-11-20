@@ -1,4 +1,4 @@
-import type { ChatProviderStatus } from "./chat.js";
+import type { ChatProviderStatus, ChatTarget } from "./chat.js";
 import type { ResolvedConfig } from "./config.js";
 import type { EmbeddingTargetStatus } from "./embeddings/index.js";
 
@@ -24,13 +24,15 @@ export function recommendedActionFor(code: string, runtimeConfig: ResolvedConfig
     case "REGISTRY_UNREACHABLE":
       return "Verify SQLite registry database file path is accessible and not corrupted.";
     case "CHAT_NOT_CONFIGURED":
-      return "Optional: to enable /query, run npm run onboard or set RAG_CHAT_BASE_URL and RAG_CHAT_MODEL (plus RAG_CHAT_API_KEY if the provider needs one).";
+      return "Optional: to enable /query, choose a chat service and model with PUT /v1/admin/chat-settings (admin panel: Chat services), or run npm run onboard / set RAG_CHAT_BASE_URL and RAG_CHAT_MODEL (plus RAG_CHAT_API_KEY if the provider needs one).";
+    case "CHAT_SERVICE_NOT_FOUND":
+      return "Choose an existing chat service and model with PUT /v1/admin/chat-settings, or go back to the server's chat LLM with DELETE /v1/admin/chat-settings.";
     case "CHAT_PROVIDER_UNREACHABLE":
-      return `Check that the chat LLM is running and that chat.baseUrl (${runtimeConfig.chat.baseUrl}) is correct; it must point to an OpenAI-compatible API such as http://localhost:11434/v1.`;
+      return "Check that the chat LLM is running and that its base URL (details.baseUrl) is correct; it must point to an OpenAI-compatible API such as http://localhost:11434/v1. Change it with PATCH /v1/admin/chat-services/<id>, or chat.baseUrl / RAG_CHAT_BASE_URL for the server service.";
     case "CHAT_PROVIDER_AUTH_FAILED":
-      return "Check the chat API key: set RAG_CHAT_API_KEY or rerun npm run onboard to store it in .local/rag_chat_api_key.secret.";
+      return "Check the chat API key: PATCH /v1/admin/chat-services/<id> with a new apiKey, or for the server service set RAG_CHAT_API_KEY or rerun npm run onboard.";
     case "CHAT_MODEL_MISSING":
-      return `Use a model offered by ${runtimeConfig.chat.baseUrl} (see details.availableModels) or pull it there, e.g. ollama pull ${runtimeConfig.chat.model} for a local Ollama.`;
+      return "Use a model offered by the chat service (see details.availableModels) with PUT /v1/admin/chat-settings, or pull it there (for Ollama: ollama pull <model>).";
     case "CHAT_MODEL_UNVERIFIED":
       return "The chat provider does not list its models, so the model name could not be verified; a failed /query will report the provider error.";
     case "EMBEDDING_MODEL_NOT_DOWNLOADED":
@@ -103,16 +105,29 @@ export type ChatReadiness = {
 };
 
 /** Readiness of the optional chat LLM, from the free GET /models probe (see chat.ts). */
-export function describeChatReadiness(status: ChatProviderStatus, runtimeConfig: ResolvedConfig): ChatReadiness {
-  const chat = runtimeConfig.chat;
+export function describeChatReadiness(status: ChatProviderStatus, target?: ChatTarget): ChatReadiness {
+  // The checked service: messages name its URL and model, whether it came from config or a tenant's choice.
+  const chat = { baseUrl: status.baseUrl ?? "", model: status.model ?? "" };
   const details = {
     baseUrl: status.baseUrl,
     model: status.model,
+    ...(target?.serviceId ? { serviceId: target.serviceId } : {}),
+    ...(target ? { source: target.source } : {}),
     latencyMs: status.latencyMs,
     httpStatus: status.httpStatus,
     error: status.error,
   };
 
+  if (target?.connectionError) {
+    // The tenant chose a chat LLM that no longer exists: /query was meant to work, so this blocks it.
+    return {
+      code: "CHAT_SERVICE_NOT_FOUND",
+      status: "fail",
+      blocking: true,
+      message: `Answer generation (/query) is unavailable: ${target.connectionError}`,
+      details,
+    };
+  }
   if (!status.configured) {
     return {
       code: "CHAT_NOT_CONFIGURED",

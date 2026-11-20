@@ -113,11 +113,11 @@ curl.exe -s `
   "$BASE_URL/v1/rag/collections/$COLLECTION_ID/query"
 ```
 
-The response JSON includes the effective `embeddingProvider` / `embeddingModel` used for retrieval and the global `chatModel` that generated the answer.
+The response JSON includes the effective `embeddingProvider` / `embeddingModel` used for retrieval and the `chatModel` / `chatServiceId` that generated the answer.
 
-This endpoint needs the optional chat LLM (any OpenAI-compatible chat completions API, configured with `npm run onboard` or `RAG_CHAT_BASE_URL` / `RAG_CHAT_MODEL`, plus `RAG_CHAT_API_KEY` if the provider needs a key). Chat-specific failures:
+This endpoint needs the optional chat LLM (any OpenAI-compatible chat completions API): the tenant's choice ([Choose the chat LLM for /query](#choose-the-chat-llm-for-query)), else the one from `RAG_CHAT_BASE_URL` / `RAG_CHAT_MODEL` (plus `RAG_CHAT_API_KEY` if the provider needs a key; or `npm run onboard`). Chat-specific failures:
 
-- `503 CHAT_NOT_CONFIGURED`: no chat LLM is configured (retrieve-only). Returned before body validation and collection lookup, without `Retry-After`. Use `/retrieve` instead.
+- `503 CHAT_NOT_CONFIGURED`: the tenant has no chat LLM (retrieve-only), or the chat service it chose no longer exists. Returned before body validation and collection lookup, without `Retry-After`. Use `/retrieve` instead.
 - `503 CHAT_PROVIDER_UNREACHABLE`: the chat API cannot be reached.
 - `502 CHAT_PROVIDER_ERROR`: the chat API returned an HTTP error (bad key, unknown model, 429, 5xx); see `details.upstreamStatus` and `details.providerMessage`.
 
@@ -365,6 +365,44 @@ Notes:
 - Without admin auth (the default), skip the cookie and the action token. The response then carries a `warnings` entry about it.
 - Check a service before using it: `POST /v1/admin/embedding-services/test` with `{"serviceId":"<service-id>"}` (or `{"baseUrl":"...","apiKey":"..."}` before saving) lists its models with a free `GET /models`; it needs no action token.
 - Create a collection with `"embeddingProvider":"openai-compatible","embeddingServiceId":"<service-id>","embeddingModel":"bge-m3"`. Change a service's URL or key with `PATCH /v1/admin/embedding-services/<service-id>`; collections use it at once. `DELETE` refuses a service that collections still use (`409 EMBEDDING_SERVICE_IN_USE`).
+
+### Choose the chat LLM for /query
+
+`/query` needs a chat LLM. Add a chat service, look at its models, then choose the service and model for the tenant. Every step takes effect at once, without a restart. Without admin auth (the default), skip the cookie and the action tokens. With admin auth on, mint a token for each mutating call as above (`{"method":"POST","path":"/v1/admin/chat-services"}`, `{"method":"PUT","path":"/v1/admin/chat-settings"}`) and send it as `x-admin-action-token`; only the admin role may do this.
+
+```powershell
+# 1. Add the chat service (an Ollama on the Docker host here; add "apiKey" for cloud APIs).
+$CHAT_SERVICE_ID = ((curl.exe -s `
+  -X POST `
+  -H "content-type: application/json" `
+  -d '{"name":"Ollama chat","baseUrl":"http://host.docker.internal:11434/v1"}' `
+  "$BASE_URL/v1/admin/chat-services" | ConvertFrom-Json).service.id)
+
+# 2. List its models (a free GET /models; nothing is generated).
+curl.exe -s `
+  -X POST `
+  -H "content-type: application/json" `
+  -d "{`"serviceId`":`"$CHAT_SERVICE_ID`"}" `
+  "$BASE_URL/v1/admin/chat-services/test"
+
+# 3. Choose the service and a model for this tenant.
+curl.exe -s `
+  -X PUT `
+  -H "content-type: application/json" `
+  -d "{`"serviceId`":`"$CHAT_SERVICE_ID`",`"model`":`"gemma3:4b`"}" `
+  "$BASE_URL/v1/admin/chat-settings"
+
+# 4. Check it: source "tenant", status.code "CHAT_MODEL_AVAILABLE".
+curl.exe -s "$BASE_URL/v1/admin/chat-settings"
+```
+
+Notes:
+
+- `PUT /v1/admin/chat-settings` refuses a model the service does not list (`422 CHAT_MODEL_MISSING`, `details.availableModels`). If the service is down, the choice is still saved and `warnings` says why it cannot be used yet.
+- `{"serviceId":"server","model":"..."}` uses the chat LLM from `.env` / config (`RAG_CHAT_BASE_URL`) with another model.
+- `DELETE /v1/admin/chat-settings` removes the choice: the tenant goes back to the `.env` / config chat LLM, or to retrieve-only.
+- `DELETE /v1/admin/chat-services/<id>` refuses the chosen service (`409 CHAT_SERVICE_IN_USE`).
+- Public clients see the result without the admin API: `GET /ready` (`queryEnabled`, `config.chatServiceId`) and `capabilities.query` in collection readiness, per tenant (`x-tenant-id`).
 
 ## 4. Reindex Flow
 

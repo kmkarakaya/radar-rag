@@ -25,8 +25,9 @@
 #   cloud provider:        RAG_EMBEDDING_PROVIDER=openai-compatible  RAG_EMBEDDING_BASE_URL=https://api.openai.com/v1
 #                          RAG_EMBEDDING_MODEL=text-embedding-3-small  RAG_EMBEDDING_API_KEY=...
 #
-# Answer generation (/query) is optional; without it the backend is retrieve-only. To enable it,
-# point it at any OpenAI-compatible chat API:
+# Answer generation (/query) is optional; without it the backend is retrieve-only. Enable it in the admin
+# panel (Chat services: add a service, then choose it and a model) without editing this file or restarting.
+# The variables below define the read-only "server" chat service, used until another one is chosen:
 #   Ollama on the host:    RAG_CHAT_BASE_URL=http://host.docker.internal:11434/v1  RAG_CHAT_MODEL=gemma3:4b
 #   cloud provider:        RAG_CHAT_BASE_URL=https://api.openai.com/v1  RAG_CHAT_MODEL=gpt-4o-mini  RAG_CHAT_API_KEY=...
 

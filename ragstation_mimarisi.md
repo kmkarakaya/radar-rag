@@ -45,7 +45,7 @@ Bu repo Vanilla RAG'i backend olarak şu prensiplerle kuruyor:
 - LangChain, retrieval ve model entegrasyon katmanı olarak kullanılıyor.
 - Chroma, vector store olarak kullanılıyor.
 - Embedding'ler LangChain `Embeddings` arayüzü üzerinden iki provider'dan birinden gelir: `builtin` (varsayılan; `onnx-community/embeddinggemma-2-ONNX`, q8, tokenizer ile ~346 MB, transformers.js v4 ile backend process'i içinde CPU'da çalışır, ilk kullanımda `embedding.cacheDir` klasörüne bir kez indirilir; harici servis gerekmez) veya `openai-compatible` (`OpenAIEmbeddings` ile herhangi bir OpenAI uyumlu `/v1/embeddings` API'si: Ollama `http://localhost:11434/v1`, OpenAI, LM Studio, vLLM...). Backend artık Ollama'ya bağımlı değildir; Ollama sadece `openai-compatible` provider'ın (veya chat LLM'in) olası hedeflerinden biridir.
-- Cevap üretimi (generation) opsiyoneldir: tek bir global chat LLM, LangChain `ChatOpenAICompletions` (`@langchain/openai`) ile herhangi bir OpenAI uyumlu chat completions API'sine (Ollama `http://localhost:11434/v1`, LM Studio, vLLM, OpenAI, OpenRouter...) bağlanır. Chat LLM yapılandırılmamışsa backend retrieve-only çalışır: `/retrieve` ve indexing çalışır, `/query` kapalıdır. Varsayılan (shipped) config retrieve-only'dir.
+- Cevap üretimi (generation) opsiyoneldir: chat LLM, LangChain `ChatOpenAICompletions` (`@langchain/openai`) ile herhangi bir OpenAI uyumlu chat completions API'sine (Ollama `http://localhost:11434/v1`, LM Studio, vLLM, OpenAI, OpenRouter...) bağlanır. Chat LLM koleksiyona değil tenant'a aittir: `/query`'yi tenant'ın seçimi (`/v1/admin/chat-settings`: bir chat servisi ya da `server` + model) yanıtlar; seçim yoksa `.env` / config'teki salt okunur `server` chat LLM'i (`RAG_CHAT_*`), o da yoksa hiçbiri (retrieve-only). Chat servisleri (`/v1/admin/chat-services`) embedding servisleriyle aynı API sözleşmesini ve ortak route kodunu kullanır; seçilen servis silinmişse başka bir servise düşülmez, `/query` sebebiyle birlikte `503 CHAT_NOT_CONFIGURED` döner. Varsayılan (shipped) config retrieve-only'dir.
 - Konfigürasyon merkezi bir `config` objesi ile yönetiliyor.
 
 Bu kararların sonucu olarak proje, minimal ama okunabilir bir backend omurgası elde ediyor.
@@ -315,7 +315,7 @@ Maksat:
 - `modelAvailability.embeddingProvider` / `modelAvailability.embeddingModel` (aktif index'in build edildiği çift; okumalar bunu kullanır)
 - `modelAvailability.embeddingModelAvailable`
 - `modelAvailability.desiredEmbeddingProvider` / `modelAvailability.desiredEmbeddingModel` (sadece kaydedilmiş çift aktif çiften farklıysa; reindex sonrası geçerli olur)
-- `modelAvailability.chatModel` (global chat LLM modeli; yapılandırılmamışsa `null`)
+- `modelAvailability.chatModel` / `chatServiceId` (tenant'ın chat LLM'i: seçimi, yoksa server'ınki; hiçbiri yoksa `null`)
 - `modelAvailability.chatModelAvailable` (chat provider kontrolünün sonucu)
 - `status`
 - `hasActivePhysicalCollection`
@@ -357,7 +357,7 @@ Başarılı çıktı:
 - `activeVersion: string`
 - `embeddingProvider: "builtin" | "openai-compatible"` (koleksiyonun aktif embedding provider'ı)
 - `embeddingModel: string`
-- `chatModel: string` (cevabı üreten global chat LLM modeli)
+- `chatModel: string`, `chatServiceId: string` (cevabı üreten chat LLM modeli ve servisi; `server` = `.env` / config)
 
 `observability.includeDebugTimings=false` iken query response bu alanlarla sınırlı kalır. Config `true` yapılırsa response'a `debug.latency.retrievalMs`, `debug.latency.generationMs` ve `debug.latency.totalMs` eklenir.
 

@@ -511,9 +511,20 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
   }, { middleware: [requireRegistry], adminAuthEnabled });
 
   /**
+   * The embedding service a new openai-compatible collection gets when the request names none: "server" when
+   * configured, else the tenant's only service. null when the client must choose (several services) or when
+   * there is none. GET /v1/admin/models reports it, so clients never re-implement this rule.
+   */
+  async function defaultEmbeddingServiceId(context: RequestContext): Promise<string | null> {
+    if (serverEmbeddingConnection(runtimeConfig)) return SERVER_EMBEDDING_SERVICE_ID;
+    const services = await deps.registry!.listEmbeddingServices(context);
+    return services.length === 1 ? services[0].id : null;
+  }
+
+  /**
    * The embedding service a collection uses. Given: it must exist for the tenant ("server" always does).
-   * Not given, on create: "server" when configured, else the tenant's only service, else "server"
-   * (the preflight then reports that no service is configured).
+   * Not given, on create: defaultEmbeddingServiceId; with several services the client must choose (400); with
+   * none, "server" (the preflight then reports that no service is configured).
    */
   async function chooseEmbeddingService(
     context: RequestContext,
@@ -541,9 +552,9 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       return requested;
     }
     if (mode === "update") return requested;
-    if (serverEmbeddingConnection(runtimeConfig)) return SERVER_EMBEDDING_SERVICE_ID;
+    const chosen = await defaultEmbeddingServiceId(context);
+    if (chosen) return chosen;
     const services = await deps.registry!.listEmbeddingServices(context);
-    if (services.length === 1) return services[0].id;
     if (services.length > 1) {
       throw new HttpError(
         400,
@@ -635,12 +646,14 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
           name: service.displayName,
         }))
         : [];
-      const [catalog, chatServices] = await Promise.all([
+      const [catalog, chatServices, defaultServiceId] = await Promise.all([
         (deps.healthChecks?.listEmbeddingModels ?? listEmbeddingModels)(runtimeConfig, { services }),
         // Models of every chat service of the tenant, for choosing the chat model (PUT /v1/admin/chat-settings).
         deps.registry ? chatRoutes.listChatServiceModels(context) : Promise.resolve([]),
+        // The service a new openai-compatible collection gets without embeddingServiceId (null: the client must choose).
+        deps.registry ? defaultEmbeddingServiceId(context) : Promise.resolve(null),
       ]);
-      res.json({ ...catalog, chatServices });
+      res.json({ ...catalog, defaultEmbeddingServiceId: defaultServiceId, chatServices });
     } catch (error) {
       next(error);
     }

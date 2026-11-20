@@ -137,6 +137,7 @@ Example response:
     { "id": "server", "name": "Server (.env / config)", "reachable": true, "authOk": true, "models": ["embeddinggemma-2:270m", "bge-m3"] },
     { "id": "openai-4f2a9c1b7e", "name": "OpenAI", "reachable": true, "authOk": true, "models": ["text-embedding-3-small"] }
   ],
+  "defaultEmbeddingServiceId": "server",
   "chatServices": [
     { "id": "server", "name": "Server (.env / config)", "reachable": true, "authOk": true, "models": ["gemma3:4b", "bge-m3"] },
     { "id": "openrouter-8c1d2e3f4a", "name": "OpenRouter", "reachable": true, "authOk": true, "models": ["openai/gpt-4o-mini"] }
@@ -146,7 +147,7 @@ Example response:
 
 `chatServices` lists every chat service of the tenant with its models (`server` first, when configured).
 
-`embeddingServices` lists every embedding service the tenant can use with its models (`server` first, when configured); a collection picks one with `embeddingServiceId`. `providers["openai-compatible"]` describes only the `server` service and is kept for older clients.
+`embeddingServices` lists every embedding service the tenant can use with its models (`server` first, when configured); a collection picks one with `embeddingServiceId`. `defaultEmbeddingServiceId` is the service a new `openai-compatible` collection gets when the request sends no `embeddingServiceId`: `server` when configured, else the tenant's only service; `null` when there is none, or when there are several and the client must choose (create then returns `400`). Clients that offer a "default" choice should show this value instead of re-implementing the rule. `providers["openai-compatible"]` describes only the `server` service and is kept for older clients.
 
 If no `embedding.baseUrl` is configured, the `openai-compatible` entry is `{ "configured": false, "baseUrl": null, "reachable": false, "models": [] }`. If the service is configured but unreachable or rejects the API key, the endpoint still returns `200` with `reachable: false`, `models: []`, and an `error` string.
 

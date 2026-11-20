@@ -69,6 +69,10 @@ describe("admin panel static contract", () => {
     // Collections send the chosen service; the model list comes from that service.
     assert.ok(js.includes('addIfText(payload, "embeddingServiceId", values.embeddingServiceId)'));
     assert.ok(!js.includes("modelDiscovery.external"));
+    // The default service is the server's choice: "Default" sends no id; its name comes from the API.
+    assert.ok(js.includes("Default (the server chooses: ${defaultName})"));
+    assert.ok(js.includes('defaultServiceId: typeof data?.defaultEmbeddingServiceId === "string" ? data.defaultEmbeddingServiceId : null,'));
+    assert.ok(!js.includes("services[0]?.id || \"\";"));
   });
 
   it("manages chat services and the tenant's chat choice through the API in their own view", async () => {

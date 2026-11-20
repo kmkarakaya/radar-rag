@@ -3189,6 +3189,11 @@ components:
           description: Every embedding service of the tenant with its models ("server" first when configured).
           items:
             $ref: "#/components/schemas/EmbeddingServiceModels"
+        defaultEmbeddingServiceId:
+          type: [string, "null"]
+          description: >-
+            The service a new openai-compatible collection gets without embeddingServiceId ("server" when
+            configured, else the tenant's only service); null when there is none or the client must choose.
         chatServices:
           type: array
           description: >-

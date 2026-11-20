@@ -622,12 +622,17 @@ function emptyModelDiscovery() {
         services: [],
         /** GET /v1/admin/models chatServices: the same shape, for choosing the chat model. */
         chatServices: [],
+        /** GET /v1/admin/models defaultEmbeddingServiceId: what the server picks when none is sent (null: it asks). */
+        defaultServiceId: null,
     };
 }
 
-/** The embedding service chosen in the editor (openai-compatible only). */
+/**
+ * The embedding service chosen in the editor (openai-compatible only). "Default" (empty value) means the server
+ * chooses; its choice comes from GET /v1/admin/models defaultEmbeddingServiceId, so its models can be suggested.
+ */
 function selectedEmbeddingServiceEntry() {
-    const id = elements.editEmbeddingService?.value || "";
+    const id = elements.editEmbeddingService?.value || state.modelDiscovery.defaultServiceId || "";
     return state.modelDiscovery.services.find((service) => service.id === id) || null;
 }
 
@@ -746,6 +751,19 @@ function syncEmbeddingServiceField(preferredId) {
     const wanted = preferredId !== undefined ? preferredId : select.value;
     const services = state.modelDiscovery.services;
     clearNode(select);
+    // Empty value: send no embeddingServiceId and let the server pick (or ask, when several services exist). Only
+    // offered when the server can pick: a new collection, or one switching to openai-compatible. A saved
+    // openai-compatible collection keeps its service unless another one is chosen.
+    const editingExternal = Boolean(elements.editId?.value) && select.dataset.savedProvider === "openai-compatible";
+    if (!editingExternal) {
+        const defaultId = state.modelDiscovery.defaultServiceId;
+        const defaultName = defaultId ? services.find((service) => service.id === defaultId)?.name || defaultId : "";
+        const defaultOption = createEl("option", "", defaultName
+            ? `Default (the server chooses: ${defaultName})`
+            : services.length > 1 ? "Default (the server asks you to choose one below)" : "Default (the server chooses)");
+        defaultOption.value = "";
+        select.appendChild(defaultOption);
+    }
     services.forEach((service) => {
         const option = createEl("option", "", service.reachable === false ? `${service.name} (not reachable)` : service.name);
         option.value = service.id;
@@ -756,8 +774,8 @@ function syncEmbeddingServiceField(preferredId) {
         missing.value = wanted;
         select.appendChild(missing);
     }
-    // Default on create: "server" when configured, else the first service (the API picks the same way).
-    select.value = wanted || services[0]?.id || "";
+    // New collections start on "Default": the server applies its own rule (see defaultEmbeddingServiceId).
+    select.value = wanted || (editingExternal ? services[0]?.id || "" : "");
 }
 
 /** " via <service name>" for an openai-compatible embedding, "" otherwise. */
@@ -966,6 +984,7 @@ async function loadModelDiscovery() {
             builtinModels: normalizeModelList(data?.providers?.builtin?.models),
             services: normalizeServiceModels(data?.embeddingServices),
             chatServices: normalizeServiceModels(data?.chatServices),
+            defaultServiceId: typeof data?.defaultEmbeddingServiceId === "string" ? data.defaultEmbeddingServiceId : null,
         };
     } catch (_error) {
         if (token !== loadTokens.modelDiscovery) return;
@@ -2930,6 +2949,7 @@ function setupEditorTab(collection) {
     elements.editRetrievalK.value = collection.retrievalK ?? "";
     elements.editRetrievalDistanceThreshold.value = collection.retrievalDistanceThreshold ?? "";
     if (elements.editEmbeddingProvider) elements.editEmbeddingProvider.value = collection.embeddingProvider || "";
+    if (elements.editEmbeddingService) elements.editEmbeddingService.dataset.savedProvider = collection.embeddingProvider || "";
     // An openai-compatible collection without a service id uses "server" (.env / config).
     syncEmbeddingServiceField(collection.embeddingProvider === "openai-compatible" ? collection.embeddingServiceId || "server" : "");
     elements.editEmbeddingModel.value = fieldValueFromCollection(collection, "embeddingModel");

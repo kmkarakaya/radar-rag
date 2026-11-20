@@ -23,7 +23,7 @@ Role matrix:
 | --- | --- |
 | `viewer` | Read-only `GET /v1/admin/**` plus auth session endpoints |
 | `operator` | Viewer access plus create, validate, update, reindex, job cancel, and document upload/delete (`manageDocuments`) |
-| `admin` | Operator access plus collection delete, job delete, bulk delete, and embedding services (`manageEmbeddingServices`) |
+| `admin` | Operator access plus collection delete, job delete, bulk delete, embedding services (`manageEmbeddingServices`), and chat services and the chat choice (`manageChatServices`) |
 
 Operational notes:
 
@@ -100,13 +100,13 @@ Notes:
 - `collectionDefaults.sourcePath` is a resolved runtime path, so it may appear absolute.
 - `modelDefaults.embeddingServerConfigured` tells whether the `server` embedding service (`RAG_EMBEDDING_BASE_URL` / `embedding.baseUrl`) is set; more services come from the embedding services endpoints.
 - `modelDefaults` is the configured default embedding (`embedding.provider` / `embedding.model`). It applies to **new** collections only; every existing collection keeps its own stored provider and model, so changing this default never changes an existing collection.
-- `chat` describes the global, optional chat LLM used only by `/query`. It is not a collection setting. `enabled: false` means the backend is retrieve-only (`/query` returns `503 CHAT_NOT_CONFIGURED`). When enabled, `baseUrl` and `model` show the OpenAI-compatible endpoint and model (for example `http://localhost:11434/v1` and `gemma3:4b`). The API key itself is never returned; `apiKeyConfigured` only tells whether one is set (`RAG_CHAT_API_KEY` or `.local/rag_chat_api_key.secret`). The chat LLM is configured with `npm run onboard` or `RAG_CHAT_BASE_URL` / `RAG_CHAT_MODEL`, not through the admin API. The bundled admin panel (`/admin`) shows it as a read-only "Chat LLM (global, optional)" line in the collection form, which has no chat model field.
+- `chat` describes the **server** chat LLM from `.env` / config (`RAG_CHAT_BASE_URL` / `RAG_CHAT_MODEL`, `npm run onboard`). It is not a collection setting. `enabled: false` means no server chat LLM is configured. The API key itself is never returned; `apiKeyConfigured` only tells whether one is set (`RAG_CHAT_API_KEY` or `.local/rag_chat_api_key.secret`). The chat LLM that actually answers `/query` for a tenant is that tenant's choice when it has one, else this one: read it with [`GET /v1/admin/chat-settings`](#chat-services-and-the-chat-choice).
 - This endpoint is intended for create-form visibility only; it does not expose the full config file.
 - Use this together with `GET /v1/admin/models` so the create form can show both backend defaults and runtime model suggestions.
 
 ### `GET /v1/admin/models`
 
-Returns embedding model suggestions per embedding provider, for the collection `embeddingProvider` / `embeddingModel` fields. The chat LLM is not discovered here.
+Returns embedding model suggestions per embedding provider, for the collection `embeddingProvider` / `embeddingModel` fields, and the models of every chat service (`chatServices`), for choosing the chat model with `PUT /v1/admin/chat-settings`.
 
 There are two embedding providers:
 
@@ -136,9 +136,15 @@ Example response:
   "embeddingServices": [
     { "id": "server", "name": "Server (.env / config)", "reachable": true, "authOk": true, "models": ["embeddinggemma-2:270m", "bge-m3"] },
     { "id": "openai-4f2a9c1b7e", "name": "OpenAI", "reachable": true, "authOk": true, "models": ["text-embedding-3-small"] }
+  ],
+  "chatServices": [
+    { "id": "server", "name": "Server (.env / config)", "reachable": true, "authOk": true, "models": ["gemma3:4b", "bge-m3"] },
+    { "id": "openrouter-8c1d2e3f4a", "name": "OpenRouter", "reachable": true, "authOk": true, "models": ["openai/gpt-4o-mini"] }
   ]
 }
 ```
+
+`chatServices` lists every chat service of the tenant with its models (`server` first, when configured).
 
 `embeddingServices` lists every embedding service the tenant can use with its models (`server` first, when configured); a collection picks one with `embeddingServiceId`. `providers["openai-compatible"]` describes only the `server` service and is kept for older clients.
 
@@ -708,6 +714,86 @@ Any of `name`, `baseUrl`, `apiKey` (`null` removes the stored key; leaving it ou
 
 `{ "serviceId": "openai-4f2a9c1b7e" }` (a saved service, or `server`) or `{ "baseUrl": "...", "apiKey": "..." }` (before saving). A free `GET {baseUrl}/models`; nothing is embedded and nothing is stored. Response: `{ "id", "name", "reachable", "authOk", "models": [...], "error"?, "ok" }`. Needs `manageEmbeddingServices` but no action token (like validate).
 
+## Chat services and the chat choice
+
+The optional chat LLM that answers `/query` (`POST /v1/rag/collections/:id/query`). Two parts:
+
+- **Chat services**: connections to OpenAI-compatible chat completions APIs (Ollama `/v1`, OpenAI, OpenRouter, LM Studio, vLLM, ...), per tenant. Same endpoints and rules as the [embedding services](#embedding-services), under `/v1/admin/chat-services`.
+- **The chat choice** (`/v1/admin/chat-settings`): which chat service and model answer `/query` for the tenant. One choice per tenant, used by all its collections.
+
+Which chat LLM answers `/query`:
+
+1. the tenant's choice, when it has one (`source: "tenant"`);
+2. otherwise the `server` chat LLM from `.env` / config (`RAG_CHAT_BASE_URL` + `RAG_CHAT_MODEL`, `source: "server"`);
+3. otherwise none: the tenant is retrieve-only and `/query` returns `503 CHAT_NOT_CONFIGURED` (`source: "none"`).
+
+If the chosen service stops existing (for example `server` was chosen and `RAG_CHAT_BASE_URL` was removed later), `/query` returns `503 CHAT_NOT_CONFIGURED` with the reason; it never falls back to another service. Every change takes effect on the next request; no restart is needed. `temperature`, `maxTokens` and `maxContextTokens` stay global config settings (`chat.*` in the YAML) and apply to every chat service.
+
+The choice decides where questions and retrieved document text are sent, so changing services or the choice needs the `manageChatServices` capability (admin role) when admin auth is on. While admin auth is off, anyone who can reach the server can do it; responses then carry a `warnings` entry saying so. API keys are stored in plain text in the registry, never returned (`apiKeyConfigured` only), and redacted from errors. Only `http`/`https` URLs are accepted, and redirects are never followed.
+
+### `GET /v1/admin/chat-services`
+
+```json
+{
+  "services": [
+    { "id": "server", "name": "Server (.env / config)", "baseUrl": "http://host.docker.internal:11434/v1", "apiKeyConfigured": false, "source": "server", "readOnly": true, "configured": true, "inUse": false, "defaultModel": "gemma3:4b" },
+    { "id": "openrouter-8c1d2e3f4a", "name": "OpenRouter", "baseUrl": "https://openrouter.ai/api/v1", "apiKeyConfigured": true, "source": "panel", "readOnly": false, "configured": true, "inUse": true, "createdAt": "2026-11-20T10:00:00.000Z", "updatedAt": "2026-11-20T10:00:00.000Z" }
+  ],
+  "warnings": ["Admin auth is off: anyone who can reach this server can change where questions and document text are sent for answer generation. Turn on admin auth before other people can reach it."]
+}
+```
+
+`inUse` marks the service that answers `/query` for the tenant now (its choice, or `server` while there is none). `server` is always listed; without `RAG_CHAT_BASE_URL` it has `configured: false` and `baseUrl: null`. `defaultModel` is the model from `.env` / config.
+
+### `POST /v1/admin/chat-services`, `PATCH /v1/admin/chat-services/:serviceId`, `POST /v1/admin/chat-services/test`
+
+The same bodies and responses as the embedding services endpoints: `{ "name", "baseUrl", "apiKey"? }` → `201 { "service", "warnings" }`; `PATCH` takes any of `name`, `baseUrl`, `apiKey` (`null` removes the key) and the next `/query` uses the change; `/test` takes `{ "serviceId" }` or `{ "baseUrl", "apiKey"? }` and makes a free `GET {baseUrl}/models` (no generation, nothing stored). Names are unique per tenant; a URL that another chat service already uses only adds a warning. `server` is read-only (`409 CHAT_SERVICE_READ_ONLY`).
+
+### `DELETE /v1/admin/chat-services/:serviceId`
+
+`204`, or `409 CHAT_SERVICE_IN_USE` (with `details.chatSettings`) while it is the tenant's choice: choose another one or reset the choice first.
+
+### `GET /v1/admin/chat-settings`
+
+The tenant's effective chat LLM, with a free, cached availability check (never a generation):
+
+```json
+{
+  "source": "tenant",
+  "serviceId": "openrouter-8c1d2e3f4a",
+  "serviceName": "OpenRouter",
+  "model": "openai/gpt-4o-mini",
+  "queryEnabled": true,
+  "status": {
+    "ok": true,
+    "code": "CHAT_MODEL_AVAILABLE",
+    "message": "Chat model openai/gpt-4o-mini is available at https://openrouter.ai/api/v1.",
+    "reachable": true,
+    "authOk": true,
+    "modelListed": true,
+    "availableModels": ["openai/gpt-4o-mini"]
+  },
+  "updatedAt": "2026-11-20T10:01:00.000Z",
+  "updatedBy": "admin"
+}
+```
+
+- `source`: `tenant` (a choice was saved), `server` (no choice; `.env` / config is used) or `none` (retrieve-only; `serviceId` and `model` are `null`).
+- `status.code` is one of the readiness codes: `CHAT_MODEL_AVAILABLE`, `CHAT_MODEL_UNVERIFIED` (the service does not list models), `CHAT_MODEL_MISSING`, `CHAT_PROVIDER_UNREACHABLE`, `CHAT_PROVIDER_AUTH_FAILED`, `CHAT_SERVICE_NOT_FOUND` (the chosen service is gone) or `CHAT_NOT_CONFIGURED`.
+- `updatedAt` / `updatedBy` are `null` when there is no saved choice.
+
+### `PUT /v1/admin/chat-settings`
+
+`{ "serviceId": "openrouter-8c1d2e3f4a", "model": "openai/gpt-4o-mini" }` → `200 { "settings": {...as GET}, "warnings": [...] }`. `serviceId` is a chat service id or `server` (to use the server's connection with another model).
+
+- Unknown service, another tenant's service, or `server` while `RAG_CHAT_BASE_URL` is not set: `404 CHAT_SERVICE_NOT_FOUND`.
+- The service lists its models and `model` is not among them: `422 CHAT_MODEL_MISSING` with `details.availableModels`; nothing is saved.
+- The service is unreachable or rejects the key: the choice **is saved** (chat is optional and can be set up before the service runs) and `warnings` says why it cannot be used yet. `status` and `/query` report the problem until it is fixed.
+
+### `DELETE /v1/admin/chat-settings`
+
+Removes the tenant's choice → `200 { "settings": {...} }`: the tenant goes back to the server's chat LLM, or to retrieve-only when there is none.
+
 ## Documents of a collection
 
 Upload, list, replace and delete the documents of an **uploads** collection (created without `sourcePath`). The admin panel's Documents tab uses exactly these endpoints.
@@ -974,6 +1060,10 @@ Rules:
 | `EMBEDDING_SERVICE_NOT_FOUND` | `404` | The embedding service does not exist for this tenant (also when a collection names an unknown `embeddingServiceId`) |
 | `EMBEDDING_SERVICE_IN_USE` | `409` | The embedding service is still used by collections (`details.collections`) |
 | `EMBEDDING_SERVICE_READ_ONLY` | `409` | The `server` service comes from `.env` / config and cannot be changed through the API |
+| `CHAT_SERVICE_NOT_FOUND` | `404` | The chat service does not exist for this tenant (also `PUT /chat-settings` with an unknown `serviceId`, or `server` while it is not configured) |
+| `CHAT_SERVICE_IN_USE` | `409` | The chat service is the tenant's chat choice (`details.chatSettings`) |
+| `CHAT_SERVICE_READ_ONLY` | `409` | The `server` chat service comes from `.env` / config and cannot be changed through the API |
+| `CHAT_MODEL_MISSING` | `422` | `PUT /chat-settings`: the chat service does not offer the model (`details.availableModels`) |
 | `COLLECTION_STORAGE_INCONSISTENT` | `503` | Document delete: the document's chunks could not be removed from the search index (Chroma unreachable); nothing was deleted, retry later |
 | `INVALID_JOB_STATUS` | `400` | Job action was attempted in the wrong job state |
 | `UNAVAILABLE_MODEL` | `422` | Create or reindex preflight: no embedding model for `openai-compatible`, a built-in model outside the catalog, or a model the embedding service does not offer; see `details.availableModels` and `details.recommendedActions` |

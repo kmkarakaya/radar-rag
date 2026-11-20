@@ -17,7 +17,7 @@ import {
   createPersistentOperationalLogSink,
   type OperationalLogSink,
 } from "./observability/logger.js";
-import { checkChatProvider, serverChatTarget } from "./chat.js";
+import { checkChatProvider, listChatConnectionModels, serverChatTarget } from "./chat.js";
 import { resolveChatTarget } from "./chatServices.js";
 import {
   capabilitySummary,
@@ -59,6 +59,8 @@ export type AppDependencies = {
     checkEmbeddingConnection?: typeof listConnectionModels;
     /** Free GET /models check of the optional chat LLM (never a generation). */
     checkChatProvider?: typeof checkChatProvider;
+    /** Free GET /models check of one chat service (POST /v1/admin/chat-services/test, GET /v1/admin/models). */
+    checkChatConnection?: typeof listChatConnectionModels;
     checkIndexingSourceHealth?: typeof checkIndexingSourceHealth;
   };
   /** Removes a deleted document's chunks from the active index (Chroma). */

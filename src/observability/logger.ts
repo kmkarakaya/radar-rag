@@ -149,6 +149,10 @@ export function getHttpOperationTarget(req: Request): { operation: string; colle
       return { operation: "embedding_service_create" };
     }
 
+    if (/^\/v1\/admin\/chat-services$/.test(req.path)) {
+      return { operation: "chat_service_create" };
+    }
+
     const uploadMatch = /^\/v1\/admin\/collections\/([^/]+)\/files$/.exec(req.path);
     if (uploadMatch) {
       return {
@@ -187,9 +191,25 @@ export function getHttpOperationTarget(req: Request): { operation: string; colle
     return { operation: "embedding_service_update" };
   }
 
+  if (req.method === "PATCH" && /^\/v1\/admin\/chat-services\/[^/]+$/.test(req.path)) {
+    return { operation: "chat_service_update" };
+  }
+
+  if (req.method === "PUT" && /^\/v1\/admin\/chat-settings$/.test(req.path)) {
+    return { operation: "chat_settings_update" };
+  }
+
   if (req.method === "DELETE") {
     if (/^\/v1\/admin\/embedding-services\/[^/]+$/.test(req.path)) {
       return { operation: "embedding_service_delete" };
+    }
+
+    if (/^\/v1\/admin\/chat-services\/[^/]+$/.test(req.path)) {
+      return { operation: "chat_service_delete" };
+    }
+
+    if (/^\/v1\/admin\/chat-settings$/.test(req.path)) {
+      return { operation: "chat_settings_reset" };
     }
 
     const documentMatch = /^\/v1\/admin\/collections\/([^/]+)\/files\/([^/]+)$/.exec(req.path);

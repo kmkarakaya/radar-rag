@@ -381,7 +381,7 @@ export function buildSystemPrompt(sources: RagSource[]): string {
 }
 
 /** Maps a failed chat call to a clear API error; the API key is never included. */
-function toChatGenerationError(
+export function toChatGenerationError(
   error: unknown,
   chatTarget: ReadyChatTarget,
   settings: { embeddingModel: string; chatModel: string },

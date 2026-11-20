@@ -219,6 +219,7 @@ before(async () => {
           answer: "stub-answer",
           embeddingProvider: options.embeddingProvider,
           embeddingModel: options.embeddingModel ?? config.embedding.model,
+          chatServiceId: "server",
           chatModel: config.chat.model,
           distanceScoreThreshold: options.retrievalDistanceThreshold ?? -1,
           sources: [],
@@ -594,6 +595,7 @@ describe("v1 admin and rag api endpoints", () => {
       embeddingServiceId: "server",
       embeddingModelAvailable: true,
       chatModel: config.chat.model,
+      chatServiceId: "server",
       chatModelAvailable: true,
     });
   });
@@ -623,6 +625,7 @@ describe("v1 admin and rag api endpoints", () => {
         embeddingServiceId: "server",
         embeddingModelAvailable: false,
         chatModel: config.chat.model,
+        chatServiceId: "server",
         chatModelAvailable: false,
       });
       assert.deepEqual(body.blockers.map((issue: any) => issue.code), [
@@ -636,7 +639,7 @@ describe("v1 admin and rag api endpoints", () => {
       }]);
       assert.deepEqual(body.recommendedActions, [
         "Use a model offered by the embedding service (see details.availableModels), or pull it there (for Ollama: ollama pull <model>).",
-        `Use a model offered by ${config.chat.baseUrl} (see details.availableModels) or pull it there, e.g. ollama pull ${config.chat.model} for a local Ollama.`,
+        "Use a model offered by the chat service (see details.availableModels) with PUT /v1/admin/chat-settings, or pull it there (for Ollama: ollama pull <model>).",
         "Wait for the current indexing job to finish before changing settings or starting another re-index.",
       ]);
       assert.deepEqual(body.capabilities, {
@@ -870,6 +873,7 @@ describe("v1 admin and rag api endpoints", () => {
             answer: "audit-answer",
             embeddingProvider: options.embeddingProvider,
             embeddingModel: options.embeddingModel ?? "embed-audit",
+            chatServiceId: "server",
             chatModel: "chat-audit",
             distanceScoreThreshold: options.retrievalDistanceThreshold ?? 0.5,
             sources: [],
@@ -1214,6 +1218,7 @@ describe("v1 admin and rag api endpoints", () => {
             answer: "debug-answer",
             embeddingProvider: options.embeddingProvider,
           embeddingModel: options.embeddingModel ?? config.embedding.model,
+            chatServiceId: "server",
             chatModel: config.chat.model,
             distanceScoreThreshold: 0.4,
             sources: [],

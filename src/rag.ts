@@ -2,7 +2,15 @@ import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { ChromaClient, type ChromaClientArgs } from "chromadb";
 import { assertChromaCollectionReadable } from "./collections/chromaCollections.js";
-import { classifyChatError, createChatModel } from "./chat.js";
+import {
+  chatNotConfiguredMessage,
+  classifyChatError,
+  createChatModel,
+  isChatTargetReady,
+  serverChatTarget,
+  type ReadyChatTarget,
+  type ChatTarget,
+} from "./chat.js";
 import { config, type DistanceMetric, type ResolvedConfig } from "./config.js";
 import {
   BuiltinModelLoadError,
@@ -375,11 +383,16 @@ export function buildSystemPrompt(sources: RagSource[]): string {
 /** Maps a failed chat call to a clear API error; the API key is never included. */
 function toChatGenerationError(
   error: unknown,
-  runtimeConfig: ResolvedConfig,
+  chatTarget: ReadyChatTarget,
   settings: { embeddingModel: string; chatModel: string },
 ): unknown {
-  const classified = classifyChatError(error, runtimeConfig.chat.apiKey);
-  const details = { embeddingModel: settings.embeddingModel, chatModel: settings.chatModel };
+  // The key of the service that was called is redacted, whichever service it is.
+  const classified = classifyChatError(error, chatTarget.connection.apiKey);
+  const details = {
+    embeddingModel: settings.embeddingModel,
+    chatModel: settings.chatModel,
+    chatServiceId: chatTarget.connection.serviceId,
+  };
 
   switch (classified.kind) {
     case "timeout":
@@ -387,7 +400,7 @@ function toChatGenerationError(
     case "unreachable":
       return new RagQueryError(
         "CHAT_PROVIDER_UNREACHABLE",
-        `The chat LLM at ${runtimeConfig.chat.baseUrl} could not be reached: ${classified.message}`,
+        `The chat LLM at ${chatTarget.connection.baseUrl} could not be reached: ${classified.message}`,
         503,
         details,
       );
@@ -676,6 +689,8 @@ export async function answerQuestion(question: string, options: {
   embeddingProvider: EmbeddingProvider;
   embeddingModel: string;
   embeddingTarget?: EmbeddingTarget;
+  /** The tenant's chat LLM (resolveChatTarget); defaults to the server's chat LLM from config. */
+  chatTarget?: ChatTarget;
   retrievalDistanceThreshold?: number;
   context?: RequestContext;
   abortSignal?: AbortSignal;
@@ -686,6 +701,7 @@ export async function answerQuestion(question: string, options: {
   embeddingProvider: EmbeddingProvider;
   embeddingModel: string;
   chatModel: string;
+  chatServiceId: string;
   distanceScoreThreshold: number;
   sources: RagSource[];
   debug?: {
@@ -698,18 +714,18 @@ export async function answerQuestion(question: string, options: {
 }> {
   const runtimeConfig = options.runtimeConfig;
   const startedAt = Date.now();
-  if (!runtimeConfig.chat.enabled) {
-    throw new RagQueryError(
-      "CHAT_NOT_CONFIGURED",
-      "Answer generation is disabled: no chat LLM is configured. Use /retrieve, or set chat.baseUrl and chat.model (npm run onboard or RAG_CHAT_BASE_URL / RAG_CHAT_MODEL).",
-      503,
-    );
+  const chatTarget = options.chatTarget ?? serverChatTarget(runtimeConfig);
+  if (!isChatTargetReady(chatTarget)) {
+    throw new RagQueryError("CHAT_NOT_CONFIGURED", chatNotConfiguredMessage(chatTarget), 503);
   }
-  const settings = resolveCollectionRuntimeSettings(runtimeConfig, {
-    embeddingProvider: options.embeddingProvider,
-    embeddingModel: options.embeddingModel,
-    retrievalDistanceThreshold: options.retrievalDistanceThreshold,
-  });
+  const settings = {
+    ...resolveCollectionRuntimeSettings(runtimeConfig, {
+      embeddingProvider: options.embeddingProvider,
+      embeddingModel: options.embeddingModel,
+      retrievalDistanceThreshold: options.retrievalDistanceThreshold,
+    }),
+    chatModel: chatTarget.model,
+  };
   const k = options.retrievalK ?? runtimeConfig.retrievalK;
   logStep(`query started; chatModel=${settings.chatModel}; k=${k}; reqId=${options.context?.requestId || "-"}`);
   const emitQueryFailure = (error: unknown) => {
@@ -776,7 +792,7 @@ export async function answerQuestion(question: string, options: {
 
   const systemPrompt = buildSystemPrompt(sources);
   // Created only when generation is actually needed (after the no-context checks).
-  const model = createChatModel(runtimeConfig);
+  const model = createChatModel(runtimeConfig, { target: chatTarget });
 
   const controller = new AbortController();
   const onParentAbort = () => controller.abort();
@@ -830,7 +846,7 @@ export async function answerQuestion(question: string, options: {
           },
         );
       }
-      throw toChatGenerationError(error, runtimeConfig, settings);
+      throw toChatGenerationError(error, chatTarget, settings);
     }
     
     const generationElapsedMs = Date.now() - generationStartedAt;
@@ -910,6 +926,7 @@ export async function answerQuestion(question: string, options: {
       embeddingProvider: settings.embeddingProvider,
       embeddingModel: settings.embeddingModel,
       chatModel: settings.chatModel,
+      chatServiceId: chatTarget.connection.serviceId,
       distanceScoreThreshold: retrieval.distanceScoreThreshold,
       sources,
       ...(options.includeDebugTimings

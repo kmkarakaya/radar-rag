@@ -9,6 +9,8 @@ import { resolveReadableCollection } from "../collections/resolveReadableCollect
 import { retrieveSources, answerQuestion } from "../rag.js";
 import { activeEmbeddingTarget } from "../embeddings/index.js";
 import { resolveEmbeddingTarget } from "../embeddings/services.js";
+import { chatNotConfiguredMessage, isChatTargetReady } from "../chat.js";
+import { resolveChatTarget } from "../chatServices.js";
 import { buildCollectionReadinessPayload } from "./collectionReadiness.js";
 import type { RagCollection } from "../collections/types.js";
 
@@ -183,22 +185,19 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
 
   router.post("/collections/:collectionId/query", requireRegistry, async (req, res, next) => {
     try {
-      // Answer generation is optional; without a chat LLM the API is retrieve-only.
+      const context = res.locals.requestContext as RequestContext;
+      // Answer generation is optional; without a chat LLM the API is retrieve-only. The chat LLM is the
+      // tenant's choice (PUT /v1/admin/chat-settings), else the server's (.env / config).
       // No Retry-After: this is a configuration state, not a transient overload.
-      if (!runtimeConfig.chat.enabled) {
-        throw new HttpError(
-          503,
-          "CHAT_NOT_CONFIGURED",
-          "Answer generation is disabled: no chat LLM is configured. Use /retrieve, or set chat.baseUrl and chat.model (npm run onboard or RAG_CHAT_BASE_URL / RAG_CHAT_MODEL).",
-        );
+      const chatTarget = await resolveChatTarget({ registry: deps.registry, runtimeConfig, context });
+      if (!isChatTargetReady(chatTarget)) {
+        throw new HttpError(503, "CHAT_NOT_CONFIGURED", chatNotConfiguredMessage(chatTarget));
       }
 
       const parsed = querySchema.safeParse(req.body);
       if (!parsed.success) {
         throw new HttpError(400, "INVALID_REQUEST_BODY", "Invalid query payload", { issues: parsed.error.issues });
       }
-
-      const context = res.locals.requestContext as RequestContext;
       
       const abortSignal = createRequestAbortSignal(req, res);
 
@@ -224,13 +223,14 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         embeddingProvider: embedding.provider,
         embeddingModel: embedding.model,
         embeddingTarget: embedding,
+        chatTarget,
         retrievalDistanceThreshold: collection.retrievalDistanceThreshold,
         context,
         abortSignal,
         includeDebugTimings: runtimeConfig.includeDebugTimings,
         logEvent: deps.logEvent,
       });
-      const { debug, chatModel, embeddingProvider, embeddingModel, ...publicResult } = result;
+      const { debug, chatModel, chatServiceId, embeddingProvider, embeddingModel, ...publicResult } = result;
 
       res.json({
         ...publicResult,
@@ -238,6 +238,7 @@ export function createRagRouter(deps: AppDependencies, runtimeConfig: ResolvedCo
         collectionDisplayName: collection.displayName,
         activeVersion: collection.activeVersion,
         chatModel,
+        chatServiceId,
         embeddingProvider,
         embeddingModel,
         ...(embedding.serviceId ? { embeddingServiceId: embedding.serviceId } : {}),

@@ -1,6 +1,7 @@
 import type { CollectionRegistry, IndexJob, RagCollection, RequestContext } from "../collections/types.js";
 import type { ResolvedConfig } from "../config.js";
 import { checkChatProvider } from "../chat.js";
+import { resolveChatTarget } from "../chatServices.js";
 import { activeEmbeddingTarget, checkEmbeddingTarget, type EmbeddingProvider } from "../embeddings/index.js";
 import { resolveEmbeddingTarget } from "../embeddings/services.js";
 import { normalizeEmbeddingServiceId } from "../collections/indexState.js";
@@ -28,8 +29,10 @@ export type CollectionReadinessPayload = {
     /** openai-compatible: the embedding service the active index was built with ("server" = .env / config). */
     embeddingServiceId?: string;
     embeddingModelAvailable: boolean;
-    /** The global chat LLM model, or null when no chat LLM is configured (retrieve-only). */
+    /** The tenant's chat LLM model (its choice, else the server's), or null when there is none (retrieve-only). */
     chatModel: string | null;
+    /** The chat service of that model ("server" = .env / config), or null when there is none. */
+    chatServiceId: string | null;
     chatModelAvailable: boolean;
     /** Set when the collection's saved embedding differs from the active one (takes effect after re-index). */
     desiredEmbeddingProvider?: EmbeddingProvider;
@@ -83,8 +86,10 @@ export async function buildCollectionReadinessPayload(
   const embeddingStatus = await (healthChecks?.checkEmbeddingTarget ?? checkEmbeddingTarget)(runtimeConfig, readEmbedding);
   const hasActivePhysicalCollection = Boolean(collection.activePhysicalCollection);
   const embeddingModelAvailable = embeddingStatus.ok;
-  // The chat LLM is global (not per collection) and optional; it only gates /query.
-  const chatProvider = await (healthChecks?.checkChatProvider ?? checkChatProvider)(runtimeConfig);
+  // The chat LLM is per tenant (not per collection) and optional; it only gates /query.
+  const chatTarget = await resolveChatTarget({ registry, runtimeConfig, context });
+  const chatEnabled = chatTarget.source !== "none";
+  const chatProvider = await (healthChecks?.checkChatProvider ?? checkChatProvider)(runtimeConfig, { target: chatTarget });
   const chatModelAvailable = chatProvider.ok;
 
   let chromaCount = -1;
@@ -125,7 +130,7 @@ export async function buildCollectionReadinessPayload(
     warnings.push(makeIssue(embeddingReadiness.code, embeddingReadiness.message, runtimeConfig));
   }
 
-  const chatReadiness = describeChatReadiness(chatProvider, runtimeConfig);
+  const chatReadiness = describeChatReadiness(chatProvider, chatTarget);
   if (chatReadiness.status === "fail") {
     blockers.push(makeIssue(chatReadiness.code, chatReadiness.message, runtimeConfig));
   } else if (chatReadiness.status === "warn" || chatReadiness.status === "skip") {
@@ -144,7 +149,7 @@ export async function buildCollectionReadinessPayload(
   }
 
   const retrieveReady = chromaReadable && embeddingModelAvailable;
-  const queryReady = retrieveReady && runtimeConfig.chat.enabled && chatModelAvailable;
+  const queryReady = retrieveReady && chatEnabled && chatModelAvailable;
 
   return {
     id: collection.id,
@@ -159,7 +164,8 @@ export async function buildCollectionReadinessPayload(
       embeddingModel: readEmbedding.model,
       ...(readEmbedding.serviceId ? { embeddingServiceId: readEmbedding.serviceId } : {}),
       embeddingModelAvailable,
-      chatModel: runtimeConfig.chat.enabled ? runtimeConfig.chat.model : null,
+      chatModel: chatEnabled ? chatTarget.model : null,
+      chatServiceId: chatEnabled ? chatTarget.serviceId : null,
       chatModelAvailable,
       ...(collection.embeddingProvider !== readEmbedding.provider
         || collection.embeddingModel !== readEmbedding.model

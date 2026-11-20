@@ -56,17 +56,42 @@ describe("admin panel static contract", () => {
     assert.ok(html.includes('id="view-embedding-services"'));
     assert.ok(html.includes('id="editEmbeddingService"'));
     assert.ok(html.includes('id="esApiKey" autocomplete="new-password"'));
-    // The panel is a client of the API: list, test, create/update/delete with action tokens.
+    // The panel is a client of the API: list, test, create/update/delete with action tokens. Embedding and
+    // chat services share the same view code over the same API contract.
     assert.ok(js.includes("const base = `${API.admin}/embedding-services`;"));
-    assert.ok(js.includes('apiRequest(`${embeddingServicesUrl()}/test`, { method: "POST", body: JSON.stringify(body) })'));
-    assert.ok(js.includes('await adminMutationRequest(id ? embeddingServicesUrl(id) : embeddingServicesUrl(), {'));
-    assert.ok(js.includes('await adminMutationRequest(embeddingServicesUrl(service.id), { method: "DELETE" });'));
+    assert.ok(js.includes("url: embeddingServicesUrl,"));
+    assert.ok(js.includes('apiRequest(`${view.url()}/test`, { method: "POST", body: JSON.stringify(body) })'));
+    assert.ok(js.includes('await adminMutationRequest(id ? view.url(id) : view.url(), {'));
+    assert.ok(js.includes('await adminMutationRequest(view.url(service.id), { method: "DELETE" });'));
     // Only admins manage services (mirrors src/http/adminAuth.ts); the warning comes from the API response.
-    assert.ok(js.includes('"bulkDeleteJobs", "manageEmbeddingServices"]'));
+    assert.ok(js.includes('"bulkDeleteJobs", "manageEmbeddingServices", "manageChatServices"]'));
     assert.ok(js.includes("services.warnings = Array.isArray(data?.warnings) ? data.warnings : [];"));
     // Collections send the chosen service; the model list comes from that service.
     assert.ok(js.includes('addIfText(payload, "embeddingServiceId", values.embeddingServiceId)'));
     assert.ok(!js.includes("modelDiscovery.external"));
+  });
+
+  it("manages chat services and the tenant's chat choice through the API in their own view", async () => {
+    const [html, js] = await Promise.all([
+      readAdminFile("index.html"),
+      readAdminFile("admin.js"),
+    ]);
+
+    assert.ok(html.includes('data-view="chat-services"'));
+    assert.ok(html.includes('id="view-chat-services"'));
+    assert.ok(html.includes('id="csApiKey" autocomplete="new-password"'));
+    assert.ok(html.includes('id="csSettingsService"'));
+    assert.ok(html.includes('id="csSettingsModel"'));
+    // Chat services use the shared view code; the choice is read, saved and reset only through the API.
+    assert.ok(js.includes("const base = `${API.admin}/chat-services`;"));
+    assert.ok(js.includes("url: chatServicesUrl,"));
+    assert.ok(js.includes('capability: "manageChatServices",'));
+    assert.ok(js.includes("return `${API.admin}/chat-settings`;"));
+    assert.ok(js.includes('adminMutationRequest(chatSettingsUrl(), { method: "PUT", body: JSON.stringify({ serviceId, model }) })'));
+    assert.ok(js.includes('adminMutationRequest(chatSettingsUrl(), { method: "DELETE" })'));
+    // Model suggestions come from GET /v1/admin/models chatServices; the collection form shows the choice.
+    assert.ok(js.includes("chatServices: normalizeServiceModels(data?.chatServices),"));
+    assert.ok(js.includes("describeChatSettings(state.chatSettings.data)"));
   });
 
   it("loads full editable settings through the admin collection detail endpoint", async () => {

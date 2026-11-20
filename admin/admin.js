@@ -49,6 +49,8 @@ let state = {
     activeTab: "ready",
     files: { collectionId: null, data: null, loading: false, uploading: false, error: null, rejected: [] },
     embeddingServices: emptyEmbeddingServicesState(),
+    chatServices: emptyServiceViewState(),
+    chatSettings: emptyChatSettingsState(),
     auth: {
         enabled: false,
         authenticated: false,
@@ -618,6 +620,8 @@ function emptyModelDiscovery() {
         builtinModels: [],
         /** GET /v1/admin/models embeddingServices: [{ id, name, reachable, authOk, models, error }] ("server" first when configured). */
         services: [],
+        /** GET /v1/admin/models chatServices: the same shape, for choosing the chat model. */
+        chatServices: [],
     };
 }
 
@@ -774,11 +778,12 @@ function describeChatLlm(chat) {
     return `${chat.model} @ ${chat.baseUrl}${chat.apiKeyConfigured ? " (API key set)" : ""}`;
 }
 
+/** The chat LLM that answers Query for this tenant (GET /v1/admin/chat-settings), shown in the collection form. */
 function renderChatLlmStatus() {
     if (!elements.chatLlmStatus) return;
-    elements.chatLlmStatus.textContent = state.configDefaults.loaded
-        ? describeChatLlm(state.configDefaults.chat)
-        : "Loading GET /v1/admin/config/defaults...";
+    elements.chatLlmStatus.textContent = state.chatSettings.loaded
+        ? describeChatSettings(state.chatSettings.data)
+        : state.chatSettings.error ? "Chat LLM status unavailable." : "Loading GET /v1/admin/chat-settings...";
 }
 
 function formatConfigDefault(value) {
@@ -876,7 +881,7 @@ function syncConfigDefaultsPanel() {
         `Retrieval K: ${formatConfigDefault(collectionDefaults.retrievalK)}`,
         `Threshold: ${formatConfigDefault(collectionDefaults.retrievalDistanceThreshold)}`,
         `Embedding: ${formatConfigDefault(modelDefaults.embeddingProvider)} / ${formatConfigDefault(modelDefaults.embeddingModel)}`,
-        `Chat LLM: ${describeChatLlm(state.configDefaults.chat)}`,
+        `Server chat LLM: ${describeChatLlm(state.configDefaults.chat)}`,
     ];
 
     if (elements.configDefaultsStatus) {
@@ -959,23 +964,31 @@ async function loadModelDiscovery() {
             defaultProvider: typeof data?.default?.provider === "string" ? data.default.provider : "",
             defaultModel: typeof data?.default?.model === "string" ? data.default.model : "",
             builtinModels: normalizeModelList(data?.providers?.builtin?.models),
-            services: (Array.isArray(data?.embeddingServices) ? data.embeddingServices : [])
-                .filter((service) => typeof service?.id === "string")
-                .map((service) => ({
-                    id: service.id,
-                    name: typeof service.name === "string" ? service.name : service.id,
-                    reachable: service.reachable === true,
-                    authOk: service.authOk !== false,
-                    models: normalizeModelList(service.models),
-                    error: typeof service.error === "string" ? service.error : "",
-                })),
+            services: normalizeServiceModels(data?.embeddingServices),
+            chatServices: normalizeServiceModels(data?.chatServices),
         };
     } catch (_error) {
         if (token !== loadTokens.modelDiscovery) return;
         state.modelDiscovery = emptyModelDiscovery();
     }
 
-    if (token === loadTokens.modelDiscovery) syncModelDiscoveryPanel();
+    if (token === loadTokens.modelDiscovery) {
+        syncModelDiscoveryPanel();
+        syncChatSettingsModels();
+    }
+}
+
+function normalizeServiceModels(list) {
+    return (Array.isArray(list) ? list : [])
+        .filter((service) => typeof service?.id === "string")
+        .map((service) => ({
+            id: service.id,
+            name: typeof service.name === "string" ? service.name : service.id,
+            reachable: service.reachable === true,
+            authOk: service.authOk !== false,
+            models: normalizeModelList(service.models),
+            error: typeof service.error === "string" ? service.error : "",
+        }));
 }
 
 function clearNode(node) {
@@ -1429,7 +1442,7 @@ function canAdminAction(capability) {
     const permissions = {
         viewer: ["read"],
         operator: ["read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob", "manageDocuments"],
-        admin: ["read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob", "manageDocuments", "deleteCollection", "deleteJob", "bulkDeleteJobs", "manageEmbeddingServices"],
+        admin: ["read", "createCollection", "validateCollection", "updateCollection", "reindexCollection", "cancelJob", "manageDocuments", "deleteCollection", "deleteJob", "bulkDeleteJobs", "manageEmbeddingServices", "manageChatServices"],
     };
     return (permissions[role] || []).includes(capability);
 }
@@ -1584,8 +1597,12 @@ function resetDashboardState() {
     state.selectedPhysicalCollections = null;
     state.selectedPhysicalCollectionsError = null;
     state.embeddingServices = emptyEmbeddingServicesState();
-    closeEmbeddingServiceForm();
-    clearNode(elements.esTableBody);
+    state.chatServices = emptyServiceViewState();
+    state.chatSettings = emptyChatSettingsState();
+    Object.values(SERVICE_VIEWS).forEach((view) => {
+        closeServiceForm(view);
+        clearNode(serviceEl(view, "TableBody"));
+    });
     state.jobList = [];
     state.jobListSource = "local";
     state.jobListNextCursor = null;
@@ -1642,6 +1659,7 @@ async function initializeDashboard() {
     renderJobs();
     loadConfigDefaults();
     loadModelDiscovery();
+    loadChatSettings();
     loadCollections();
     loadJobs();
     loadHealth();
@@ -2055,13 +2073,15 @@ function switchView(viewId) {
         collections: "Collections",
         jobs: "Job Monitor",
         "embedding-services": "Embedding services",
+        "chat-services": "Chat services",
         audit: "Audit Log",
         health: "System Health",
     };
     elements.viewTitle.textContent = titles[viewId] || "Dashboard";
 
     if (viewId === "jobs") loadJobs();
-    if (viewId === "embedding-services") loadEmbeddingServices();
+    if (viewId === "embedding-services") loadServices(SERVICE_VIEWS.embedding);
+    if (viewId === "chat-services") loadChatServicesView();
     if (viewId === "audit") loadAuditLog({ cursor: state.auditLogCursor, resetHistory: false });
     if (viewId === "health") loadHealth();
 }
@@ -2151,7 +2171,7 @@ async function openInspector(id) {
         setInspectorActionsEnabled(false, "Save the collection before using this action.");
         setCollectionTabsEnabled(false);
         switchTab("editor");
-        await Promise.all([loadConfigDefaults(), loadModelDiscovery()]);
+        await Promise.all([loadConfigDefaults(), loadModelDiscovery(), loadChatSettings()]);
         syncSaveButtonAccess();
         openPanel();
         return;
@@ -2796,9 +2816,13 @@ function renderReadinessData(readiness) {
             availability.embeddingModelAvailable,
             Boolean(availability.embeddingModelAvailable),
         ),
-        // The chat LLM is global and optional; "not configured" is a valid retrieve-only setup, not a failure.
+        // The chat LLM is per tenant and optional; "not configured" is a valid retrieve-only setup, not a failure.
         availability.chatModel
-            ? createReadinessRow(`Chat LLM: ${availability.chatModel}`, availability.chatModelAvailable, Boolean(availability.chatModelAvailable))
+            ? createReadinessRow(
+                `Chat LLM: ${availability.chatModel}` + (availability.chatServiceId ? ` via ${chatServiceName(availability.chatServiceId)}` : ""),
+                availability.chatModelAvailable,
+                Boolean(availability.chatModelAvailable),
+            )
             : createReadinessRow("Chat LLM", "not configured (retrieve-only)"),
         createReadinessRow("Retrieve capability", capabilities.retrieve, Boolean(capabilities.retrieve)),
         createReadinessRow("Query capability", capabilities.query, Boolean(capabilities.query)),
@@ -3228,7 +3252,9 @@ function renderQueryResult(data) {
     const meta = createEl("div", "grid grid-cols-1 gap-3 sm:grid-cols-2");
     meta.appendChild(createMetaItem("Threshold", formatMetric(data?.distanceScoreThreshold)));
     meta.appendChild(createMetaItem("Embedding", `${data?.embeddingProvider || "-"} / ${data?.embeddingModel || "-"}`));
-    meta.appendChild(createMetaItem("Chat model", data?.chatModel || "-"));
+    meta.appendChild(createMetaItem("Chat model", data?.chatModel
+        ? `${data.chatModel}${data.chatServiceId ? ` via ${chatServiceName(data.chatServiceId)}` : ""}`
+        : "-"));
     meta.appendChild(createMetaItem("Collection", data?.collectionDisplayName || data?.collectionId || state.selectedCollection?.displayName));
     meta.appendChild(createMetaItem("Active version", data?.activeVersion));
     meta.appendChild(createMetaItem("Sources", data?.sources?.length ?? 0));
@@ -3373,10 +3399,16 @@ async function reindexCollection() {
     }
 }
 
-// ---- Embedding services view (a client of /v1/admin/embedding-services) ----
+// ---- Service views (clients of /v1/admin/embedding-services and /v1/admin/chat-services) ----
+// Both views show the same table and form over the same API contract; the server decides everything
+// (read-only entries, in-use checks, warnings). Only texts and the "used by" column differ.
+
+function emptyServiceViewState() {
+    return { loaded: false, loading: false, items: [], warnings: [], error: null, testing: false, saving: false };
+}
 
 function emptyEmbeddingServicesState() {
-    return { loaded: false, loading: false, items: [], warnings: [], error: null, testing: false, saving: false };
+    return emptyServiceViewState();
 }
 
 function embeddingServicesUrl(id) {
@@ -3384,113 +3416,175 @@ function embeddingServicesUrl(id) {
     return id === undefined ? base : `${base}/${encodeURIComponent(id)}`;
 }
 
-const EMBEDDING_SERVICE_PRESETS = {
+function chatServicesUrl(id) {
+    const base = `${API.admin}/chat-services`;
+    return id === undefined ? base : `${base}/${encodeURIComponent(id)}`;
+}
+
+const SERVICE_PRESETS = {
     ollama: { name: "Ollama", baseUrl: "http://host.docker.internal:11434/v1" },
     openai: { name: "OpenAI", baseUrl: "https://api.openai.com/v1" },
+    openrouter: { name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
     lmstudio: { name: "LM Studio", baseUrl: "http://host.docker.internal:1234/v1" },
 };
 
-async function loadEmbeddingServices() {
-    const services = state.embeddingServices;
+const SERVICE_VIEWS = {
+    embedding: {
+        stateKey: "embeddingServices",
+        url: embeddingServicesUrl,
+        capability: "manageEmbeddingServices",
+        noun: "embedding service",
+        prefix: "es",
+        buttonPrefix: "Es",
+        addButtonId: "btnAddEmbeddingService",
+        serverEnv: "RAG_EMBEDDING_BASE_URL",
+        usageText: (service) => formatCount(service.collectionCount ?? 0),
+        modelHint: "Pick an embedding model (such as bge-m3 or nomic-embed-text) for a collection; chat models fail at indexing.",
+        afterChange: () => loadModelDiscovery(),
+        inUseMessage(error, service) {
+            const users = Array.isArray(error?.details?.collections) ? error.details.collections : [];
+            return error?.code === "EMBEDDING_SERVICE_IN_USE" && users.length > 0
+                ? `${service.name} is used by: ${users.map((collection) => collection.displayName).join(", ")}. Switch them to another service first.`
+                : null;
+        },
+    },
+    chat: {
+        stateKey: "chatServices",
+        url: chatServicesUrl,
+        capability: "manageChatServices",
+        noun: "chat service",
+        prefix: "cs",
+        buttonPrefix: "Cs",
+        addButtonId: "btnAddChatService",
+        serverEnv: "RAG_CHAT_BASE_URL",
+        usageText: (service) => (service.inUse ? "Answers Query" : "-"),
+        modelHint: "Choose a chat model (such as gemma3:4b or gpt-4o-mini) under Answer generation; embedding models cannot answer.",
+        afterChange: () => Promise.all([loadModelDiscovery(), loadChatSettings()]),
+        inUseMessage(error, service) {
+            return error?.code === "CHAT_SERVICE_IN_USE"
+                ? `${service.name} answers Query. Choose another chat service under Answer generation, or use the server default, first.`
+                : null;
+        },
+    },
+};
+
+function serviceEl(view, name) {
+    return document.getElementById(`${view.prefix}${name}`);
+}
+
+function serviceButton(view, name) {
+    return document.getElementById(`btn${view.buttonPrefix}${name}`);
+}
+
+function capitalizeFirst(text) {
+    return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+async function loadServices(view) {
+    const services = state[view.stateKey];
     services.loading = true;
-    renderEmbeddingServices();
+    renderServices(view);
     try {
-        const data = await apiRequest(embeddingServicesUrl());
+        const data = await apiRequest(view.url());
         services.items = Array.isArray(data?.services) ? data.services : [];
         services.warnings = Array.isArray(data?.warnings) ? data.warnings : [];
         services.error = null;
         services.loaded = true;
     } catch (error) {
         services.error = error;
-        showErrorToast(error, "Failed to load embedding services");
+        showErrorToast(error, `Failed to load ${view.noun}s`);
     } finally {
         services.loading = false;
-        renderEmbeddingServices();
+        renderServices(view);
     }
 }
 
-function renderEmbeddingServices() {
-    if (!elements.esTableBody) return;
-    const services = state.embeddingServices;
-    const canManage = canAdminAction("manageEmbeddingServices");
+function renderServices(view) {
+    const tableBody = serviceEl(view, "TableBody");
+    if (!tableBody) return;
+    const services = state[view.stateKey];
+    const canManage = canAdminAction(view.capability);
 
-    elements.esWarnings.classList.toggle("hidden", services.warnings.length === 0);
-    clearNode(elements.esWarnings);
-    services.warnings.forEach((warning) => elements.esWarnings.appendChild(createEl("p", "", warning)));
+    const warningsBox = serviceEl(view, "Warnings");
+    warningsBox.classList.toggle("hidden", services.warnings.length === 0);
+    clearNode(warningsBox);
+    services.warnings.forEach((warning) => warningsBox.appendChild(createEl("p", "", warning)));
 
-    if (elements.btnAddEmbeddingService) {
-        elements.btnAddEmbeddingService.disabled = !canManage;
-        elements.btnAddEmbeddingService.classList.toggle("opacity-50", !canManage);
-        if (!canManage) elements.btnAddEmbeddingService.title = "Managing embedding services requires admin access.";
-        else elements.btnAddEmbeddingService.removeAttribute("title");
+    const addButton = document.getElementById(view.addButtonId);
+    if (addButton) {
+        addButton.disabled = !canManage;
+        addButton.classList.toggle("opacity-50", !canManage);
+        if (!canManage) addButton.title = `Managing ${view.noun}s requires admin access.`;
+        else addButton.removeAttribute("title");
     }
 
-    clearNode(elements.esTableBody);
+    clearNode(tableBody);
     if (services.loading && services.items.length === 0) {
         const row = createEl("tr");
-        const cell = createEl("td", "px-4 py-6 text-center text-slate-400 italic", "Loading embedding services...");
+        const cell = createEl("td", "px-4 py-6 text-center text-slate-400 italic", `Loading ${view.noun}s...`);
         cell.colSpan = 6;
         row.appendChild(cell);
-        elements.esTableBody.appendChild(row);
+        tableBody.appendChild(row);
         return;
     }
 
     services.items.forEach((service) => {
         const row = createEl("tr", "hover:bg-slate-50");
-        const nameCell = createEl("td", "px-4 py-3 font-medium text-slate-800", service.name);
-        row.appendChild(nameCell);
+        row.appendChild(createEl("td", "px-4 py-3 font-medium text-slate-800", service.name));
         const isBuiltin = service.source === "builtin";
         const builtinModels = Array.isArray(service.models) ? service.models : [];
         const urlText = isBuiltin
             ? `No URL: runs inside the backend. Model${builtinModels.length === 1 ? "" : "s"}: ${builtinModels.join(", ") || "-"}`
-            : service.configured === false ? "Not configured (RAG_EMBEDDING_BASE_URL)" : service.baseUrl || "-";
+            : service.configured === false ? `Not configured (${view.serverEnv})` : service.baseUrl || "-";
         row.appendChild(createEl("td", "px-4 py-3 text-slate-600 break-all", urlText));
         row.appendChild(createEl("td", "px-4 py-3 text-slate-600", isBuiltin ? "Not needed" : service.apiKeyConfigured ? "Set" : "Not set"));
         const sourceText = { builtin: "Built-in (read-only)", server: ".env / config (read-only)" }[service.source] || "Admin panel / API";
         row.appendChild(createEl("td", "px-4 py-3 text-slate-500", sourceText));
-        row.appendChild(createEl("td", "px-4 py-3 text-slate-600", formatCount(service.collectionCount ?? 0)));
+        row.appendChild(createEl("td", "px-4 py-3 text-slate-600", view.usageText(service)));
         const actions = createEl("td", "px-4 py-3 text-right whitespace-nowrap space-x-3");
         if (!isBuiltin && service.configured !== false && canManage) {
-            actions.appendChild(createButton("Test", "text-indigo-600 hover:text-indigo-800 text-xs font-bold", () => testEmbeddingService({ serviceId: service.id }, service.name)));
+            actions.appendChild(createButton("Test", "text-indigo-600 hover:text-indigo-800 text-xs font-bold", () => testService(view, { serviceId: service.id }, service.name)));
         }
         if (!service.readOnly && canManage) {
-            actions.appendChild(createButton("Edit", "text-slate-600 hover:text-slate-800 text-xs font-bold", () => openEmbeddingServiceForm(service)));
-            actions.appendChild(createButton("Delete", "text-red-500 hover:text-red-700 text-xs font-bold", () => deleteEmbeddingServiceAction(service)));
+            actions.appendChild(createButton("Edit", "text-slate-600 hover:text-slate-800 text-xs font-bold", () => openServiceForm(view, service)));
+            actions.appendChild(createButton("Delete", "text-red-500 hover:text-red-700 text-xs font-bold", () => deleteServiceAction(view, service)));
         }
         row.appendChild(actions);
-        elements.esTableBody.appendChild(row);
+        tableBody.appendChild(row);
     });
 }
 
-function openEmbeddingServiceForm(service = null) {
-    if (!canAdminAction("manageEmbeddingServices")) {
-        showToast("Managing embedding services requires admin access.", "error");
+function openServiceForm(view, service = null) {
+    if (!canAdminAction(view.capability)) {
+        showToast(`Managing ${view.noun}s requires admin access.`, "error");
         return;
     }
-    elements.esForm.classList.remove("hidden");
-    elements.esFormId.value = service?.id || "";
-    elements.esFormTitle.textContent = service ? `Edit ${service.name}` : "Add embedding service";
-    elements.esName.value = service?.name || "";
-    elements.esBaseUrl.value = service?.baseUrl || "";
-    elements.esApiKey.value = "";
-    elements.esApiKeyHint.textContent = service?.apiKeyConfigured
+    serviceEl(view, "Form").classList.remove("hidden");
+    serviceEl(view, "FormId").value = service?.id || "";
+    serviceEl(view, "FormTitle").textContent = service ? `Edit ${service.name}` : `Add ${view.noun}`;
+    serviceEl(view, "Name").value = service?.name || "";
+    serviceEl(view, "BaseUrl").value = service?.baseUrl || "";
+    serviceEl(view, "ApiKey").value = "";
+    serviceEl(view, "ApiKeyHint").textContent = service?.apiKeyConfigured
         ? "An API key is stored. Leave this empty to keep it, or type a new one."
         : "Optional; a local Ollama needs none. Stored on the server and never shown again.";
-    elements.esClearKey.checked = false;
-    elements.esClearKeyRow.classList.toggle("hidden", !service?.apiKeyConfigured);
-    setEmbeddingServiceTestResult(null);
-    elements.esName.focus();
+    serviceEl(view, "ClearKey").checked = false;
+    serviceEl(view, "ClearKeyRow").classList.toggle("hidden", !service?.apiKeyConfigured);
+    setServiceTestResult(view, null);
+    serviceEl(view, "Name").focus();
 }
 
-function closeEmbeddingServiceForm() {
-    elements.esForm.classList.add("hidden");
-    elements.esFormId.value = "";
-    elements.esApiKey.value = "";
-    setEmbeddingServiceTestResult(null);
+function closeServiceForm(view) {
+    const form = serviceEl(view, "Form");
+    if (!form) return;
+    form.classList.add("hidden");
+    serviceEl(view, "FormId").value = "";
+    serviceEl(view, "ApiKey").value = "";
+    setServiceTestResult(view, null);
 }
 
-function setEmbeddingServiceTestResult(result) {
-    const box = elements.esTestResult;
+function setServiceTestResult(view, result) {
+    const box = serviceEl(view, "TestResult");
     if (!box) return;
     clearNode(box);
     box.classList.toggle("hidden", !result);
@@ -3503,36 +3597,38 @@ function setEmbeddingServiceTestResult(result) {
         : `Not connected: ${result.error || "the service did not answer."}`));
     if (models.length > 0) {
         box.appendChild(createEl("p", "mt-1", `${models.slice(0, 15).join(", ")}${models.length > 15 ? ", ..." : ""}`));
-        box.appendChild(createEl("p", "mt-1 text-slate-500", "Pick an embedding model (such as bge-m3 or nomic-embed-text) for a collection; chat models fail at indexing."));
+        box.appendChild(createEl("p", "mt-1 text-slate-500", view.modelHint));
     }
 }
 
-/** POST /embedding-services/test: { serviceId } or { baseUrl, apiKey? }. A free GET /models; never embeds. */
-async function testEmbeddingService(body, label) {
-    if (state.embeddingServices.testing) return;
-    state.embeddingServices.testing = true;
-    setButtonLoading(elements.btnEsTest, true, "Testing...");
+/** POST {service url}/test: { serviceId } or { baseUrl, apiKey? }. A free GET /models; never embeds or generates. */
+async function testService(view, body, label) {
+    const services = state[view.stateKey];
+    if (services.testing) return;
+    services.testing = true;
+    const testButton = serviceButton(view, "Test");
+    setButtonLoading(testButton, true, "Testing...");
     try {
-        const result = await apiRequest(`${embeddingServicesUrl()}/test`, { method: "POST", body: JSON.stringify(body) });
-        if (!elements.esForm.classList.contains("hidden") && !body.serviceId) setEmbeddingServiceTestResult(result);
+        const result = await apiRequest(`${view.url()}/test`, { method: "POST", body: JSON.stringify(body) });
+        if (!serviceEl(view, "Form").classList.contains("hidden") && !body.serviceId) setServiceTestResult(view, result);
         else showToast(result.ok ? `${label}: connected, ${result.models.length} model(s).` : `${label}: ${result.error || "not reachable"}`, result.ok ? "success" : "error");
     } catch (error) {
         showErrorToast(error, "Connection test failed");
     } finally {
-        state.embeddingServices.testing = false;
-        setButtonLoading(elements.btnEsTest, false);
+        services.testing = false;
+        setButtonLoading(testButton, false);
     }
 }
 
-function testEmbeddingServiceForm() {
-    const id = elements.esFormId.value;
-    const baseUrl = elements.esBaseUrl.value.trim();
-    const apiKey = elements.esApiKey.value.trim();
-    const stored = state.embeddingServices.items.find((service) => service.id === id);
+function testServiceForm(view) {
+    const id = serviceEl(view, "FormId").value;
+    const baseUrl = serviceEl(view, "BaseUrl").value.trim();
+    const apiKey = serviceEl(view, "ApiKey").value.trim();
+    const stored = state[view.stateKey].items.find((service) => service.id === id);
     // An unchanged saved service is tested with its stored key; anything typed is tested as typed.
-    if (stored && baseUrl === stored.baseUrl && !apiKey && !elements.esClearKey.checked) {
-        apiRequest(`${embeddingServicesUrl()}/test`, { method: "POST", body: JSON.stringify({ serviceId: id }) })
-            .then(setEmbeddingServiceTestResult)
+    if (stored && baseUrl === stored.baseUrl && !apiKey && !serviceEl(view, "ClearKey").checked) {
+        apiRequest(`${view.url()}/test`, { method: "POST", body: JSON.stringify({ serviceId: id }) })
+            .then((result) => setServiceTestResult(view, result))
             .catch((error) => showErrorToast(error, "Connection test failed"));
         return;
     }
@@ -3540,80 +3636,297 @@ function testEmbeddingServiceForm() {
         showToast("Enter the base URL first.", "error");
         return;
     }
-    testEmbeddingService(apiKey ? { baseUrl, apiKey } : { baseUrl }, "Connection");
+    testService(view, apiKey ? { baseUrl, apiKey } : { baseUrl }, "Connection");
 }
 
-async function saveEmbeddingService() {
-    const id = elements.esFormId.value;
-    const body = { name: elements.esName.value.trim(), baseUrl: elements.esBaseUrl.value.trim() };
-    const apiKey = elements.esApiKey.value.trim();
+async function saveService(view) {
+    const id = serviceEl(view, "FormId").value;
+    const body = { name: serviceEl(view, "Name").value.trim(), baseUrl: serviceEl(view, "BaseUrl").value.trim() };
+    const apiKey = serviceEl(view, "ApiKey").value.trim();
     if (apiKey) body.apiKey = apiKey;
-    else if (id && elements.esClearKey.checked) body.apiKey = null;
+    else if (id && serviceEl(view, "ClearKey").checked) body.apiKey = null;
     if (!body.name || !body.baseUrl) {
         showToast("Name and base URL are required.", "error");
         return;
     }
-    state.embeddingServices.saving = true;
-    setButtonLoading(elements.btnEsSave, true, "Saving...");
+    const services = state[view.stateKey];
+    const saveButton = serviceButton(view, "Save");
+    services.saving = true;
+    setButtonLoading(saveButton, true, "Saving...");
     try {
-        const data = await adminMutationRequest(id ? embeddingServicesUrl(id) : embeddingServicesUrl(), {
+        const data = await adminMutationRequest(id ? view.url(id) : view.url(), {
             method: id ? "PATCH" : "POST",
             body: JSON.stringify(body),
         });
-        showToast(id ? "Embedding service updated; it is used at once." : "Embedding service added.", "success");
+        showToast(id ? `${capitalizeFirst(view.noun)} updated; it is used at once.` : `${capitalizeFirst(view.noun)} added.`, "success");
         // Warnings about this change (for example a URL another service already uses); the auth-off one is on the page.
         (Array.isArray(data?.warnings) ? data.warnings : [])
-            .filter((warning) => !state.embeddingServices.warnings.includes(warning))
+            .filter((warning) => !services.warnings.includes(warning))
             .forEach((warning) => showToast(warning, "info", { durationMs: 10000 }));
-        closeEmbeddingServiceForm();
-        await Promise.all([loadEmbeddingServices(), loadModelDiscovery()]);
+        closeServiceForm(view);
+        await Promise.all([loadServices(view), view.afterChange()]);
     } catch (error) {
-        showErrorToast(error, "Saving the embedding service failed");
+        showErrorToast(error, `Saving the ${view.noun} failed`);
     } finally {
-        state.embeddingServices.saving = false;
-        setButtonLoading(elements.btnEsSave, false);
+        services.saving = false;
+        setButtonLoading(saveButton, false);
     }
 }
 
-async function deleteEmbeddingServiceAction(service) {
-    if (!confirm(`Delete the embedding service "${service.name}"?`)) return;
+async function deleteServiceAction(view, service) {
+    if (!confirm(`Delete the ${view.noun} "${service.name}"?`)) return;
     try {
-        await adminMutationRequest(embeddingServicesUrl(service.id), { method: "DELETE" });
+        await adminMutationRequest(view.url(service.id), { method: "DELETE" });
         showToast(`Deleted ${service.name}.`, "success");
-        await Promise.all([loadEmbeddingServices(), loadModelDiscovery()]);
+        await Promise.all([loadServices(view), view.afterChange()]);
     } catch (error) {
-        const users = Array.isArray(error?.details?.collections) ? error.details.collections : [];
-        if (error?.code === "EMBEDDING_SERVICE_IN_USE" && users.length > 0) {
-            showToast(`${service.name} is used by: ${users.map((collection) => collection.displayName).join(", ")}. Switch them to another service first.`, "error", { durationMs: 9000 });
+        const inUse = view.inUseMessage(error, service);
+        if (inUse) {
+            showToast(inUse, "error", { durationMs: 9000 });
             return;
         }
-        showErrorToast(error, "Deleting the embedding service failed");
+        showErrorToast(error, `Deleting the ${view.noun} failed`);
     }
+}
+
+function bindServiceViewEvents(view) {
+    document.getElementById(view.addButtonId)?.addEventListener("click", () => openServiceForm(view));
+    serviceButton(view, "Cancel")?.addEventListener("click", () => closeServiceForm(view));
+    serviceButton(view, "Test")?.addEventListener("click", () => testServiceForm(view));
+    serviceEl(view, "Form")?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        saveService(view);
+    });
+    document.querySelectorAll(`[data-${view.prefix}-preset]`).forEach((button) => {
+        button.addEventListener("click", () => {
+            const preset = SERVICE_PRESETS[button.dataset[`${view.prefix}Preset`]];
+            if (!preset) return;
+            if (!serviceEl(view, "Name").value.trim()) serviceEl(view, "Name").value = preset.name;
+            serviceEl(view, "BaseUrl").value = preset.baseUrl;
+            setServiceTestResult(view, null);
+        });
+    });
 }
 
 function bindEmbeddingServicesEvents() {
-    elements.btnAddEmbeddingService?.addEventListener("click", () => openEmbeddingServiceForm());
-    elements.btnEsCancel?.addEventListener("click", () => closeEmbeddingServiceForm());
-    elements.btnEsTest?.addEventListener("click", () => testEmbeddingServiceForm());
-    elements.esForm?.addEventListener("submit", (event) => {
-        event.preventDefault();
-        saveEmbeddingService();
-    });
-    document.querySelectorAll("[data-es-preset]").forEach((button) => {
-        button.addEventListener("click", () => {
-            const preset = EMBEDDING_SERVICE_PRESETS[button.dataset.esPreset];
-            if (!preset) return;
-            if (!elements.esName.value.trim()) elements.esName.value = preset.name;
-            elements.esBaseUrl.value = preset.baseUrl;
-            setEmbeddingServiceTestResult(null);
-        });
-    });
+    bindServiceViewEvents(SERVICE_VIEWS.embedding);
+    bindServiceViewEvents(SERVICE_VIEWS.chat);
+    bindChatSettingsEvents();
     elements.editEmbeddingService?.addEventListener("change", () => syncModelDiscoveryPanel());
     elements.linkEmbeddingServices?.addEventListener("click", (event) => {
         event.preventDefault();
         closeInspector();
         switchView("embedding-services");
     });
+    document.getElementById("linkChatServices")?.addEventListener("click", (event) => {
+        event.preventDefault();
+        closeInspector();
+        switchView("chat-services");
+    });
+}
+
+// ---- Answer generation: the tenant's chat choice (a client of /v1/admin/chat-settings) ----
+
+function emptyChatSettingsState() {
+    return { loaded: false, loading: false, data: null, error: null, saving: false };
+}
+
+function chatSettingsUrl() {
+    return `${API.admin}/chat-settings`;
+}
+
+async function loadChatSettings() {
+    const settings = state.chatSettings;
+    settings.loading = true;
+    try {
+        settings.data = await apiRequest(chatSettingsUrl());
+        settings.error = null;
+        settings.loaded = true;
+    } catch (error) {
+        settings.error = error;
+    } finally {
+        settings.loading = false;
+        renderChatSettings();
+        renderChatLlmStatus();
+    }
+}
+
+/** "gemma3:4b via Ollama" for the chat LLM that answers Query, or why there is none. */
+function describeChatSettings(data) {
+    if (!data) return "Chat LLM status unavailable.";
+    if (data.source === "none") return "Not configured: Query is disabled (retrieve-only).";
+    const service = data.serviceName || data.serviceId || "unknown service";
+    const origin = data.source === "server" ? " (server default)" : "";
+    return `${data.model} via ${service}${origin}`;
+}
+
+function chatServiceName(id) {
+    if (!id) return "";
+    return state.chatServices.items.find((service) => service.id === id)?.name
+        || state.modelDiscovery.chatServices?.find((service) => service.id === id)?.name
+        || (state.chatSettings.data?.serviceId === id ? state.chatSettings.data.serviceName : "")
+        || id;
+}
+
+function renderChatSettings() {
+    const summary = document.getElementById("csSettingsSummary");
+    if (!summary) return;
+    const settings = state.chatSettings;
+    const data = settings.data;
+    const canManage = canAdminAction("manageChatServices");
+
+    const sourceLabel = document.getElementById("csSettingsSource");
+    sourceLabel.textContent = !data ? "" : {
+        tenant: "Your choice",
+        server: "Server default (.env / config)",
+        none: "Off: retrieve-only",
+    }[data.source] || "";
+
+    if (settings.error && !data) {
+        summary.textContent = "Could not load the chat choice (GET /v1/admin/chat-settings).";
+    } else if (!data) {
+        summary.textContent = "Loading GET /v1/admin/chat-settings...";
+    } else {
+        summary.textContent = data.source === "none"
+            ? "No chat LLM: Query is disabled (retrieve-only). Choose a chat service and a model below to enable it."
+            : `Query answers with ${describeChatSettings(data)}.`;
+    }
+
+    const statusBox = document.getElementById("csSettingsStatus");
+    const status = data?.status;
+    const showStatus = Boolean(data && data.source !== "none" && status?.message);
+    statusBox.classList.toggle("hidden", !showStatus);
+    if (showStatus) {
+        statusBox.className = `rounded-lg border p-2 text-xs ${status.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`;
+        statusBox.textContent = status.message;
+    }
+
+    // Service choices: every configured chat service (the server one only when .env / config sets it).
+    const select = document.getElementById("csSettingsService");
+    const previous = select.value;
+    clearNode(select);
+    const choices = state.chatServices.items.filter((service) => service.configured !== false);
+    if (choices.length === 0) {
+        const option = createEl("option", "", "No chat service yet: add one below");
+        option.value = "";
+        select.appendChild(option);
+    }
+    choices.forEach((service) => {
+        const option = createEl("option", "", service.source === "server" ? `${service.name}` : service.name);
+        option.value = service.id;
+        select.appendChild(option);
+    });
+    const preferred = previous && choices.some((service) => service.id === previous)
+        ? previous
+        : data?.serviceId && choices.some((service) => service.id === data.serviceId) ? data.serviceId : choices[0]?.id || "";
+    select.value = preferred;
+
+    const modelInput = document.getElementById("csSettingsModel");
+    if (!modelInput.dataset.touched) modelInput.value = data?.model || "";
+    syncChatSettingsModels();
+
+    [select, modelInput, document.getElementById("btnCsSettingsSave")].forEach((control) => {
+        control.disabled = !canManage || choices.length === 0;
+    });
+    const resetButton = document.getElementById("btnCsSettingsReset");
+    resetButton.disabled = !canManage || data?.source !== "tenant";
+    resetButton.classList.toggle("opacity-50", resetButton.disabled);
+    const saveButton = document.getElementById("btnCsSettingsSave");
+    saveButton.classList.toggle("opacity-50", saveButton.disabled);
+    if (!canManage) saveButton.title = "Choosing the chat LLM requires admin access.";
+    else saveButton.removeAttribute("title");
+}
+
+/** Model suggestions of the selected chat service (GET /v1/admin/models chatServices). */
+function syncChatSettingsModels() {
+    const select = document.getElementById("csSettingsService");
+    const list = document.getElementById("csSettingsModels");
+    const hint = document.getElementById("csSettingsModelHint");
+    if (!select || !list) return;
+    clearNode(list);
+    const entry = (state.modelDiscovery.chatServices || []).find((service) => service.id === select.value);
+    const models = entry?.models || [];
+    models.forEach((model) => {
+        const option = document.createElement("option");
+        option.value = model;
+        list.appendChild(option);
+    });
+    hint.textContent = !entry
+        ? "Type the model name."
+        : !entry.reachable
+            ? `The service is not reachable now${entry.error ? ` (${entry.error})` : ""}; you can still save, Query reports the problem.`
+            : models.length > 0
+                ? `${models.length} model(s) offered by this service. Pick a chat model, not an embedding model.`
+                : "This service does not list its models; type the model name.";
+}
+
+async function saveChatSettings() {
+    const serviceId = document.getElementById("csSettingsService").value;
+    const model = document.getElementById("csSettingsModel").value.trim();
+    if (!serviceId || !model) {
+        showToast("Choose a chat service and type a model.", "error");
+        return;
+    }
+    const saveButton = document.getElementById("btnCsSettingsSave");
+    state.chatSettings.saving = true;
+    setButtonLoading(saveButton, true, "Saving...");
+    try {
+        const data = await adminMutationRequest(chatSettingsUrl(), { method: "PUT", body: JSON.stringify({ serviceId, model }) });
+        state.chatSettings.data = data?.settings ?? state.chatSettings.data;
+        document.getElementById("csSettingsModel").dataset.touched = "";
+        showToast(`Query now answers with ${describeChatSettings(state.chatSettings.data)}.`, "success");
+        (Array.isArray(data?.warnings) ? data.warnings : [])
+            .filter((warning) => !state.chatServices.warnings.includes(warning))
+            .forEach((warning) => showToast(warning, "info", { durationMs: 10000 }));
+        await loadServices(SERVICE_VIEWS.chat);
+    } catch (error) {
+        const available = Array.isArray(error?.details?.availableModels) ? error.details.availableModels : [];
+        if (error?.code === "CHAT_MODEL_MISSING" && available.length > 0) {
+            showToast(`${error.message} Offered: ${available.slice(0, 10).join(", ")}${available.length > 10 ? ", ..." : ""}`, "error", { durationMs: 10000 });
+        } else {
+            showErrorToast(error, "Saving the chat choice failed");
+        }
+    } finally {
+        state.chatSettings.saving = false;
+        setButtonLoading(saveButton, false);
+        renderChatSettings();
+        renderChatLlmStatus();
+    }
+}
+
+async function resetChatSettings() {
+    if (!confirm("Stop using your chat choice? Query then uses the chat LLM from .env / config, or is disabled when there is none.")) return;
+    try {
+        const data = await adminMutationRequest(chatSettingsUrl(), { method: "DELETE" });
+        state.chatSettings.data = data?.settings ?? null;
+        document.getElementById("csSettingsModel").dataset.touched = "";
+        document.getElementById("csSettingsModel").value = state.chatSettings.data?.model || "";
+        showToast(`Chat choice removed. ${describeChatSettings(state.chatSettings.data)}`, "success");
+        await loadServices(SERVICE_VIEWS.chat);
+    } catch (error) {
+        showErrorToast(error, "Removing the chat choice failed");
+    } finally {
+        renderChatSettings();
+        renderChatLlmStatus();
+    }
+}
+
+function bindChatSettingsEvents() {
+    document.getElementById("csSettingsForm")?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        saveChatSettings();
+    });
+    document.getElementById("btnCsSettingsReset")?.addEventListener("click", () => resetChatSettings());
+    document.getElementById("csSettingsService")?.addEventListener("change", () => syncChatSettingsModels());
+    document.getElementById("csSettingsModel")?.addEventListener("input", (event) => {
+        event.target.dataset.touched = "1";
+    });
+}
+
+/** Opens the Chat services view: the services, the tenant's choice and the models to choose from. */
+async function loadChatServicesView() {
+    await Promise.all([loadServices(SERVICE_VIEWS.chat), loadChatSettings(), loadModelDiscovery()]);
+    renderChatSettings();
 }
 
 // ---- Documents tab (a client of the files API) ----

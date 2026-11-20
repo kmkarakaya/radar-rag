@@ -78,8 +78,9 @@ export function formatChatStatus(runtimeConfig: Pick<ResolvedConfig, "chat" | "e
     : `  Embedding:     openai-compatible / ${embedding.model} @ ${embedding.baseUrl} (default for new collections)`;
   const chat = runtimeConfig.chat;
   const chatLine = chat.enabled
-    ? `  Chat LLM:      ${chat.model} @ ${chat.baseUrl} (/query enabled)`
-    : "  Chat LLM:      not configured (/query disabled, retrieve-only). Enable it with npm run onboard or RAG_CHAT_BASE_URL + RAG_CHAT_MODEL.";
+    ? `  Chat LLM:      ${chat.model} @ ${chat.baseUrl} (server default for /query; tenants can choose another under Chat services)`
+    : "  Chat LLM:      none on the server (retrieve-only until a chat LLM is chosen under Chat services in the admin panel, "
+      + "PUT /v1/admin/chat-settings, or set with npm run onboard / RAG_CHAT_BASE_URL + RAG_CHAT_MODEL).";
   return ["Models:", embeddingLine, chatLine].join("\n");
 }
 

@@ -6,6 +6,7 @@ import { watchJob } from "../jobWatch.js";
 import { recordRoute } from "../router.js";
 import { API, JOB_LIST_LIMIT, elements, state } from "../state.js";
 import { collectionNameById, loadCollections } from "./collections.js";
+import { providerName } from "./editor.js";
 import { updateReadinessTab } from "./inspector.js";
 
 /** A row of the jobs table: the job as the server returned it, plus the collection's display name. */
@@ -26,7 +27,7 @@ export async function refreshJob(jobId) {
         renderJobs();
     } catch (error) {
         if (normalizeError(error).status === 404) {
-            showToast("This job no longer exists.", "info");
+            showToast(normalizeError(error).message, "info");
             await loadJobs();
             return;
         }
@@ -36,7 +37,7 @@ export async function refreshJob(jobId) {
 
 export async function deleteJob(jobId) {
     if (!canAdminAction("deleteJob")) {
-        showToast("Removing a job needs the admin role.", "error");
+        showToast("Your role cannot remove jobs.", "error");
         return;
     }
     if (state.selectedJobIds.size > 0 && state.selectedJobIds.has(jobId)) {
@@ -56,7 +57,7 @@ export async function deleteJob(jobId) {
         dropJobsFromList([jobId]);
         showToast("Job removed.", "success");
     } catch (error) {
-        if (normalizeError(error).status === 404) showToast("The job was already removed.", "info");
+        if (normalizeError(error).status === 404) showToast(normalizeError(error).message, "info");
         else showErrorToast(error, "Remove failed");
     }
     resetJobPagination();
@@ -98,7 +99,7 @@ export function updateJobSelectionControls(jobs = getJobViewRows()) {
     }
     if (elements.jobsBulkSelectionCount) {
         elements.jobsBulkSelectionCount.textContent = selectedCount === 0
-            ? `${selectableJobIds.length} terminal job${selectableJobIds.length === 1 ? "" : "s"} on this page`
+            ? `${selectableJobIds.length} finished job${selectableJobIds.length === 1 ? "" : "s"} on this page`
             : selectedCount === 1
                 ? "1 job selected"
                 : `${selectedCount} jobs selected`;
@@ -107,7 +108,7 @@ export function updateJobSelectionControls(jobs = getJobViewRows()) {
         elements.jobsBulkRemove.disabled = selectedCount === 0 || state.isLoading.jobs || !canAdminAction("bulkDeleteJobs");
         elements.jobsBulkRemove.textContent = selectedCount === 0 ? "Select jobs to remove" : "Remove selected";
         if (!canAdminAction("bulkDeleteJobs")) {
-            elements.jobsBulkRemove.title = state.auth.enabled ? "Bulk delete requires admin access." : "";
+            elements.jobsBulkRemove.title = state.auth.enabled ? "Your role cannot remove jobs." : "";
         } else {
             elements.jobsBulkRemove.removeAttribute("title");
         }
@@ -127,13 +128,13 @@ export function clearJobSelection({ render = true } = {}) {
 
 export async function removeSelectedJobs() {
     if (!canAdminAction("bulkDeleteJobs")) {
-        showToast("Bulk delete requires admin access.", "error");
+        showToast("Your role cannot remove jobs.", "error");
         return;
     }
 
     const jobIds = getVisibleSelectableJobIds().filter((jobId) => state.selectedJobIds.has(jobId));
     if (jobIds.length === 0) {
-        showToast("Select one or more terminal jobs to remove.", "info");
+        showToast("Select one or more finished jobs to remove.", "info");
         return;
     }
     const confirmed = await confirmDialog({
@@ -215,10 +216,19 @@ export function resetJobPagination() {
  * Loads one page of GET /v1/admin/jobs. `quiet` (background refresh) shows no toast; a failure keeps the
  * previous page on screen with a notice saying when it was loaded.
  */
+let jobsRerun = null;
+
 export async function loadJobs(options = {}) {
-    if (state.isLoading.jobs) return;
+    // A request while one is running is not dropped: it runs right after with the latest options.
+    if (state.isLoading.jobs) {
+        jobsRerun = { ...(jobsRerun || {}), ...options, quiet: Boolean(jobsRerun ? jobsRerun.quiet && options.quiet : options.quiet) };
+        return;
+    }
+    const quiet = Boolean(options.quiet);
+    const before = JSON.stringify([state.jobList, state.jobListError ? normalizeError(state.jobListError).message : null, state.jobListNextCursor]);
     state.isLoading.jobs = true;
-    updateJobPaginationControls();
+    // A background refresh shows no loading state (the Refresh button and the filter stay as they are).
+    if (!quiet) updateJobPaginationControls();
     const cursor = options.cursor !== undefined ? options.cursor : state.jobListCursor;
     state.jobListCursor = cursor || null;
     try {
@@ -240,8 +250,14 @@ export async function loadJobs(options = {}) {
         if (!options.quiet) showErrorToast(error, "Failed to load jobs");
     } finally {
         state.isLoading.jobs = false;
-        renderJobs();
+        const changed = JSON.stringify([state.jobList, state.jobListError ? normalizeError(state.jobListError).message : null, state.jobListNextCursor]) !== before;
+        if (!quiet || changed) renderJobs();
         updateJobPaginationControls();
+        if (jobsRerun) {
+            const next = jobsRerun;
+            jobsRerun = null;
+            void loadJobs(next);
+        }
     }
 }
 
@@ -280,7 +296,7 @@ export async function changeJobsStatusFilter(value) {
 
 export async function cancelJob(jobId) {
     if (!canAdminAction("cancelJob")) {
-        showToast("Cancelling a job needs the operator role.", "error");
+        showToast("Your role cannot cancel jobs.", "error");
         return;
     }
     const confirmed = await confirmDialog({
@@ -352,7 +368,7 @@ export function renderJobs() {
         checkbox.type = "checkbox";
         checkbox.disabled = !isSelectable || state.isLoading.jobs;
         checkbox.checked = isSelected;
-        checkbox.title = isSelectable ? "Select this job" : "Only terminal jobs can be selected";
+        checkbox.title = isSelectable ? "Select this job" : "Only finished jobs can be removed";
         checkbox.setAttribute("aria-label", `Select job ${shortId(job.id)}`);
         checkbox.addEventListener("change", () => {
             if (checkbox.checked) {
@@ -379,7 +395,7 @@ export function renderJobs() {
 
         const target = createEl("div", "space-y-1 break-all-words text-slate-600");
         target.appendChild(createEl("div", "", `Version: ${job.targetVersion || "-"}`));
-        target.appendChild(createEl("div", "", `Embedding: ${job.targetEmbeddingProvider || "-"} / ${job.targetEmbeddingModel || "-"}`));
+        target.appendChild(createEl("div", "", `Embedding: ${providerName(job.targetEmbeddingProvider)}, ${job.targetEmbeddingModel || "-"}`));
         appendCell(row, "", target);
 
         const counts = createEl("div", "space-y-1 text-slate-600");
@@ -406,7 +422,7 @@ export function renderJobs() {
             actions.appendChild(createButton("Cancel", "text-xs font-medium text-rose-600 hover:text-rose-800", () => cancelJob(job.id), { title: "Cancel this job" }));
         }
         if (isTerminalJobStatus(job.status) && canDeleteJob) {
-            actions.appendChild(createButton("Remove", "text-xs font-medium text-slate-500 hover:text-slate-700", () => deleteJob(job.id), { title: "Delete terminal job from the server" }));
+            actions.appendChild(createButton("Remove", "text-xs font-medium text-slate-500 hover:text-slate-700", () => deleteJob(job.id), { title: "Remove this finished job from the list" }));
         }
         if (state.auth.enabled && !canCancelJob && !canDeleteJob) {
             actions.appendChild(createEl("span", "text-xs text-slate-500", "Read-only role"));

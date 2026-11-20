@@ -7,6 +7,7 @@ import { renderCollections } from "./collections.js";
 export async function loadHealth({ quiet = false } = {}) {
     if (state.isLoading.health) return;
     const hasSnapshot = Boolean(state.healthStatus || state.readiness || state.readinessDetails);
+    const before = JSON.stringify([state.healthStatus, state.readiness, state.readinessDetails]);
     state.isLoading.health = true;
 
     if (hasSnapshot) {
@@ -42,6 +43,11 @@ export async function loadHealth({ quiet = false } = {}) {
         }
 
         const failure = [healthResult, readyResult, detailsResult].find((result) => result.status === "rejected");
+        // uptimeSec and timestamp change on every call; compare without them.
+        const comparable = (health) => (health ? { ...health, uptimeSec: undefined, timestamp: undefined } : health);
+        const unchanged = JSON.stringify([comparable(state.healthStatus), state.readiness, state.readinessDetails])
+            === JSON.stringify((() => { const [h, r, d] = JSON.parse(before); return [comparable(h), r, d]; })());
+        if (quiet && !failure && unchanged) return;
         renderHealthSummary(state.healthStatus, state.readiness, state.readinessDetails, {
             lastUpdatedAt: state.healthLastUpdatedAt,
             failed: failure ? normalizeError(failure.reason).message : null,
@@ -239,7 +245,7 @@ export function renderOperationsDetail(container, operations) {
         ["Max concurrent embeddings", formatCount(operations.runtime?.concurrency?.maxConcurrentEmbeddings)],
         ["Max concurrent generations", formatCount(operations.runtime?.concurrency?.maxConcurrentGenerations)],
         ["Readiness timeout", operations.runtime?.timeouts?.readinessMs !== undefined ? `${operations.runtime.timeouts.readinessMs} ms` : "-"],
-        ["RAG timeout", operations.runtime?.timeouts?.ragMs !== undefined ? `${operations.runtime.timeouts.ragMs} ms` : "-"],
+        ["Query timeout", operations.runtime?.timeouts?.ragMs !== undefined ? `${operations.runtime.timeouts.ragMs} ms` : "-"],
     ]);
 }
 
@@ -301,7 +307,7 @@ export function renderHealthSummary(health, ready, details, options = {}) {
     // Whatever dependencies the server reports, in its order.
     Object.keys(deps).forEach((key) => {
         const row = createEl("div", "flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 p-2 text-xs");
-        row.appendChild(createEl("span", "font-semibold capitalize text-slate-600", key === "chat" ? "chat LLM" : key));
+        row.appendChild(createEl("span", "font-semibold text-slate-600", DEPENDENCY_LABELS[key] ?? key));
         // An unconfigured chat LLM is a valid retrieve-only setup, not a failure.
         const status = key === "chat" && deps.chat && deps.chat.configured === false ? "disabled" : dependencyStatus(deps[key]);
         row.appendChild(createBadge(status, getStatusColor(status)));
@@ -413,7 +419,7 @@ export function renderReadinessDetail(ready, details, detailsError, options = {}
         "Embedding (new collections)",
         `${details?.embeddingProvider ?? ready?.config?.embeddingProvider ?? "-"} / ${details?.embeddingModel ?? ready?.config?.embeddingModel ?? "-"}`,
     ));
-    configGrid.appendChild(createMetaItem("Vector store URL (Chroma)", details?.chromaUrl ?? ready?.config?.chromaUrl ?? "-"));
+    configGrid.appendChild(createMetaItem("Vector store URL", details?.chromaUrl ?? ready?.config?.chromaUrl ?? "-"));
     configGrid.appendChild(createMetaItem("Port", details?.port ?? ready?.config?.port ?? "-"));
     config.appendChild(configGrid);
     container.appendChild(config);
@@ -439,3 +445,11 @@ export function renderReadinessDetail(ready, details, detailsError, options = {}
     const deps = details?.dependencies;
     if (deps) appendJsonDetails(container, "Technical details (JSON)", deps);
 }
+
+/** Names for the dependencies the server usually reports; any other is shown by its key. */
+export const DEPENDENCY_LABELS = {
+    registry: "Collection registry",
+    chroma: "Vector store",
+    embedding: "Embedding",
+    chat: "Chat LLM",
+};

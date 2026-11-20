@@ -153,7 +153,7 @@ export function renderServices(view) {
 
 export function openServiceForm(view, service = null) {
     if (!canAdminAction(view.capability)) {
-        showToast(`Managing ${view.noun}s requires admin access.`, "error");
+        showToast(`Your role cannot manage ${view.noun}s.`, "error");
         return;
     }
     serviceEl(view, "Form").classList.remove("hidden");

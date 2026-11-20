@@ -143,10 +143,10 @@ export function setUnauthorizedHandler(handler) {
     unauthorizedHandler = handler;
 }
 
-/** The auth routes answer 401 as part of signing in; every other 401 means the session is gone. */
+/** Signing in and the session check answer 401 as part of their job; any other 401 means the session is gone. */
 function isSessionCheckRequest(url) {
     const pathname = normalizeRequestPath(url);
-    return pathname.startsWith(`${API.adminAuth}/`);
+    return pathname === `${API.adminAuth}/login` || pathname === `${API.adminAuth}/session`;
 }
 
 export async function apiRequest(url, options = {}) {

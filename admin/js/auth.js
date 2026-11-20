@@ -148,7 +148,7 @@ export async function loginAdmin(event) {
         await initializeDashboard();
     } catch (error) {
         const normalized = normalizeError(error);
-        state.auth.error = normalized.status === 401 ? "Invalid username or password." : normalized.message;
+        state.auth.error = normalized.message;
         syncAuthChrome();
     } finally {
         setButtonLoading(elements.authLoginButton, false, "Sign in");

@@ -122,8 +122,9 @@
    ===================================================== */
 
 /* --- Responsive: Inspector full-width on mobile --- */
-@media (max-width: 768px) {
-    body {
+@media (max-width: 767px) {
+    body,
+    body.overflow-hidden {
         min-height: 100vh;
         height: auto;
         flex-direction: column;

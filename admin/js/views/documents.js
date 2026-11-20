@@ -1,4 +1,4 @@
-import { adminCollectionFilesUrl, adminMutationRequest, apiRequest } from "../api.js";
+import { adminCollectionFilesUrl, adminMutationRequest, apiRequest, normalizeError } from "../api.js";
 import { canAdminAction } from "../auth.js";
 import { confirmDialog } from "../dialog.js";
 import { appendText, clearNode, createButton, createEl, formatBytes, formatCount, formatDateTime, showErrorToast, showToast } from "../dom.js";
@@ -28,12 +28,14 @@ export async function loadCollectionFiles({ quiet = false } = {}) {
         state.files.loading = true;
         renderCollectionFiles();
     }
+    const before = JSON.stringify([state.files.data, state.files.error ? normalizeError(state.files.error).message : null]);
     try {
         const data = await apiRequest(adminCollectionFilesUrl(id));
         if (state.selectedCollection?.id !== id) return;
         state.files.collectionId = id;
         state.files.data = data;
         state.files.error = null;
+        state.files.loadedAt = new Date().toISOString();
     } catch (error) {
         if (state.selectedCollection?.id !== id) return;
         state.files.error = error;
@@ -41,7 +43,12 @@ export async function loadCollectionFiles({ quiet = false } = {}) {
     } finally {
         if (state.selectedCollection?.id === id) {
             state.files.loading = false;
-            renderCollectionFiles();
+            const changed = JSON.stringify([state.files.data, state.files.error ? normalizeError(state.files.error).message : null]) !== before;
+            if (!quiet || changed) renderCollectionFiles();
+            // Kept on screen after a failed refresh: say so, and when the list was loaded.
+            if (state.files.error && state.files.data) {
+                setFilesUploadStatus(`Could not refresh the documents (${normalizeError(state.files.error).message}). Showing the list loaded at ${formatDateTime(state.files.loadedAt)}.`);
+            }
         }
     }
 }
@@ -85,7 +92,7 @@ export function renderCollectionFiles() {
         const canReindex = canAdminAction("reindexCollection");
         elements.btnFilesReindex.disabled = !canReindex;
         elements.btnFilesReindex.classList.toggle("opacity-50", !canReindex);
-        if (!canReindex) elements.btnFilesReindex.title = "Re-index requires operator access.";
+        if (!canReindex) elements.btnFilesReindex.title = "Your role cannot re-index collections.";
         else elements.btnFilesReindex.removeAttribute("title");
     }
 
@@ -160,7 +167,7 @@ export async function uploadCollectionDocuments(fileList) {
     const files = Array.from(fileList || []);
     if (!collection || files.length === 0) return;
     if (!canAdminAction("manageDocuments")) {
-        showToast("Uploading documents requires operator access.", "error");
+        showToast("Your role cannot upload documents.", "error");
         return;
     }
     if (state.files.uploading) return;
@@ -204,7 +211,7 @@ export async function deleteCollectionDocument(fileName) {
     const collection = state.selectedCollection;
     if (!collection) return;
     if (!canAdminAction("manageDocuments")) {
-        showToast("Deleting documents requires operator access.", "error");
+        showToast("Your role cannot delete documents.", "error");
         return;
     }
     const confirmed = await confirmDialog({

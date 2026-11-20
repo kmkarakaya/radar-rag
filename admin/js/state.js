@@ -147,6 +147,7 @@ export const elements = {
     jobsRefreshList: document.getElementById("jobsRefreshList"),
     jobsListNotice: document.getElementById("jobsListNotice"),
     jobDetail: document.getElementById("jobDetail"),
+    jobDetailClose: document.getElementById("jobDetailClose"),
     jobDetailTitle: document.getElementById("jobDetailTitle"),
     jobDetailSummary: document.getElementById("jobDetailSummary"),
     jobDetailBody: document.getElementById("jobDetailBody"),

@@ -44,7 +44,9 @@ function rebuildSelectOptions(select, keepFirst, values, labelFor) {
         option.value = value;
         select.appendChild(option);
     }
-    if ([...select.options].some((option) => option.value === current)) select.value = current;
+    // A value set before the options existed (it could not stick) is kept in data-value.
+    const wanted = current || select.dataset.value || "";
+    if ([...select.options].some((option) => option.value === wanted)) select.value = wanted;
 }
 
 export function applyServerInfo() {
@@ -55,6 +57,7 @@ export function applyServerInfo() {
         else elements.filesInput.removeAttribute("accept");
     }
     rebuildSelectOptions(elements.jobsStatusFilter, 1, info?.jobStatuses, capitalizeWord);
+    if (elements.jobsStatusFilter) elements.jobsStatusFilter.value = state.jobListStatusFilter;
     rebuildSelectOptions(elements.editEmbeddingProvider, 1, info?.embeddingProviders, (value) => PROVIDER_LABELS[value] ?? value);
     rebuildSelectOptions(elements.editDistanceMetric, 1, info?.distanceMetrics, (value) => METRIC_LABELS[value] ?? value);
     syncExternalProviderOption();

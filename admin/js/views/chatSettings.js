@@ -114,7 +114,7 @@ export function renderChatSettings() {
     resetButton.classList.toggle("opacity-50", resetButton.disabled);
     const saveButton = document.getElementById("btnCsSettingsSave");
     saveButton.classList.toggle("opacity-50", saveButton.disabled);
-    if (!canManage) saveButton.title = "Choosing the chat LLM requires admin access.";
+    if (!canManage) saveButton.title = "Your role cannot choose the chat LLM.";
     else saveButton.removeAttribute("title");
 }
 

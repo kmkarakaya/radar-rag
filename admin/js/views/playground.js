@@ -2,6 +2,7 @@ import { apiRequest, collectionQueryUrl, collectionRetrieveUrl, normalizeError }
 import { appendJsonDetails, clearNode, createEl, createMetaItem, formatMetric, renderErrorBox, setButtonLoading, showToast } from "../dom.js";
 import { elements, state } from "../state.js";
 import { chatServiceName } from "./chatSettings.js";
+import { providerName } from "./editor.js";
 import { getCapabilityState, updatePlaygroundCapabilityState } from "./inspector.js";
 
 export function setPlaygroundMode(mode) {
@@ -67,7 +68,7 @@ export function renderRetrieveResult(data) {
     meta.appendChild(createMetaItem("K", data?.k));
     meta.appendChild(createMetaItem("Source count", data?.sourceCount ?? data?.sources?.length ?? 0));
     meta.appendChild(createMetaItem("Threshold", formatMetric(data?.distanceScoreThreshold)));
-    meta.appendChild(createMetaItem("Embedding", `${data?.embeddingProvider || "-"} / ${data?.embeddingModel || "-"}`));
+    meta.appendChild(createMetaItem("Embedding", `${providerName(data?.embeddingProvider)}, ${data?.embeddingModel || "-"}`));
     meta.appendChild(createMetaItem("Collection", data?.collectionDisplayName || data?.collectionId || state.selectedCollection?.displayName));
     meta.appendChild(createMetaItem("Active version", data?.activeVersion));
     container.appendChild(meta);
@@ -84,7 +85,7 @@ export function renderQueryResult(data) {
     container.appendChild(answer);
     const meta = createEl("div", "grid grid-cols-1 gap-3 sm:grid-cols-2");
     meta.appendChild(createMetaItem("Threshold", formatMetric(data?.distanceScoreThreshold)));
-    meta.appendChild(createMetaItem("Embedding", `${data?.embeddingProvider || "-"} / ${data?.embeddingModel || "-"}`));
+    meta.appendChild(createMetaItem("Embedding", `${providerName(data?.embeddingProvider)}, ${data?.embeddingModel || "-"}`));
     meta.appendChild(createMetaItem("Chat model", data?.chatModel
         ? `${data.chatModel}${data.chatServiceId ? ` via ${chatServiceName(data.chatServiceId)}` : ""}`
         : "-"));
@@ -125,10 +126,6 @@ export async function runPlayground() {
 
     const kValue = elements.pgK?.value.trim();
     const retrieveK = kValue ? Number(kValue) : undefined;
-    if (state.playgroundMode === "retrieve" && kValue && (!Number.isInteger(retrieveK) || retrieveK <= 0)) {
-        showToast("Retrieve K must be a positive integer.", "error");
-        return;
-    }
 
     clearNode(elements.pgResult);
     elements.pgResult.appendChild(createEl("span", "text-slate-500 italic", "Processing..."));

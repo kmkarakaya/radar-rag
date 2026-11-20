@@ -4,8 +4,7 @@ import { clearNode, createEl, formatValidationFieldLabel, getStatusBadge, setBut
 import { API, EDIT_FIELD_IDS, elements, loadTokens, state } from "../state.js";
 import { describeChatSettings, syncChatSettingsModels } from "./chatSettings.js";
 import { loadAdminCollectionDetail, loadCollections, mergeCollectionIntoState } from "./collections.js";
-import { loadCollectionFiles } from "./documents.js";
-import { closeInspector, openInspector, renderCollectionValidation, setCollectionTabsEnabled, setInspectorActionsEnabled, switchTab, syncSaveButtonAccess } from "./inspector.js";
+import { closeInspector, openInspector, renderCollectionValidation, setCollectionTabsEnabled, setInspectorActionsEnabled, syncSaveButtonAccess } from "./inspector.js";
 
 export function normalizeModelList(models) {
     return [...new Set(
@@ -41,7 +40,7 @@ export function selectedEmbeddingServiceEntry() {
 
 /** The provider the editor is about to use: the selected one, else the backend default. */
 export function selectedEmbeddingProvider() {
-    return elements.editEmbeddingProvider?.value || state.modelDiscovery.defaultProvider || "builtin";
+    return elements.editEmbeddingProvider?.value || state.modelDiscovery.defaultProvider || "";
 }
 
 // Embedding provider and model are chosen per collection; the chat LLM is global (see renderChatLlmStatus).
@@ -110,19 +109,25 @@ export function syncModelDiscoveryPanel() {
     syncEmbeddingReindexNote();
 }
 
-/** Editing an existing collection: say a re-index is needed once its embedding provider, service or model changes. */
+/** Settings that apply only at the next re-index (shown in the note when an existing collection changes them). */
+const REINDEX_FIELDS = ["sourcePath", "chunkSize", "chunkOverlap", "distanceMetric", "embeddingProvider", "embeddingServiceId", "embeddingModel"];
+
+/** Editing an existing collection: once a setting that applies at the next re-index changes, say which. */
 export function syncEmbeddingReindexNote() {
     const note = elements.embeddingReindexNote;
     if (!note) return;
     const saved = state.editorInitialSnapshot;
     const current = saved ? readEditorValues() : null;
-    const changed = Boolean(saved) && ["embeddingProvider", "embeddingServiceId", "embeddingModel"].some((key) => current[key] !== saved[key]);
-    note.classList.toggle("hidden", !changed);
+    const changed = saved ? REINDEX_FIELDS.filter((key) => current[key] !== saved[key]) : [];
+    note.classList.toggle("hidden", changed.length === 0);
+    note.textContent = changed.length === 0
+        ? ""
+        : `${changed.map(formatValidationFieldLabel).join(", ")}: applies after a re-index; until then searches use the current index.`;
 }
 
 // External embedding services are managed in the "Embedding services" view (or set in .env / config as "server").
 export const EXTERNAL_EMBEDDING_SETUP_HINT = "No external embedding service yet. "
-    + "Add one under Embedding services in the left menu (for example Ollama on this computer at http://host.docker.internal:11434/v1), "
+    + "Add one under Embedding services in the left menu, "
     + "or set an embedding URL in the server settings. Then pick it and its model here.";
 
 /** Disable "openai-compatible" while there is no embedding service, unless the collection already uses it. */
@@ -412,9 +417,14 @@ export function normalizeServiceModels(list) {
 export function clearEditorForm() {
     Object.values(EDIT_FIELD_IDS).forEach((id) => {
         const element = document.getElementById(id);
-        if (element) element.value = "";
+        if (element) {
+            element.value = "";
+            delete element.dataset.value;
+        }
     });
     elements.editId.value = "";
+    // Advanced starts folded every time the form opens.
+    if (elements.editAdvanced) elements.editAdvanced.open = false;
     const uploadsRadio = document.querySelector('input[name="sourceKind"][value="uploads"]');
     if (uploadsRadio) uploadsRadio.checked = true;
     syncSourceKindFields(null);
@@ -434,16 +444,21 @@ export function hasUnsavedCollectionChanges() {
 }
 
 export function setupEditorTab(collection) {
+    if (elements.editAdvanced) elements.editAdvanced.open = false;
     elements.editId.value = collection.id || "";
     elements.editDisplayName.value = fieldValueFromCollection(collection, "displayName");
     elements.editDescription.value = fieldValueFromCollection(collection, "description");
     elements.editSourcePath.value = fieldValueFromCollection(collection, "sourcePath");
     elements.editDistanceMetric.value = collection.distanceMetric || "";
+    elements.editDistanceMetric.dataset.value = collection.distanceMetric || "";
     elements.editChunkSize.value = collection.chunkSize ?? "";
     elements.editChunkOverlap.value = collection.chunkOverlap ?? "";
     elements.editRetrievalK.value = collection.retrievalK ?? "";
     elements.editRetrievalDistanceThreshold.value = collection.retrievalDistanceThreshold ?? "";
-    if (elements.editEmbeddingProvider) elements.editEmbeddingProvider.value = collection.embeddingProvider || "";
+    if (elements.editEmbeddingProvider) {
+        elements.editEmbeddingProvider.value = collection.embeddingProvider || "";
+        elements.editEmbeddingProvider.dataset.value = collection.embeddingProvider || "";
+    }
     if (elements.editEmbeddingService) elements.editEmbeddingService.dataset.savedProvider = collection.embeddingProvider || "";
     // An openai-compatible collection without a service id uses "server" (.env / config).
     syncEmbeddingServiceField(collection.embeddingProvider === "openai-compatible" ? collection.embeddingServiceId || "server" : "");
@@ -584,11 +599,11 @@ export async function saveCollection() {
     const id = elements.editId.value;
     const mode = id ? "update" : "create";
     if (mode === "create" && !canAdminAction("createCollection")) {
-        showToast("Create collection requires operator access.", "error");
+        showToast("Your role cannot create collections.", "error");
         return;
     }
     if (mode === "update" && !canAdminAction("updateCollection")) {
-        showToast("Update collection requires operator access.", "error");
+        showToast("Your role cannot change collections.", "error");
         return;
     }
     const errors = validateCollectionForm(mode);
@@ -632,34 +647,6 @@ export async function saveCollection() {
                 return;
             }
             showToast("Collection created.", "success");
-            if (shouldKeepOpen) {
-                const createdId = data?.collection?.id;
-                if (createdId) {
-                    const refreshed = await loadAdminCollectionDetail(createdId);
-                    state.selectedCollection = mergeCollectionIntoState(refreshed);
-                    elements.inspectorTitle.textContent = refreshed.displayName || refreshed.id;
-                    clearNode(elements.inspectorStatusBadge);
-                    elements.inspectorStatusBadge.classList.remove("hidden");
-                    elements.inspectorStatusBadge.appendChild(getStatusBadge(refreshed.status));
-                    setInspectorActionsEnabled(true);
-                    setCollectionTabsEnabled(true);
-                    setupEditorTab(refreshed);
-                }
-                renderCollectionValidation(validation, getValidationTitle(mode));
-                if (!payload.sourcePath && createdId) {
-                    switchTab("files");
-                    await loadCollectionFiles();
-                    showToast("Collection created. Add documents in the Documents tab, then re-index.", "info");
-                    return;
-                }
-                showToast(
-                    validation.impact?.reindexRequired
-                        ? "Collection saved. Initial re-index is required before it can be used."
-                        : "Collection saved. Review the validation warnings.",
-                    "info",
-                );
-                return;
-            }
         } else {
             await adminMutationRequest(adminCollectionUrl(id), { method: "PATCH", body: JSON.stringify(payload) });
             showToast("Collection updated.", "success");

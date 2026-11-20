@@ -260,7 +260,7 @@ describe("admin panel static contract", () => {
     const editFieldIds = [...editFieldBlock[1].matchAll(/:\s*"([^"]+)"/g)].map((match) => match[1]);
 
     for (const id of [...directIds, ...editFieldIds]) {
-      assert.ok(htmlIds.has(id), `admin/index.html is missing id="${id}" referenced by admin.js`);
+      assert.ok(htmlIds.has(id), `admin/index.html is missing id="${id}" referenced by admin/js`);
     }
   });
 
@@ -439,7 +439,7 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("async function deleteJob(jobId)"));
     assert.ok(js.includes("async function removeSelectedJobs()"));
     assert.ok(html.includes("Remove selected"));
-    assert.ok(js.includes("Delete terminal job from the server"));
+    assert.ok(js.includes("Remove this finished job from the list"));
     assert.ok(js.includes("Remove"));
   });
 });

@@ -2,7 +2,7 @@ import { adminCollectionPhysicalCollectionsUrl, adminCollectionUrl, adminMutatio
 import { canAdminAction } from "../auth.js";
 import { switchView } from "../dashboard.js";
 import { confirmDialog } from "../dialog.js";
-import { appendChildren, appendText, clearNode, createBadge, createButton, createEl, createMetaItem, formatCount, formatDateTime, formatValidationFieldLabel, getStatusBadge, getStatusColor, isRecord, renderApiErrorContent, setButtonLoading, showErrorToast, showToast, stringifyForDisplay } from "../dom.js";
+import { appendChildren, appendText, clearNode, createBadge, createButton, createEl, createMetaItem, formatCount, formatDateTime, formatValidationFieldLabel, getStatusBadge, getStatusColor, isRecord, renderApiErrorContent, setButtonLoading, shortId, showErrorToast, showToast, stringifyForDisplay } from "../dom.js";
 import { jobRoute, loadJobProgress, watchJob } from "../jobWatch.js";
 import { recordRoute } from "../router.js";
 import { API, elements, state } from "../state.js";
@@ -344,9 +344,11 @@ export async function openInspector(id, options = {}) {
     setInspectorActionsEnabled(true);
     setCollectionTabsEnabled(true);
     setupEditorTab(collection);
-    switchTab("ready");
+    // Switch before opening, so the panel records one history entry for the tab it opens on.
+    const initialTab = options.tab && options.tab !== "ready" ? options.tab : "ready";
+    switchTab(initialTab);
     openPanel();
-    if (options.tab && options.tab !== "ready") activateTab(options.tab);
+    if (initialTab !== "ready") activateTab(initialTab);
     state.isLoading.collectionDetail = true;
     setButtonLoading(elements.btnSave, true, "Loading...");
     try {
@@ -449,8 +451,8 @@ export function setCollectionTabsEnabled(enabled) {
 
 export function setInspectorActionsEnabled(enabled, reason = "") {
     const actionStates = [
-        [elements.btnReindex, enabled && canAdminAction("reindexCollection"), "Re-index requires operator access."],
-        [elements.btnDeleteCol, enabled && canAdminAction("deleteCollection"), "Delete requires admin access."],
+        [elements.btnReindex, enabled && canAdminAction("reindexCollection"), "Your role cannot re-index collections."],
+        [elements.btnDeleteCol, enabled && canAdminAction("deleteCollection"), "Your role cannot delete collections."],
         [elements.btnViewHistory, enabled, reason],
     ];
     // Say in words why actions are off for this role (a tooltip alone is not seen on keyboard or touch).
@@ -485,7 +487,7 @@ export function syncSaveButtonAccess() {
     elements.btnSave.disabled = !allowed;
     if (!allowed) {
         elements.btnSave.title = state.auth.enabled
-            ? `${mode === "create" ? "Create" : "Update"} collection requires operator access.`
+            ? `Your role cannot ${mode === "create" ? "create" : "change"} collections.`
             : "";
     } else {
         elements.btnSave.removeAttribute("title");
@@ -675,9 +677,18 @@ export async function loadPhysicalCollections(collectionId) {
 }
 
 /** `quiet` (background refresh): no loading notices, and nothing is redrawn when the data did not change. */
+let readinessRerun = null;
+
 export async function updateReadinessTab({ quiet = false } = {}) {
-    if (!state.selectedCollection || state.isLoading.readiness || state.isLoading.physicalCollections) return;
+    if (!state.selectedCollection) return;
+    // A request while one is running is not dropped: it runs right after (a user request wins over a quiet one).
+    if (state.isLoading.readiness || state.isLoading.physicalCollections) {
+        readinessRerun = { quiet: Boolean(readinessRerun ? readinessRerun.quiet && quiet : quiet) };
+        return;
+    }
     const collectionId = state.selectedCollection.id;
+    const previousBanner = JSON.stringify([state.selectedCollection, state.selectedReadiness, state.activeJobProgress]);
+    const previousActiveJobId = state.selectedReadiness?.activeJob?.id ?? null;
     const hasSnapshot = Boolean(state.selectedReadiness);
     const hasPhysicalSnapshot = Array.isArray(state.selectedPhysicalCollections);
     const previousReadiness = JSON.stringify(state.selectedReadiness);
@@ -718,6 +729,11 @@ export async function updateReadinessTab({ quiet = false } = {}) {
             if (!quiet || JSON.stringify(readinessResult.value) !== previousReadiness) renderReadinessData(readinessResult.value);
             else updatePlaygroundCapabilityState();
             clearReadinessRefreshNotice();
+            // Readiness has the status and the running job but not the index state: when those change
+            // (a job finished, a status moved), reload the collection so its status box and badge are current.
+            const statusChanged = readinessResult.value?.status && readinessResult.value.status !== state.selectedCollection.status;
+            const jobEnded = previousActiveJobId && readinessResult.value?.activeJob?.id !== previousActiveJobId;
+            if (statusChanged || jobEnded) await refreshSelectedCollection(collectionId);
         } else {
             const error = readinessResult.reason;
             if (!hasSnapshot) {
@@ -751,8 +767,33 @@ export async function updateReadinessTab({ quiet = false } = {}) {
     } finally {
         state.isLoading.readiness = false;
         state.isLoading.physicalCollections = false;
-        renderCollectionIndexStateBanner();
+        const bannerChanged = JSON.stringify([state.selectedCollection, state.selectedReadiness, state.activeJobProgress]) !== previousBanner;
+        if (!quiet || bannerChanged) renderCollectionIndexStateBanner();
+        if (readinessRerun) {
+            const next = readinessRerun;
+            readinessRerun = null;
+            void updateReadinessTab(next);
+        }
     }
+}
+
+/** Reloads the open collection (GET /v1/admin/collections/:id) and redraws its badge and status box. */
+export async function refreshSelectedCollection(collectionId) {
+    try {
+        const detail = await loadAdminCollectionDetail(collectionId);
+        if (state.selectedCollection?.id !== collectionId) return;
+        mergeCollectionIntoState(detail);
+        syncInspectorStatusBadge();
+    } catch (error) {
+        console.warn("Could not reload the collection", error);
+    }
+}
+
+/** The status badge next to the open collection's name. */
+export function syncInspectorStatusBadge() {
+    if (!state.selectedCollection || !elements.inspectorStatusBadge) return;
+    clearNode(elements.inspectorStatusBadge);
+    elements.inspectorStatusBadge.appendChild(getStatusBadge(state.selectedCollection.status));
 }
 
 export function createReadinessRow(label, value, ok) {
@@ -774,7 +815,7 @@ export function renderReadinessData(readiness) {
         createReadinessRow("Vector store readable", readiness.chromaReadable, Boolean(readiness.chromaReadable)),
         createReadinessRow("Chunks in the vector store", formatCount(readiness.chromaCount)),
         createReadinessRow(
-            `Embedding: ${availability.embeddingProvider || "-"} / ${availability.embeddingModel || "-"}`
+            `Embedding: ${providerName(availability.embeddingProvider)}, ${availability.embeddingModel || "-"}`
                 + (availability.embeddingServiceId ? ` via ${embeddingServiceName(availability.embeddingServiceId)}` : ""),
             availability.embeddingModelAvailable,
             Boolean(availability.embeddingModelAvailable),
@@ -795,7 +836,7 @@ export function renderReadinessData(readiness) {
 
     if (readiness.activeJob) {
         const active = createEl("div", "rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800");
-        appendText(active, `Active job: ${readiness.activeJob.id} (${readiness.activeJob.status})`);
+        appendText(active, `Indexing: job ${shortId(readiness.activeJob.id)} is ${readiness.activeJob.status}.`);
         elements.readinessStatusGrid.appendChild(active);
     }
 
@@ -873,7 +914,7 @@ export function updatePlaygroundCapabilityState(fallbackReason) {
 export async function reindexCollection() {
     if (!state.selectedCollection) return;
     if (!canAdminAction("reindexCollection")) {
-        showToast("Re-index requires operator access.", "error");
+        showToast("Your role cannot re-index collections.", "error");
         return;
     }
     if (hasUnsavedCollectionChanges()) {
@@ -922,7 +963,7 @@ export async function reindexCollection() {
 export async function deleteCollection() {
     if (!state.selectedCollection) return;
     if (!canAdminAction("deleteCollection")) {
-        showToast("Delete collection requires admin access.", "error");
+        showToast("Your role cannot delete collections.", "error");
         return;
     }
     const deleteNote = state.selectedCollection.sourceKind === "uploads"

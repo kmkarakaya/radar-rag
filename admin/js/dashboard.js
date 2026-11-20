@@ -8,7 +8,7 @@ import { closeAuditPickers, loadAuditLog, loadAuditOperations, renderAuditFilter
 import { emptyChatSettingsState, loadChatServicesView, loadChatSettings } from "./views/chatSettings.js";
 import { loadCollections } from "./views/collections.js";
 import { loadCollectionFiles } from "./views/documents.js";
-import { loadConfigDefaults, loadModelDiscovery } from "./views/editor.js";
+import { emptyModelDiscovery, loadConfigDefaults, loadModelDiscovery } from "./views/editor.js";
 import { loadHealth } from "./views/health.js";
 import { resetReadinessAndPlayground, updateReadinessTab } from "./views/inspector.js";
 import { isTerminalJobStatus, loadJobs, openJobDetail, renderJobs } from "./views/jobs.js";
@@ -54,6 +54,21 @@ export function startDashboardPolling() {
 }
 
 export function resetDashboardState() {
+    // The inspector closes for good (no route recorded, no unsaved-changes question).
+    state.inspectorOpen = false;
+    state.inspectorReturnFocus = null;
+    if (elements.inspectorPanel) {
+        elements.inspectorPanel.classList.add("translate-x-full");
+        elements.inspectorPanel.inert = true;
+        elements.inspectorPanel.setAttribute("aria-hidden", "true");
+    }
+    elements.inspectorOverlay?.classList.add("hidden");
+    elements.inspectorOverlay?.classList.remove("opacity-100");
+    state.auditOperations = [];
+    state.jobListStatusFilter = "all";
+    state.files = { collectionId: null, data: null, loading: false, uploading: false, error: null, rejected: [] };
+    state.modelDiscovery = emptyModelDiscovery();
+    state.configDefaults = { loaded: false, collectionDefaults: null, modelDefaults: null, chat: null };
     state.jobDetailId = null;
     state.jobDetail = null;
     elements.jobDetail?.classList.add("hidden");
@@ -128,7 +143,8 @@ export async function initializeDashboard() {
     setPlaygroundMode("retrieve");
     resetReadinessAndPlayground("Select a collection to inspect readiness.");
     renderJobs();
-    loadServerInfo();
+    // Selects get their options from server-info; a deep link (#/jobs?status=failed) needs them first.
+    const serverInfoLoaded = loadServerInfo();
     loadConfigDefaults();
     loadModelDiscovery();
     loadChatSettings();
@@ -138,6 +154,7 @@ export async function initializeDashboard() {
     startDashboardPolling();
     state.dashboardReady = true;
     leaveLoginAddress();
+    await serverInfoLoaded;
     await applyRoute();
 }
 

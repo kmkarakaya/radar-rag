@@ -7,10 +7,10 @@ import { elements, state } from "./state.js";
 import { applyAuditLogFilters, auditOperationOptions, clearAuditLogFilters, closeAuditPickers, getAuditVisibleCollections, goToNextAuditLogPage, goToPreviousAuditLogPage, openAuditLogForCollection, refreshAuditLog, renderAuditCollectionPickerList, renderAuditFilterControls, renderAuditOperationPickerList, setAuditCollectionFilterValues, setAuditOperationFilterValues, toggleAuditPicker } from "./views/audit.js";
 import { loadCollections } from "./views/collections.js";
 import { bindDocumentsTabEvents } from "./views/documents.js";
-import { loadModelDiscovery, saveCollection, syncModelDiscoveryPanel } from "./views/editor.js";
+import { loadModelDiscovery, saveCollection, syncEmbeddingReindexNote, syncModelDiscoveryPanel } from "./views/editor.js";
 import { loadHealth } from "./views/health.js";
 import { activateTab, deleteCollection, handleOverlayClick, reindexCollection, requestCloseInspector, updateReadinessTab } from "./views/inspector.js";
-import { changeJobsStatusFilter, getVisibleSelectableJobIds, goToNextJobsPage, goToPreviousJobsPage, loadJobs, refreshJobsList, removeSelectedJobs, renderJobs } from "./views/jobs.js";
+import { changeJobsStatusFilter, closeJobDetail, getVisibleSelectableJobIds, goToNextJobsPage, goToPreviousJobsPage, loadJobs, refreshJobsList, removeSelectedJobs, renderJobs } from "./views/jobs.js";
 import { runPlayground, setPlaygroundMode } from "./views/playground.js";
 import { bindEmbeddingServicesEvents } from "./views/services.js";
 
@@ -37,8 +37,9 @@ export function bindEvents() {
             loadJobs();
             loadHealth();
         }
-        if (state.selectedCollection) updateReadinessTab();
+        if (state.inspectorOpen && state.selectedCollection) updateReadinessTab();
     });
+    elements.jobDetailClose?.addEventListener("click", () => closeJobDetail());
     if (elements.jobsRefreshList) {
         elements.jobsRefreshList.addEventListener("click", () => {
             refreshJobsList();
@@ -179,6 +180,9 @@ export function bindEvents() {
     elements.btnCloseInspector.addEventListener("click", () => void requestCloseInspector());
     elements.inspectorOverlay.addEventListener("click", handleOverlayClick);
     elements.btnCancelEdit.addEventListener("click", () => void requestCloseInspector());
+    // Any field change may add or remove a setting that applies only at the next re-index.
+    elements.colEditForm.addEventListener("input", () => syncEmbeddingReindexNote());
+    elements.colEditForm.addEventListener("change", () => syncEmbeddingReindexNote());
     elements.colEditForm.addEventListener("submit", (event) => {
         event.preventDefault();
         saveCollection();

@@ -176,7 +176,7 @@
                             <h3 id="jobDetailTitle" class="text-sm font-semibold text-slate-800">Job</h3>
                             <p id="jobDetailSummary" class="mt-1 text-xs text-slate-600"></p>
                         </div>
-                        <a id="jobDetailClose" href="#/jobs" class="text-sm text-slate-500 hover:text-slate-700">Close</a>
+                        <button id="jobDetailClose" type="button" class="text-sm text-slate-500 hover:text-slate-700">Close</button>
                     </div>
                     <div id="jobDetailBody"></div>
                 </section>
@@ -210,7 +210,7 @@
                 <div id="esWarnings" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"></div>
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p class="text-sm text-slate-600">The embeddings your collections can use. <span class="font-semibold">Built-in</span> runs inside the backend and needs no setup. The others are connections to OpenAI-compatible embedding APIs such as Ollama, OpenAI or LM Studio; a collection that uses an external service picks one of them. Changes take effect at once, without a restart.</p>
-                    <p id="esRoleNote" class="hidden shrink-0 text-xs text-slate-500">Only the admin role can add or change embedding services.</p>
+                    <p id="esRoleNote" class="hidden shrink-0 text-xs text-slate-500">Your role can view embedding services but not add or change them.</p>
                     <button id="btnAddEmbeddingService" type="button" class="hidden shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm">Add service</button>
                 </div>
                 <form id="esForm" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
@@ -226,8 +226,8 @@
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="esBaseUrl">Base URL *</label>
-                            <input type="text" id="esBaseUrl" required class="w-full p-2 border border-slate-200 rounded-lg text-sm" placeholder="http://host.docker.internal:11434/v1">
-                            <p class="mt-1 text-xs text-slate-500">It must end in /v1. With Docker, reach a service on this computer with host.docker.internal, not localhost.</p>
+                            <input type="text" id="esBaseUrl" required class="w-full p-2 border border-slate-200 rounded-lg text-sm" placeholder="https://...">
+                            <p class="mt-1 text-xs text-slate-500">The address of the OpenAI-compatible API. The Example buttons fill it in; the server checks it when you test or save.</p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="esApiKey">API key</label>
@@ -292,7 +292,7 @@
                 </div>
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p class="text-sm text-slate-600">Connections to OpenAI-compatible chat APIs such as Ollama, OpenAI, OpenRouter or LM Studio. Add one, test it, then choose it with a model under Answer generation. Changes take effect at once, without a restart.</p>
-                    <p id="csRoleNote" class="hidden shrink-0 text-xs text-slate-500">Only the admin role can add or change chat services and the chat choice.</p>
+                    <p id="csRoleNote" class="hidden shrink-0 text-xs text-slate-500">Your role can view chat services but not add or change them, or choose the chat LLM.</p>
                     <button id="btnAddChatService" type="button" class="hidden shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm">Add service</button>
                 </div>
                 <form id="csForm" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
@@ -308,8 +308,8 @@
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="csBaseUrl">Base URL *</label>
-                            <input type="text" id="csBaseUrl" required class="w-full p-2 border border-slate-200 rounded-lg text-sm" placeholder="http://host.docker.internal:11434/v1">
-                            <p class="mt-1 text-xs text-slate-500">It must end in /v1 (OpenRouter: /api/v1). With Docker, reach a service on this computer with host.docker.internal, not localhost.</p>
+                            <input type="text" id="csBaseUrl" required class="w-full p-2 border border-slate-200 rounded-lg text-sm" placeholder="https://...">
+                            <p class="mt-1 text-xs text-slate-500">The address of the OpenAI-compatible API. The Example buttons fill it in; the server checks it when you test or save.</p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="csApiKey">API key</label>
@@ -625,7 +625,6 @@
                             <p id="modelDiscoverySummary" class="text-xs text-slate-600">Loading the available models...</p>
                             <span id="modelDiscoveryStatus" class="shrink-0 rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600">Loading</span>
                         </div>
-                        <p id="embeddingReindexNote" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">You changed the embedding: the collection needs a re-index before searches use it.</p>
                     </section>
 
                     <section class="space-y-2 border-t border-slate-100 pt-4">
@@ -678,6 +677,7 @@
                     </details>
                     </fieldset>
 
+                    <p id="embeddingReindexNote" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800"></p>
                     <p id="editReadonlyNote" class="hidden text-xs text-slate-500">Your role can view these settings but not change them.</p>
                     <div class="flex justify-end gap-3">
                         <button type="button" id="btnCancelEdit" class="px-4 py-2 text-slate-500 hover:text-slate-700 text-sm font-medium transition-colors">Cancel</button>

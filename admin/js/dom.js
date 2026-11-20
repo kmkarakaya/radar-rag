@@ -119,7 +119,6 @@ export function getStatusColor(status) {
         info: "bg-sky-100 text-sky-700",
         ok: "bg-emerald-100 text-emerald-700",
         degraded: "bg-amber-100 text-amber-700",
-        inaccessible: "bg-slate-100 text-slate-600",
         muted: "bg-slate-100 text-slate-600",
         active: "bg-emerald-100 text-emerald-700",
         building: "bg-blue-100 text-blue-700",
@@ -322,9 +321,6 @@ export function showToast(message, type = "info", options = {}) {
     close.setAttribute("aria-label", "Dismiss");
     close.addEventListener("click", () => toast.remove());
     toast.append(close, messageNode);
-    if (options.requestId) {
-        toast.appendChild(createEl("div", "mt-1 text-xs opacity-80", `Request ID: ${options.requestId}`));
-    }
     renderIssuesList(toast, options.issues);
     const actions = [...(options.actions || []), ...(options.action ? [options.action] : [])];
     if (actions.length > 0) {

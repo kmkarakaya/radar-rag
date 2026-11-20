@@ -3,7 +3,7 @@ import { canAdminAction } from "../auth.js";
 import { appendChildren, clearNode, createEl, formatCount, formatDateTime, getCollectionCardStatusBadge, getCollectionCardStatusNote, renderApiErrorContent, showErrorToast } from "../dom.js";
 import { API, elements, state } from "../state.js";
 import { normalizeAuditCollectionValues, renderAuditFilterControls } from "./audit.js";
-import { findReadinessIssue, openInspector, renderCollectionIndexStateBanner } from "./inspector.js";
+import { findReadinessIssue, openInspector, renderCollectionIndexStateBanner, syncInspectorStatusBadge } from "./inspector.js";
 
 export function collectionNameById(collectionId) {
     return state.collections.find((collection) => collection.id === collectionId)?.displayName || null;
@@ -63,6 +63,18 @@ async function fetchCollections({ quiet = false } = {}) {
         const data = await apiRequest(`${API.rag}/collections`);
         state.collections = Array.isArray(data?.collections) ? data.collections : [];
         state.collectionError = null;
+        // The open collection keeps its detail fields but takes the list's current status and index state.
+        if (state.selectedCollection) {
+            const fresh = state.collections.find((collection) => collection.id === state.selectedCollection.id);
+            if (fresh) {
+                const before = JSON.stringify(state.selectedCollection);
+                state.selectedCollection = { ...state.selectedCollection, ...fresh };
+                if (state.inspectorOpen && JSON.stringify(state.selectedCollection) !== before) {
+                    syncInspectorStatusBadge();
+                    renderCollectionIndexStateBanner();
+                }
+            }
+        }
         state.collectionsLoadedAt = new Date().toISOString();
         changed = !quiet || hadError || JSON.stringify(state.collections) !== previous;
     } catch (error) {

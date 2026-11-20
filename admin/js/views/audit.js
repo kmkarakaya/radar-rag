@@ -4,7 +4,7 @@ import { appendChildren, clearNode, createBadge, createEl, formatDateTime, getSt
 import { capitalizeWord } from "../serverInfo.js";
 import { API, AUDIT_LOG_LIMIT, elements, loadTokens, state } from "../state.js";
 import { collectionNameById } from "./collections.js";
-import { closeInspector } from "./inspector.js";
+import { requestCloseInspector } from "./inspector.js";
 
 export function normalizeAuditSelectionValues(values = [], allowedValues = []) {
     const allowedSet = new Set(allowedValues);
@@ -499,12 +499,12 @@ export async function goToPreviousAuditLogPage() {
 
 export async function openAuditLogForCollection(collectionId) {
     if (!collectionId) return;
+    if (!(await requestCloseInspector())) return;
     setAuditCollectionFilterValues([collectionId]);
     setAuditOperationFilterValues([]);
     state.auditLogCursor = null;
     state.auditLogCursorStack = [];
     syncAuditLogFilterInputs();
     closeAuditPickers();
-    closeInspector();
     switchView("audit");
 }

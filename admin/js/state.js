@@ -58,6 +58,10 @@ export let state = {
     auditOperations: [],
     collections: [],
     selectedCollection: null,
+    // Index jobs followed until they finish (id -> { collectionId, collectionName }), for the "finished" message.
+    watchedJobs: new Map(),
+    // Progress of the open collection's running job, from its events ({ message, fraction, phase, phaseCount }).
+    activeJobProgress: null,
     // Whether the collection inspector is open (its data is polled only then).
     inspectorOpen: false,
     selectedReadiness: null,

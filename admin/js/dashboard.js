@@ -1,4 +1,5 @@
 import { clearNode } from "./dom.js";
+import { pollWatchedJobs } from "./jobWatch.js";
 import { applyRoute, leaveLoginAddress, recordRoute } from "./router.js";
 import { loadServerInfo } from "./serverInfo.js";
 import { elements, state } from "./state.js";
@@ -43,9 +44,16 @@ export function startDashboardPolling() {
     dashboardPollingHandles.push(setInterval(() => {
         if (!document.hidden && state.currentView === "health" && !state.inspectorOpen) loadHealth({ quiet: true });
     }, 30000));
+
+    // Followed jobs are checked whatever is on screen, so their end is announced.
+    dashboardPollingHandles.push(setInterval(() => {
+        if (state.watchedJobs.size > 0) void pollWatchedJobs();
+    }, 5000));
 }
 
 export function resetDashboardState() {
+    state.watchedJobs.clear();
+    state.activeJobProgress = null;
     state.dashboardReady = false;
     state.currentView = "collections";
     state.activeTab = "ready";

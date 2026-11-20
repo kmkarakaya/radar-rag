@@ -3,6 +3,7 @@ import { canAdminAction } from "../auth.js";
 import { switchView } from "../dashboard.js";
 import { confirmDialog } from "../dialog.js";
 import { appendChildren, appendText, clearNode, createBadge, createButton, createEl, createMetaItem, formatCount, formatDateTime, getStatusBadge, getStatusColor, isRecord, renderApiErrorContent, setButtonLoading, shortId, showErrorToast, showToast, stringifyForDisplay } from "../dom.js";
+import { loadJobProgress, watchJob } from "../jobWatch.js";
 import { recordRoute } from "../router.js";
 import { API, elements, state } from "../state.js";
 import { chatServiceName, loadChatSettings } from "./chatSettings.js";
@@ -216,6 +217,31 @@ export function renderCollectionIndexStateBanner() {
     });
     details.appendChild(snapshotGrid);
     elements.collectionIndexStateContent.appendChild(details);
+
+    if (isIndexing) {
+        elements.collectionIndexStateContent.prepend(createJobProgress(state.activeJobProgress));
+    }
+}
+
+/** A progress bar for the running job (phase of the build and the last step it reported). */
+export function createJobProgress(progress) {
+    const box = createEl("div", "rounded-lg border border-sky-100 bg-sky-50 p-3 text-xs text-sky-900");
+    const percent = progress?.fraction === null || progress?.fraction === undefined ? null : Math.round(progress.fraction * 100);
+    const bar = createEl("div", "h-2 w-full overflow-hidden rounded-full bg-sky-100");
+    bar.setAttribute("role", "progressbar");
+    bar.setAttribute("aria-label", "Indexing progress");
+    bar.setAttribute("aria-valuemin", "0");
+    bar.setAttribute("aria-valuemax", "100");
+    const fill = createEl("div", `h-full rounded-full bg-sky-500 transition-all ${percent === null ? "w-1/4 animate-pulse" : ""}`);
+    if (percent !== null) {
+        bar.setAttribute("aria-valuenow", String(percent));
+        fill.style.width = `${Math.max(percent, 3)}%`;
+    }
+    bar.appendChild(fill);
+    box.appendChild(bar);
+    const step = progress?.phase && progress?.phaseCount ? `Step ${progress.phase} of ${progress.phaseCount}: ` : "";
+    box.appendChild(createEl("div", "mt-2", `${step}${progress?.message || "Starting..."}`));
+    return box;
 }
 
 export function renderCollectionValidation(validation, title) {
@@ -701,6 +727,13 @@ export async function updateReadinessTab({ quiet = false } = {}) {
 
         if (readinessResult.status === "fulfilled") {
             state.selectedReadiness = readinessResult.value;
+            const activeJob = readinessResult.value?.activeJob;
+            if (activeJob && (activeJob.status === "queued" || activeJob.status === "running")) {
+                watchJob({ ...activeJob, collectionId }, state.selectedCollection?.displayName);
+                state.activeJobProgress = await loadJobProgress(activeJob.id);
+            } else {
+                state.activeJobProgress = null;
+            }
             if (!quiet || JSON.stringify(readinessResult.value) !== previousReadiness) renderReadinessData(readinessResult.value);
             else updatePlaygroundCapabilityState();
             clearReadinessRefreshNotice();
@@ -871,7 +904,8 @@ export async function reindexCollection() {
         }
 
         const data = await adminMutationRequest(`${API.admin}/collections/${state.selectedCollection.id}/reindex`, { method: "POST" });
-        showToast(`Re-indexing started: ${shortId(data?.job?.id || "")}`, "success");
+        watchJob(data?.job, state.selectedCollection.displayName);
+        showToast("Re-indexing started. You can keep working; a message appears when it finishes.", "success");
         await Promise.all([loadCollections(), loadJobs(), updateReadinessTab()]);
     } catch (error) {
         const normalized = normalizeError(error);

@@ -2,6 +2,7 @@ import { adminJobDeleteUrl, adminJobUrl, adminJobsBulkDeleteUrl, adminJobsListUr
 import { canAdminAction } from "../auth.js";
 import { confirmDialog } from "../dialog.js";
 import { appendText, clearNode, createBadge, createButton, createEl, formatCount, formatDateTime, getStatusColor, setButtonLoading, shortId, showErrorToast, showToast } from "../dom.js";
+import { watchJob } from "../jobWatch.js";
 import { API, JOB_LIST_LIMIT, elements, state } from "../state.js";
 import { collectionNameById, loadCollections } from "./collections.js";
 import { updateReadinessTab } from "./inspector.js";
@@ -227,6 +228,8 @@ export async function loadJobs(options = {}) {
         }));
         const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
         state.jobList = jobs.map((entry) => toJobRow(entry?.job, entry?.collection)).filter(Boolean);
+        // Running jobs seen here are followed too, so their end is announced wherever the user is.
+        state.jobList.forEach((job) => watchJob(job, job.collectionDisplayName));
         state.jobListError = null;
         state.jobListNextCursor = data?.nextCursor || null;
         state.jobListLoadedAt = new Date().toISOString();

@@ -315,6 +315,15 @@ export function showToast(message, type = "info", options = {}) {
         toast.appendChild(createEl("div", "mt-1 text-xs opacity-80", `Request ID: ${options.requestId}`));
     }
     renderIssuesList(toast, options.issues);
+    if (options.action) {
+        const action = createEl("button", "mt-2 rounded bg-white/20 px-2 py-1 text-xs font-semibold hover:bg-white/30", options.action.label);
+        action.type = "button";
+        action.addEventListener("click", () => {
+            options.action.onClick();
+            toast.remove();
+        });
+        toast.appendChild(action);
+    }
     elements.toastContainer.appendChild(toast);
     setTimeout(() => {
         toast.classList.add("opacity-0", "translate-x-4");

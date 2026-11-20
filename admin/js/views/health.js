@@ -1,6 +1,7 @@
 import { apiRequest, normalizeError } from "../api.js";
 import { appendJsonDetails, appendText, clearNode, createBadge, createEl, createMetaItem, formatBoolean, formatCount, formatDateTime, formatDurationSeconds, getStatusColor, isRecord, showErrorToast, stringifyForDisplay } from "../dom.js";
 import { API, elements, state } from "../state.js";
+import { renderCollections } from "./collections.js";
 
 /** `quiet` (background refresh): no "refreshing" banners and no toasts. */
 export async function loadHealth({ quiet = false } = {}) {
@@ -30,6 +31,8 @@ export async function loadHealth({ quiet = false } = {}) {
         state.healthStatus = healthResult.status === "fulfilled" ? healthResult.value : state.healthStatus;
         state.readiness = readyResult.status === "fulfilled" ? readyResult.value : state.readiness;
         state.readinessDetails = detailsResult.status === "fulfilled" ? detailsResult.value : state.readinessDetails;
+        // The getting-started card on an empty collections view reads this readiness.
+        if (state.collections.length === 0 && !state.isLoading.collections) renderCollections();
         if (
             healthResult.status === "fulfilled"
             || readyResult.status === "fulfilled"

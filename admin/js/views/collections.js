@@ -1,4 +1,5 @@
 import { adminCollectionUrl, apiRequest, normalizeError } from "../api.js";
+import { canAdminAction } from "../auth.js";
 import { appendChildren, clearNode, createEl, formatCount, formatDateTime, getCollectionCardStatusBadge, getCollectionCardStatusNote, renderApiErrorContent, showErrorToast } from "../dom.js";
 import { API, elements, state } from "../state.js";
 import { normalizeAuditCollectionValues, renderAuditFilterControls } from "./audit.js";
@@ -103,7 +104,7 @@ export function renderCollections() {
     }
 
     if (state.collections.length === 0) {
-        grid.appendChild(createEl("div", "col-span-full py-12 text-center text-slate-400 italic", 'No collections found. Click "New Collection" to get started.'));
+        grid.appendChild(renderGettingStarted());
         return;
     }
 
@@ -125,4 +126,56 @@ export function renderCollections() {
         appendChildren(card, [icon, statusBadge, statusNote, title, desc, footer]);
         grid.appendChild(card);
     });
+}
+
+/** No collections yet: what is ready, what is optional, and the first step (from GET /ready). */
+export function renderGettingStarted() {
+    const box = createEl("section", "col-span-full rounded-xl border border-slate-200 bg-white p-6 shadow-sm");
+    box.appendChild(createEl("h3", "text-lg font-semibold text-slate-800", "Get started"));
+    box.appendChild(createEl("p", "mt-1 text-sm text-slate-600", "A collection is a set of documents you can search (Retrieve) and ask questions about (Query)."));
+
+    const dependencies = state.readiness?.dependencies;
+    const searchReady = dependencies ? Boolean(dependencies.chroma?.ok && dependencies.embedding?.ok) : null;
+    const answersReady = dependencies ? Boolean(dependencies.chat?.ok) : null;
+    const list = createEl("ol", "mt-4 space-y-3");
+    const item = (done, title, text, link) => {
+        const row = createEl("li", "flex items-start gap-3");
+        const mark = createEl("span", `mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${done === true ? "bg-emerald-100 text-emerald-700" : done === false ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`, done === true ? "\u2713" : done === false ? "!" : "\u2026");
+        mark.setAttribute("aria-hidden", "true");
+        const body = createEl("div", "text-sm");
+        body.appendChild(createEl("div", "font-semibold text-slate-800", title));
+        const detail = createEl("div", "text-slate-600", text);
+        if (link) {
+            const anchor = createEl("a", "ml-1 text-indigo-600 underline", link.label);
+            anchor.href = link.href;
+            detail.appendChild(anchor);
+        }
+        body.appendChild(detail);
+        row.append(mark, body);
+        list.appendChild(row);
+    };
+    item(
+        searchReady,
+        "Search is ready",
+        searchReady === null ? "Checking the vector store and the embedding..." : searchReady ? "The vector store and the embedding model are available." : "The vector store or the embedding is not available.",
+        searchReady === false ? { label: "See System health", href: "#/health" } : null,
+    );
+    item(
+        answersReady,
+        "Answers (optional)",
+        answersReady ? "A chat LLM writes answers for Query." : "Without a chat LLM, Retrieve works and Query is off.",
+        answersReady ? null : { label: "Choose one under Chat services", href: "#/services/chat" },
+    );
+    item(null, "Create your first collection", "Then upload documents and re-index it.");
+    box.appendChild(list);
+
+    if (canAdminAction("createCollection")) {
+        const create = createEl("button", "mt-5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700", "New collection");
+        create.type = "button";
+        create.addEventListener("click", () => { location.hash = "#/collections/new"; });
+        box.appendChild(create);
+    } else {
+        box.appendChild(createEl("p", "mt-5 text-xs text-slate-500", "Your role can view collections but not create them."));
+    }
+    return box;
 }

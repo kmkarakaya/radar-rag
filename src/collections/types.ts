@@ -325,8 +325,11 @@ export type ListAuditLogResult = {
   nextCursor: string | null;
 };
 
-/** A tenant's connection to an OpenAI-compatible embedding API, managed through the embedding services API. */
-export type EmbeddingService = {
+/**
+ * A tenant's connection to an OpenAI-compatible API (embedding or chat), managed through the
+ * embedding services / chat services API.
+ */
+export type ServiceConnection = {
   id: string;
   tenantId: string;
   displayName: string;
@@ -338,8 +341,26 @@ export type EmbeddingService = {
   updatedAt: string;
 };
 
-export type CreateEmbeddingServiceInput = { displayName: string; baseUrl: string; apiKey?: string };
-export type UpdateEmbeddingServicePatch = { displayName?: string; baseUrl?: string; apiKey?: string | null };
+export type CreateServiceConnectionInput = { displayName: string; baseUrl: string; apiKey?: string };
+export type UpdateServiceConnectionPatch = { displayName?: string; baseUrl?: string; apiKey?: string | null };
+
+export type EmbeddingService = ServiceConnection;
+export type CreateEmbeddingServiceInput = CreateServiceConnectionInput;
+export type UpdateEmbeddingServicePatch = UpdateServiceConnectionPatch;
+
+export type ChatService = ServiceConnection;
+export type CreateChatServiceInput = CreateServiceConnectionInput;
+export type UpdateChatServicePatch = UpdateServiceConnectionPatch;
+
+/** A tenant's choice of chat service and model for answer generation (/query). */
+export type ChatSettings = {
+  tenantId: string;
+  /** "server" (the chat LLM from .env / config) or a chat service id. */
+  serviceId: string;
+  model: string;
+  updatedBy: string;
+  updatedAt: string;
+};
 
 export interface CollectionRegistry {
   listVisibleCollections(context: RequestContext): Promise<RagCollection[]>;
@@ -369,6 +390,16 @@ export interface CollectionRegistry {
   deleteEmbeddingService(context: RequestContext, serviceId: string): Promise<void>;
   /** Visible collections whose desired or active embedding uses the service ("server" includes unset ones; "builtin" = the built-in model). */
   listCollectionsUsingEmbeddingService(context: RequestContext, serviceId: string): Promise<Array<{ id: string; displayName: string }>>;
+  listChatServices(context: RequestContext): Promise<ChatService[]>;
+  getChatService(context: RequestContext, serviceId: string): Promise<ChatService | null>;
+  createChatService(context: RequestContext, input: CreateChatServiceInput): Promise<ChatService>;
+  updateChatService(context: RequestContext, serviceId: string, patch: UpdateChatServicePatch): Promise<ChatService>;
+  /** Deletes a service; throws when it does not exist. Callers check that the tenant's chat settings do not use it. */
+  deleteChatService(context: RequestContext, serviceId: string): Promise<void>;
+  /** The tenant's chat choice, or null when it follows the server's chat LLM (.env / config). */
+  getChatSettings(context: RequestContext): Promise<ChatSettings | null>;
+  setChatSettings(context: RequestContext, input: { serviceId: string; model: string }): Promise<ChatSettings>;
+  clearChatSettings(context: RequestContext): Promise<void>;
   /** Records that documents were uploaded; cleared when the next index job succeeds. */
   markDocumentsChanged(context: RequestContext, collectionId: string): Promise<void>;
   updateCollection(

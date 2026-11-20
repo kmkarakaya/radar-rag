@@ -24,9 +24,10 @@ import type {
   CompleteIndexJobResult,
   CreateIndexJobEventInput,
   CreateCollectionInput,
-  CreateEmbeddingServiceInput,
-  EmbeddingService,
-  UpdateEmbeddingServicePatch,
+  ChatSettings,
+  CreateServiceConnectionInput,
+  ServiceConnection,
+  UpdateServiceConnectionPatch,
   ListAuditLogInput,
   ListAuditLogResult,
   IndexJob,
@@ -113,7 +114,7 @@ type IndexJobRow = {
 export const STALE_JOB_ERROR = "Interrupted: the job stopped reporting progress because the server stopped or crashed. "
   + "Re-index again.";
 
-type EmbeddingServiceRow = {
+type ServiceConnectionRow = {
   id: string;
   tenant_id: string;
   display_name: string;
@@ -121,6 +122,17 @@ type EmbeddingServiceRow = {
   api_key: string | null;
   created_by: string;
   created_at: string;
+  updated_at: string;
+};
+
+/** Tables of service connections; the name is never taken from input. */
+type ServiceConnectionTable = "embedding_services" | "chat_services";
+
+type ChatSettingsRow = {
+  tenant_id: string;
+  service_id: string;
+  model: string;
+  updated_by: string;
   updated_at: string;
 };
 
@@ -302,6 +314,28 @@ function initializeSchema(db: SqliteDatabase): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_embedding_services_tenant_name
       ON embedding_services(tenant_id, display_name);
 
+    CREATE TABLE IF NOT EXISTS chat_services (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      base_url TEXT NOT NULL,
+      api_key TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_services_tenant_name
+      ON chat_services(tenant_id, display_name);
+
+    CREATE TABLE IF NOT EXISTS chat_settings (
+      tenant_id TEXT PRIMARY KEY,
+      service_id TEXT NOT NULL,
+      model TEXT NOT NULL,
+      updated_by TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS operational_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       timestamp TEXT NOT NULL,
@@ -473,33 +507,116 @@ class SqliteCollectionRegistry implements CollectionRegistry {
     return rows.map(mapCollectionRow);
   }
 
-  async listEmbeddingServices(context: RequestContext): Promise<EmbeddingService[]> {
-    const rows = this.db
-      .prepare("SELECT * FROM embedding_services WHERE tenant_id = ? ORDER BY display_name COLLATE NOCASE")
-      .all(context.tenantId) as EmbeddingServiceRow[];
-    return rows.map(mapEmbeddingServiceRow);
+  async listEmbeddingServices(context: RequestContext): Promise<ServiceConnection[]> {
+    return this.listServiceConnections("embedding_services", context);
   }
 
-  async getEmbeddingService(context: RequestContext, serviceId: string): Promise<EmbeddingService | null> {
+  async getEmbeddingService(context: RequestContext, serviceId: string): Promise<ServiceConnection | null> {
+    return this.getServiceConnection("embedding_services", context, serviceId);
+  }
+
+  async createEmbeddingService(context: RequestContext, input: CreateServiceConnectionInput): Promise<ServiceConnection> {
+    return this.createServiceConnection("embedding_services", context, input);
+  }
+
+  async updateEmbeddingService(
+    context: RequestContext,
+    serviceId: string,
+    patch: UpdateServiceConnectionPatch,
+  ): Promise<ServiceConnection> {
+    return this.updateServiceConnection("embedding_services", context, serviceId, patch);
+  }
+
+  async deleteEmbeddingService(context: RequestContext, serviceId: string): Promise<void> {
+    this.deleteServiceConnection("embedding_services", context, serviceId);
+  }
+
+  async listChatServices(context: RequestContext): Promise<ServiceConnection[]> {
+    return this.listServiceConnections("chat_services", context);
+  }
+
+  async getChatService(context: RequestContext, serviceId: string): Promise<ServiceConnection | null> {
+    return this.getServiceConnection("chat_services", context, serviceId);
+  }
+
+  async createChatService(context: RequestContext, input: CreateServiceConnectionInput): Promise<ServiceConnection> {
+    return this.createServiceConnection("chat_services", context, input);
+  }
+
+  async updateChatService(
+    context: RequestContext,
+    serviceId: string,
+    patch: UpdateServiceConnectionPatch,
+  ): Promise<ServiceConnection> {
+    return this.updateServiceConnection("chat_services", context, serviceId, patch);
+  }
+
+  async deleteChatService(context: RequestContext, serviceId: string): Promise<void> {
+    this.deleteServiceConnection("chat_services", context, serviceId);
+  }
+
+  async getChatSettings(context: RequestContext): Promise<ChatSettings | null> {
     const row = this.db
-      .prepare("SELECT * FROM embedding_services WHERE tenant_id = ? AND id = ?")
-      .get(context.tenantId, serviceId) as EmbeddingServiceRow | undefined;
-    return row ? mapEmbeddingServiceRow(row) : null;
+      .prepare("SELECT * FROM chat_settings WHERE tenant_id = ?")
+      .get(context.tenantId) as ChatSettingsRow | undefined;
+    return row ? mapChatSettingsRow(row) : null;
   }
 
-  async createEmbeddingService(context: RequestContext, input: CreateEmbeddingServiceInput): Promise<EmbeddingService> {
+  async setChatSettings(context: RequestContext, input: { serviceId: string; model: string }): Promise<ChatSettings> {
+    this.db.prepare(`
+      INSERT INTO chat_settings (tenant_id, service_id, model, updated_by, updated_at)
+      VALUES (@tenantId, @serviceId, @model, @updatedBy, @updatedAt)
+      ON CONFLICT(tenant_id) DO UPDATE SET
+        service_id = excluded.service_id,
+        model = excluded.model,
+        updated_by = excluded.updated_by,
+        updated_at = excluded.updated_at
+    `).run({
+      tenantId: context.tenantId,
+      serviceId: input.serviceId,
+      model: input.model,
+      updatedBy: context.userId,
+      updatedAt: new Date().toISOString(),
+    });
+    return (await this.getChatSettings(context))!;
+  }
+
+  async clearChatSettings(context: RequestContext): Promise<void> {
+    this.db.prepare("DELETE FROM chat_settings WHERE tenant_id = ?").run(context.tenantId);
+  }
+
+  private listServiceConnections(table: ServiceConnectionTable, context: RequestContext): ServiceConnection[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM ${table} WHERE tenant_id = ? ORDER BY display_name COLLATE NOCASE`)
+      .all(context.tenantId) as ServiceConnectionRow[];
+    return rows.map(mapServiceConnectionRow);
+  }
+
+  private getServiceConnection(table: ServiceConnectionTable, context: RequestContext, serviceId: string): ServiceConnection | null {
+    const row = this.db
+      .prepare(`SELECT * FROM ${table} WHERE tenant_id = ? AND id = ?`)
+      .get(context.tenantId, serviceId) as ServiceConnectionRow | undefined;
+    return row ? mapServiceConnectionRow(row) : null;
+  }
+
+  private createServiceConnection(
+    table: ServiceConnectionTable,
+    context: RequestContext,
+    input: CreateServiceConnectionInput,
+  ): ServiceConnection {
     const now = new Date().toISOString();
     let id = "";
     for (let attempt = 0; attempt < 5 && !id; attempt += 1) {
       const candidate = generateCollectionId(input.displayName);
+      // "server" and "builtin" are reserved ids of the read-only entries the API lists.
       const taken = candidate === SERVER_EMBEDDING_SERVICE_ID || candidate === BUILTIN_EMBEDDING_SERVICE_ID
-        || this.db.prepare("SELECT id FROM embedding_services WHERE id = ?").get(candidate);
+        || this.db.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(candidate);
       if (!taken) id = candidate;
     }
-    if (!id) throw new Error("Could not generate a unique embedding service id.");
+    if (!id) throw new Error("Could not generate a unique service id.");
 
     this.db.prepare(`
-      INSERT INTO embedding_services (id, tenant_id, display_name, base_url, api_key, created_by, created_at, updated_at)
+      INSERT INTO ${table} (id, tenant_id, display_name, base_url, api_key, created_by, created_at, updated_at)
       VALUES (@id, @tenantId, @displayName, @baseUrl, @apiKey, @createdBy, @createdAt, @updatedAt)
     `).run({
       id,
@@ -511,16 +628,17 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       createdAt: now,
       updatedAt: now,
     });
-    return (await this.getEmbeddingService(context, id))!;
+    return this.getServiceConnection(table, context, id)!;
   }
 
-  async updateEmbeddingService(
+  private updateServiceConnection(
+    table: ServiceConnectionTable,
     context: RequestContext,
     serviceId: string,
-    patch: UpdateEmbeddingServicePatch,
-  ): Promise<EmbeddingService> {
-    const existing = await this.getEmbeddingService(context, serviceId);
-    if (!existing) throw new Error(`Embedding service ${serviceId} not found.`);
+    patch: UpdateServiceConnectionPatch,
+  ): ServiceConnection {
+    const existing = this.getServiceConnection(table, context, serviceId);
+    if (!existing) throw new Error(`Service ${serviceId} not found.`);
     const updates: string[] = [];
     const values: Record<string, unknown> = { tenantId: context.tenantId, id: serviceId };
     if (patch.displayName !== undefined) { updates.push("display_name = @displayName"); values.displayName = patch.displayName; }
@@ -530,16 +648,16 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       // updated_at is part of the connection's cache key: a changed URL or key takes effect at once.
       updates.push("updated_at = @updatedAt");
       values.updatedAt = new Date().toISOString();
-      this.db.prepare(`UPDATE embedding_services SET ${updates.join(", ")} WHERE tenant_id = @tenantId AND id = @id`).run(values);
+      this.db.prepare(`UPDATE ${table} SET ${updates.join(", ")} WHERE tenant_id = @tenantId AND id = @id`).run(values);
     }
-    return (await this.getEmbeddingService(context, serviceId))!;
+    return this.getServiceConnection(table, context, serviceId)!;
   }
 
-  async deleteEmbeddingService(context: RequestContext, serviceId: string): Promise<void> {
+  private deleteServiceConnection(table: ServiceConnectionTable, context: RequestContext, serviceId: string): void {
     const result = this.db
-      .prepare("DELETE FROM embedding_services WHERE tenant_id = ? AND id = ?")
+      .prepare(`DELETE FROM ${table} WHERE tenant_id = ? AND id = ?`)
       .run(context.tenantId, serviceId);
-    if (result.changes !== 1) throw new Error(`Embedding service ${serviceId} not found.`);
+    if (result.changes !== 1) throw new Error(`Service ${serviceId} not found.`);
   }
 
   async listCollectionsUsingEmbeddingService(
@@ -2152,7 +2270,7 @@ function parseCollectionIndexSnapshotJson(value: string | null): ReturnType<type
   }
 }
 
-function mapEmbeddingServiceRow(row: EmbeddingServiceRow): EmbeddingService {
+function mapServiceConnectionRow(row: ServiceConnectionRow): ServiceConnection {
   return {
     id: row.id,
     tenantId: row.tenant_id,
@@ -2161,6 +2279,16 @@ function mapEmbeddingServiceRow(row: EmbeddingServiceRow): EmbeddingService {
     apiKey: row.api_key ?? undefined,
     createdBy: row.created_by,
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapChatSettingsRow(row: ChatSettingsRow): ChatSettings {
+  return {
+    tenantId: row.tenant_id,
+    serviceId: row.service_id,
+    model: row.model,
+    updatedBy: row.updated_by,
     updatedAt: row.updated_at,
   };
 }

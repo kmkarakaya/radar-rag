@@ -378,6 +378,8 @@ export interface CollectionRegistry {
   appendJobEvent(jobId: string, input: CreateIndexJobEventInput): Promise<IndexJobEvent>;
   appendOperationalLog?(event: OperationalLogEvent): Promise<void>;
   listAuditLog?(context: RequestContext, filters?: ListAuditLogInput): Promise<ListAuditLogResult>;
+  /** The distinct operation names in the tenant's audit log, for filters. */
+  listAuditOperations?(context: RequestContext): Promise<string[]>;
   deleteJob(context: RequestContext, jobId: string): Promise<void>;
   deleteJobs(context: RequestContext, jobIds: string[]): Promise<void>;
   getActiveJobForCollection(context: RequestContext, collectionId: string): Promise<IndexJob | null>;

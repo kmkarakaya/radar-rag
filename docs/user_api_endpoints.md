@@ -28,6 +28,7 @@ Example response:
 ```json
 {
   "name": "RAGStation",
+  "version": "0.1.0",
   "status": "ok",
   "message": "Use the versioned multi-collection API under /v1/rag/collections.",
   "endpoints": {
@@ -44,7 +45,7 @@ Example response:
 
 ### `GET /health`
 
-Liveness probe. It does not validate downstream dependencies.
+Liveness probe. It does not validate downstream dependencies. `version` is the running RAGStation version (also on `GET /`).
 
 Example response:
 
@@ -52,6 +53,7 @@ Example response:
 {
   "status": "ok",
   "alive": true,
+  "version": "0.1.0",
   "port": 3000,
   "uptimeSec": 123.45,
   "timestamp": "2026-06-27T20:00:00.000Z"

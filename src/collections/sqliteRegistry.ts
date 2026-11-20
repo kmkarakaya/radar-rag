@@ -369,6 +369,8 @@ function initializeSchema(db: SqliteDatabase): void {
       ON operational_logs(tenant_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_operational_logs_collection_operation_desc
       ON operational_logs(tenant_id, collection_id, operation, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_operational_logs_tenant_operation
+      ON operational_logs(tenant_id, operation);
   `);
 
   migrateSchema(db);
@@ -958,6 +960,13 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`Failed to persist operational log event: ${message}`);
     }
+  }
+
+  async listAuditOperations(context: RequestContext): Promise<string[]> {
+    const rows = this.db
+      .prepare("SELECT DISTINCT operation FROM operational_logs WHERE tenant_id = @tenantId ORDER BY operation")
+      .all({ tenantId: context.tenantId }) as Array<{ operation: string }>;
+    return rows.map((row) => row.operation);
   }
 
   async listAuditLog(context: RequestContext, filters: ListAuditLogInput = {}): Promise<ListAuditLogResult> {

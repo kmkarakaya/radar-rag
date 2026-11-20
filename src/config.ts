@@ -13,7 +13,8 @@ import { defaultChatApiKeyFilePath, defaultEmbeddingApiKeyFilePath, readSecretFi
 
 export const defaultConfigPath = path.resolve(process.cwd(), process.env.RAG_CONFIG_PATH?.trim() || "config/rag.config.yaml");
 
-const distanceMetricSchema = z.enum(["l2", "cosine", "ip"]);
+export const DISTANCE_METRICS = ["l2", "cosine", "ip"] as const;
+const distanceMetricSchema = z.enum(DISTANCE_METRICS);
 const adminRoleSchema = z.enum(["viewer", "operator", "admin"]);
 const adminAuthUserSchema = z.object({
   username: z.string().trim().min(1),

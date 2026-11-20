@@ -1,13 +1,14 @@
 import { setUnauthorizedHandler } from "./api.js";
 import { handleSessionExpired, loadAdminSession, loginAdmin, logoutAdmin, setDashboardVisible, syncAuthChrome } from "./auth.js";
 import { initializeDashboard, switchView } from "./dashboard.js";
+import { bindRouter } from "./router.js";
 import { elements, state } from "./state.js";
 import { applyAuditLogFilters, auditOperationOptions, clearAuditLogFilters, closeAuditPickers, getAuditVisibleCollections, goToNextAuditLogPage, goToPreviousAuditLogPage, openAuditLogForCollection, refreshAuditLog, renderAuditCollectionPickerList, renderAuditFilterControls, renderAuditOperationPickerList, setAuditCollectionFilterValues, setAuditOperationFilterValues, toggleAuditPicker } from "./views/audit.js";
 import { loadCollections } from "./views/collections.js";
-import { bindDocumentsTabEvents, loadCollectionFiles } from "./views/documents.js";
+import { bindDocumentsTabEvents } from "./views/documents.js";
 import { loadModelDiscovery, saveCollection, setModelFromSelect, syncModelDiscoveryPanel } from "./views/editor.js";
 import { loadHealth } from "./views/health.js";
-import { closeInspector, deleteCollection, handleOverlayClick, openInspector, reindexCollection, switchTab, updatePlaygroundCapabilityState, updateReadinessTab } from "./views/inspector.js";
+import { activateTab, closeInspector, deleteCollection, handleOverlayClick, openInspector, reindexCollection, updateReadinessTab } from "./views/inspector.js";
 import { changeJobsStatusFilter, getVisibleSelectableJobIds, goToNextJobsPage, goToPreviousJobsPage, loadJobs, refreshJobsList, removeSelectedJobs, renderJobs } from "./views/jobs.js";
 import { runPlayground, setPlaygroundMode } from "./views/playground.js";
 import { bindEmbeddingServicesEvents } from "./views/services.js";
@@ -194,14 +195,9 @@ export function bindEvents() {
     elements.btnPgRun.addEventListener("click", runPlayground);
 
     elements.tabBtns.forEach((button) => {
-        button.addEventListener("click", () => {
-            if (button.disabled) return;
-            switchTab(button.dataset.tab);
-            if (button.dataset.tab === "ready" && state.selectedCollection) updateReadinessTab();
-            if (button.dataset.tab === "files" && state.selectedCollection) loadCollectionFiles();
-            if (button.dataset.tab === "playground") updatePlaygroundCapabilityState();
-        });
+        button.addEventListener("click", () => activateTab(button.dataset.tab));
     });
+    bindRouter();
 
     bindDocumentsTabEvents();
     bindEmbeddingServicesEvents();

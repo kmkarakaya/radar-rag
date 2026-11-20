@@ -1,4 +1,5 @@
 import { clearNode } from "./dom.js";
+import { applyRoute, leaveLoginAddress, recordRoute } from "./router.js";
 import { loadServerInfo } from "./serverInfo.js";
 import { elements, state } from "./state.js";
 import { closeAuditPickers, loadAuditLog, loadAuditOperations, renderAuditFilterControls } from "./views/audit.js";
@@ -45,6 +46,7 @@ export function startDashboardPolling() {
 }
 
 export function resetDashboardState() {
+    state.dashboardReady = false;
     state.currentView = "collections";
     state.activeTab = "ready";
     state.collections = [];
@@ -121,6 +123,9 @@ export async function initializeDashboard() {
     loadJobs();
     loadHealth();
     startDashboardPolling();
+    state.dashboardReady = true;
+    leaveLoginAddress();
+    await applyRoute();
 }
 
 export function switchView(viewId) {
@@ -146,6 +151,7 @@ export function switchView(viewId) {
         health: "System Health",
     };
     elements.viewTitle.textContent = titles[viewId] || "Dashboard";
+    recordRoute();
 
     if (viewId === "jobs") loadJobs();
     if (viewId === "embedding-services") loadServices(SERVICE_VIEWS.embedding);

@@ -35,6 +35,8 @@ export const EDIT_FIELD_IDS = {
 };
 
 export let state = {
+    // True once the dashboard is set up after sign-in; routes are recorded and applied only then.
+    dashboardReady: false,
     currentView: "collections",
     activeTab: "ready",
     files: { collectionId: null, data: null, loading: false, uploading: false, error: null, rejected: [] },

@@ -2,10 +2,11 @@ import { adminCollectionPhysicalCollectionsUrl, adminCollectionUrl, adminMutatio
 import { canAdminAction } from "../auth.js";
 import { switchView } from "../dashboard.js";
 import { appendChildren, appendText, clearNode, createBadge, createButton, createEl, createMetaItem, formatCount, formatDateTime, getStatusBadge, getStatusColor, isRecord, renderApiErrorContent, setButtonLoading, shortId, showErrorToast, showToast, stringifyForDisplay } from "../dom.js";
+import { recordRoute } from "../router.js";
 import { API, elements, state } from "../state.js";
 import { chatServiceName, loadChatSettings } from "./chatSettings.js";
 import { loadAdminCollectionDetail, loadCollections, mergeCollectionIntoState } from "./collections.js";
-import { resetFilesTab } from "./documents.js";
+import { loadCollectionFiles, resetFilesTab } from "./documents.js";
 import { clearEditorForm, embeddingServiceName, hasUnsavedCollectionChanges, hasValidationBlockers, hasValidationWarnings, loadConfigDefaults, loadModelDiscovery, setupEditorTab, validateCollectionOnServer, viaEmbeddingService } from "./editor.js";
 import { appendIssueSection } from "./health.js";
 import { loadJobs } from "./jobs.js";
@@ -307,12 +308,13 @@ export function renderCollectionValidation(validation, title) {
 
 export function openPanel() {
     state.inspectorOpen = true;
+    recordRoute();
     elements.inspectorOverlay.classList.remove("hidden");
     requestAnimationFrame(() => elements.inspectorOverlay.classList.add("opacity-100"));
     elements.inspectorPanel.classList.remove("translate-x-full");
 }
 
-export async function openInspector(id) {
+export async function openInspector(id, options = {}) {
     if (id === null) {
         state.selectedCollection = null;
         state.editorInitialSnapshot = null;
@@ -358,6 +360,7 @@ export async function openInspector(id) {
     setupEditorTab(collection);
     switchTab("ready");
     openPanel();
+    if (options.tab && options.tab !== "ready") activateTab(options.tab);
     state.isLoading.collectionDetail = true;
     setButtonLoading(elements.btnSave, true, "Loading...");
     try {
@@ -381,6 +384,7 @@ export async function openInspector(id) {
 
 export function closeInspector() {
     state.inspectorOpen = false;
+    recordRoute();
     elements.inspectorPanel.classList.add("translate-x-full");
     elements.inspectorOverlay.classList.remove("opacity-100");
     clearCollectionIndexStateBanner();
@@ -394,8 +398,19 @@ export function handleOverlayClick(event) {
     if (event.target === elements.inspectorOverlay) closeInspector();
 }
 
+/** Switches to a tab and loads what it shows. */
+export function activateTab(tabName) {
+    const button = [...elements.tabBtns].find((item) => item.dataset.tab === tabName);
+    if (!button || button.disabled) return;
+    switchTab(tabName);
+    if (tabName === "ready" && state.selectedCollection) updateReadinessTab();
+    if (tabName === "files" && state.selectedCollection) loadCollectionFiles();
+    if (tabName === "playground") updatePlaygroundCapabilityState();
+}
+
 export function switchTab(tabName) {
     state.activeTab = tabName;
+    if (state.inspectorOpen) recordRoute();
     elements.tabBtns.forEach((button) => {
         const active = button.dataset.tab === tabName;
         button.classList.toggle("active", active);

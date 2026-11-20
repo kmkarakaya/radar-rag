@@ -1,0 +1,95 @@
+import { adminCollectionUrl, apiRequest, normalizeError } from "../api.js";
+import { appendChildren, clearNode, createEl, formatCount, formatDateTime, getCollectionCardStatusBadge, getCollectionCardStatusNote, renderApiErrorContent, showErrorToast } from "../dom.js";
+import { API, elements, state } from "../state.js";
+import { normalizeAuditCollectionValues, renderAuditFilterControls } from "./audit.js";
+import { openInspector, renderCollectionIndexStateBanner } from "./inspector.js";
+
+export function collectionNameById(collectionId) {
+    return state.collections.find((collection) => collection.id === collectionId)?.displayName || null;
+}
+
+export function mergeCollectionIntoState(collection) {
+    if (!collection?.id) return state.selectedCollection;
+    const index = state.collections.findIndex((item) => item.id === collection.id);
+    const existing = index >= 0 ? state.collections[index] : {};
+    const merged = { ...existing, ...collection };
+    if (index >= 0) state.collections[index] = merged;
+    else state.collections.push(merged);
+    if (state.selectedCollection?.id === collection.id) state.selectedCollection = merged;
+    if (state.selectedCollection?.id === collection.id) renderCollectionIndexStateBanner();
+    return merged;
+}
+
+export async function loadAdminCollectionDetail(collectionId) {
+    const data = await apiRequest(adminCollectionUrl(collectionId));
+    if (!data?.collection) {
+        throw normalizeError(null, {
+            status: 0,
+            code: "INVALID_COLLECTION_RESPONSE",
+            message: "Admin collection detail response did not include data.collection.",
+        });
+    }
+    return data.collection;
+}
+
+export async function loadCollections() {
+    if (state.isLoading.collections) return;
+    state.isLoading.collections = true;
+    state.collectionError = null;
+    renderCollections();
+
+    try {
+        const data = await apiRequest(`${API.rag}/collections`);
+        state.collections = Array.isArray(data?.collections) ? data.collections : [];
+    } catch (error) {
+        state.collectionError = error;
+        state.collections = [];
+        showErrorToast(error, "Failed to load collections");
+    } finally {
+        state.isLoading.collections = false;
+        state.auditLogCollectionFilter = normalizeAuditCollectionValues(state.auditLogCollectionFilter);
+        renderAuditFilterControls();
+        renderCollections();
+    }
+}
+
+export function renderCollections() {
+    const grid = elements.collectionsGrid;
+    clearNode(grid);
+
+    if (state.isLoading.collections) {
+        grid.appendChild(createEl("div", "col-span-full py-12 text-center text-slate-400 italic", "Loading collections..."));
+        return;
+    }
+
+    if (state.collectionError) {
+        const errorBox = createEl("div", "col-span-full");
+        renderApiErrorContent(errorBox, state.collectionError, "Failed to load collections");
+        grid.appendChild(errorBox);
+        return;
+    }
+
+    if (state.collections.length === 0) {
+        grid.appendChild(createEl("div", "col-span-full py-12 text-center text-slate-400 italic", 'No collections found. Click "New Collection" to get started.'));
+        return;
+    }
+
+    state.collections.forEach((collection) => {
+        const card = createEl("button", "group relative rounded-lg border border-slate-200 bg-white p-6 text-left shadow-sm transition-all hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600");
+        card.type = "button";
+        card.addEventListener("click", () => openInspector(collection.id));
+
+        const icon = createEl("div", "mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 font-bold text-indigo-600", (collection.displayName || "?").charAt(0).toUpperCase());
+        const statusBadge = getCollectionCardStatusBadge(collection.status, collection.indexState);
+        const statusNote = getCollectionCardStatusNote(collection.status, collection.indexState);
+        const title = createEl("h3", "mt-3 break-all-words font-bold text-slate-800 transition-colors group-hover:text-indigo-600", collection.displayName || "Unnamed Collection");
+        const desc = createEl("p", "mt-1 line-clamp-2 min-h-[2rem] text-xs text-slate-500", collection.description || "No description provided.");
+        const footer = createEl("div", "mt-4 grid grid-cols-1 gap-2 border-t border-slate-100 pt-4 text-[10px] font-medium uppercase tracking-wider text-slate-400 sm:grid-cols-3");
+        footer.appendChild(createEl("span", "", `Chunks: ${formatCount(collection.chunkCount)}`));
+        footer.appendChild(createEl("span", "", `Version: ${formatCount(collection.activeVersion)}`));
+        footer.appendChild(createEl("span", "", formatDateTime(collection.updatedAt)));
+
+        appendChildren(card, [icon, statusBadge, statusNote, title, desc, footer]);
+        grid.appendChild(card);
+    });
+}

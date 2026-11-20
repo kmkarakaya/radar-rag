@@ -1,0 +1,306 @@
+import { emptyChatSettingsState } from "./views/chatSettings.js";
+import { emptyModelDiscovery } from "./views/editor.js";
+import { emptyEmbeddingServicesState, emptyServiceViewState } from "./views/services.js";
+
+/**
+ * RAGStation admin panel (static).
+ */
+
+export const API = {
+    rag: "/v1/rag",
+    admin: "/v1/admin",
+    adminAuth: "/v1/admin/auth",
+    health: "/health",
+    ready: "/ready",
+};
+
+export const JOB_STORAGE_KEY = "ragAdmin.knownJobs.v1";
+
+export const JOB_LIST_LIMIT = 25;
+
+export const AUDIT_LOG_LIMIT = 25;
+
+export const AUDIT_LOG_OPERATION_OPTIONS = [
+    { value: "query", label: "Query" },
+    { value: "retrieve", label: "Retrieve" },
+    { value: "reindex", label: "Reindex" },
+    { value: "delete", label: "Delete collection" },
+    { value: "index_job", label: "Index job" },
+    { value: "job_delete_batch", label: "Bulk delete jobs" },
+    { value: "job_delete", label: "Delete job" },
+    { value: "job", label: "Job detail" },
+    { value: "job_events", label: "Job events" },
+    { value: "collection_readiness", label: "Collection readiness" },
+    { value: "index_build", label: "Index build" },
+    { value: "cleanup", label: "Cleanup" },
+    { value: "load_file", label: "Load file" },
+];
+
+export const AUDIT_COLLECTION_PANEL_WIDTH_CLASS = "w-[min(92vw,34rem)]";
+
+export const EDIT_FIELD_IDS = {
+    displayName: "editDisplayName",
+    description: "editDescription",
+    sourcePath: "editSourcePath",
+    distanceMetric: "editDistanceMetric",
+    chunkSize: "editChunkSize",
+    chunkOverlap: "editChunkOverlap",
+    retrievalK: "editRetrievalK",
+    retrievalDistanceThreshold: "editRetrievalDistanceThreshold",
+    embeddingProvider: "editEmbeddingProvider",
+    embeddingServiceId: "editEmbeddingService",
+    embeddingModel: "editEmbeddingModel",
+};
+
+export let state = {
+    currentView: "collections",
+    activeTab: "ready",
+    files: { collectionId: null, data: null, loading: false, uploading: false, error: null, rejected: [] },
+    embeddingServices: emptyEmbeddingServicesState(),
+    chatServices: emptyServiceViewState(),
+    chatSettings: emptyChatSettingsState(),
+    auth: {
+        enabled: false,
+        authenticated: false,
+        session: null,
+        loading: false,
+        error: null,
+    },
+    collections: [],
+    selectedCollection: null,
+    selectedReadiness: null,
+    selectedPhysicalCollections: null,
+    selectedPhysicalCollectionsError: null,
+    // GET /v1/admin/models: embedding model suggestions per provider.
+    modelDiscovery: emptyModelDiscovery(),
+    configDefaults: {
+        loaded: false,
+        collectionDefaults: null,
+        modelDefaults: null,
+        chat: null,
+    },
+    playgroundMode: "retrieve",
+    knownJobs: loadKnownJobsFromStorage(),
+    jobList: [],
+    jobListSource: "local",
+    jobListNextCursor: null,
+    jobListCursor: null,
+    jobListCursorStack: [],
+    jobListStatusFilter: "all",
+    jobListError: null,
+    auditLog: [],
+    auditLogError: null,
+    auditLogCollectionFilter: [],
+    auditLogOperationFilter: [],
+    auditLogNextCursor: null,
+    auditLogCursor: null,
+    auditLogCursorStack: [],
+    selectedJobIds: new Set(),
+    editorInitialSnapshot: null,
+    isLoading: {
+        collections: false,
+        collectionDetail: false,
+        jobs: false,
+        health: false,
+        readiness: false,
+        physicalCollections: false,
+        auditLog: false,
+    },
+    collectionError: null,
+    healthStatus: null,
+    readiness: null,
+    readinessDetails: null,
+    healthLastUpdatedAt: null,
+};
+
+export const loadTokens = {
+    configDefaults: 0,
+    modelDiscovery: 0,
+    auditLog: 0,
+};
+
+export const elements = {
+    authShell: document.getElementById("authShell"),
+    authPanel: document.getElementById("authPanel"),
+    authStatus: document.getElementById("authStatus"),
+    authError: document.getElementById("authError"),
+    authUsername: document.getElementById("authUsername"),
+    authPassword: document.getElementById("authPassword"),
+    authLoginForm: document.getElementById("authLoginForm"),
+    authLoginButton: document.getElementById("authLoginButton"),
+    authLogoutButton: document.getElementById("authLogoutButton"),
+    authSessionSummary: document.getElementById("authSessionSummary"),
+    authSessionRole: document.getElementById("authSessionRole"),
+    authSessionTenant: document.getElementById("authSessionTenant"),
+    authSessionExpiry: document.getElementById("authSessionExpiry"),
+    dashboardShell: document.getElementById("dashboardShell"),
+    authBar: document.getElementById("authBar"),
+    authBadge: document.getElementById("authBadge"),
+    navItems: document.querySelectorAll(".nav-item"),
+    viewContainers: document.querySelectorAll(".view-container"),
+    viewTitle: document.getElementById("viewTitle"),
+    collectionsGrid: document.getElementById("collectionsGrid"),
+    jobsTableBody: document.getElementById("jobsTableBody"),
+    jobsStatusFilter: document.getElementById("jobsStatusFilter"),
+    jobsRefreshList: document.getElementById("jobsRefreshList"),
+    jobsPrevPage: document.getElementById("jobsPrevPage"),
+    jobsNextPage: document.getElementById("jobsNextPage"),
+    jobsPageInfo: document.getElementById("jobsPageInfo"),
+    jobsBulkActionBar: document.getElementById("jobsBulkActionBar"),
+    jobsBulkSelectionCount: document.getElementById("jobsBulkSelectionCount"),
+    jobsBulkRemove: document.getElementById("jobsBulkRemove"),
+    jobsSelectAll: document.getElementById("jobsSelectAll"),
+    auditLogTableBody: document.getElementById("auditLogTableBody"),
+    auditCollectionPicker: document.getElementById("auditCollectionPicker"),
+    auditCollectionToggle: document.getElementById("auditCollectionToggle"),
+    auditCollectionSummary: document.getElementById("auditCollectionSummary"),
+    auditCollectionDetail: document.getElementById("auditCollectionDetail"),
+    auditCollectionPanel: document.getElementById("auditCollectionPanel"),
+    auditCollectionSearch: document.getElementById("auditCollectionSearch"),
+    auditCollectionAll: document.getElementById("auditCollectionAll"),
+    auditCollectionClear: document.getElementById("auditCollectionClear"),
+    auditCollectionList: document.getElementById("auditCollectionList"),
+    auditCollectionMeta: document.getElementById("auditCollectionMeta"),
+    auditOperationPicker: document.getElementById("auditOperationPicker"),
+    auditOperationToggle: document.getElementById("auditOperationToggle"),
+    auditOperationSummary: document.getElementById("auditOperationSummary"),
+    auditOperationDetail: document.getElementById("auditOperationDetail"),
+    auditOperationPanel: document.getElementById("auditOperationPanel"),
+    auditOperationSearch: document.getElementById("auditOperationSearch"),
+    auditOperationAll: document.getElementById("auditOperationAll"),
+    auditOperationClear: document.getElementById("auditOperationClear"),
+    auditOperationList: document.getElementById("auditOperationList"),
+    auditOperationMeta: document.getElementById("auditOperationMeta"),
+    auditClearFilters: document.getElementById("auditClearFilters"),
+    auditRefreshList: document.getElementById("auditRefreshList"),
+    auditPrevPage: document.getElementById("auditPrevPage"),
+    auditNextPage: document.getElementById("auditNextPage"),
+    auditPageInfo: document.getElementById("auditPageInfo"),
+    healthGrid: document.getElementById("healthGrid"),
+    readinessDetail: document.getElementById("readinessDetail"),
+    readinessWarnings: document.getElementById("readinessWarnings"),
+    warningList: document.getElementById("warningList"),
+    collectionIndexState: document.getElementById("collectionIndexState"),
+    collectionIndexStateTitle: document.getElementById("collectionIndexStateTitle"),
+    collectionIndexStateSummary: document.getElementById("collectionIndexStateSummary"),
+    collectionIndexStateBadge: document.getElementById("collectionIndexStateBadge"),
+    collectionIndexStateContent: document.getElementById("collectionIndexStateContent"),
+    collectionValidation: document.getElementById("collectionValidation"),
+    collectionValidationTitle: document.getElementById("collectionValidationTitle"),
+    collectionValidationSummary: document.getElementById("collectionValidationSummary"),
+    collectionValidationBadge: document.getElementById("collectionValidationBadge"),
+    collectionValidationContent: document.getElementById("collectionValidationContent"),
+    btnRefresh: document.getElementById("btnRefresh"),
+    btnCreateCollection: document.getElementById("btnCreateCollection"),
+
+    inspectorOverlay: document.getElementById("inspectorOverlay"),
+    inspectorPanel: document.getElementById("inspectorPanel"),
+    inspectorTitle: document.getElementById("inspectorTitle"),
+    inspectorStatusBadge: document.getElementById("inspectorStatusBadge"),
+    btnCloseInspector: document.getElementById("btnCloseInspector"),
+
+    tabBtns: document.querySelectorAll(".tab-btn"),
+    tabContents: document.querySelectorAll(".tab-content"),
+    readyTabBtn: document.querySelector('.tab-btn[data-tab="ready"]'),
+    playgroundTabBtn: document.querySelector('.tab-btn[data-tab="playground"]'),
+    filesTabBtn: document.querySelector('.tab-btn[data-tab="files"]'),
+
+    readinessStatusGrid: document.getElementById("readinessStatusGrid"),
+    readinessRefreshNotice: document.getElementById("readinessRefreshNotice"),
+    readinessBlockers: document.getElementById("readinessBlockers"),
+    blockerList: document.getElementById("blockerList"),
+    physicalCollectionsSection: document.getElementById("physicalCollectionsSection"),
+    physicalCollectionsSummary: document.getElementById("physicalCollectionsSummary"),
+    physicalCollectionsActions: document.getElementById("physicalCollectionsActions"),
+    physicalCollectionsList: document.getElementById("physicalCollectionsList"),
+
+    pgModeBtns: document.querySelectorAll(".mode-btn"),
+    pgQuestion: document.getElementById("pgQuestion"),
+    pgK: document.getElementById("pgK"),
+    pgResult: document.getElementById("pgResult"),
+    btnPgRun: document.getElementById("btnPgRun"),
+
+    colEditForm: document.getElementById("colEditForm"),
+    editId: document.getElementById("editId"),
+    configDefaultsPanel: document.getElementById("configDefaultsPanel"),
+    configDefaultsSummary: document.getElementById("configDefaultsSummary"),
+    configDefaultsStatus: document.getElementById("configDefaultsStatus"),
+    editDisplayName: document.getElementById("editDisplayName"),
+    editDescription: document.getElementById("editDescription"),
+    editSourcePath: document.getElementById("editSourcePath"),
+    editDistanceMetric: document.getElementById("editDistanceMetric"),
+    editChunkSize: document.getElementById("editChunkSize"),
+    editChunkOverlap: document.getElementById("editChunkOverlap"),
+    editRetrievalK: document.getElementById("editRetrievalK"),
+    editRetrievalDistanceThreshold: document.getElementById("editRetrievalDistanceThreshold"),
+    editEmbeddingModel: document.getElementById("editEmbeddingModel"),
+    editEmbeddingProvider: document.getElementById("editEmbeddingProvider"),
+    editEmbeddingService: document.getElementById("editEmbeddingService"),
+    embeddingServiceField: document.getElementById("embeddingServiceField"),
+    linkEmbeddingServices: document.getElementById("linkEmbeddingServices"),
+    esWarnings: document.getElementById("esWarnings"),
+    btnAddEmbeddingService: document.getElementById("btnAddEmbeddingService"),
+    esForm: document.getElementById("esForm"),
+    esFormId: document.getElementById("esFormId"),
+    esFormTitle: document.getElementById("esFormTitle"),
+    esName: document.getElementById("esName"),
+    esBaseUrl: document.getElementById("esBaseUrl"),
+    esApiKey: document.getElementById("esApiKey"),
+    esApiKeyHint: document.getElementById("esApiKeyHint"),
+    esClearKeyRow: document.getElementById("esClearKeyRow"),
+    esClearKey: document.getElementById("esClearKey"),
+    esTestResult: document.getElementById("esTestResult"),
+    btnEsTest: document.getElementById("btnEsTest"),
+    btnEsCancel: document.getElementById("btnEsCancel"),
+    btnEsSave: document.getElementById("btnEsSave"),
+    esTableBody: document.getElementById("esTableBody"),
+    chatLlmStatus: document.getElementById("chatLlmStatus"),
+    modelDiscoveryPanel: document.getElementById("modelDiscoveryPanel"),
+    modelDiscoverySummary: document.getElementById("modelDiscoverySummary"),
+    modelDiscoveryStatus: document.getElementById("modelDiscoveryStatus"),
+    embeddingModelSelect: document.getElementById("embeddingModelSelect"),
+    btnCancelEdit: document.getElementById("btnCancelEdit"),
+    btnSave: document.getElementById("btnSave"),
+
+    btnReindex: document.getElementById("btnReindex"),
+    btnDeleteCol: document.getElementById("btnDeleteCol"),
+    btnViewHistory: document.getElementById("btnViewHistory"),
+
+    tabReady: document.getElementById("tab-ready"),
+    tabPlayground: document.getElementById("tab-playground"),
+    tabEditor: document.getElementById("tab-editor"),
+    tabFiles: document.getElementById("tab-files"),
+    filesIntro: document.getElementById("filesIntro"),
+    filesChangedBanner: document.getElementById("filesChangedBanner"),
+    filesChangedText: document.getElementById("filesChangedText"),
+    btnFilesReindex: document.getElementById("btnFilesReindex"),
+    filesDropZone: document.getElementById("filesDropZone"),
+    filesDropHint: document.getElementById("filesDropHint"),
+    filesInput: document.getElementById("filesInput"),
+    filesUploadStatus: document.getElementById("filesUploadStatus"),
+    filesRejected: document.getElementById("filesRejected"),
+    filesList: document.getElementById("filesList"),
+    sourceKindChoice: document.getElementById("sourceKindChoice"),
+    sourceKindReadonly: document.getElementById("sourceKindReadonly"),
+    sourcePathField: document.getElementById("sourcePathField"),
+    toastContainer: document.getElementById("toastContainer"),
+};
+
+export function loadKnownJobsFromStorage() {
+    try {
+        const raw = localStorage.getItem(JOB_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed.filter((job) => job?.id) : [];
+    } catch (error) {
+        console.warn("Failed to load known jobs", error);
+        return [];
+    }
+}
+
+export function saveKnownJobsToStorage() {
+    try {
+        localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(state.knownJobs));
+    } catch (error) {
+        console.warn("Failed to save known jobs", error);
+    }
+}

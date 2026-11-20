@@ -7,11 +7,20 @@ async function readAdminFile(fileName: string): Promise<string> {
   return fs.readFile(path.resolve(process.cwd(), "admin", fileName), "utf8");
 }
 
+/** Every panel script (admin/js/**), joined, so the contract checks see the whole client. */
+async function readAdminScripts(): Promise<string> {
+  const root = path.resolve(process.cwd(), "admin", "js");
+  const entries = await fs.readdir(root, { recursive: true });
+  const files = entries.filter((entry) => entry.endsWith(".js")).sort();
+  const sources = await Promise.all(files.map((file) => fs.readFile(path.join(root, file), "utf8")));
+  return sources.join("\n");
+}
+
 describe("admin panel static contract", () => {
   it("uses only the versioned collection endpoints and no unsafe HTML injection", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(!html.includes("/rag/query"));
@@ -26,7 +35,7 @@ describe("admin panel static contract", () => {
   it("manages documents through the files API in a Documents tab", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     // The panel is a client of the files API, like any other API client.
@@ -49,7 +58,7 @@ describe("admin panel static contract", () => {
   it("manages embedding services through the embedding services API in their own view", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(html.includes('data-view="embedding-services"'));
@@ -78,7 +87,7 @@ describe("admin panel static contract", () => {
   it("manages chat services and the tenant's chat choice through the API in their own view", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(html.includes('data-view="chat-services"'));
@@ -99,7 +108,7 @@ describe("admin panel static contract", () => {
   });
 
   it("loads full editable settings through the admin collection detail endpoint", async () => {
-    const js = await readAdminFile("admin.js");
+    const js = await readAdminScripts();
 
     assert.ok(js.includes("function loadAdminCollectionDetail(collectionId)"));
     assert.ok(js.includes("apiRequest(adminCollectionUrl(collectionId))"));
@@ -110,7 +119,7 @@ describe("admin panel static contract", () => {
   it("includes the admin auth shell, session bootstrap, and protected mutation helpers", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(html.includes('id="authShell"'));
@@ -138,7 +147,7 @@ describe("admin panel static contract", () => {
   it("shows clearer indexing language on collection cards while keeping reindex actions in the inspector", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(js.includes("function getCollectionCardStatusPresentation(status, indexState = null)"));
@@ -160,7 +169,7 @@ describe("admin panel static contract", () => {
   it("uses backend validation endpoints before save and re-index actions", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(html.includes('id="configDefaultsPanel"'));
@@ -210,7 +219,7 @@ describe("admin panel static contract", () => {
   });
 
   it("uses session-derived rag headers and keeps validation requests token-free", async () => {
-    const js = await readAdminFile("admin.js");
+    const js = await readAdminScripts();
 
     assert.ok(js.includes("function isRagRequest(url)"));
     assert.ok(js.includes("function getSessionHeadersForRequest(url)"));
@@ -227,7 +236,7 @@ describe("admin panel static contract", () => {
   it("keeps admin DOM id references aligned with index.html", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     const htmlIds = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
@@ -244,7 +253,7 @@ describe("admin panel static contract", () => {
   it("keeps job, readiness and health contracts aligned with backend response shapes", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(js.includes("data?.job"), "Job polling should read the data.job wrapper");
@@ -320,7 +329,7 @@ describe("admin panel static contract", () => {
   it("renders audit log and history shortcuts without unsafe html usage", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(html.includes('id="view-audit"'));
@@ -339,7 +348,7 @@ describe("admin panel static contract", () => {
 
   it("contains the planned playground and job monitor controls", async () => {
     const html = await readAdminFile("index.html");
-    const js = await readAdminFile("admin.js");
+    const js = await readAdminScripts();
 
     assert.ok(html.includes('id="pgK"'), "Retrieve K input should exist");
     assert.ok(html.includes("This monitor tracks jobs observed by this browser/admin session.") || js.includes("This monitor tracks jobs observed by this browser/admin session."));

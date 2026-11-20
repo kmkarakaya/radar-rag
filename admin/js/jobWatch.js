@@ -37,7 +37,7 @@ export async function pollWatchedJobs() {
 function notifyFinished(job, watched) {
     const open = { label: "Open", onClick: () => { location.hash = `#/collections/${encodeURIComponent(watched.collectionId)}/readiness`; } };
     if (job.status === "succeeded") {
-        const chunks = Number.isFinite(job.chunkCount) ? ` (${job.chunkCount} chunks)` : "";
+        const chunks = Number.isFinite(job.chunkCount) ? ` (${job.chunkCount} chunk${job.chunkCount === 1 ? "" : "s"})` : "";
         showToast(`Indexing finished: ${watched.collectionName}${chunks}. It is searchable now.`, "success", { action: open, durationMs: 8000 });
     } else if (job.status === "failed") {
         showToast(`Indexing failed: ${watched.collectionName}. ${job.error || ""}`.trim(), "error", { action: open, durationMs: 12000 });

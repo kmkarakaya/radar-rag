@@ -59,7 +59,7 @@ export function resetDashboardState() {
         clearNode(serviceEl(view, "TableBody"));
     });
     state.jobList = [];
-    state.jobListSource = "local";
+    state.jobListLoadedAt = null;
     state.jobListNextCursor = null;
     state.jobListCursor = null;
     state.jobListCursorStack = [];

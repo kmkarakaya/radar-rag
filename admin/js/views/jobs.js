@@ -1,85 +1,30 @@
 import { adminJobDeleteUrl, adminJobUrl, adminJobsBulkDeleteUrl, adminJobsListUrl, adminMutationRequest, apiRequest, normalizeError } from "../api.js";
 import { canAdminAction } from "../auth.js";
 import { appendText, clearNode, createBadge, createButton, createEl, formatCount, formatDateTime, getStatusColor, setButtonLoading, shortId, showErrorToast, showToast } from "../dom.js";
-import { API, JOB_LIST_LIMIT, elements, saveKnownJobsToStorage, state } from "../state.js";
+import { API, JOB_LIST_LIMIT, elements, state } from "../state.js";
 import { collectionNameById, loadCollections } from "./collections.js";
 import { updateReadinessTab } from "./inspector.js";
 
-export function buildJobRecord(job, collection, existing = {}) {
-    if (!job?.id) return;
-    const collectionId = job.collectionId ?? collection?.id ?? existing.collectionId ?? null;
-    return {
-        ...existing,
-        id: job.id,
-        collectionId,
-        collectionDisplayName: collection?.displayName ?? existing.collectionDisplayName ?? collectionNameById(collectionId),
-        collectionStatus: collection?.status ?? existing.collectionStatus ?? null,
-        status: job.status ?? existing.status ?? "queued",
-        targetPhysicalCollection: job.targetPhysicalCollection ?? existing.targetPhysicalCollection ?? null,
-        targetVersion: job.targetVersion ?? existing.targetVersion ?? null,
-        targetEmbeddingProvider: job.targetEmbeddingProvider ?? existing.targetEmbeddingProvider ?? null,
-        targetEmbeddingModel: job.targetEmbeddingModel ?? existing.targetEmbeddingModel ?? null,
-        startedAt: job.startedAt ?? existing.startedAt ?? null,
-        finishedAt: job.finishedAt ?? existing.finishedAt ?? null,
-        error: job.error ?? existing.error ?? null,
-        documentCount: job.documentCount ?? existing.documentCount ?? null,
-        chunkCount: job.chunkCount ?? existing.chunkCount ?? null,
-        createdAt: job.createdAt ?? existing.createdAt ?? new Date().toISOString(),
-        updatedAt: job.updatedAt ?? existing.updatedAt ?? new Date().toISOString(),
-        notFound: false,
-        localError: null,
-    };
-}
-
-export function rememberJob(job, collection, options = {}) {
+/** A row of the jobs table: the job as the server returned it, plus the collection's display name. */
+export function toJobRow(job, collection) {
     if (!job?.id) return null;
-    const existing = state.knownJobs.find((item) => item.id === job.id) || {};
-    const merged = buildJobRecord(job, collection, existing);
-    const index = state.knownJobs.findIndex((item) => item.id === job.id);
-    if (index >= 0) state.knownJobs[index] = merged;
-    else state.knownJobs.push(merged);
-
-    if (options.updateCurrentView !== false) {
-        const viewIndex = state.jobList.findIndex((item) => item.id === job.id);
-        if (viewIndex >= 0) state.jobList[viewIndex] = merged;
-    }
-
-    if (options.persist !== false) saveKnownJobsToStorage();
-    if (options.render !== false) renderJobs();
-    return merged;
-}
-
-export function mergeActiveJobFromReadiness(readiness) {
-    if (!readiness?.activeJob) return;
-    rememberJob(readiness.activeJob, state.selectedCollection);
-}
-
-export function markJobInaccessible(jobId, error) {
-    const index = state.knownJobs.findIndex((job) => job.id === jobId);
-    if (index < 0) return;
-    const merged = {
-        ...state.knownJobs[index],
-        notFound: true,
-        localError: normalizeError(error).message || "Job not found or inaccessible.",
-        updatedAt: new Date().toISOString(),
+    return {
+        ...job,
+        collectionDisplayName: collection?.displayName ?? collectionNameById(job.collectionId) ?? null,
     };
-    state.knownJobs[index] = merged;
-
-    const viewIndex = state.jobList.findIndex((job) => job.id === jobId);
-    if (viewIndex >= 0) state.jobList[viewIndex] = merged;
-    saveKnownJobsToStorage();
-    renderJobs();
 }
 
 export async function refreshJob(jobId) {
     try {
         const data = await apiRequest(adminJobUrl(jobId));
-        if (!data?.job) throw normalizeError(null, { status: 0, code: "INVALID_JOB_RESPONSE", message: "Job response did not include data.job." });
-        rememberJob(data.job, { id: data.job.collectionId, displayName: collectionNameById(data.job.collectionId) });
+        const row = toJobRow(data?.job);
+        const index = state.jobList.findIndex((job) => job.id === jobId);
+        if (row && index >= 0) state.jobList[index] = row;
+        renderJobs();
     } catch (error) {
-        const normalized = normalizeError(error);
-        if (normalized.status === 404) {
-            markJobInaccessible(jobId, normalized);
+        if (normalizeError(error).status === 404) {
+            showToast("This job no longer exists.", "info");
+            await loadJobs();
             return;
         }
         throw error;
@@ -88,15 +33,9 @@ export async function refreshJob(jobId) {
 
 export async function deleteJob(jobId) {
     if (!canAdminAction("deleteJob")) {
-        showToast("Delete job requires admin access.", "error");
+        showToast("Removing a job needs the admin role.", "error");
         return;
     }
-    if (state.jobListSource !== "server") {
-        removeJobFromMonitor(jobId);
-        showToast("Job removed from local monitor.", "success");
-        return;
-    }
-
     if (state.selectedJobIds.size > 0 && state.selectedJobIds.has(jobId)) {
         await removeSelectedJobs();
         return;
@@ -104,22 +43,14 @@ export async function deleteJob(jobId) {
 
     try {
         await adminMutationRequest(adminJobDeleteUrl(jobId), { method: "DELETE" });
-        removeJobFromMonitor(jobId);
+        dropJobsFromList([jobId]);
         showToast("Job removed.", "success");
-        resetJobPagination();
-        await loadJobs({ cursor: null });
     } catch (error) {
-        const normalized = normalizeError(error);
-        if (normalized.status === 404 || normalized.code === "ROUTE_NOT_FOUND") {
-            removeJobFromMonitor(jobId);
-            showToast("Job was already removed.", "info");
-            resetJobPagination();
-            await loadJobs({ cursor: null });
-            return;
-        }
-        showErrorToast(error, "Remove failed");
-        await loadJobs({ cursor: null });
+        if (normalizeError(error).status === 404) showToast("The job was already removed.", "info");
+        else showErrorToast(error, "Remove failed");
     }
+    resetJobPagination();
+    await loadJobs({ cursor: null });
 }
 
 export function isTerminalJobStatus(status) {
@@ -127,9 +58,8 @@ export function isTerminalJobStatus(status) {
 }
 
 export function getVisibleSelectableJobIds(jobs = getJobViewRows()) {
-    if (state.jobListSource !== "server") return [];
     return jobs
-        .filter((job) => job?.id && !job.notFound && isTerminalJobStatus(job.status))
+        .filter((job) => job?.id && isTerminalJobStatus(job.status))
         .map((job) => job.id);
 }
 
@@ -154,7 +84,7 @@ export function updateJobSelectionControls(jobs = getJobViewRows()) {
     const allSelected = hasSelectableJobs && selectedCount === selectableJobIds.length;
 
     if (elements.jobsBulkActionBar) {
-        elements.jobsBulkActionBar.classList.toggle("hidden", state.jobListSource !== "server" || !hasSelectableJobs || !canAdminAction("bulkDeleteJobs"));
+        elements.jobsBulkActionBar.classList.toggle("hidden", !hasSelectableJobs || !canAdminAction("bulkDeleteJobs"));
     }
     if (elements.jobsBulkSelectionCount) {
         elements.jobsBulkSelectionCount.textContent = selectedCount === 0
@@ -164,7 +94,7 @@ export function updateJobSelectionControls(jobs = getJobViewRows()) {
                 : `${selectedCount} jobs selected`;
     }
     if (elements.jobsBulkRemove) {
-        elements.jobsBulkRemove.disabled = selectedCount === 0 || state.isLoading.jobs || state.jobListSource !== "server" || !canAdminAction("bulkDeleteJobs");
+        elements.jobsBulkRemove.disabled = selectedCount === 0 || state.isLoading.jobs || !canAdminAction("bulkDeleteJobs");
         elements.jobsBulkRemove.textContent = selectedCount === 0 ? "Select jobs to remove" : "Remove selected";
         if (!canAdminAction("bulkDeleteJobs")) {
             elements.jobsBulkRemove.title = state.auth.enabled ? "Bulk delete requires admin access." : "";
@@ -173,7 +103,7 @@ export function updateJobSelectionControls(jobs = getJobViewRows()) {
         }
     }
     if (elements.jobsSelectAll) {
-        elements.jobsSelectAll.disabled = !hasSelectableJobs || state.isLoading.jobs || state.jobListSource !== "server";
+        elements.jobsSelectAll.disabled = !hasSelectableJobs || state.isLoading.jobs;
         elements.jobsSelectAll.checked = allSelected;
         elements.jobsSelectAll.indeterminate = selectedCount > 0 && !allSelected;
     }
@@ -186,10 +116,6 @@ export function clearJobSelection({ render = true } = {}) {
 }
 
 export async function removeSelectedJobs() {
-    if (state.jobListSource !== "server") {
-        showToast("Bulk remove is only available for the server job list.", "error");
-        return;
-    }
     if (!canAdminAction("bulkDeleteJobs")) {
         showToast("Bulk delete requires admin access.", "error");
         return;
@@ -206,64 +132,54 @@ export async function removeSelectedJobs() {
             method: "POST",
             body: JSON.stringify({ jobIds }),
         });
-        removeJobsFromMonitor(jobIds, { render: false });
-        clearJobSelection({ render: false });
-        resetJobPagination();
         showToast(`${jobIds.length} job${jobIds.length === 1 ? "" : "s"} removed.`, "success");
-        await loadJobs({ cursor: null });
     } catch (error) {
-        const normalized = normalizeError(error);
-        removeJobsFromMonitor(jobIds, { render: false });
-        clearJobSelection({ render: false });
-        resetJobPagination();
-        if (normalized.status === 404 || normalized.code === "ROUTE_NOT_FOUND") {
-            showToast("One or more selected jobs were already removed.", "info");
-            await loadJobs({ cursor: null });
-            return;
-        }
-        showErrorToast(error, "Bulk remove failed");
-        await loadJobs({ cursor: null });
+        if (normalizeError(error).status === 404) showToast("One or more selected jobs were already removed.", "info");
+        else showErrorToast(error, "Bulk remove failed");
     }
+    clearJobSelection({ render: false });
+    resetJobPagination();
+    await loadJobs({ cursor: null });
 }
 
 export function getJobViewRows() {
-    const source = state.jobListSource;
-    const rows = source === "server" ? state.jobList : state.knownJobs;
-    if (state.jobListStatusFilter === "all") return rows;
-    return rows.filter((job) => job.status === state.jobListStatusFilter);
+    // The server filters by status (GET /v1/admin/jobs?status=...).
+    return state.jobList;
 }
 
 export function getJobViewEmptyMessage() {
-    if (state.jobListSource === "server") {
-        if (state.jobListError) {
-            return "Could not load jobs from the server.";
-        }
-
-        if (state.jobListStatusFilter !== "all") {
-            return `No jobs match the "${state.jobListStatusFilter}" filter.`;
-        }
-
-        return "No jobs returned by the server.";
-    }
-
     if (state.jobListError) {
-        return "Server job list endpoint is unavailable. Using cached jobs and per-job refresh.";
+        return `Could not load jobs: ${normalizeError(state.jobListError).message}`;
     }
+    if (!state.jobListLoadedAt) {
+        return "Loading jobs...";
+    }
+    if (state.jobListStatusFilter !== "all") {
+        return `No ${state.jobListStatusFilter} jobs.`;
+    }
+    return "No jobs yet. Re-indexing a collection creates one.";
+}
 
-    return "This monitor tracks jobs observed by this browser/admin session.";
+/** When a refresh failed but an older list is still shown, say so and when that list was loaded. */
+export function renderJobListNotice() {
+    const notice = elements.jobsListNotice;
+    if (!notice) return;
+    const stale = Boolean(state.jobListError) && state.jobList.length > 0;
+    notice.classList.toggle("hidden", !stale);
+    notice.textContent = stale
+        ? `Could not refresh the job list (${normalizeError(state.jobListError).message}). Showing the list loaded at ${formatDateTime(state.jobListLoadedAt)}.`
+        : "";
 }
 
 export function updateJobPaginationControls() {
     if (elements.jobsPrevPage) {
-        elements.jobsPrevPage.disabled = state.jobListSource !== "server" || state.jobListCursorStack.length === 0 || state.isLoading.jobs;
+        elements.jobsPrevPage.disabled = state.jobListCursorStack.length === 0 || state.isLoading.jobs;
     }
     if (elements.jobsNextPage) {
-        elements.jobsNextPage.disabled = !state.jobListNextCursor || state.isLoading.jobs || state.jobListSource !== "server";
+        elements.jobsNextPage.disabled = !state.jobListNextCursor || state.isLoading.jobs;
     }
     if (elements.jobsPageInfo) {
-        elements.jobsPageInfo.textContent = state.jobListSource === "server"
-            ? `Page ${state.jobListCursorStack.length + 1}`
-            : "Legacy cache";
+        elements.jobsPageInfo.textContent = `Page ${state.jobListCursorStack.length + 1}`;
     }
     if (elements.jobsRefreshList) {
         setButtonLoading(elements.jobsRefreshList, state.isLoading.jobs, "Refreshing...");
@@ -279,6 +195,10 @@ export function resetJobPagination() {
     state.jobListCursorStack = [];
 }
 
+/**
+ * Loads one page of GET /v1/admin/jobs. `quiet` (background refresh) shows no toast; a failure keeps the
+ * previous page on screen with a notice saying when it was loaded.
+ */
 export async function loadJobs(options = {}) {
     if (state.isLoading.jobs) return;
     state.isLoading.jobs = true;
@@ -292,41 +212,14 @@ export async function loadJobs(options = {}) {
             limit: JOB_LIST_LIMIT,
         }));
         const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
-        state.jobList = jobs
-            .map((entry) => rememberJob(entry?.job, entry?.collection, {
-                updateCurrentView: false,
-                persist: false,
-                render: false,
-            }))
-            .filter(Boolean);
-        state.jobListSource = "server";
+        state.jobList = jobs.map((entry) => toJobRow(entry?.job, entry?.collection)).filter(Boolean);
         state.jobListError = null;
         state.jobListNextCursor = data?.nextCursor || null;
-        saveKnownJobsToStorage();
+        state.jobListLoadedAt = new Date().toISOString();
     } catch (error) {
-        const normalized = normalizeError(error);
-        if (normalized.status === 404 || normalized.code === "ROUTE_NOT_FOUND") {
-            state.jobListSource = "legacy";
-            state.jobListNextCursor = null;
-            state.jobListError = normalized;
-            for (const job of [...state.knownJobs]) {
-                try {
-                    await refreshJob(job.id);
-                } catch (jobError) {
-                    const jobNormalized = normalizeError(jobError);
-                    if (jobNormalized.status === 404) markJobInaccessible(job.id, jobNormalized);
-                    else console.warn(`Failed to refresh legacy job ${job.id}`, jobNormalized);
-                }
-            }
-            state.jobList = getJobViewRows();
-            saveKnownJobsToStorage();
-        } else {
-            state.jobListSource = "local";
-            state.jobList = getJobViewRows();
-            state.jobListNextCursor = null;
-            state.jobListError = error;
-            showErrorToast(error, "Failed to load jobs");
-        }
+        state.jobListError = error;
+        state.jobListNextCursor = null;
+        if (!options.quiet) showErrorToast(error, "Failed to load jobs");
     } finally {
         state.isLoading.jobs = false;
         renderJobs();
@@ -383,22 +276,12 @@ export async function cancelJob(jobId) {
     }
 }
 
-export function removeJobFromMonitor(jobId) {
-    removeJobsFromMonitor([jobId]);
-}
-
-export function removeJobsFromMonitor(jobIds, { render = true } = {}) {
+/** Drops jobs the server just deleted from the page on screen, before the list reloads. */
+export function dropJobsFromList(jobIds) {
     const ids = new Set((jobIds || []).filter(Boolean));
-    if (ids.size === 0) return;
-
-    state.knownJobs = state.knownJobs.filter((job) => !ids.has(job.id));
     state.jobList = state.jobList.filter((job) => !ids.has(job.id));
-    for (const jobId of ids) {
-        state.selectedJobIds.delete(jobId);
-    }
-    saveKnownJobsToStorage();
-    if (render) renderJobs();
-    else updateJobSelectionControls();
+    for (const jobId of ids) state.selectedJobIds.delete(jobId);
+    renderJobs();
 }
 
 export function appendCell(row, className, content) {
@@ -415,21 +298,20 @@ export function renderJobs() {
     const jobs = getJobViewRows();
     pruneSelectedJobIds(getVisibleSelectableJobIds(jobs));
 
+    renderJobListNotice();
+
     if (jobs.length === 0) {
         const row = createEl("tr");
-        const cell = createEl("td", "px-6 py-12 text-center text-slate-400 italic");
+        const cell = createEl("td", "px-6 py-12 text-center text-slate-500 italic");
         cell.colSpan = 9;
         cell.appendChild(createEl("div", "", getJobViewEmptyMessage()));
-        if (state.jobListSource !== "server") {
-            cell.appendChild(createEl("div", "mt-1 text-xs", "This monitor tracks jobs observed by this browser/admin session."));
-        }
         row.appendChild(cell);
         tbody.appendChild(row);
         return;
     }
 
     jobs.forEach((job) => {
-        const isSelectable = state.jobListSource === "server" && !job.notFound && isTerminalJobStatus(job.status);
+        const isSelectable = isTerminalJobStatus(job.status);
         const isSelected = state.selectedJobIds.has(job.id) && isSelectable;
         const canCancelJob = canAdminAction("cancelJob");
         const canDeleteJob = canAdminAction("deleteJob");
@@ -461,13 +343,9 @@ export function renderJobs() {
         const collectionNode = createEl("div", "space-y-1");
         collectionNode.appendChild(createEl("div", "font-semibold text-slate-700 break-all-words", job.collectionDisplayName || "-"));
         collectionNode.appendChild(createEl("div", "font-mono text-[11px] text-slate-400 break-all-words", job.collectionId || "-"));
-        if (job.collectionStatus) {
-            collectionNode.appendChild(createEl("div", "text-[11px] uppercase tracking-wider text-slate-400", `Snapshot: ${job.collectionStatus}`));
-        }
         appendCell(row, "", collectionNode);
 
-        const statusText = job.notFound ? "inaccessible" : job.status;
-        appendCell(row, "", createBadge(statusText, getStatusColor(statusText)));
+        appendCell(row, "", createBadge(job.status, getStatusColor(job.status)));
 
         const target = createEl("div", "space-y-1 break-all-words text-slate-600");
         target.appendChild(createEl("div", "", `Version: ${job.targetVersion || "-"}`));
@@ -487,7 +365,7 @@ export function renderJobs() {
         times.appendChild(createEl("div", "", `Finished: ${formatDateTime(job.finishedAt)}`));
         appendCell(row, "", times);
 
-        appendCell(row, "max-w-xs break-all-words text-rose-600", job.localError || job.error || "-");
+        appendCell(row, "max-w-xs break-all-words text-rose-600", job.error || "-");
 
         const actions = createEl("div", "flex flex-wrap justify-end gap-2");
         actions.appendChild(createButton("Refresh", "text-xs font-medium text-indigo-600 hover:text-indigo-800", () => refreshJob(job.id).catch((error) => {
@@ -497,7 +375,7 @@ export function renderJobs() {
         if ((job.status === "queued" || job.status === "running") && canCancelJob) {
             actions.appendChild(createButton("Cancel", "text-xs font-medium text-rose-600 hover:text-rose-800", () => cancelJob(job.id), { title: "Cancel this job" }));
         }
-        if ((job.notFound || ["succeeded", "failed", "cancelled"].includes(job.status)) && canDeleteJob) {
+        if (isTerminalJobStatus(job.status) && canDeleteJob) {
             actions.appendChild(createButton("Remove", "text-xs font-medium text-slate-500 hover:text-slate-700", () => deleteJob(job.id), { title: "Delete terminal job from the server" }));
         }
         if (state.auth.enabled && !canCancelJob && !canDeleteJob) {

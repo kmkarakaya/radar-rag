@@ -8,7 +8,7 @@ import { loadAdminCollectionDetail, loadCollections, mergeCollectionIntoState } 
 import { resetFilesTab } from "./documents.js";
 import { clearEditorForm, embeddingServiceName, hasUnsavedCollectionChanges, hasValidationBlockers, hasValidationWarnings, loadConfigDefaults, loadModelDiscovery, setupEditorTab, validateCollectionOnServer, viaEmbeddingService } from "./editor.js";
 import { appendIssueSection } from "./health.js";
-import { loadJobs, mergeActiveJobFromReadiness, rememberJob } from "./jobs.js";
+import { loadJobs } from "./jobs.js";
 
 export const VALIDATION_FIELD_LABELS = {
     displayName: "Display name",
@@ -666,7 +666,6 @@ export async function updateReadinessTab() {
             state.selectedReadiness = readinessResult.value;
             renderReadinessData(readinessResult.value);
             clearReadinessRefreshNotice();
-            mergeActiveJobFromReadiness(readinessResult.value);
         } else {
             const error = readinessResult.reason;
             if (!hasSnapshot) {
@@ -834,7 +833,6 @@ export async function reindexCollection() {
         }
 
         const data = await adminMutationRequest(`${API.admin}/collections/${state.selectedCollection.id}/reindex`, { method: "POST" });
-        if (data?.job) rememberJob(data.job, state.selectedCollection);
         showToast(`Re-indexing started: ${shortId(data?.job?.id || "")}`, "success");
         await Promise.all([loadCollections(), loadJobs(), updateReadinessTab()]);
     } catch (error) {

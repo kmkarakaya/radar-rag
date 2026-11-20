@@ -351,7 +351,8 @@ describe("admin panel static contract", () => {
     const js = await readAdminScripts();
 
     assert.ok(html.includes('id="pgK"'), "Retrieve K input should exist");
-    assert.ok(html.includes("This monitor tracks jobs observed by this browser/admin session.") || js.includes("This monitor tracks jobs observed by this browser/admin session."));
+    assert.ok(js.includes("No jobs yet. Re-indexing a collection creates one."));
+    assert.ok(!js.includes("localStorage"), "jobs come from the server only, never from a browser cache");
     assert.ok(html.includes('id="jobsBulkActionBar"'));
     assert.ok(html.includes('id="jobsBulkSelectionCount"'));
     assert.ok(html.includes('id="jobsBulkRemove"'));

@@ -14,8 +14,6 @@ export const API = {
     ready: "/ready",
 };
 
-export const JOB_STORAGE_KEY = "ragAdmin.knownJobs.v1";
-
 export const JOB_LIST_LIMIT = 25;
 
 export const AUDIT_LOG_LIMIT = 25;
@@ -80,9 +78,9 @@ export let state = {
         chat: null,
     },
     playgroundMode: "retrieve",
-    knownJobs: loadKnownJobsFromStorage(),
     jobList: [],
-    jobListSource: "local",
+    // When the job list was last loaded from the server (null: not yet).
+    jobListLoadedAt: null,
     jobListNextCursor: null,
     jobListCursor: null,
     jobListCursorStack: [],
@@ -143,6 +141,7 @@ export const elements = {
     jobsTableBody: document.getElementById("jobsTableBody"),
     jobsStatusFilter: document.getElementById("jobsStatusFilter"),
     jobsRefreshList: document.getElementById("jobsRefreshList"),
+    jobsListNotice: document.getElementById("jobsListNotice"),
     jobsPrevPage: document.getElementById("jobsPrevPage"),
     jobsNextPage: document.getElementById("jobsNextPage"),
     jobsPageInfo: document.getElementById("jobsPageInfo"),
@@ -285,22 +284,3 @@ export const elements = {
     sourcePathField: document.getElementById("sourcePathField"),
     toastContainer: document.getElementById("toastContainer"),
 };
-
-export function loadKnownJobsFromStorage() {
-    try {
-        const raw = localStorage.getItem(JOB_STORAGE_KEY);
-        const parsed = raw ? JSON.parse(raw) : [];
-        return Array.isArray(parsed) ? parsed.filter((job) => job?.id) : [];
-    } catch (error) {
-        console.warn("Failed to load known jobs", error);
-        return [];
-    }
-}
-
-export function saveKnownJobsToStorage() {
-    try {
-        localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(state.knownJobs));
-    } catch (error) {
-        console.warn("Failed to save known jobs", error);
-    }
-}

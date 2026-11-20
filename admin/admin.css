@@ -130,9 +130,31 @@
         overflow: auto;
     }
 
-    aside {
+    /* The sidebar becomes a bar above the content (ids win over the Tailwind utilities loaded later). */
+    #dashboardShell {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+    }
+
+    #dashboardShell > aside {
         width: 100%;
         max-width: 100%;
+    }
+
+    #dashboardShell > aside > nav > * {
+        margin-top: 0 !important;
+    }
+
+    #dashboardShell > div {
+        overflow: visible;
+    }
+
+    #dashboardShell header {
+        height: auto;
+        flex-wrap: wrap;
+        padding: 0.75rem 1rem;
     }
 
     aside nav {

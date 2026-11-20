@@ -319,8 +319,15 @@ export function renderCollectionValidation(validation, title) {
 }
 
 export function openPanel() {
+    if (!state.inspectorOpen) state.inspectorReturnFocus = document.activeElement;
     state.inspectorOpen = true;
     recordRoute();
+    elements.inspectorPanel.inert = false;
+    elements.inspectorPanel.removeAttribute("aria-hidden");
+    // Focus moves into the panel unless something in it already has it (the create form focuses its name).
+    requestAnimationFrame(() => {
+        if (!elements.inspectorPanel.contains(document.activeElement)) elements.btnCloseInspector?.focus();
+    });
     elements.inspectorOverlay.classList.remove("hidden");
     requestAnimationFrame(() => elements.inspectorOverlay.classList.add("opacity-100"));
     elements.inspectorPanel.classList.remove("translate-x-full");
@@ -406,6 +413,12 @@ export async function openInspector(id, options = {}) {
 export function closeInspector() {
     state.inspectorOpen = false;
     recordRoute();
+    // Closed: out of the tab order and hidden from assistive tech; focus goes back where it was.
+    elements.inspectorPanel.inert = true;
+    elements.inspectorPanel.setAttribute("aria-hidden", "true");
+    const returnTo = state.inspectorReturnFocus;
+    state.inspectorReturnFocus = null;
+    if (returnTo instanceof HTMLElement && document.contains(returnTo)) returnTo.focus();
     elements.inspectorPanel.classList.add("translate-x-full");
     elements.inspectorOverlay.classList.remove("opacity-100");
     clearCollectionIndexStateBanner();
@@ -457,6 +470,8 @@ export function switchTab(tabName) {
         button.classList.toggle("text-indigo-600", active);
         button.classList.toggle("border-transparent", !active);
         button.classList.toggle("text-slate-500", !active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+        button.tabIndex = active ? 0 : -1;
     });
 
     elements.tabContents.forEach((content) => {
@@ -480,6 +495,14 @@ export function setInspectorActionsEnabled(enabled, reason = "") {
         [elements.btnDeleteCol, enabled && canAdminAction("deleteCollection"), "Delete requires admin access."],
         [elements.btnViewHistory, enabled, reason],
     ];
+    // Say in words why actions are off for this role (a tooltip alone is not seen on keyboard or touch).
+    const roleLimits = [];
+    if (enabled && !canAdminAction("reindexCollection")) roleLimits.push("re-index");
+    if (enabled && !canAdminAction("deleteCollection")) roleLimits.push("delete");
+    if (elements.inspectorRoleNote) {
+        elements.inspectorRoleNote.textContent = roleLimits.length > 0 ? `Your role cannot ${roleLimits.join(" or ")} this collection.` : "";
+        elements.inspectorRoleNote.classList.toggle("hidden", roleLimits.length === 0);
+    }
     actionStates.forEach(([button, isEnabled, fallbackReason]) => {
         if (!button) return;
         button.disabled = !isEnabled;
@@ -513,7 +536,7 @@ export function syncSaveButtonAccess() {
 
 export function resetPlaygroundResult(message = "Results will appear here...") {
     clearNode(elements.pgResult);
-    elements.pgResult.appendChild(createEl("span", "text-slate-400 italic", message));
+    elements.pgResult.appendChild(createEl("span", "text-slate-500 italic", message));
 }
 
 export function clearReadinessRefreshNotice() {
@@ -868,6 +891,16 @@ export function updatePlaygroundCapabilityState(fallbackReason) {
         if (capability.enabled) button.removeAttribute("title");
         else button.title = fallbackReason || capability.reason;
     });
+
+    // Why a mode is off, in words under the mode buttons.
+    if (elements.pgModeNote) {
+        const reasons = elements.pgModeBtns.length
+            ? [...elements.pgModeBtns].map((button) => getCapabilityState(button.dataset.mode)).filter((capability) => !capability.enabled).map((capability) => fallbackReason || capability.reason)
+            : [];
+        const unique = [...new Set(reasons.filter(Boolean))];
+        elements.pgModeNote.textContent = unique.join(" ");
+        elements.pgModeNote.classList.toggle("hidden", unique.length === 0);
+    }
 
     const current = getCapabilityState(state.playgroundMode);
     elements.btnPgRun.disabled = !current.enabled;

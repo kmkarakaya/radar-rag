@@ -154,7 +154,7 @@
                             <button id="jobsPrevPage" type="button" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
                                 Previous
                             </button>
-                            <span id="jobsPageInfo" class="text-xs font-semibold uppercase tracking-wider text-slate-400">Page 1</span>
+                            <span id="jobsPageInfo" class="text-xs font-semibold uppercase tracking-wider text-slate-500">Page 1</span>
                             <button id="jobsNextPage" type="button" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
                                 Next
                             </button>
@@ -176,7 +176,7 @@
                             <tr>
                                 <th class="px-4 py-4 w-12">
                                     <span class="sr-only">Select jobs</span>
-                                    <input id="jobsSelectAll" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:cursor-not-allowed" />
+                                    <input id="jobsSelectAll" type="checkbox" aria-label="Select all removable jobs on this page" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:cursor-not-allowed" />
                                 </th>
                                 <th class="px-4 py-4">Job ID</th>
                                 <th class="px-4 py-4">Collection</th>
@@ -216,12 +216,12 @@
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="esBaseUrl">Base URL *</label>
                             <input type="text" id="esBaseUrl" required class="w-full p-2 border border-slate-200 rounded-lg text-sm" placeholder="http://host.docker.internal:11434/v1">
-                            <p class="mt-1 text-xs text-slate-400">It must end in /v1. With Docker, reach a service on this computer with host.docker.internal, not localhost.</p>
+                            <p class="mt-1 text-xs text-slate-500">It must end in /v1. With Docker, reach a service on this computer with host.docker.internal, not localhost.</p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="esApiKey">API key</label>
                             <input type="password" id="esApiKey" autocomplete="new-password" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
-                            <p id="esApiKeyHint" class="mt-1 text-xs text-slate-400">Optional; a local Ollama needs none. Stored on the server and never shown again.</p>
+                            <p id="esApiKeyHint" class="mt-1 text-xs text-slate-500">Optional; a local Ollama needs none. Stored on the server and never shown again.</p>
                             <label id="esClearKeyRow" class="hidden mt-2 flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" id="esClearKey"> Remove the stored API key</label>
                         </div>
                     </div>
@@ -261,7 +261,7 @@
                     </div>
                     <p id="csSettingsSummary" class="text-sm text-slate-600">Loading the chat choice...</p>
                     <p id="csSettingsStatus" class="hidden rounded-lg border p-2 text-xs"></p>
-                    <p class="text-xs text-slate-400">The chat LLM that writes the answers of Query for all collections. Retrieve never needs it. Without a choice here, the chat LLM from the server settings is used, if there is one.</p>
+                    <p class="text-xs text-slate-500">The chat LLM that writes the answers of Query for all collections. Retrieve never needs it. Without a choice here, the chat LLM from the server settings is used, if there is one.</p>
                     <form id="csSettingsForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="csSettingsService">Chat service</label>
@@ -271,7 +271,7 @@
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="csSettingsModel">Model</label>
                             <input type="text" id="csSettingsModel" list="csSettingsModels" maxlength="200" class="w-full p-2 border border-slate-200 rounded-lg text-sm" placeholder="gemma3:4b">
                             <datalist id="csSettingsModels"></datalist>
-                            <p id="csSettingsModelHint" class="mt-1 text-xs text-slate-400"></p>
+                            <p id="csSettingsModelHint" class="mt-1 text-xs text-slate-500"></p>
                         </div>
                         <div class="md:col-span-2 flex justify-end gap-3">
                             <button type="button" id="btnCsSettingsReset" class="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-medium">Use server default</button>
@@ -297,12 +297,12 @@
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="csBaseUrl">Base URL *</label>
                             <input type="text" id="csBaseUrl" required class="w-full p-2 border border-slate-200 rounded-lg text-sm" placeholder="http://host.docker.internal:11434/v1">
-                            <p class="mt-1 text-xs text-slate-400">It must end in /v1 (OpenRouter: /api/v1). With Docker, reach a service on this computer with host.docker.internal, not localhost.</p>
+                            <p class="mt-1 text-xs text-slate-500">It must end in /v1 (OpenRouter: /api/v1). With Docker, reach a service on this computer with host.docker.internal, not localhost.</p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="csApiKey">API key</label>
                             <input type="password" id="csApiKey" autocomplete="new-password" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
-                            <p id="csApiKeyHint" class="mt-1 text-xs text-slate-400">Optional; a local Ollama needs none. Stored on the server and never shown again.</p>
+                            <p id="csApiKeyHint" class="mt-1 text-xs text-slate-500">Optional; a local Ollama needs none. Stored on the server and never shown again.</p>
                             <label id="csClearKeyRow" class="hidden mt-2 flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" id="csClearKey"> Remove the stored API key</label>
                         </div>
                     </div>
@@ -343,7 +343,7 @@
                                     <span id="auditCollectionSummary" class="block truncate text-sm font-semibold text-slate-800">All visible collections</span>
                                     <span id="auditCollectionDetail" class="mt-1 block truncate text-xs text-slate-500">Visible collections from this tenant</span>
                                 </span>
-                                <svg class="h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                <svg class="h-4 w-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                             </button>
                             <div id="auditCollectionPanel" class="absolute left-0 top-full z-20 mt-2 hidden w-[min(92vw,34rem)] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
                                 <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -367,7 +367,7 @@
                                     <span id="auditOperationSummary" class="block truncate text-sm font-semibold text-slate-800">All operations</span>
                                     <span id="auditOperationDetail" class="mt-1 block truncate text-xs text-slate-500">Select one or more operation types</span>
                                 </span>
-                                <svg class="h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                <svg class="h-4 w-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                             </button>
                             <div id="auditOperationPanel" class="absolute left-0 top-full z-20 mt-2 hidden w-[min(92vw,34rem)] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
                                 <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -397,7 +397,7 @@
                         <button id="auditPrevPage" type="button" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
                             Previous
                         </button>
-                        <span id="auditPageInfo" class="text-xs font-semibold uppercase tracking-wider text-slate-400">Page 1</span>
+                        <span id="auditPageInfo" class="text-xs font-semibold uppercase tracking-wider text-slate-500">Page 1</span>
                         <button id="auditNextPage" type="button" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
                             Next
                         </button>
@@ -440,13 +440,13 @@
 
     <!-- Collection Inspector (Slide-out) -->
     <div id="inspectorOverlay" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 hidden opacity-0 transition-opacity duration-200"></div>
-    <div id="inspectorPanel" class="fixed top-0 right-0 bottom-0 w-full max-w-2xl bg-white shadow-2xl z-50 translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
+    <div id="inspectorPanel" role="dialog" aria-modal="true" aria-labelledby="inspectorTitle" inert class="fixed top-0 right-0 bottom-0 w-full max-w-2xl bg-white shadow-2xl z-50 translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
         <div class="p-6 border-b border-slate-200 flex justify-between items-center">
             <div class="flex items-center gap-3">
                 <h3 id="inspectorTitle" class="text-xl font-bold text-slate-800">Collection Inspector</h3>
                 <span id="inspectorStatusBadge" class="px-2 py-1 text-xs font-bold rounded-full uppercase">Status</span>
             </div>
-            <button id="btnCloseInspector" class="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors" aria-label="Close inspector" type="button">
+            <button id="btnCloseInspector" class="p-2 hover:bg-slate-100 rounded-full text-slate-500 hover:text-slate-600 transition-colors" aria-label="Close inspector" type="button">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
         </div>
@@ -475,15 +475,15 @@
             </div>
 
             <!-- Tabs Navigation -->
-            <div id="inspectorTabs" class="flex border-b border-slate-200 mb-6">
-                <button type="button" data-tab="ready" class="tab-btn active px-4 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">Readiness</button>
-                <button type="button" data-tab="files" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Documents</button>
-                <button type="button" data-tab="playground" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Playground</button>
-                <button type="button" data-tab="editor" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Settings</button>
+            <div id="inspectorTabs" role="tablist" aria-label="Collection" class="flex border-b border-slate-200 mb-6 overflow-x-auto">
+                <button type="button" role="tab" aria-controls="tab-ready" aria-selected="true" data-tab="ready" class="tab-btn active px-4 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">Readiness</button>
+                <button type="button" role="tab" aria-controls="tab-files" aria-selected="false" data-tab="files" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Documents</button>
+                <button type="button" role="tab" aria-controls="tab-playground" aria-selected="false" data-tab="playground" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Playground</button>
+                <button type="button" role="tab" aria-controls="tab-editor" aria-selected="false" data-tab="editor" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Settings</button>
             </div>
 
             <!-- Tab: Readiness -->
-            <div id="tab-ready" class="tab-content space-y-6">
+            <div id="tab-ready" role="tabpanel" aria-label="Readiness" class="tab-content space-y-6">
                 <div id="readinessRefreshNotice" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"></div>
                 <div id="readinessStatusGrid" class="grid grid-cols-1 gap-4">
                     <!-- Health indicators injected by JS -->
@@ -512,17 +512,17 @@
             </div>
 
             <!-- Tab: Documents (files API: GET/POST /v1/admin/collections/:id/files, DELETE .../files/:name) -->
-            <div id="tab-files" class="tab-content hidden space-y-4">
+            <div id="tab-files" role="tabpanel" aria-label="Documents" class="tab-content hidden space-y-4">
                 <p id="filesIntro" class="text-sm text-slate-600"></p>
                 <div id="filesChangedBanner" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <p id="filesChangedText" class="text-xs text-amber-800"></p>
                     <button id="btnFilesReindex" type="button" class="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm">Re-index now</button>
                 </div>
-                <label id="filesDropZone" for="filesInput" class="hidden flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/40 transition-colors">
-                    <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                <label id="filesDropZone" for="filesInput" class="hidden flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/40 focus-within:ring-2 focus-within:ring-indigo-500 transition-colors">
+                    <svg class="w-8 h-8 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
                     <span class="text-sm font-semibold text-slate-700">Drop files here or click to choose</span>
                     <span id="filesDropHint" class="text-xs text-slate-500"></span>
-                    <input id="filesInput" type="file" multiple class="hidden">
+                    <input id="filesInput" type="file" multiple class="sr-only">
                 </label>
                 <p id="filesUploadStatus" class="hidden text-xs text-slate-500"></p>
                 <div id="filesRejected" class="hidden rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-red-700"></div>
@@ -530,30 +530,32 @@
             </div>
 
             <!-- Tab: Playground -->
-            <div id="tab-playground" class="tab-content hidden space-y-6">
+            <div id="tab-playground" role="tabpanel" aria-label="Playground" class="tab-content hidden space-y-6">
                 <div class="flex gap-2 mb-4">
                     <button type="button" data-mode="retrieve" class="mode-btn active px-3 py-1 text-xs font-bold rounded bg-indigo-600 text-white">Retrieve</button>
                     <button type="button" data-mode="query" class="mode-btn px-3 py-1 text-xs font-bold rounded bg-slate-200 text-slate-600 hover:bg-slate-300">Query</button>
                 </div>
+                <p id="pgModeNote" class="hidden -mt-2 text-xs text-slate-500"></p>
                 <div class="space-y-4">
                     <div>
-                        <textarea id="pgQuestion" rows="3" class="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm" placeholder="Ask a question..."></textarea>
+                        <label for="pgQuestion" class="sr-only">Question</label>
+                        <textarea id="pgQuestion" rows="3" class="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm" placeholder="Ask a question... (Ctrl+Enter to run)"></textarea>
                     </div>
                     <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                        <div class="w-full sm:w-36">
-                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="pgK">Retrieve K</label>
+                        <div id="pgKField" class="w-full sm:w-36">
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="pgK">Results (K)</label>
                             <input type="number" min="1" step="1" id="pgK" class="w-full p-2 border border-slate-200 rounded-lg text-sm" placeholder="Default">
                         </div>
                         <button id="btnPgRun" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all shadow-sm">Run Test</button>
                     </div>
                     <div id="pgResult" class="bg-slate-50 border border-slate-200 rounded-xl p-4 min-h-[200px] max-h-[480px] overflow-y-auto text-sm text-slate-700">
-                        <span class="text-slate-400 italic">Results will appear here...</span>
+                        <span class="text-slate-500 italic">Results will appear here...</span>
                     </div>
                 </div>
             </div>
 
             <!-- Tab: Editor -->
-            <div id="tab-editor" class="tab-content hidden">
+            <div id="tab-editor" role="tabpanel" aria-label="Settings" class="tab-content hidden">
                 <form id="colEditForm" class="space-y-6">
                     <input type="hidden" id="editId">
                     <fieldset id="editFieldset" class="space-y-6">
@@ -678,6 +680,7 @@
             </div>
         </div>
 
+        <p id="inspectorRoleNote" class="hidden border-t border-slate-200 bg-slate-50 px-6 pt-3 text-xs text-slate-500"></p>
         <div id="inspectorFooter" class="p-6 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
             <button id="btnViewHistory" type="button" class="hidden px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg text-sm font-bold transition-all flex items-center gap-2">
                 View history
@@ -694,7 +697,7 @@
     </div>
 
     <!-- Toasts -->
-    <div id="toastContainer" class="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none"></div>
+    <div id="toastContainer" role="status" aria-live="polite" class="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none"></div>
 
     <script type="module" src="/admin/js/main.js"></script>
 </body>

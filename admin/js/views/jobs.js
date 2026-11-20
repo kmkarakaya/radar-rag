@@ -367,7 +367,7 @@ export function renderJobs() {
 
         const collectionNode = createEl("div", "space-y-1");
         collectionNode.appendChild(createEl("div", "font-semibold text-slate-700 break-all-words", job.collectionDisplayName || "-"));
-        collectionNode.appendChild(createEl("div", "font-mono text-[11px] text-slate-400 break-all-words", job.collectionId || "-"));
+        collectionNode.appendChild(createEl("div", "font-mono text-[11px] text-slate-500 break-all-words", job.collectionId || "-"));
         appendCell(row, "", collectionNode);
 
         appendCell(row, "", createBadge(job.status, getStatusColor(job.status)));
@@ -403,7 +403,7 @@ export function renderJobs() {
             actions.appendChild(createButton("Remove", "text-xs font-medium text-slate-500 hover:text-slate-700", () => deleteJob(job.id), { title: "Delete terminal job from the server" }));
         }
         if (state.auth.enabled && !canCancelJob && !canDeleteJob) {
-            actions.appendChild(createEl("span", "text-xs text-slate-400", "Read-only role"));
+            actions.appendChild(createEl("span", "text-xs text-slate-500", "Read-only role"));
         }
         appendCell(row, "text-right", actions);
         tbody.appendChild(row);

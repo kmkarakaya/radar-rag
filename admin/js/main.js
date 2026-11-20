@@ -194,6 +194,22 @@ export function bindEvents() {
 
     elements.tabBtns.forEach((button) => {
         button.addEventListener("click", () => activateTab(button.dataset.tab));
+        button.addEventListener("keydown", (event) => {
+            if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+            const tabs = [...elements.tabBtns].filter((tab) => !tab.disabled && !tab.classList.contains("hidden"));
+            const index = tabs.indexOf(button);
+            const next = tabs[(index + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+            if (!next) return;
+            event.preventDefault();
+            activateTab(next.dataset.tab);
+            next.focus();
+        });
+    });
+    elements.pgQuestion?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            if (!elements.btnPgRun.disabled) runPlayground();
+        }
     });
     bindRouter();
 
@@ -208,7 +224,23 @@ export function bindEvents() {
     });
 
     document.addEventListener("keydown", (event) => {
+        if (event.key === "Tab" && state.inspectorOpen && !document.querySelector("[role=alertdialog]")) {
+            const focusable = [...elements.inspectorPanel.querySelectorAll("a[href], button, input, select, textarea, summary, [tabindex]")]
+                .filter((element) => !element.disabled && element.tabIndex >= 0 && element.offsetParent !== null);
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (first && event.shiftKey && (document.activeElement === first || !elements.inspectorPanel.contains(document.activeElement))) {
+                event.preventDefault();
+                last.focus();
+            } else if (last && !event.shiftKey && (document.activeElement === last || !elements.inspectorPanel.contains(document.activeElement))) {
+                event.preventDefault();
+                first.focus();
+            }
+            return;
+        }
         if (event.key !== "Escape") return;
+        // Escape while typing in a form field does not close the inspector (it would ask about unsaved changes).
+        if (event.target instanceof HTMLElement && event.target.closest("#colEditForm")) return;
         if (!elements.inspectorOverlay.classList.contains("hidden")) {
             void requestCloseInspector();
             return;

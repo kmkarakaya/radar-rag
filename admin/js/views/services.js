@@ -122,7 +122,7 @@ export function renderServices(view) {
     clearNode(tableBody);
     if (services.loading && services.items.length === 0) {
         const row = createEl("tr");
-        const cell = createEl("td", "px-4 py-6 text-center text-slate-400 italic", `Loading ${view.noun}s...`);
+        const cell = createEl("td", "px-4 py-6 text-center text-slate-500 italic", `Loading ${view.noun}s...`);
         cell.colSpan = 6;
         row.appendChild(cell);
         tableBody.appendChild(row);

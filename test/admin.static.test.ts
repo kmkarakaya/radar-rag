@@ -369,6 +369,21 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("export async function requestCloseInspector()"), "closing with unsaved settings asks first");
   });
 
+  it("is usable with a keyboard and a screen reader", async () => {
+    const [html, js] = await Promise.all([readAdminFile("index.html"), readAdminScripts()]);
+    assert.ok(html.includes('id="inspectorPanel" role="dialog" aria-modal="true" aria-labelledby="inspectorTitle" inert'));
+    assert.ok(js.includes("elements.inspectorPanel.inert = true;"), "a closed inspector leaves the tab order");
+    assert.ok(html.includes('role="tablist"') && html.includes('role="tab"') && html.includes('role="tabpanel"'));
+    assert.ok(js.includes('button.setAttribute("aria-selected", active ? "true" : "false");'));
+    assert.ok(html.includes('<input id="filesInput" type="file" multiple class="sr-only">'), "file upload is reachable with the keyboard");
+    assert.ok(html.includes('id="toastContainer" role="status" aria-live="polite"'));
+    assert.ok(html.includes('<label for="pgQuestion" class="sr-only">Question</label>'));
+    // Every visible field label is tied to its field.
+    const labels = [...html.matchAll(/<label class="block[^"]*"(?: for="([^"]+)")?>/g)];
+    // (A label with class "block" only wraps its input, which ties them too.)
+    assert.ok(labels.length > 0 && labels.every((match) => match[1] || match[0] === '<label class="block">'), "every block label has a for= attribute");
+  });
+
   it("works offline: no CDN, the Tailwind CSS is built locally", async () => {
     const html = await readAdminFile("index.html");
     assert.ok(!html.includes("cdn.tailwindcss.com"));

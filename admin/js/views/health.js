@@ -246,7 +246,7 @@ export function renderHealthSummary(health, ready, details, options = {}) {
     clearNode(grid);
 
     if (!health && !ready && !details) {
-        grid.appendChild(createEl("div", "col-span-full py-8 text-center text-slate-400 italic", "Health data unavailable."));
+        grid.appendChild(createEl("div", "col-span-full py-8 text-center text-slate-500 italic", "Health data unavailable."));
         return;
     }
 
@@ -309,7 +309,7 @@ export function appendIssueSection(container, title, items, emptyText, colorClas
     const section = createEl("section", "mb-6");
     section.appendChild(createEl("h4", `mb-3 text-sm font-bold uppercase ${colorClass}`, title));
     if (!Array.isArray(items) || items.length === 0) {
-        section.appendChild(createEl("p", "text-xs italic text-slate-400", emptyText));
+        section.appendChild(createEl("p", "text-xs italic text-slate-500", emptyText));
         container.appendChild(section);
         return;
     }
@@ -338,7 +338,7 @@ export function renderChecks(container, checks) {
     const section = createEl("section", "mb-6");
     section.appendChild(createEl("h4", "mb-3 text-sm font-bold uppercase text-slate-500", "Checks"));
     if (!Array.isArray(checks) || checks.length === 0) {
-        section.appendChild(createEl("p", "text-xs italic text-slate-400", "No checks available."));
+        section.appendChild(createEl("p", "text-xs italic text-slate-500", "No checks available."));
         container.appendChild(section);
         return;
     }
@@ -387,7 +387,7 @@ export function renderReadinessDetail(ready, details, detailsError, options = {}
     }
 
     if (!ready && !details) {
-        container.appendChild(createEl("p", "text-sm text-slate-400 italic", "No readiness details available."));
+        container.appendChild(createEl("p", "text-sm text-slate-500 italic", "No readiness details available."));
         return;
     }
 
@@ -422,7 +422,7 @@ export function renderReadinessDetail(ready, details, detailsError, options = {}
         dataSourceSection.appendChild(grid);
         appendJsonDetails(dataSourceSection, "Data source details", dataSource.details);
     } else {
-        dataSourceSection.appendChild(createEl("p", "text-xs italic text-slate-400", "No data source details available."));
+        dataSourceSection.appendChild(createEl("p", "text-xs italic text-slate-500", "No data source details available."));
     }
     container.appendChild(dataSourceSection);
 

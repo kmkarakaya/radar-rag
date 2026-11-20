@@ -13,7 +13,10 @@ export function setPlaygroundMode(mode) {
         button.classList.toggle("text-white", active);
         button.classList.toggle("bg-slate-200", !active);
         button.classList.toggle("text-slate-600", !active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
     });
+    // The number of results only applies to Retrieve.
+    elements.pgKField?.classList.toggle("invisible", mode !== "retrieve");
     updatePlaygroundCapabilityState();
 }
 
@@ -47,7 +50,7 @@ export function renderSourceFields(source, index) {
 export function renderSourceList(parent, sources) {
     const list = Array.isArray(sources) ? sources : [];
     if (list.length === 0) {
-        parent.appendChild(createEl("p", "text-sm text-slate-400 italic", "No sources returned."));
+        parent.appendChild(createEl("p", "text-sm text-slate-500 italic", "No sources returned."));
         return;
     }
     const wrapper = createEl("div", "space-y-3");
@@ -128,7 +131,7 @@ export async function runPlayground() {
     }
 
     clearNode(elements.pgResult);
-    elements.pgResult.appendChild(createEl("span", "text-slate-400 italic", "Processing..."));
+    elements.pgResult.appendChild(createEl("span", "text-slate-500 italic", "Processing..."));
     setButtonLoading(elements.btnPgRun, true, "Running...");
 
     try {

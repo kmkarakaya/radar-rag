@@ -58,6 +58,8 @@ export let state = {
     auditOperations: [],
     collections: [],
     selectedCollection: null,
+    // Where focus was before the inspector opened (it returns there on close).
+    inspectorReturnFocus: null,
     // Index jobs followed until they finish (id -> { collectionId, collectionName }), for the "finished" message.
     watchedJobs: new Map(),
     // Progress of the open collection's running job, from its events ({ message, fraction, phase, phaseCount }).
@@ -141,6 +143,9 @@ export const elements = {
     jobsStatusFilter: document.getElementById("jobsStatusFilter"),
     jobsRefreshList: document.getElementById("jobsRefreshList"),
     jobsListNotice: document.getElementById("jobsListNotice"),
+    pgKField: document.getElementById("pgKField"),
+    pgModeNote: document.getElementById("pgModeNote"),
+    inspectorRoleNote: document.getElementById("inspectorRoleNote"),
     editFieldset: document.getElementById("editFieldset"),
     editReadonlyNote: document.getElementById("editReadonlyNote"),
     editAdvanced: document.getElementById("editAdvanced"),

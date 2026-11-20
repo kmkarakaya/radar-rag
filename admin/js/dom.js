@@ -97,7 +97,7 @@ export function shortId(value, length = 12) {
 export function createBadge(text, colorClass) {
     return createEl(
         "span",
-        `inline-flex items-center px-2 py-1 text-xs font-bold rounded-full uppercase ${colorClass || "bg-slate-100 text-slate-600"}`,
+        `inline-flex items-center whitespace-nowrap px-2 py-1 text-xs font-bold rounded-full uppercase ${colorClass || "bg-slate-100 text-slate-600"}`,
         text || "unknown",
     );
 }
@@ -214,7 +214,7 @@ export function getCollectionCardStatusNote(status, indexState = null) {
 
 export function createMetaItem(label, value, className = "") {
     const item = createEl("div", `rounded border border-slate-100 bg-white p-3 ${className}`);
-    const labelNode = createEl("div", "text-[10px] font-bold uppercase tracking-wider text-slate-400", label);
+    const labelNode = createEl("div", "text-[10px] font-bold uppercase tracking-wider text-slate-500", label);
     const valueNode = createEl("div", "mt-1 text-sm font-semibold text-slate-700 break-all-words", stringifyForDisplay(value));
     appendChildren(item, [labelNode, valueNode]);
     return item;
@@ -309,8 +309,13 @@ export function showToast(message, type = "info", options = {}) {
                     : "bg-slate-800 text-white"
         }`,
     );
-    const messageNode = createEl("div", "break-all-words", message || "");
-    toast.appendChild(messageNode);
+    const messageNode = createEl("div", "break-all-words pr-5", message || "");
+    toast.classList.add("relative");
+    const close = createEl("button", "absolute right-2 top-2 rounded px-1 text-white/80 hover:text-white", "\u00d7");
+    close.type = "button";
+    close.setAttribute("aria-label", "Dismiss");
+    close.addEventListener("click", () => toast.remove());
+    toast.append(close, messageNode);
     if (options.requestId) {
         toast.appendChild(createEl("div", "mt-1 text-xs opacity-80", `Request ID: ${options.requestId}`));
     }

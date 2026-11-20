@@ -310,13 +310,13 @@ export function createAuditLogRow(record) {
 
     const timeCell = createEl("td", "px-4 py-4 align-top");
     timeCell.appendChild(createEl("div", "font-medium text-slate-700", formatDateTime(record?.timestamp)));
-    timeCell.appendChild(createEl("div", "mt-1 text-xs text-slate-400", record?.timestamp || "-"));
+    timeCell.appendChild(createEl("div", "mt-1 text-xs text-slate-500", record?.timestamp || "-"));
     cells.push(timeCell);
 
     const collectionCell = createEl("td", "px-4 py-4 align-top");
     collectionCell.appendChild(createEl("div", "break-all-words font-medium text-slate-700", formatAuditCollection(record)));
     if (record?.collectionId) {
-        collectionCell.appendChild(createEl("div", "mt-1 text-xs text-slate-400 break-all-words", record.collectionId));
+        collectionCell.appendChild(createEl("div", "mt-1 text-xs text-slate-500 break-all-words", record.collectionId));
     }
     cells.push(collectionCell);
 
@@ -344,7 +344,7 @@ export function createAuditLogRow(record) {
     if (record?.details && isRecord(record.details)) {
         detailsCell.appendChild(createAuditDetailsBlock(record.details));
     } else {
-        detailsCell.appendChild(createEl("span", "text-xs text-slate-400", "-"));
+        detailsCell.appendChild(createEl("span", "text-xs text-slate-500", "-"));
     }
     cells.push(detailsCell);
 

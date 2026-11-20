@@ -118,7 +118,7 @@ export function renderCollections() {
         const statusNote = getCollectionCardStatusNote(collection.status, collection.indexState);
         const title = createEl("h3", "mt-3 break-all-words font-bold text-slate-800 transition-colors group-hover:text-indigo-600", collection.displayName || "Unnamed Collection");
         const desc = createEl("p", "mt-1 line-clamp-2 min-h-[2rem] text-xs text-slate-500", collection.description || "No description provided.");
-        const footer = createEl("div", "mt-4 grid grid-cols-1 gap-2 border-t border-slate-100 pt-4 text-[10px] font-medium uppercase tracking-wider text-slate-400 sm:grid-cols-3");
+        const footer = createEl("div", "mt-4 grid grid-cols-1 gap-2 border-t border-slate-100 pt-4 text-[10px] font-medium uppercase tracking-wider text-slate-500 sm:grid-cols-3");
         footer.appendChild(createEl("span", "", `Chunks: ${formatCount(collection.chunkCount)}`));
         footer.appendChild(createEl("span", "", `Version: ${formatCount(collection.activeVersion)}`));
         footer.appendChild(createEl("span", "", formatDateTime(collection.updatedAt)));

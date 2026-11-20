@@ -100,7 +100,7 @@ export function renderCollectionFiles() {
     if (fileCount === 0) {
         elements.filesList.appendChild(createEl(
             "p",
-            "text-sm text-slate-400 italic",
+            "text-sm text-slate-500 italic",
             writable ? "No documents yet. Drop files above to upload them." : "No files were found in this folder.",
         ));
         return;

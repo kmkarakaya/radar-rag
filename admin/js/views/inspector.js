@@ -301,7 +301,7 @@ export function renderCollectionValidation(validation, title) {
     if (dependencyDown) {
         const banner = createEl("div", "mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800");
         banner.appendChild(createEl("div", "font-semibold", "Backend dependency down"));
-        banner.appendChild(createEl("div", "mt-1 break-all-words", "Chroma or the embedding service is not reachable. Validation can still report local issues, but backend-dependent actions should wait until the dependency is healthy."));
+        banner.appendChild(createEl("div", "mt-1 break-all-words", "The vector store or the embedding service cannot be reached. Checks that need them wait until they are back."));
         elements.collectionValidationContent.appendChild(banner);
     }
     if (recommendedActions.length > 0) {
@@ -368,7 +368,7 @@ export async function openInspector(id, options = {}) {
     elements.btnSave.textContent = "Save changes";
     resetFilesTab();
     resetReadinessAndPlayground("Readiness has not been loaded yet.");
-    resetPhysicalCollectionsSection({ message: "Loading physical collection lifecycle..." });
+    resetPhysicalCollectionsSection({ message: "Loading the index versions..." });
     renderCollectionIndexStateBanner();
     clearCollectionValidation();
     elements.inspectorTitle.textContent = collection.displayName || collection.id;
@@ -540,7 +540,7 @@ export function renderPhysicalCollectionsPlaceholder(message) {
     elements.physicalCollectionsList.appendChild(createEl("div", "rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500", message));
 }
 
-export function resetPhysicalCollectionsSection({ hide = false, message = "Physical collection lifecycle has not been loaded yet." } = {}) {
+export function resetPhysicalCollectionsSection({ hide = false, message = "The index versions have not been loaded yet." } = {}) {
     state.selectedPhysicalCollections = null;
     state.selectedPhysicalCollectionsError = null;
     clearNode(elements.physicalCollectionsSummary);
@@ -616,7 +616,7 @@ export function createPhysicalCollectionCard(record) {
 
     const hnswSpace = record?.chromaConfiguration?.hnsw?.space;
     if (hnswSpace !== undefined) {
-        meta.appendChild(createMetaItem("HNSW Space", hnswSpace));
+        meta.appendChild(createMetaItem("Distance metric", hnswSpace));
     }
 
     card.appendChild(meta);
@@ -655,7 +655,7 @@ export function renderPhysicalCollectionsData(records) {
     elements.physicalCollectionsActions.appendChild(createEl("span", "text-xs text-slate-500", "Health view shows aggregate cleanup backlog and oldest due delete time."));
 
     if (records.length === 0) {
-        renderPhysicalCollectionsPlaceholder("No physical collection lifecycle records found for this collection.");
+        renderPhysicalCollectionsPlaceholder("No index versions yet.");
         return;
     }
 
@@ -711,7 +711,7 @@ export async function updateReadinessTab({ quiet = false } = {}) {
         elements.readinessStatusGrid.appendChild(createEl("div", "rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500", "Loading readiness..."));
     }
     if (!hasPhysicalSnapshot) {
-        renderPhysicalCollectionsPlaceholder("Loading physical collection lifecycle...");
+        renderPhysicalCollectionsPlaceholder("Loading the index versions...");
     }
     if (!quiet || !hasSnapshot) updatePlaygroundCapabilityState(hasSnapshot ? "Refreshing readiness..." : "Readiness is loading.");
 
@@ -765,7 +765,7 @@ export async function updateReadinessTab({ quiet = false } = {}) {
                 elements.physicalCollectionsSection.classList.remove("hidden");
             }
             clearNode(elements.physicalCollectionsSummary);
-            renderApiErrorContent(elements.physicalCollectionsList, physicalCollectionsResult.reason, "Failed to load physical collection lifecycle");
+            renderApiErrorContent(elements.physicalCollectionsList, physicalCollectionsResult.reason, "Could not load the index versions");
         }
     } finally {
         state.isLoading.readiness = false;
@@ -788,10 +788,10 @@ export function renderReadinessData(readiness) {
     const capabilities = readiness.capabilities || {};
     const rows = [
         createReadinessRow("Collection status", readiness.status),
-        createReadinessRow("Active physical collection", readiness.hasActivePhysicalCollection, Boolean(readiness.hasActivePhysicalCollection)),
+        createReadinessRow("Active index", readiness.hasActivePhysicalCollection, Boolean(readiness.hasActivePhysicalCollection)),
         createReadinessRow("Active version", readiness.activeVersion || "-"),
-        createReadinessRow("Chroma readable", readiness.chromaReadable, Boolean(readiness.chromaReadable)),
-        createReadinessRow("Chroma count", formatCount(readiness.chromaCount)),
+        createReadinessRow("Vector store readable", readiness.chromaReadable, Boolean(readiness.chromaReadable)),
+        createReadinessRow("Chunks in the vector store", formatCount(readiness.chromaCount)),
         createReadinessRow(
             `Embedding: ${availability.embeddingProvider || "-"} / ${availability.embeddingModel || "-"}`
                 + (availability.embeddingServiceId ? ` via ${embeddingServiceName(availability.embeddingServiceId)}` : ""),
@@ -849,7 +849,7 @@ export function getCapabilityState(mode) {
         const issues = [...(state.selectedReadiness.blockers || []), ...(state.selectedReadiness.warnings || [])];
         const chatIssue = issues.find((issue) => typeof issue?.code === "string" && issue.code.startsWith("CHAT_"));
         if (chatIssue?.code === "CHAT_NOT_CONFIGURED") {
-            return { enabled, reason: "Query is disabled: no chat LLM is configured (retrieve-only). Use Retrieve, or set one with npm run onboard." };
+            return { enabled, reason: "Query is off: no chat LLM is chosen. Use Retrieve, or choose one under Chat services." };
         }
         if (chatIssue?.message) return { enabled, reason: chatIssue.message };
     }

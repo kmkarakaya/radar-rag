@@ -161,10 +161,11 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("function getCollectionCardStatusPresentation(status, indexState = null)"));
     assert.ok(js.includes("function getCollectionCardStatusBadge(status, indexState = null)"));
     assert.ok(js.includes("function getCollectionCardStatusNote(status, indexState = null)"));
-    assert.ok(js.includes("Indexing required"));
-    assert.ok(js.includes("Indexing in progress"));
-    assert.ok(js.includes("No active index yet. Open details to re-index."));
-    assert.ok(js.includes("Open details to inspect the latest error."));
+    // Card statuses in plain words.
+    assert.ok(js.includes('label: "Not indexed yet"'));
+    assert.ok(js.includes('label: "Re-index needed"'));
+    assert.ok(js.includes("Add documents, then re-index to make it searchable."));
+    assert.ok(js.includes("Open it to see the error."));
     assert.ok(js.includes("getCollectionCardStatusBadge(collection.status, collection.indexState)"));
     assert.ok(js.includes("getCollectionCardStatusNote(collection.status, collection.indexState)"));
     assert.ok(html.includes('id="collectionIndexState"'));
@@ -294,7 +295,11 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("healthCleanupSummary"));
     assert.ok(js.includes("function adminCollectionPhysicalCollectionsUrl(id)"));
     assert.ok(js.includes("data?.physicalCollections"), "Physical collection lifecycle should read the data.physicalCollections wrapper");
-    assert.ok(js.includes("Failed to load physical collection lifecycle"));
+    assert.ok(js.includes("Could not load the index versions"));
+    // User-facing text names no API paths, environment variables or CLI commands.
+    for (const jargon of ["Loading GET /v1/", "npm run onboard", "Physical Collection Lifecycle", "Seeded from", "HNSW Space"]) {
+      assert.ok(!js.includes(jargon) && !html.includes(jargon), `no "${jargon}" in the panel`);
+    }
     assert.ok(js.includes("View cleanup backlog"));
     assert.ok(html.includes('data-view="audit"'));
     assert.ok(html.includes('id="view-audit"'));

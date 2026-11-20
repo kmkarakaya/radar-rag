@@ -40,7 +40,6 @@ export const SERVICE_VIEWS = {
         prefix: "es",
         buttonPrefix: "Es",
         addButtonId: "btnAddEmbeddingService",
-        serverEnv: "RAG_EMBEDDING_BASE_URL",
         usageText: (service) => formatCount(service.collectionCount ?? 0),
         modelHint: "Pick an embedding model (such as bge-m3 or nomic-embed-text) for a collection; chat models fail at indexing.",
         afterChange: () => loadModelDiscovery(),
@@ -59,7 +58,6 @@ export const SERVICE_VIEWS = {
         prefix: "cs",
         buttonPrefix: "Cs",
         addButtonId: "btnAddChatService",
-        serverEnv: "RAG_CHAT_BASE_URL",
         usageText: (service) => (service.inUse ? "Answers Query" : "-"),
         modelHint: "Choose a chat model (such as gemma3:4b or gpt-4o-mini) under Answer generation; embedding models cannot answer.",
         afterChange: () => Promise.all([loadModelDiscovery(), loadChatSettings()]),
@@ -138,7 +136,7 @@ export function renderServices(view) {
         const builtinModels = Array.isArray(service.models) ? service.models : [];
         const urlText = isBuiltin
             ? `No URL: runs inside the backend. Model${builtinModels.length === 1 ? "" : "s"}: ${builtinModels.join(", ") || "-"}`
-            : service.configured === false ? `Not configured (${view.serverEnv})` : service.baseUrl || "-";
+            : service.configured === false ? "Not configured in the server settings" : service.baseUrl || "-";
         row.appendChild(createEl("td", "px-4 py-3 text-slate-600 break-all", urlText));
         row.appendChild(createEl("td", "px-4 py-3 text-slate-600", isBuiltin ? "Not needed" : service.apiKeyConfigured ? "Set" : "Not set"));
         const sourceText = { builtin: "Built-in (read-only)", server: ".env / config (read-only)" }[service.source] || "Admin panel / API";

@@ -139,16 +139,16 @@ export function getStatusBadge(status) {
 export function getCollectionCardStatusPresentation(status, indexState = null) {
     if (status === "indexing") {
         return {
-            label: "Indexing in progress",
-            note: "The collection is building a fresh index right now.",
+            label: "Indexing",
+            note: "A new index is being built; searches use the previous one until it finishes.",
             tone: "info",
         };
     }
 
     if (status === "creating") {
         return {
-            label: "Indexing required",
-            note: "No active index yet. Open details to re-index.",
+            label: "Not indexed yet",
+            note: "Add documents, then re-index to make it searchable.",
             tone: "warn",
         };
     }
@@ -156,7 +156,7 @@ export function getCollectionCardStatusPresentation(status, indexState = null) {
     if (status === "failed") {
         return {
             label: "Indexing failed",
-            note: "Open details to inspect the latest error.",
+            note: "Open it to see the error.",
             tone: "fail",
         };
     }
@@ -164,7 +164,7 @@ export function getCollectionCardStatusPresentation(status, indexState = null) {
     if (status === "archived") {
         return {
             label: "Archived",
-            note: "This collection is archived and not active.",
+            note: "This collection is archived and cannot be searched.",
             tone: "muted",
         };
     }
@@ -172,31 +172,31 @@ export function getCollectionCardStatusPresentation(status, indexState = null) {
     const normalizedIndexState = isRecord(indexState) ? indexState : null;
     if (!normalizedIndexState) {
         return {
-            label: "Index state unavailable",
-            note: "Backend did not provide a persisted index snapshot yet. Restart the backend after deploying the schema change.",
+            label: "Index state unknown",
+            note: "The server did not return the index state of this collection.",
             tone: "warn",
         };
     }
 
     if (normalizedIndexState?.status === "no_active_index") {
         return {
-            label: "Indexing required",
-            note: normalizedIndexState.note || "No active index yet. Open details to re-index.",
+            label: "Not indexed yet",
+            note: normalizedIndexState.note || "Add documents, then re-index to make it searchable.",
             tone: "warn",
         };
     }
 
     if (normalizedIndexState?.reindexRequired) {
         return {
-            label: "Re-index required",
-            note: normalizedIndexState.note || "Saved settings differ from the active indexed snapshot.",
+            label: "Re-index needed",
+            note: normalizedIndexState.note || "Settings or documents changed since the last index.",
             tone: "warn",
         };
     }
 
     return {
         label: "Ready",
-        note: normalizedIndexState?.note || "Saved settings are synced with the active index.",
+        note: "Searchable and up to date.",
         tone: "ok",
     };
 }

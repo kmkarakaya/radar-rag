@@ -374,7 +374,6 @@ export function renderJobs() {
 
         const target = createEl("div", "space-y-1 break-all-words text-slate-600");
         target.appendChild(createEl("div", "", `Version: ${job.targetVersion || "-"}`));
-        target.appendChild(createEl("div", "", `Physical: ${job.targetPhysicalCollection || "-"}`));
         target.appendChild(createEl("div", "", `Embedding: ${job.targetEmbeddingProvider || "-"} / ${job.targetEmbeddingModel || "-"}`));
         appendCell(row, "", target);
 

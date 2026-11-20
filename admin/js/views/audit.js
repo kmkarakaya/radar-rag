@@ -284,10 +284,10 @@ export function formatAuditCollection(record) {
 
 export function formatAuditCorrelation(record) {
     const parts = [];
-    if (record?.requestId) parts.push(`req ${shortId(record.requestId)}`);
-    if (record?.jobId) parts.push(`job ${shortId(record.jobId)}`);
-    if (record?.physicalCollection) parts.push(`pc ${shortId(record.physicalCollection)}`);
-    return parts.length > 0 ? parts.join(" / ") : "-";
+    if (record?.requestId) parts.push(`Request ${shortId(record.requestId)}`);
+    if (record?.jobId) parts.push(`Job ${shortId(record.jobId)}`);
+    if (record?.physicalCollection) parts.push(`Index ${shortId(record.physicalCollection)}`);
+    return parts.length > 0 ? parts.join(", ") : "-";
 }
 
 export function createAuditDetailsBlock(details) {

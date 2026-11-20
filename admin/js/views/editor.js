@@ -123,7 +123,7 @@ export function syncEmbeddingReindexNote() {
 // External embedding services are managed in the "Embedding services" view (or set in .env / config as "server").
 export const EXTERNAL_EMBEDDING_SETUP_HINT = "openai-compatible: no embedding service yet. "
     + "Add one under Embedding services in the left menu (for example Ollama on this computer at http://host.docker.internal:11434/v1), "
-    + "or set RAG_EMBEDDING_BASE_URL on the server. Then pick it and its model here.";
+    + "or set an embedding URL in the server settings. Then pick it and its model here.";
 
 /** Disable "openai-compatible" while there is no embedding service, unless the collection already uses it. */
 export function syncExternalProviderOption() {
@@ -200,7 +200,7 @@ export function renderChatLlmStatus() {
     if (!elements.chatLlmStatus) return;
     elements.chatLlmStatus.textContent = state.chatSettings.loaded
         ? describeChatSettings(state.chatSettings.data)
-        : state.chatSettings.error ? "Chat LLM status unavailable." : "Loading GET /v1/admin/chat-settings...";
+        : state.chatSettings.error ? "Chat LLM status unavailable." : "Loading the chat choice...";
 }
 
 export function formatConfigDefault(value) {
@@ -273,7 +273,7 @@ export function syncConfigDefaultsPanel() {
             elements.configDefaultsStatus.className = "rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600";
         }
         if (elements.configDefaultsSummary) {
-            elements.configDefaultsSummary.textContent = "Loading GET /v1/admin/config/defaults...";
+            elements.configDefaultsSummary.textContent = "Loading the server defaults...";
         }
         clearHelpers("Loading server default...");
         return;
@@ -285,7 +285,7 @@ export function syncConfigDefaultsPanel() {
             elements.configDefaultsStatus.className = "rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-700";
         }
         if (elements.configDefaultsSummary) {
-            elements.configDefaultsSummary.textContent = "GET /v1/admin/config/defaults is unavailable right now.";
+            elements.configDefaultsSummary.textContent = "The server defaults could not be loaded right now.";
         }
         clearHelpers();
         return;

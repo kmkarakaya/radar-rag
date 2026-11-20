@@ -64,9 +64,9 @@ export function renderChatSettings() {
     }[data.source] || "";
 
     if (settings.error && !data) {
-        summary.textContent = "Could not load the chat choice (GET /v1/admin/chat-settings).";
+        summary.textContent = "Could not load the chat choice.";
     } else if (!data) {
-        summary.textContent = "Loading GET /v1/admin/chat-settings...";
+        summary.textContent = "Loading the chat choice...";
     } else {
         summary.textContent = data.source === "none"
             ? "No chat LLM: Query is disabled (retrieve-only). Choose a chat service and a model below to enable it."

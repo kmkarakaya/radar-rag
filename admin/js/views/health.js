@@ -218,7 +218,7 @@ export function renderOperationsDetail(container, operations) {
         ["Latest failure", formatDateTime(operations.jobs?.newestFailureAt)],
     ]);
 
-    appendMetricSection(container, "Physical Collection Operations", [
+    appendMetricSection(container, "Index versions", [
         ["Total physical", formatCount(operations.physicalCollections?.total)],
         ["Building", formatCount(operations.physicalCollections?.building)],
         ["Active", formatCount(operations.physicalCollections?.active)],
@@ -252,7 +252,7 @@ export function renderHealthSummary(health, ready, details, options = {}) {
 
     if (options.refreshing) {
         grid.appendChild(createHealthStatusBanner("Refreshing system health...", {
-            detail: state.healthLastUpdatedAt ? `Showing last successful snapshot from ${formatDateTime(state.healthLastUpdatedAt)}.` : "Keeping the last successful snapshot visible while new diagnostics load.",
+            detail: state.healthLastUpdatedAt ? `Showing the data loaded at ${formatDateTime(state.healthLastUpdatedAt)}.` : "Showing the last loaded data while it refreshes.",
             tone: "warning",
             showBar: true,
         }));
@@ -267,7 +267,7 @@ export function renderHealthSummary(health, ready, details, options = {}) {
     const processGrid = createEl("div", "grid grid-cols-1 gap-2 text-xs");
     processGrid.appendChild(createMetaItem("Status", health?.status || "-"));
     processGrid.appendChild(createMetaItem("Alive", formatBoolean(health?.alive)));
-    processGrid.appendChild(createMetaItem("Uptime sec", health?.uptimeSec ? Math.round(health.uptimeSec) : "-"));
+    processGrid.appendChild(createMetaItem("Uptime (seconds)", health?.uptimeSec ? Math.round(health.uptimeSec) : "-"));
     processGrid.appendChild(createMetaItem("Timestamp", formatDateTime(health?.timestamp)));
     processGrid.appendChild(createMetaItem("Port", health?.port ?? ready?.config?.port ?? details?.port ?? "-"));
     processCard.appendChild(processGrid);
@@ -369,12 +369,12 @@ export function renderReadinessDetail(ready, details, detailsError, options = {}
     if (options.refreshing) {
         const refreshNotice = createEl("div", "mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800");
         refreshNotice.appendChild(createEl("div", "font-semibold", "Refreshing health diagnostics..."));
-        refreshNotice.appendChild(createEl("div", "mt-1 text-xs text-amber-700", state.healthLastUpdatedAt ? `Showing last successful snapshot from ${formatDateTime(state.healthLastUpdatedAt)}.` : "Current diagnostics stay visible until the refresh completes."));
+        refreshNotice.appendChild(createEl("div", "mt-1 text-xs text-amber-700", state.healthLastUpdatedAt ? `Showing the data loaded at ${formatDateTime(state.healthLastUpdatedAt)}.` : "Current diagnostics stay visible until the refresh completes."));
         refreshNotice.appendChild(createInlineLoadingBar());
         container.appendChild(refreshNotice);
     } else if (options.lastUpdatedAt) {
         const snapshotNotice = createEl("div", "mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700");
-        snapshotNotice.appendChild(createEl("div", "font-semibold", "Diagnostics snapshot"));
+        snapshotNotice.appendChild(createEl("div", "font-semibold", "Diagnostics"));
         snapshotNotice.appendChild(createEl("div", "mt-1 text-xs text-slate-500", `Last updated ${formatDateTime(options.lastUpdatedAt)}.`));
         container.appendChild(snapshotNotice);
     }
@@ -405,7 +405,7 @@ export function renderReadinessDetail(ready, details, detailsError, options = {}
         "Embedding (new collections)",
         `${details?.embeddingProvider ?? ready?.config?.embeddingProvider ?? "-"} / ${details?.embeddingModel ?? ready?.config?.embeddingModel ?? "-"}`,
     ));
-    configGrid.appendChild(createMetaItem("Chroma URL", details?.chromaUrl ?? ready?.config?.chromaUrl ?? "-"));
+    configGrid.appendChild(createMetaItem("Vector store URL (Chroma)", details?.chromaUrl ?? ready?.config?.chromaUrl ?? "-"));
     configGrid.appendChild(createMetaItem("Port", details?.port ?? ready?.config?.port ?? "-"));
     config.appendChild(configGrid);
     container.appendChild(config);

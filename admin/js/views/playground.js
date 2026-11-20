@@ -69,7 +69,7 @@ export function renderRetrieveResult(data) {
     meta.appendChild(createMetaItem("Active version", data?.activeVersion));
     container.appendChild(meta);
     renderSourceList(container, data?.sources);
-    appendJsonDetails(container, "Raw JSON", data);
+    appendJsonDetails(container, "Technical details (JSON)", data);
     elements.pgResult.appendChild(container);
 }
 
@@ -90,7 +90,7 @@ export function renderQueryResult(data) {
     meta.appendChild(createMetaItem("Sources", data?.sources?.length ?? 0));
     container.appendChild(meta);
     renderSourceList(container, data?.sources);
-    appendJsonDetails(container, "Raw JSON", data);
+    appendJsonDetails(container, "Technical details (JSON)", data);
     elements.pgResult.appendChild(container);
 }
 

@@ -28,6 +28,10 @@ Running the backend day to day: health checks, limits, logs, index lifecycle and
 - Chat services (`/v1/admin/chat-services`) and each tenant's chat choice (`/v1/admin/chat-settings`) are stored the same way, chat API keys in plain text too. Whoever manages them decides where questions and retrieved document text are sent for answer generation; only the `admin` role can do it when admin auth is on.
 - A service's URL or key change applies to the next request of every collection that uses it (clients are cached per service version); no restart and no re-index are needed.
 
+## Built-in model download
+
+- The first job with the `builtin` provider downloads the model once into `embedding.cacheDir` (default `models/`; with Docker `./models`): about 346 MB. Before the download starts, the server checks the free disk space there and needs about 600 MB. With less, the job fails with "Not enough free disk space to download it: about … MB is needed in …, … MB is free" and nothing is downloaded; free up space, then re-index.
+
 ## Documents on disk
 
 - Uploads collections keep their documents in `data/collections/<collection id>` (with Docker: `./data/collections` next to `docker-compose.yml`). Deleting the collection deletes that folder. Back up `./data` to keep both the documents and the registry.

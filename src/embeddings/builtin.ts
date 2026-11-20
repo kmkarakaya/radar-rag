@@ -24,7 +24,43 @@ export class BuiltinModelLoadError extends Error {
   }
 }
 
+/** Room left on top of the download itself (temporary files, the runtime's own files). */
+const DISK_SPACE_MARGIN_MB = 256;
+const MB = 1024 * 1024;
+
+export type StatFs = (dir: string) => Promise<{ bavail: number | bigint; bsize: number | bigint }>;
+
+/**
+ * Throws before a download starts when the disk under cacheDir cannot hold the model. transformers.js crashes
+ * the whole process when a cache write fails (unhandled stream error), so a full disk must be caught here.
+ * A failing statfs skips the check: the check itself must never block a setup.
+ */
+export async function assertDiskSpaceForBuiltinModel(
+  spec: BuiltinEmbeddingModelSpec,
+  cacheDir: string,
+  statfs: StatFs = fs.promises.statfs,
+): Promise<void> {
+  if (isBuiltinModelCached(spec.id, cacheDir)) return;
+  // On the first start cacheDir may not exist yet: measure the nearest folder that does.
+  let dir = path.resolve(cacheDir);
+  while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
+  let freeMb: number;
+  try {
+    const stats = await statfs(dir);
+    freeMb = Math.floor(Number(BigInt(stats.bavail) * BigInt(stats.bsize) / BigInt(MB)));
+  } catch {
+    return;
+  }
+  const neededMb = spec.approxDownloadMb + DISK_SPACE_MARGIN_MB;
+  if (freeMb < neededMb) {
+    throw new Error(
+      `Not enough free disk space to download it: about ${neededMb} MB is needed in ${cacheDir}, ${freeMb} MB is free. Free up disk space, then re-index.`,
+    );
+  }
+}
+
 export const loadBuiltinModelWithTransformers: BuiltinModelLoader = async (spec, cacheDir) => {
+  await assertDiskSpaceForBuiltinModel(spec, cacheDir);
   // Imported lazily: the runtime (onnxruntime-node) is only loaded when a built-in model is used.
   const { AutoConfig, AutoModel, AutoTokenizer, env } = await import("@huggingface/transformers");
   env.cacheDir = cacheDir;

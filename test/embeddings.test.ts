@@ -7,6 +7,7 @@ import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { ChromaClient } from "chromadb";
 import { config, type ResolvedConfig } from "../src/config.js";
 import {
+  assertDiskSpaceForBuiltinModel,
   BuiltinEmbeddings,
   clearLoadedBuiltinModels,
   isBuiltinModelCached,
@@ -19,6 +20,7 @@ import {
   DEFAULT_BUILTIN_EMBEDDING_MODEL,
   getEmbeddings,
 } from "../src/embeddings/index.js";
+import { getBuiltinEmbeddingModelSpec } from "../src/embeddings/models.js";
 import { clearProviderStatusCache } from "../src/providers/openaiCompatible.js";
 import { RagQueryError, retrieveSources } from "../src/rag.js";
 
@@ -105,6 +107,77 @@ describe("BuiltinEmbeddings", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  describe("free disk space before the download", () => {
+    const spec = getBuiltinEmbeddingModelSpec(BUILTIN)!;
+    const freeMb = (mb: number) => async () => ({ bavail: BigInt(mb), bsize: BigInt(1024 * 1024) });
+
+    it("refuses to start the download when the disk is too full, naming what is needed", async () => {
+      const dir = await mkdtemp(path.join(os.tmpdir(), "rag-disk-"));
+      try {
+        await assert.rejects(
+          assertDiskSpaceForBuiltinModel(spec, dir, freeMb(412)),
+          (error: Error) => error.message.includes("Not enough free disk space")
+            && error.message.includes(`${spec.approxDownloadMb + 256} MB is needed`)
+            && error.message.includes("412 MB is free")
+            && error.message.includes(dir),
+        );
+        await assertDiskSpaceForBuiltinModel(spec, dir, freeMb(spec.approxDownloadMb + 256));
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("skips the check when the model is already downloaded", async () => {
+      const dir = await mkdtemp(path.join(os.tmpdir(), "rag-disk-"));
+      try {
+        const modelDir = path.join(dir, ...BUILTIN.split("/"));
+        await mkdir(path.join(modelDir, "onnx"), { recursive: true });
+        for (const file of spec.requiredFiles) await writeFile(path.join(modelDir, file), "x");
+        let called = false;
+        await assertDiskSpaceForBuiltinModel(spec, dir, async () => { called = true; return { bavail: 0, bsize: 0 }; });
+        assert.equal(called, false);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("measures the nearest existing folder when cacheDir does not exist yet", async () => {
+      const dir = await mkdtemp(path.join(os.tmpdir(), "rag-disk-"));
+      try {
+        const measured: string[] = [];
+        await assertDiskSpaceForBuiltinModel(spec, path.join(dir, "models", "nested"), async (target) => {
+          measured.push(target);
+          return { bavail: 10_000, bsize: 1024 * 1024 };
+        });
+        assert.deepEqual(measured, [path.resolve(dir)]);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("never blocks when the free space cannot be read", async () => {
+      await assertDiskSpaceForBuiltinModel(spec, os.tmpdir(), async () => { throw new Error("statfs not supported"); });
+    });
+
+    it("fails the load with a clear message instead of starting the download", async () => {
+      const dir = await mkdtemp(path.join(os.tmpdir(), "rag-disk-"));
+      try {
+        const embeddings = new BuiltinEmbeddings({
+          model: BUILTIN,
+          cacheDir: dir,
+          loader: async (loaderSpec, cacheDir) => {
+            await assertDiskSpaceForBuiltinModel(loaderSpec, cacheDir, freeMb(10));
+            throw new Error("the download must not start");
+          },
+        });
+        await assert.rejects(embeddings.embedQuery("x"), (error: Error) =>
+          error.name === "BuiltinModelLoadError" && /could not be loaded: Not enough free disk space/.test(error.message));
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
   });
 });
 

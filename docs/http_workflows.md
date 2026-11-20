@@ -432,7 +432,7 @@ Notes:
 - The response includes a `job.id`.
 - If a reindex is already active, expect `409 COLLECTION_INDEX_ALREADY_RUNNING`.
 - The embedding preflight (no download, no embedding) can reject the request with `422 UNAVAILABLE_MODEL`, `422 EMBEDDING_PROVIDER_NOT_CONFIGURED`, or `503 EMBEDDING_PROVIDER_UNREACHABLE`; no job is started then.
-- With the `builtin` provider, the first job downloads the model once (about 346 MB) before embedding, so it takes longer than later jobs.
+- With the `builtin` provider, the first job downloads the model once (about 346 MB) before embedding, so it takes longer than later jobs. With less than about 600 MB free in the model folder the job fails with "Not enough free disk space…" before downloading anything.
 - Rate-limit headers are present on success and on `429`.
 
 ### Poll job detail

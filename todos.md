@@ -181,6 +181,18 @@ Yapilacaklar:
 - Docker imajinin build'ini de zincire ekle.
 - Urun baskalarinin elindeyken kirik bir surum yayinlamamak icin gerekli.
 
+### 8. Duyuru oncesi: yayin duzeni
+
+2026-11-20 karari: henuz kullanan yok (duyurulmadi), bu yuzden simdilik yayin duzeni yok; main'e her push `latest` olarak yayinlaniyor ve bu sorun degil. Duyurudan hemen once, tek seferde (yaklasik yarim gun):
+
+- CI'da `latest` sadece surum etiketlerinde (`v*`) guncellensin; main ayri bir etikete (or. `edge`) gitsin. Boylece kullanicilar yarim is almaz.
+- Ilk surum: `v0.1.0` (`package.json`'da zaten 0.1.0) veya o gune kadar birikenlerle `v0.2.0`. CI etiketle `0.x.y` ve `0.x` imaj etiketlerini zaten uretiyor.
+- `CHANGELOG.md` (ilk surumde tek "ilk yayin" notu). Sonraki surumlerde uc baslik: yeni ozellikler, yapmaniz gerekenler (re-index, yeni ayar), uyumlulugu bozan degisiklikler.
+- `docs/upgrading.md`: guncelleme (yedek `./data` + `./chroma_data`, `docker compose pull`, `up -d`, `/ready`) ve geri donus (onceki surum etiketi + yedek; veritabani guncellemeleri tek yonlu).
+- ghcr paketinin public oldugunu kontrol et.
+
+1.0'a kadar hafif kalsin: 0.x'te uyumluluk bozan degisiklik serbest, sadece notta yazilir; `/v2` veya uzun sureli eski alan destegi yok. Tek istisna: config ayarlarinin adini degistirmek veya kaldirmak; semalar `.strict()` oldugu icin eski YAML'li kullanicinin sunucusu acilmaz, eski adlar bir sure kabul edilmeli.
+
 ## P1 - Kalite ve dayaniklilik eksikleri
 
 ### 1. Retrieval akisi minimal

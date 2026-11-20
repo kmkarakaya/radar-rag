@@ -6,7 +6,7 @@ import { elements, state } from "./state.js";
 import { applyAuditLogFilters, auditOperationOptions, clearAuditLogFilters, closeAuditPickers, getAuditVisibleCollections, goToNextAuditLogPage, goToPreviousAuditLogPage, openAuditLogForCollection, refreshAuditLog, renderAuditCollectionPickerList, renderAuditFilterControls, renderAuditOperationPickerList, setAuditCollectionFilterValues, setAuditOperationFilterValues, toggleAuditPicker } from "./views/audit.js";
 import { loadCollections } from "./views/collections.js";
 import { bindDocumentsTabEvents } from "./views/documents.js";
-import { loadModelDiscovery, saveCollection, setModelFromSelect, syncModelDiscoveryPanel } from "./views/editor.js";
+import { loadModelDiscovery, saveCollection, syncModelDiscoveryPanel } from "./views/editor.js";
 import { loadHealth } from "./views/health.js";
 import { activateTab, deleteCollection, handleOverlayClick, openInspector, reindexCollection, requestCloseInspector, updateReadinessTab } from "./views/inspector.js";
 import { changeJobsStatusFilter, getVisibleSelectableJobIds, goToNextJobsPage, goToPreviousJobsPage, loadJobs, refreshJobsList, removeSelectedJobs, renderJobs } from "./views/jobs.js";
@@ -167,9 +167,6 @@ export function bindEvents() {
         elements.auditNextPage.addEventListener("click", () => {
             goToNextAuditLogPage();
         });
-    }
-    if (elements.embeddingModelSelect) {
-        elements.embeddingModelSelect.addEventListener("change", () => setModelFromSelect("embedding"));
     }
     if (elements.editEmbeddingModel) {
         elements.editEmbeddingModel.addEventListener("input", () => syncModelDiscoveryPanel());

@@ -173,9 +173,10 @@ export function renderCollectionIndexStateBanner() {
     clearNode(elements.collectionIndexStateContent);
 
     // What needs attention stays visible: the fields that need a re-index and the unavailable services.
-    if (changedFields.length > 0) {
+    // Before the first index every field is "pending"; listing them all says nothing, so only after one.
+    if (changedFields.length > 0 && indexState?.status === "reindex_required") {
         const fieldSection = createEl("div", "rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800");
-        fieldSection.appendChild(createEl("div", "font-semibold", indexState?.status === "no_active_index" ? "Settings used by the first index" : "Changed since the last index"));
+        fieldSection.appendChild(createEl("div", "font-semibold", "Changed since the last index"));
         const fieldWrap = createEl("div", "mt-2 flex flex-wrap gap-2");
         changedFields.forEach((field) => {
             fieldWrap.appendChild(createBadge(formatValidationFieldLabel(field), getStatusColor("warn")));
@@ -309,16 +310,22 @@ export async function openInspector(id, options = {}) {
         clearCollectionValidation();
         clearEditorForm();
         resetFilesTab();
-        elements.inspectorTitle.textContent = "Create Collection";
+        elements.inspectorTitle.textContent = "New collection";
         clearNode(elements.inspectorStatusBadge);
         elements.inspectorStatusBadge.classList.add("hidden");
         elements.btnViewHistory?.classList.add("hidden");
         setInspectorActionsEnabled(false, "Save the collection before using this action.");
         setCollectionTabsEnabled(false);
+        // Creating: only the form, no tabs or collection actions yet.
+        elements.inspectorTabs?.classList.add("hidden");
+        elements.inspectorFooter?.classList.add("hidden");
+        elements.btnSave.textContent = "Create collection";
         switchTab("editor");
-        await Promise.all([loadConfigDefaults(), loadModelDiscovery(), loadChatSettings()]);
-        syncSaveButtonAccess();
         openPanel();
+        syncSaveButtonAccess();
+        elements.editDisplayName?.focus();
+        // The form is usable at once; defaults and model suggestions fill in when they arrive.
+        Promise.all([loadConfigDefaults(), loadModelDiscovery(), loadChatSettings()]).then(() => syncSaveButtonAccess());
         return;
     }
 
@@ -330,6 +337,9 @@ export async function openInspector(id, options = {}) {
 
     state.selectedCollection = collection;
     state.editorInitialSnapshot = null;
+    elements.inspectorTabs?.classList.remove("hidden");
+    elements.inspectorFooter?.classList.remove("hidden");
+    elements.btnSave.textContent = "Save changes";
     resetFilesTab();
     resetReadinessAndPlayground("Readiness has not been loaded yet.");
     resetPhysicalCollectionsSection({ message: "Loading physical collection lifecycle..." });
@@ -461,6 +471,10 @@ export function syncSaveButtonAccess() {
     const mode = elements.editId?.value ? "update" : "create";
     const capability = mode === "create" ? "createCollection" : "updateCollection";
     const allowed = canAdminAction(capability);
+    // A role that cannot change the settings sees them read-only.
+    if (elements.editFieldset) elements.editFieldset.disabled = !allowed;
+    elements.editReadonlyNote?.classList.toggle("hidden", allowed);
+    elements.btnSave.classList.toggle("hidden", !allowed);
     elements.btnSave.disabled = !allowed;
     if (!allowed) {
         elements.btnSave.title = state.auth.enabled

@@ -475,7 +475,7 @@
             </div>
 
             <!-- Tabs Navigation -->
-            <div class="flex border-b border-slate-200 mb-6">
+            <div id="inspectorTabs" class="flex border-b border-slate-200 mb-6">
                 <button type="button" data-tab="ready" class="tab-btn active px-4 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">Readiness</button>
                 <button type="button" data-tab="files" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Documents</button>
                 <button type="button" data-tab="playground" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Playground</button>
@@ -558,32 +558,26 @@
 
             <!-- Tab: Editor -->
             <div id="tab-editor" class="tab-content hidden">
-                <form id="colEditForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <form id="colEditForm" class="space-y-6">
                     <input type="hidden" id="editId">
-                    <div id="configDefaultsPanel" class="hidden md:col-span-2 rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
-                        <div class="flex items-start justify-between gap-3">
-                            <div>
-                                <h4 class="text-xs font-bold uppercase tracking-wider text-indigo-600">Server defaults</h4>
-                                <p id="configDefaultsSummary" class="mt-1 text-xs text-slate-600">Loading GET /v1/admin/config/defaults...</p>
-                            </div>
-                            <span id="configDefaultsStatus" class="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600">Loading</span>
+                    <fieldset id="editFieldset" class="space-y-6">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="editDisplayName">Name *</label>
+                            <input type="text" id="editDisplayName" required class="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="editDescription">Description</label>
+                            <textarea id="editDescription" rows="2" class="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"></textarea>
                         </div>
                     </div>
-                    <div class="md:col-span-2">
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Display Name *</label>
-                        <input type="text" id="editDisplayName" required class="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
-                    </div>
-                    <div class="md:col-span-2">
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
-                        <textarea id="editDescription" rows="2" class="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"></textarea>
-                    </div>
-                    <div class="space-y-4">
-                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Indexing</h4>
-                        <div id="sourceKindChoice" class="space-y-2">
-                            <span class="block text-xs font-medium text-slate-500">Documents</span>
+
+                    <section class="space-y-3 border-t border-slate-100 pt-4">
+                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Documents</h4>
+                        <div id="sourceKindChoice" class="space-y-2" role="radiogroup" aria-label="Where the documents come from">
                             <label class="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
                                 <input type="radio" name="sourceKind" value="uploads" class="mt-1" checked>
-                                <span><span class="font-semibold">Upload files</span> (recommended)<span class="block text-xs text-slate-400">Add documents in the Documents tab after saving.</span></span>
+                                <span><span class="font-semibold">Upload files</span> (recommended)<span class="block text-xs text-slate-500">Add documents in the Documents tab after saving.</span></span>
                             </label>
                             <label class="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
                                 <input type="radio" name="sourceKind" value="folder" class="mt-1">
@@ -592,98 +586,103 @@
                         </div>
                         <p id="sourceKindReadonly" class="hidden text-xs text-slate-500"></p>
                         <div id="sourcePathField" class="hidden">
-                            <label class="block text-xs font-medium text-slate-500 mb-1">Source Path</label>
+                            <label class="block text-xs font-medium text-slate-500 mb-1" for="editSourcePath">Folder on the server</label>
                             <input type="text" id="editSourcePath" class="w-full p-2 border border-slate-200 rounded-lg text-sm" placeholder="data/my-docs">
-                            <p id="sourcePathHint" class="mt-1 text-xs text-slate-400">A folder inside the server's data folder, for example data/my-docs. With Docker this is ./data next to docker-compose.yml; a C:\ path will not work.</p>
-                            <p class="mt-1 text-xs text-slate-400" data-default-for="sourcePath"></p>
+                            <p id="sourcePathHint" class="mt-1 text-xs text-slate-500">A folder inside the server's data folder, for example data/my-docs. With Docker this is ./data next to docker-compose.yml; a C:\ path will not work.</p>
+                            <p class="mt-1 text-xs text-slate-500" data-default-for="sourcePath"></p>
                         </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div>
-                                <label class="block text-xs font-medium text-slate-500 mb-1">Chunk Size</label>
-                                <input type="number" id="editChunkSize" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
-                                <p class="mt-1 text-xs text-slate-400" data-default-for="chunkSize"></p>
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-500 mb-1">Overlap</label>
-                                <input type="number" id="editChunkOverlap" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
-                                <p class="mt-1 text-xs text-slate-400" data-default-for="chunkOverlap"></p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="space-y-4">
-                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Retrieval</h4>
-                        <div>
-                            <label class="block text-xs font-medium text-slate-500 mb-1">Distance Metric</label>
-                            <select id="editDistanceMetric" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
-                                <option value="">Server default</option>
-                            </select>
-                            <p class="mt-1 text-xs text-slate-400" data-default-for="distanceMetric"></p>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div>
-                                <label class="block text-xs font-medium text-slate-500 mb-1">K</label>
-                                <input type="number" id="editRetrievalK" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
-                                <p class="mt-1 text-xs text-slate-400" data-default-for="retrievalK"></p>
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-500 mb-1">Threshold</label>
-                                <input type="number" step="0.01" id="editRetrievalDistanceThreshold" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
-                                <p class="mt-1 text-xs text-slate-400" data-default-for="retrievalDistanceThreshold"></p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="md:col-span-2 space-y-4 border-t border-slate-100 pt-4">
-                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Embedding &amp; chat LLM</h4>
-                        <div id="modelDiscoveryPanel" class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                            <div class="flex items-start justify-between gap-3">
-                                <div>
-                                    <h5 class="text-sm font-semibold text-slate-800">Model discovery</h5>
-                                    <p id="modelDiscoverySummary" class="mt-1 text-xs text-slate-500">Loading GET /v1/admin/models...</p>
-                                </div>
-                                <span id="modelDiscoveryStatus" class="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600">Loading</span>
-                            </div>
-                            <div class="mt-4 space-y-2">
-                                <label class="block text-xs font-medium text-slate-500">Embedding models for the selected provider</label>
-                                <select id="embeddingModelSelect" size="5" class="w-full rounded-lg border border-slate-200 bg-white p-2 text-sm"></select>
-                                <p class="text-xs text-slate-400">Pick one from the list, or type manually below.</p>
-                            </div>
-                        </div>
+                    </section>
+
+                    <section class="space-y-3 border-t border-slate-100 pt-4">
+                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Embedding</h4>
+                        <p class="text-xs text-slate-500">The model that turns documents and questions into vectors. Changing it later needs a re-index.</p>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label class="block text-xs font-medium text-slate-500 mb-1">Embedding Provider</label>
-                                <select id="editEmbeddingProvider" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                                <label class="block text-xs font-medium text-slate-500 mb-1" for="editEmbeddingProvider">Provider</label>
+                                <select id="editEmbeddingProvider" class="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white">
                                     <option value="">Server default</option>
                                 </select>
-                                <p class="mt-1 text-xs text-slate-400" data-default-for="embeddingProvider"></p>
+                                <p class="mt-1 text-xs text-slate-500" data-default-for="embeddingProvider"></p>
                             </div>
                             <div id="embeddingServiceField" class="hidden">
-                                <label class="block text-xs font-medium text-slate-500 mb-1" for="editEmbeddingService">Embedding Service</label>
-                                <select id="editEmbeddingService" class="w-full p-2 border border-slate-200 rounded-lg text-sm"></select>
-                                <p class="mt-1 text-xs text-slate-400">Add or change services under <a href="#" id="linkEmbeddingServices" class="text-indigo-600 underline">Embedding services</a>.</p>
+                                <label class="block text-xs font-medium text-slate-500 mb-1" for="editEmbeddingService">Service</label>
+                                <select id="editEmbeddingService" class="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white"></select>
+                                <p class="mt-1 text-xs text-slate-500">Add or change services under <a href="#" id="linkEmbeddingServices" class="text-indigo-600 underline">Embedding services</a>.</p>
                             </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-500 mb-1">Embedding Model</label>
-                                <input type="text" id="editEmbeddingModel" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
-                                <p class="mt-1 text-xs text-slate-400" data-default-for="embeddingModel"></p>
-                                <p class="mt-1 text-xs text-slate-400">Changing the provider, service or model of an existing collection requires a re-index.</p>
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-500 mb-1">Chat LLM (shared, optional)</label>
-                                <p id="chatLlmStatus" class="rounded-lg border border-slate-200 bg-slate-50 p-2 text-sm text-slate-600">Loading GET /v1/admin/chat-settings...</p>
-                                <p class="mt-1 text-xs text-slate-400">Shared by all collections and used only by Query. Choose it under <a href="#" id="linkChatServices" class="text-indigo-600 hover:underline">Chat services</a>.</p>
+                            <div class="md:col-span-2">
+                                <label class="block text-xs font-medium text-slate-500 mb-1" for="editEmbeddingModel">Model</label>
+                                <input type="text" id="editEmbeddingModel" list="embeddingModelSelect" autocomplete="off" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                                <datalist id="embeddingModelSelect"></datalist>
+                                <p class="mt-1 text-xs text-slate-500" data-default-for="embeddingModel"></p>
                             </div>
                         </div>
-                        <p class="text-xs text-slate-400">Suggestions are loaded from <code>GET /v1/admin/models</code>; free text is still allowed.</p>
-                    </div>
-                    <div class="md:col-span-2 flex justify-end gap-3 mt-6">
+                        <div id="modelDiscoveryPanel" class="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                            <p id="modelDiscoverySummary" class="text-xs text-slate-600">Loading the available models...</p>
+                            <span id="modelDiscoveryStatus" class="shrink-0 rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600">Loading</span>
+                        </div>
+                        <p id="embeddingReindexNote" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">You changed the embedding: the collection needs a re-index before searches use it.</p>
+                    </section>
+
+                    <section class="space-y-2 border-t border-slate-100 pt-4">
+                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Answers (Query)</h4>
+                        <p id="chatLlmStatus" class="rounded-lg border border-slate-200 bg-slate-50 p-2 text-sm text-slate-600">Loading the chat choice...</p>
+                        <p class="text-xs text-slate-500">One chat LLM writes the answers for every collection; Retrieve never needs it. Choose it under <a href="#" id="linkChatServices" class="text-indigo-600 underline">Chat services</a>.</p>
+                    </section>
+
+                    <details id="editAdvanced" class="rounded-lg border border-slate-200 p-4">
+                        <summary class="cursor-pointer text-sm font-semibold text-slate-700">Advanced: chunking and retrieval</summary>
+                        <div id="configDefaultsPanel" class="hidden mt-4 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3">
+                            <div class="flex items-start justify-between gap-3">
+                                <div>
+                                    <h5 class="text-xs font-bold uppercase tracking-wider text-indigo-600">Server defaults</h5>
+                                    <p id="configDefaultsSummary" class="mt-1 text-xs text-slate-600">Loading the server defaults...</p>
+                                </div>
+                                <span id="configDefaultsStatus" class="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600">Loading</span>
+                            </div>
+                        </div>
+                        <p class="mt-3 text-xs text-slate-500">Leave a field empty to use the server default. Chunk settings and the distance metric apply at the next re-index; the number of results and the threshold apply at once.</p>
+                        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1" for="editChunkSize">Chunk size (characters)</label>
+                                <input type="number" id="editChunkSize" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                                <p class="mt-1 text-xs text-slate-500" data-default-for="chunkSize"></p>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1" for="editChunkOverlap">Chunk overlap (characters)</label>
+                                <input type="number" id="editChunkOverlap" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                                <p class="mt-1 text-xs text-slate-500" data-default-for="chunkOverlap"></p>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1" for="editRetrievalK">Results per search (K)</label>
+                                <input type="number" id="editRetrievalK" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                                <p class="mt-1 text-xs text-slate-500" data-default-for="retrievalK"></p>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1" for="editRetrievalDistanceThreshold">Distance threshold</label>
+                                <input type="number" step="0.01" id="editRetrievalDistanceThreshold" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                                <p class="mt-1 text-xs text-slate-500" data-default-for="retrievalDistanceThreshold"></p>
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="block text-xs font-medium text-slate-500 mb-1" for="editDistanceMetric">Distance metric</label>
+                                <select id="editDistanceMetric" class="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white">
+                                    <option value="">Server default</option>
+                                </select>
+                                <p class="mt-1 text-xs text-slate-500" data-default-for="distanceMetric"></p>
+                            </div>
+                        </div>
+                    </details>
+                    </fieldset>
+
+                    <p id="editReadonlyNote" class="hidden text-xs text-slate-500">Your role can view these settings but not change them.</p>
+                    <div class="flex justify-end gap-3">
                         <button type="button" id="btnCancelEdit" class="px-4 py-2 text-slate-500 hover:text-slate-700 text-sm font-medium transition-colors">Cancel</button>
-                        <button type="submit" id="btnSave" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all shadow-sm">Save Changes</button>
+                        <button type="submit" id="btnSave" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all shadow-sm">Save changes</button>
                     </div>
                 </form>
             </div>
         </div>
 
-        <div class="p-6 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
+        <div id="inspectorFooter" class="p-6 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
             <button id="btnViewHistory" type="button" class="hidden px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg text-sm font-bold transition-all flex items-center gap-2">
                 View history
             </button>

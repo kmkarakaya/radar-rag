@@ -212,7 +212,8 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("function renderValidationImpact(parent, impact)"));
     assert.ok(js.includes('async function loadModelDiscovery()'));
     assert.ok(js.includes('function syncModelDiscoveryPanel()'));
-    assert.ok(js.includes('function setModelFromSelect(kind)'));
+    // Model suggestions are a datalist on the model field, not a separate list.
+    assert.ok(js.includes('function syncModelSelect(kind)'));
     assert.ok(js.includes('`${API.admin}/models`'));
     assert.ok(js.includes("Change Impact"));
     assert.ok(js.includes("Re-index required"));

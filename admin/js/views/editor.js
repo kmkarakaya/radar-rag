@@ -5,7 +5,7 @@ import { API, EDIT_FIELD_IDS, elements, loadTokens, state } from "../state.js";
 import { describeChatSettings, syncChatSettingsModels } from "./chatSettings.js";
 import { loadAdminCollectionDetail, loadCollections, mergeCollectionIntoState } from "./collections.js";
 import { loadCollectionFiles } from "./documents.js";
-import { closeInspector, renderCollectionValidation, setCollectionTabsEnabled, setInspectorActionsEnabled, switchTab, syncSaveButtonAccess } from "./inspector.js";
+import { closeInspector, openInspector, renderCollectionValidation, setCollectionTabsEnabled, setInspectorActionsEnabled, switchTab, syncSaveButtonAccess } from "./inspector.js";
 
 export function normalizeModelList(models) {
     return [...new Set(
@@ -54,35 +54,16 @@ export function getModelDiscoveryFieldConfig(_kind) {
     };
 }
 
+/** Fills the model field's suggestions (a datalist) with the models of the chosen provider or service. */
 export function syncModelSelect(kind) {
     const config = getModelDiscoveryFieldConfig(kind);
-    if (!config.select || !config.input) return;
-
-    const currentValue = config.input.value.trim();
-    const models = normalizeModelList(config.models);
-
+    if (!config.select) return;
     clearNode(config.select);
-
-    const placeholder = createEl("option");
-    placeholder.value = "";
-    placeholder.textContent = currentValue ? `Current: ${currentValue}` : "Select a model or type manually";
-    config.select.appendChild(placeholder);
-
-    models.forEach((model) => {
+    normalizeModelList(config.models).forEach((model) => {
         const option = createEl("option");
         option.value = model;
-        option.textContent = model;
         config.select.appendChild(option);
     });
-
-    config.select.value = models.includes(currentValue) ? currentValue : "";
-}
-
-export function setModelFromSelect(kind) {
-    const config = getModelDiscoveryFieldConfig(kind);
-    if (!config.input || !config.select) return;
-    config.input.value = config.select.value;
-    syncModelDiscoveryPanel();
 }
 
 export function syncModelDiscoveryPanel() {
@@ -126,6 +107,17 @@ export function syncModelDiscoveryPanel() {
 
     syncExternalProviderOption();
     syncModelSelect("embedding");
+    syncEmbeddingReindexNote();
+}
+
+/** Editing an existing collection: say a re-index is needed once its embedding provider, service or model changes. */
+export function syncEmbeddingReindexNote() {
+    const note = elements.embeddingReindexNote;
+    if (!note) return;
+    const saved = state.editorInitialSnapshot;
+    const current = saved ? readEditorValues() : null;
+    const changed = Boolean(saved) && ["embeddingProvider", "embeddingServiceId", "embeddingModel"].some((key) => current[key] !== saved[key]);
+    note.classList.toggle("hidden", !changed);
 }
 
 // External embedding services are managed in the "Embedding services" view (or set in .env / config as "server").
@@ -637,8 +629,18 @@ export async function saveCollection() {
         const shouldKeepOpen = hasWarnings || hasImpact;
         if (mode === "create") {
             const data = await adminMutationRequest(`${API.admin}/collections`, { method: "POST", body: JSON.stringify(payload) });
-            showToast(`Collection created: ${data?.collection?.id || payload.displayName}`, "success");
+            const createdId = data?.collection?.id;
             await loadCollections();
+            if (createdId) {
+                // Open the new collection on its next step: uploading documents, or indexing its folder.
+                await openInspector(createdId, { tab: payload.sourcePath ? "ready" : "files" });
+                if (hasWarnings) renderCollectionValidation(validation, getValidationTitle(mode));
+                showToast(payload.sourcePath
+                    ? "Collection created. Re-index it to make its folder searchable."
+                    : "Collection created. Add documents here, then re-index.", "success");
+                return;
+            }
+            showToast("Collection created.", "success");
             if (shouldKeepOpen) {
                 const createdId = data?.collection?.id;
                 if (createdId) {

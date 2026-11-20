@@ -6,7 +6,6 @@
     <title>RAGStation Admin</title>
     <link rel="icon" type="image/png" sizes="32x32" href="/admin/brand/icon-app-32.png">
     <link rel="apple-touch-icon" href="/admin/brand/icon-app-128.png">
-    <link rel="stylesheet" href="/admin/tailwind.css">
     <link rel="stylesheet" href="/admin/admin.css">
     <style>
         .nav-item.active {
@@ -14,6 +13,8 @@
             border-left: 4px solid white;
         }
     </style>
+    <!-- Last, like the Tailwind CDN script injected it before: utilities such as .hidden win over admin.css. -->
+    <link rel="stylesheet" href="/admin/tailwind.css">
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans min-h-screen overflow-hidden">
     <section id="authShell" class="auth-shell">

@@ -359,6 +359,8 @@ describe("admin panel static contract", () => {
     const html = await readAdminFile("index.html");
     assert.ok(!html.includes("cdn.tailwindcss.com"));
     assert.ok(html.includes('<link rel="stylesheet" href="/admin/tailwind.css">'));
+    // Tailwind must load after admin.css (as the CDN injected it), or admin.css rules beat utilities like .hidden.
+    assert.ok(html.indexOf('href="/admin/tailwind.css"') > html.indexOf('href="/admin/admin.css"'));
     assert.ok(html.includes('<script type="module" src="/admin/js/main.js"></script>'));
     const css = await readAdminFile("tailwind.css");
     assert.ok(css.includes(".translate-x-full"), "admin/tailwind.css is built (npm run build:admin-css)");

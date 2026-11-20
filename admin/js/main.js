@@ -1,4 +1,5 @@
-import { loadAdminSession, loginAdmin, logoutAdmin, setDashboardVisible, syncAuthChrome } from "./auth.js";
+import { setUnauthorizedHandler } from "./api.js";
+import { handleSessionExpired, loadAdminSession, loginAdmin, logoutAdmin, setDashboardVisible, syncAuthChrome } from "./auth.js";
 import { initializeDashboard, switchView } from "./dashboard.js";
 import { elements, state } from "./state.js";
 import { applyAuditLogFilters, auditOperationOptions, clearAuditLogFilters, closeAuditPickers, getAuditVisibleCollections, goToNextAuditLogPage, goToPreviousAuditLogPage, openAuditLogForCollection, refreshAuditLog, renderAuditCollectionPickerList, renderAuditFilterControls, renderAuditOperationPickerList, setAuditCollectionFilterValues, setAuditOperationFilterValues, toggleAuditPicker } from "./views/audit.js";
@@ -231,6 +232,8 @@ export function bindEvents() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+    // Every module is loaded by now: a 401 from any API call returns to the sign-in screen.
+    setUnauthorizedHandler(handleSessionExpired);
     bindEvents();
     syncAuthChrome();
     try {

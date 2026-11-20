@@ -154,7 +154,7 @@ export async function loginAdmin(event) {
             body: JSON.stringify({ username, password }),
         });
         if (!data?.session) {
-            throw normalizeError(null, { status: 0, code: "INVALID_AUTH_RESPONSE", message: "Admin login response did not include session." });
+            throw normalizeError(null, { status: 0, code: "INVALID_AUTH_RESPONSE", message: "The server did not confirm the sign-in. Try again." });
         }
         state.auth.enabled = true;
         setAdminSession(data.session, true, data.capabilities);
@@ -170,6 +170,19 @@ export async function loginAdmin(event) {
         setButtonLoading(elements.authLoginButton, false, "Sign in");
     }
 }
+
+/** The session ended (expired, revoked or the server restarted with a new secret): back to sign-in, once. */
+export function handleSessionExpired() {
+    if (!state.auth.enabled || !state.auth.authenticated) return;
+    stopDashboardPolling();
+    clearAdminSession();
+    resetDashboardState();
+    setDashboardVisible(false);
+    state.auth.error = "Your session has ended. Sign in again.";
+    syncAuthChrome();
+    elements.authUsername?.focus();
+}
+
 
 export async function logoutAdmin() {
     try {

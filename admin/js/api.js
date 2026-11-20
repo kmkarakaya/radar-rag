@@ -109,6 +109,7 @@ export function normalizeError(input, fallback = {}) {
         requestId: input?.requestId || fallback.requestId || null,
         details: input?.details || fallback.details || null,
         issues: input?.issues || input?.details?.issues || fallback.issues || null,
+        sessionExpired: Boolean(input?.sessionExpired || fallback.sessionExpired),
         cause: input,
     };
 }
@@ -133,6 +134,19 @@ export function getSessionHeadersForRequest(url) {
         "x-tenant-id": state.auth.session.tenantId,
         "x-user-id": state.auth.session.username,
     };
+}
+
+let unauthorizedHandler = null;
+
+/** Called when an API call answers 401 (the session ended or was revoked); set by the auth module. */
+export function setUnauthorizedHandler(handler) {
+    unauthorizedHandler = handler;
+}
+
+/** The auth routes answer 401 as part of signing in; every other 401 means the session is gone. */
+function isSessionCheckRequest(url) {
+    const pathname = normalizeRequestPath(url);
+    return pathname.startsWith(`${API.adminAuth}/`);
 }
 
 export async function apiRequest(url, options = {}) {
@@ -164,7 +178,7 @@ export async function apiRequest(url, options = {}) {
                     throw normalizeError(error, {
                         status: response.status,
                         code: "RESPONSE_PARSE_ERROR",
-                        message: `Could not parse JSON response from ${url}.`,
+                        message: "The server sent a response the panel could not read.",
                     });
                 }
             } else {
@@ -174,7 +188,10 @@ export async function apiRequest(url, options = {}) {
 
         if (!response.ok) {
             const errorData = isRecord(data) ? data : {};
+            const sessionExpired = response.status === 401 && !isSessionCheckRequest(url) && Boolean(unauthorizedHandler);
+            if (sessionExpired) unauthorizedHandler();
             throw normalizeError(errorData, {
+                sessionExpired,
                 status: response.status,
                 code: errorData.code || `HTTP_${response.status}`,
                 message: errorData.message || (typeof data === "string" && data.trim()) || response.statusText || "Request failed",

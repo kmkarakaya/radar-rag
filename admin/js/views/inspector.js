@@ -627,7 +627,7 @@ export async function loadPhysicalCollections(collectionId) {
         throw normalizeError(null, {
             status: 0,
             code: "INVALID_PHYSICAL_COLLECTIONS_RESPONSE",
-            message: "Physical collection lifecycle response did not include data.physicalCollections.",
+            message: "The server did not return the index versions of this collection.",
         });
     }
     return data.physicalCollections;

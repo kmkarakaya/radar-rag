@@ -1,7 +1,7 @@
 import { adminAuditLogUrl, apiRequest, normalizeError } from "../api.js";
-import { capitalizeWord } from "../serverInfo.js";
 import { switchView } from "../dashboard.js";
 import { appendChildren, clearNode, createBadge, createEl, formatDateTime, getStatusColor, isRecord, renderApiErrorContent, shortId, stringifyForDisplay } from "../dom.js";
+import { capitalizeWord } from "../serverInfo.js";
 import { API, AUDIT_LOG_LIMIT, elements, loadTokens, state } from "../state.js";
 import { collectionNameById } from "./collections.js";
 import { closeInspector } from "./inspector.js";

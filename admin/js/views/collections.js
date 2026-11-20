@@ -26,7 +26,7 @@ export async function loadAdminCollectionDetail(collectionId) {
         throw normalizeError(null, {
             status: 0,
             code: "INVALID_COLLECTION_RESPONSE",
-            message: "Admin collection detail response did not include data.collection.",
+            message: "The server did not return this collection.",
         });
     }
     return data.collection;

@@ -1,7 +1,7 @@
 import { clearNode } from "./dom.js";
+import { loadServerInfo } from "./serverInfo.js";
 import { elements, state } from "./state.js";
 import { closeAuditPickers, loadAuditLog, loadAuditOperations, renderAuditFilterControls } from "./views/audit.js";
-import { loadServerInfo } from "./serverInfo.js";
 import { emptyChatSettingsState, loadChatServicesView, loadChatSettings } from "./views/chatSettings.js";
 import { loadCollections } from "./views/collections.js";
 import { loadCollectionFiles } from "./views/documents.js";

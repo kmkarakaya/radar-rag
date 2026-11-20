@@ -259,22 +259,34 @@ export function renderIssuesList(parent, issues) {
     parent.appendChild(list);
 }
 
-export function renderApiErrorContent(parent, error, title = "Request failed") {
-    clearNode(parent);
+/**
+ * An error box: a title, the server's message and any field issues; code, status, request id and details
+ * are folded under "Technical details".
+ */
+export function renderErrorBox(parent, error, title = "Request failed") {
     const normalized = normalizeError(error);
     const box = createEl("div", "rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800");
-    const heading = createEl("div", "font-bold", title);
-    const message = createEl("div", "mt-1 break-all-words", normalized.message);
-    appendChildren(box, [heading, message]);
+    appendChildren(box, [
+        createEl("div", "font-bold", title),
+        createEl("div", "mt-1 break-all-words", normalized.message),
+    ]);
+    renderIssuesList(box, normalized.issues);
 
-    const meta = createEl("div", "mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3");
+    const technical = createEl("details", "mt-3 text-xs text-slate-600");
+    technical.appendChild(createEl("summary", "cursor-pointer font-semibold text-rose-700", "Technical details"));
+    const meta = createEl("div", "mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3");
     meta.appendChild(createMetaItem("Code", normalized.code));
     meta.appendChild(createMetaItem("Status", normalized.status || "-"));
     meta.appendChild(createMetaItem("Request ID", normalized.requestId || "-"));
-    box.appendChild(meta);
-    renderIssuesList(box, normalized.issues);
-    if (normalized.details && !normalized.issues) appendJsonDetails(box, "Details", normalized.details);
+    technical.appendChild(meta);
+    if (normalized.details && !normalized.issues) appendJsonDetails(technical, "Details", normalized.details);
+    box.appendChild(technical);
     parent.appendChild(box);
+}
+
+export function renderApiErrorContent(parent, error, title = "Request failed") {
+    clearNode(parent);
+    renderErrorBox(parent, error, title);
 }
 
 export function showToast(message, type = "info", options = {}) {
@@ -291,9 +303,8 @@ export function showToast(message, type = "info", options = {}) {
     );
     const messageNode = createEl("div", "break-all-words", message || "");
     toast.appendChild(messageNode);
-    if (options.code || options.requestId) {
-        const meta = createEl("div", "mt-1 text-xs opacity-90", [options.code, options.requestId].filter(Boolean).join(" / "));
-        toast.appendChild(meta);
+    if (options.requestId) {
+        toast.appendChild(createEl("div", "mt-1 text-xs opacity-80", `Request ID: ${options.requestId}`));
     }
     renderIssuesList(toast, options.issues);
     elements.toastContainer.appendChild(toast);
@@ -305,8 +316,9 @@ export function showToast(message, type = "info", options = {}) {
 
 export function showErrorToast(error, fallback = "Request failed") {
     const normalized = normalizeError(error, { message: fallback });
+    // A request that failed because the session ended already sent the user to the sign-in screen.
+    if (normalized.sessionExpired) return;
     showToast(normalized.message, "error", {
-        code: normalized.code,
         requestId: normalized.requestId,
         issues: normalized.issues,
         durationMs: 7000,

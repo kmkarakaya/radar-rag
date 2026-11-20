@@ -157,7 +157,6 @@ export const elements = {
     inspectorRoleNote: document.getElementById("inspectorRoleNote"),
     editFieldset: document.getElementById("editFieldset"),
     editReadonlyNote: document.getElementById("editReadonlyNote"),
-    editAdvanced: document.getElementById("editAdvanced"),
     embeddingReindexNote: document.getElementById("embeddingReindexNote"),
     inspectorTabs: document.getElementById("inspectorTabs"),
     inspectorFooter: document.getElementById("inspectorFooter"),

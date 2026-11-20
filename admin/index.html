@@ -599,7 +599,7 @@
                     </section>
 
                     <section class="space-y-3 border-t border-slate-100 pt-4">
-                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Embedding</h4>
+                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Embedding Model</h4>
                         <p class="text-xs text-slate-500">The model that turns documents and questions into vectors. Changing it later needs a re-index.</p>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
@@ -628,14 +628,14 @@
                     </section>
 
                     <section class="space-y-2 border-t border-slate-100 pt-4">
-                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Answers (Query)</h4>
+                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Language Model</h4>
                         <p id="chatLlmStatus" class="rounded-lg border border-slate-200 bg-slate-50 p-2 text-sm text-slate-600">Loading the chat choice...</p>
-                        <p class="text-xs text-slate-500">One chat LLM writes the answers for every collection; Retrieve never needs it. Choose it under <a href="#" id="linkChatServices" class="text-indigo-600 underline">Chat services</a>.</p>
+                        <p class="text-xs text-slate-500">The language model (chat LLM) writes the answers of Query, for every collection; Retrieve never needs it. Choose it under <a href="#" id="linkChatServices" class="text-indigo-600 underline">Chat services</a>.</p>
                     </section>
 
-                    <details id="editAdvanced" class="rounded-lg border border-slate-200 p-4">
-                        <summary class="cursor-pointer text-sm font-semibold text-slate-700">Advanced: chunking and retrieval</summary>
-                        <div id="configDefaultsPanel" class="hidden mt-4 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3">
+                    <section id="editChunkingRetrieval" class="space-y-3 border-t border-slate-100 pt-4">
+                        <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Chunking and Retrieval</h4>
+                        <div id="configDefaultsPanel" class="hidden rounded-lg border border-indigo-100 bg-indigo-50/60 p-3">
                             <div class="flex items-start justify-between gap-3">
                                 <div>
                                     <h5 class="text-xs font-bold uppercase tracking-wider text-indigo-600">Server defaults</h5>
@@ -644,8 +644,8 @@
                                 <span id="configDefaultsStatus" class="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600">Loading</span>
                             </div>
                         </div>
-                        <p class="mt-3 text-xs text-slate-500">Leave a field empty to use the server default. Chunk settings and the distance metric apply at the next re-index; the number of results and the threshold apply at once.</p>
-                        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <p class="text-xs text-slate-500">Leave a field empty to use the server default. Chunk settings and the distance metric apply at the next re-index; the number of results and the threshold apply at once.</p>
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div>
                                 <label class="block text-xs font-medium text-slate-500 mb-1" for="editChunkSize">Chunk size (characters)</label>
                                 <input type="number" id="editChunkSize" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
@@ -674,7 +674,7 @@
                                 <p class="mt-1 text-xs text-slate-500" data-default-for="distanceMetric"></p>
                             </div>
                         </div>
-                    </details>
+                    </section>
                     </fieldset>
 
                     <p id="embeddingReindexNote" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800"></p>

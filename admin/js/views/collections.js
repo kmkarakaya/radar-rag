@@ -174,7 +174,7 @@ export function renderGettingStarted() {
     );
     item(
         answersReady,
-        "Answers (optional)",
+        "Language model (optional)",
         answersReady ? "A chat LLM writes answers for Query." : "Without a chat LLM, Retrieve works and Query is off.",
         answersReady ? null : { label: "Choose one under Chat services", href: "#/services/chat" },
     );

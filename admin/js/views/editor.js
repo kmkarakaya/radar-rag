@@ -423,8 +423,7 @@ export function clearEditorForm() {
         }
     });
     elements.editId.value = "";
-    // Advanced starts folded every time the form opens.
-    if (elements.editAdvanced) elements.editAdvanced.open = false;
+
     const uploadsRadio = document.querySelector('input[name="sourceKind"][value="uploads"]');
     if (uploadsRadio) uploadsRadio.checked = true;
     syncSourceKindFields(null);
@@ -444,7 +443,6 @@ export function hasUnsavedCollectionChanges() {
 }
 
 export function setupEditorTab(collection) {
-    if (elements.editAdvanced) elements.editAdvanced.open = false;
     elements.editId.value = collection.id || "";
     elements.editDisplayName.value = fieldValueFromCollection(collection, "displayName");
     elements.editDescription.value = fieldValueFromCollection(collection, "description");

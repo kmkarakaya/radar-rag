@@ -280,8 +280,11 @@
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="csSettingsModel">Model</label>
-                            <input type="text" id="csSettingsModel" list="csSettingsModels" maxlength="200" class="w-full p-2 border border-slate-200 rounded-lg text-sm" placeholder="gemma3:4b">
-                            <datalist id="csSettingsModels"></datalist>
+                            <div class="relative">
+                                <input type="text" id="csSettingsModel" maxlength="200" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="csSettingsModelList" class="w-full p-2 pr-9 border border-slate-200 rounded-lg text-sm" placeholder="gemma3:4b">
+                                <button type="button" data-combobox-toggle tabindex="-1" aria-label="Show models" aria-controls="csSettingsModelList" aria-expanded="false" class="absolute inset-y-0 right-0 flex items-center px-2 text-slate-500 hover:text-slate-700"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg></button>
+                                <ul id="csSettingsModelList" role="listbox" aria-label="Chat models" class="hidden absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"></ul>
+                            </div>
                             <p id="csSettingsModelHint" class="mt-1 text-xs text-slate-500"></p>
                         </div>
                         <div class="md:col-span-2 flex justify-end gap-3">
@@ -616,8 +619,11 @@
                             </div>
                             <div class="md:col-span-2">
                                 <label class="block text-xs font-medium text-slate-500 mb-1" for="editEmbeddingModel">Model</label>
-                                <input type="text" id="editEmbeddingModel" list="embeddingModelSelect" autocomplete="off" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
-                                <datalist id="embeddingModelSelect"></datalist>
+                                <div class="relative">
+                                    <input type="text" id="editEmbeddingModel" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="editEmbeddingModelList" class="w-full p-2 pr-9 border border-slate-200 rounded-lg text-sm">
+                                    <button type="button" data-combobox-toggle tabindex="-1" aria-label="Show models" aria-controls="editEmbeddingModelList" aria-expanded="false" class="absolute inset-y-0 right-0 flex items-center px-2 text-slate-500 hover:text-slate-700"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg></button>
+                                    <ul id="editEmbeddingModelList" role="listbox" aria-label="Embedding models" class="hidden absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"></ul>
+                                </div>
                                 <p class="mt-1 text-xs text-slate-500" data-default-for="embeddingModel"></p>
                             </div>
                         </div>

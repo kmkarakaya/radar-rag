@@ -1,5 +1,6 @@
 import { adminCollectionUrl, adminCollectionValidateUrl, adminMutationRequest, apiRequest, normalizeError } from "../api.js";
 import { canAdminAction } from "../auth.js";
+import { comboboxFor } from "../combobox.js";
 import { clearNode, createEl, formatValidationFieldLabel, getStatusBadge, setButtonLoading, showErrorToast, showToast } from "../dom.js";
 import { API, EDIT_FIELD_IDS, elements, loadTokens, state } from "../state.js";
 import { describeChatSettings, syncChatSettingsModels } from "./chatSettings.js";
@@ -48,21 +49,56 @@ export function getModelDiscoveryFieldConfig(_kind) {
     const provider = selectedEmbeddingProvider();
     return {
         input: elements.editEmbeddingModel,
-        select: elements.embeddingModelSelect,
         models: provider === "builtin" ? state.modelDiscovery.builtinModels : selectedEmbeddingServiceEntry()?.models || [],
     };
 }
 
-/** Fills the model field's suggestions (a datalist) with the models of the chosen provider or service. */
+/** The model field's suggestions: the models of the chosen provider or service (GET /v1/admin/models). */
+export function embeddingModelOptions() {
+    return normalizeModelList(getModelDiscoveryFieldConfig("embedding").models);
+}
+
+/** Redraws the model field's suggestion list (a combobox) when it is open; its options are embeddingModelOptions(). */
 export function syncModelSelect(kind) {
-    const config = getModelDiscoveryFieldConfig(kind);
-    if (!config.select) return;
-    clearNode(config.select);
-    normalizeModelList(config.models).forEach((model) => {
-        const option = createEl("option");
-        option.value = model;
-        config.select.appendChild(option);
-    });
+    comboboxFor(getModelDiscoveryFieldConfig(kind).input)?.refresh();
+}
+
+/**
+ * After the user switches the embedding provider or service: a model the new choice does not offer is cleared
+ * (it would only hide the new suggestions and fail at indexing). When the server's own default (GET /v1/admin/models
+ * `default`) belongs to the new choice, it is filled in. Nothing changes while the new list is unknown (the service
+ * is not reachable or does not list models): the name can still be typed. Never runs when a form is filled from
+ * a saved collection.
+ */
+export function reconcileEmbeddingModelField() {
+    const input = elements.editEmbeddingModel;
+    const discovery = state.modelDiscovery;
+    if (!input || !discovery.loaded) return;
+    const chosenProvider = elements.editEmbeddingProvider?.value || "";
+    const provider = selectedEmbeddingProvider();
+    let models = [];
+    let source = "";
+    let isServerDefault = false;
+    if (provider === "builtin") {
+        models = discovery.builtinModels;
+        source = "built-in";
+        isServerDefault = discovery.defaultProvider === "builtin";
+    } else if (provider === "openai-compatible") {
+        const service = selectedEmbeddingServiceEntry();
+        if (!service || !service.reachable || service.authOk === false) return;
+        models = service.models;
+        source = service.name;
+        isServerDefault = discovery.defaultProvider === "openai-compatible" && service.id === discovery.defaultServiceId;
+    }
+    if (models.length === 0) return;
+    const current = input.value.trim();
+    if (current && models.includes(current)) return;
+    const serverDefault = isServerDefault && models.includes(discovery.defaultModel) ? discovery.defaultModel : "";
+    // "Server default" provider (new collections): an empty model means the server's default model, as before.
+    input.value = chosenProvider ? serverDefault : "";
+    if (chosenProvider) input.placeholder = source === "built-in" ? "Choose a built-in model" : `Choose a model from ${source}`;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 export function syncModelDiscoveryPanel() {

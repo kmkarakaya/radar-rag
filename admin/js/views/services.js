@@ -6,7 +6,7 @@ import { clearNode, createButton, createEl, formatCount, setButtonLoading, showE
 import { findServicePreset } from "../serverInfo.js";
 import { API, elements, state } from "../state.js";
 import { bindChatSettingsEvents, loadChatSettings } from "./chatSettings.js";
-import { loadModelDiscovery, syncModelDiscoveryPanel } from "./editor.js";
+import { loadModelDiscovery, reconcileEmbeddingModelField, syncModelDiscoveryPanel } from "./editor.js";
 import { requestCloseInspector } from "./inspector.js";
 
 // ---- Service views (clients of /v1/admin/embedding-services and /v1/admin/chat-services) ----
@@ -313,7 +313,10 @@ export function bindEmbeddingServicesEvents() {
     bindServiceViewEvents(SERVICE_VIEWS.embedding);
     bindServiceViewEvents(SERVICE_VIEWS.chat);
     bindChatSettingsEvents();
-    elements.editEmbeddingService?.addEventListener("change", () => syncModelDiscoveryPanel());
+    elements.editEmbeddingService?.addEventListener("change", () => {
+        syncModelDiscoveryPanel();
+        reconcileEmbeddingModelField();
+    });
     elements.linkEmbeddingServices?.addEventListener("click", (event) => {
         event.preventDefault();
         requestCloseInspector().then((closed) => {

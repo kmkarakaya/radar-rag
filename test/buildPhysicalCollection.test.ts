@@ -99,6 +99,70 @@ describe("buildPhysicalCollection", () => {
     assert.equal(typeof succeededEvent.latencyMs, "number");
   });
 
+  it("counts indexed files apart from loaded document parts (a PDF gives one per page)", async () => {
+    const events: Array<{ code: string; details?: Record<string, unknown> }> = [];
+    const page = (sourcePath: string, n: number) => new Document({
+      pageContent: `page ${n}`,
+      metadata: { documentId: `${sourcePath}#${n}`, sourcePath, sourceType: "pdf" },
+    });
+
+    const result = await buildPhysicalCollection({
+      collection: {
+        id: "collection-files",
+        tenantId: "default",
+        displayName: "Files",
+        status: "indexing",
+        sourceKind: "uploads" as const,
+        sourcePath: "data",
+        documentsChanged: false,
+        embeddingProvider: "builtin" as const,
+        embeddingModel: "m",
+        distanceMetric: "l2",
+        chromaCollectionConfiguration: {},
+        chunkSize: 100,
+        chunkOverlap: 0,
+        retrievalK: 5,
+        retrievalDistanceThreshold: 0.5,
+        createdBy: "system",
+        createdAt: "2026-06-04T00:00:00.000Z",
+        updatedAt: "2026-06-04T00:00:00.000Z",
+      },
+      targetPhysicalCollection: "rag_default_collection-files_v1",
+      targetVersion: "v1",
+      runtimeConfig: config,
+      log: () => {},
+      onEvent: (event) => {
+        events.push({ code: event.code, details: event.details });
+      },
+      deps: {
+        // cv.pdf has two pages, bio.docx one part; notes.xyz is not supported and not counted.
+        analyzeIndexingSource: async () => ({
+          sourcePath: "data",
+          sourceFiles: [
+            { path: "data/cv.pdf", extension: ".pdf", sourceType: "pdf", loadedDocumentCount: 2 },
+            { path: "data/bio.docx", extension: ".docx", sourceType: "docx", loadedDocumentCount: 1 },
+          ],
+          fileCount: 3,
+          loadedDocumentCount: 3,
+          unsupportedFiles: [{ path: "data/notes.xyz", extension: ".xyz", reason: "Unsupported file extension." }],
+          documents: [page("data/cv.pdf", 1), page("data/cv.pdf", 2), page("data/bio.docx", 1)],
+        }),
+        splitDocuments: async (documents) => documents,
+        createPhysicalChromaCollection: async () => {},
+        createVectorStore: () => ({ addDocuments: async () => {} }) as any,
+        assertChromaCollectionReadable: async () => ({ count: 3 }),
+        deletePhysicalChromaCollection: async () => {},
+      },
+    });
+
+    assert.equal(result.indexedFileCount, 2);
+    assert.equal(result.parsedSourceDocumentCount, 3);
+    assert.equal(result.chunkCount, 3);
+    for (const code of ["SOURCE_ANALYSIS_COMPLETED", "CHUNKING_STARTED", "CHUNKING_COMPLETED"]) {
+      assert.equal(events.find((event) => event.code === code)?.details?.indexedFileCount, 2, code);
+    }
+  });
+
   it("propagates abort signal and timeout to assertChromaCollectionReadable", async () => {
     let assertReadableCall: any = null;
     const controller = new AbortController();

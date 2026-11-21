@@ -445,6 +445,10 @@ async function getReadinessPayload(registry: CollectionRegistry | undefined, con
     const documentCount = typeof dataSourceDetails.documentCount === "number"
       ? dataSourceDetails.documentCount
       : 0;
+    // Counted in files for people; documentCount counts loaded parts (a PDF gives one per page).
+    const indexedFileCount = typeof dataSourceDetails.indexedFileCount === "number"
+      ? dataSourceDetails.indexedFileCount
+      : null;
 
     checks.push({
       code: documentCount > 0 ? "INDEXABLE_DOCUMENTS_PRESENT" : "NO_INDEXABLE_DOCUMENTS",
@@ -453,11 +457,14 @@ async function getReadinessPayload(registry: CollectionRegistry | undefined, con
       blocking: true,
       capabilities: ["index"],
       message: documentCount > 0
-        ? `Indexing source contains ${documentCount} documents with indexable content.`
+        ? (indexedFileCount === null
+          ? "Indexing source contains documents with indexable content."
+          : `Indexing source contains ${indexedFileCount} file${indexedFileCount === 1 ? "" : "s"} with indexable content.`)
         : "Indexing source does not contain any documents with indexable content so indexing cannot proceed.",
       details: {
         sourcePath: runtimeConfig.sourcePath,
         fileCount: dataSourceDetails.fileCount,
+        indexedFileCount: dataSourceDetails.indexedFileCount,
         loadedDocumentCount: dataSourceDetails.loadedDocumentCount,
         documentCount,
         unsupportedFiles: dataSourceDetails.unsupportedFiles,

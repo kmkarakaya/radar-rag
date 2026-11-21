@@ -424,6 +424,7 @@ describe("v1 admin and rag api endpoints", () => {
     assert.equal(found.status, "creating");
     assert.equal(found.activeVersion, null);
     assert.equal(found.chunkCount, null);
+    assert.equal(found.indexedFileCount, null);
     assert.equal(typeof found.updatedAt, "string");
     assert.equal("capabilities" in found, false);
     assert.equal(found.indexState.status, "no_active_index");
@@ -2281,6 +2282,74 @@ describe("v1 admin and rag api endpoints", () => {
       "running",
     ]);
     assert.deepEqual(body.events.map((event: any) => event.sequence), [1, 2]);
+  });
+
+  it("GET /v1/admin/jobs(/:jobId) gives running jobs a server-computed progress and finished jobs none", async () => {
+    const ctx = { tenantId: "default", userId: "local-dev", requestId: "job-progress" };
+    const collection = await registry.createCollection(ctx, {
+      displayName: "Job Progress",
+      sourcePath: "data",
+      embeddingModel: "embed",
+      distanceMetric: "l2",
+      chunkSize: 500,
+      chunkOverlap: 50,
+      retrievalK: 5,
+      retrievalDistanceThreshold: 1,
+    });
+    const queued = await registry.beginIndexJob(ctx, collection.id);
+    const running = await registry.markIndexJobRunning(queued.id);
+    await registry.appendJobEvent(running.id, {
+      status: "running",
+      stage: "loading_source",
+      code: "SOURCE_ANALYSIS_COMPLETED",
+      message: "Indexing source analysis completed.",
+      details: { fileCount: 2, indexedFileCount: 2, parsedSourceDocumentCount: 22 },
+      progress: { phase: 3, phaseCount: 6, itemsCompleted: 22, unit: "documents" },
+    });
+    await registry.appendJobEvent(running.id, {
+      status: "running",
+      stage: "chunking",
+      code: "CHUNKING_COMPLETED",
+      message: "Chunking completed.",
+      details: { indexedFileCount: 2, documentCount: 22, chunkCount: 91 },
+      progress: { phase: 4, phaseCount: 6, itemsCompleted: 91, itemsTotal: 91, unit: "chunks" },
+    });
+
+    const expected = {
+      step: 4,
+      stepCount: 6,
+      percent: 67,
+      message: "Chunking completed.",
+      indexedFileCount: 2,
+      chunkCount: 91,
+    };
+    const single = await request(`/v1/admin/jobs/${running.id}`);
+    assert.equal(single.status, 200);
+    assert.deepEqual((await single.json() as any).job.progress, expected);
+
+    const list = await request(`/v1/admin/jobs?collectionId=${encodeURIComponent(collection.id)}`);
+    const listed = (await list.json() as any).jobs.find((item: any) => item.job.id === running.id);
+    assert.deepEqual(listed.job.progress, expected);
+
+    await registry.createPhysicalCollectionRecord({
+      name: running.targetPhysicalCollection,
+      tenantId: ctx.tenantId,
+      collectionId: collection.id,
+      version: running.targetVersion,
+      chromaConfiguration: running.targetChromaConfiguration,
+    });
+    await registry.completeIndexJob(running.id, { indexedFileCount: 2, documentCount: 22, chunkCount: 91, retentionMs: 0 });
+
+    const finished = await (await request(`/v1/admin/jobs/${running.id}`)).json() as any;
+    assert.equal(finished.job.status, "succeeded");
+    assert.equal(finished.job.progress, undefined);
+    assert.equal(finished.job.indexedFileCount, 2);
+    assert.equal(finished.job.documentCount, 22);
+
+    const publicList = await (await request("/v1/rag/collections")).json() as any;
+    const publicCollection = publicList.collections.find((item: any) => item.id === collection.id);
+    assert.equal(publicCollection.indexedFileCount, 2);
+    assert.equal(publicCollection.chunkCount, 91);
   });
 
   it("POST /v1/admin/jobs/bulk-delete removes terminal jobs and hides them from the list", async () => {

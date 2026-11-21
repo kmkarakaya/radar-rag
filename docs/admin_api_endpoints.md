@@ -489,6 +489,7 @@ Example response:
           "space": "cosine"
         }
       },
+      "indexedFileCount": 3,
       "documentCount": 12,
       "chunkCount": 48,
       "createdAt": "2026-07-01T11:10:00.000Z",
@@ -902,7 +903,7 @@ Files that cannot be accepted are listed in `rejected` (`UNSUPPORTED_FILE` or `I
 
 Deletes one document and returns `204 No Content`. URL-encode the name (for example `my%20notes.md`). An unknown name returns `404 DOCUMENT_NOT_FOUND`.
 
-If the collection has an active index, the document's chunks are removed from it first, and the collection's `chunkCount` and `documentCount` are lowered accordingly; the document no longer appears in search results. If Chroma cannot be reached, the response is `503 COLLECTION_STORAGE_INCONSISTENT` and nothing is deleted, so the request can be retried.
+If the collection has an active index, the document's chunks are removed from it first, and the collection's `chunkCount` and `documentCount` are lowered accordingly and `indexedFileCount` by one; the document no longer appears in search results. If Chroma cannot be reached, the response is `503 COLLECTION_STORAGE_INCONSISTENT` and nothing is deleted, so the request can be retried.
 
 ## Job Endpoints
 
@@ -932,6 +933,7 @@ Notes:
 - Response includes `Cache-Control: no-store`.
 - `nextCursor` is opaque and may be `null`.
 - `collection` can be `null` for a job row if the collection snapshot is no longer available.
+- Queued and running jobs carry `progress` (see `GET /v1/admin/jobs/:jobId`); finished jobs do not.
 
 Example response:
 
@@ -952,6 +954,14 @@ Example response:
           "hnsw": {
             "space": "cosine"
           }
+        },
+        "progress": {
+          "step": 5,
+          "stepCount": 6,
+          "percent": 78,
+          "message": "Writing chunks into the vector store.",
+          "indexedFileCount": 12,
+          "chunkCount": 340
         },
         "createdAt": "2026-06-27T20:00:00.000Z",
         "updatedAt": "2026-06-27T20:02:00.000Z"
@@ -976,6 +986,8 @@ Notes:
 - Job lookup is tenant-scoped.
 - A different tenant receives `404 ROUTE_NOT_FOUND`, not `403`.
 - Response includes the `targetPhysicalCollection`, which is useful for operational troubleshooting.
+- A queued or running job has `progress`, summarized by the server from its events: `step` and `stepCount` (build step, or `null` before the first one), `percent` (0-100 or `null`), `message` (the last step reported), `indexedFileCount` (files with indexable content, once the source is read) and `chunkCount` (once chunking is done). Clients show it as is; finished jobs have no `progress`.
+- A succeeded job has `indexedFileCount` (files indexed), `documentCount` (loaded document parts: a PDF gives one per page, so this is not the number of files) and `chunkCount`.
 
 ### `GET /v1/admin/jobs/:jobId/events`
 
@@ -1017,6 +1029,7 @@ Example response:
       "message": "Indexing source analysis completed.",
       "details": {
         "fileCount": 12,
+        "indexedFileCount": 11,
         "parsedSourceDocumentCount": 87,
         "unsupportedFileCount": 1
       },

@@ -61,18 +61,27 @@ import { SUPPORTED_EXTENSIONS } from "../ingestion/pipeline.js";
 import { EMBEDDING_PROVIDERS } from "../embeddings/models.js";
 import { SERVICE_PRESETS } from "../providers/presets.js";
 import { appVersion } from "../version.js";
+import { isActiveJob, summarizeJobProgress, type IndexJobProgressSummary } from "../indexing/jobProgress.js";
 
 type UploadRequest = Request & { uploadFolder?: string; rejectedUploads?: RejectedUpload[] };
 
 export const JOB_STATUS_VALUES = ["queued", "running", "succeeded", "failed", "cancelled"] as const satisfies readonly IndexJobStatus[];
 
+type SerializedJob = Omit<IndexJob, "lockToken"> & { progress?: IndexJobProgressSummary };
+
 // Strip the internal concurrency lock token before serializing a job to any API response.
-function serializeJob({ lockToken, ...job }: IndexJob): Omit<IndexJob, "lockToken"> {
-  return job;
+function serializeJob({ lockToken, ...job }: IndexJob, progress?: IndexJobProgressSummary): SerializedJob {
+  return progress ? { ...job, progress } : job;
 }
 
 export function createAdminRouter(deps: AppDependencies, runtimeConfig: ResolvedConfig = deps.runtimeConfig ?? config) {
   const router = express.Router();
+
+  /** Server-side progress of a queued or running job (from its events); finished jobs have none. */
+  async function loadActiveJobProgress(context: RequestContext, job: IndexJob): Promise<IndexJobProgressSummary | undefined> {
+    if (!isActiveJob(job)) return undefined;
+    return summarizeJobProgress(await deps.registry!.listJobEvents(context, job.id));
+  }
   const adminAuth: AdminAuthService = deps.adminAuth ?? createAdminAuthService({
     config: runtimeConfig.adminAuth,
     env: process.env,
@@ -1049,6 +1058,10 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
         await deps.registry!.updateCollection(context, collectionId, {
           chunkCount: Math.max(0, (collection.chunkCount ?? 0) - removed.chunkCount),
           documentCount: Math.max(0, (collection.documentCount ?? 0) - removed.documentCount),
+          // The file is no longer in the index; an unknown count (older index) stays unknown.
+          ...(typeof collection.indexedFileCount === "number"
+            ? { indexedFileCount: Math.max(0, collection.indexedFileCount - 1) }
+            : {}),
         });
       }
       res.locals.collectionId = collectionId;
@@ -1122,7 +1135,10 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       const result = await deps.registry!.listJobs(context, filters);
       res.setHeader("Cache-Control", "no-store");
       res.json({
-        jobs: result.jobs.map((item) => ({ ...item, job: serializeJob(item.job) })),
+        jobs: await Promise.all(result.jobs.map(async (item) => ({
+          ...item,
+          job: serializeJob(item.job, await loadActiveJobProgress(context, item.job)),
+        }))),
         nextCursor: result.nextCursor,
       });
     } catch (error) {
@@ -1145,7 +1161,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
       res.locals.collectionId = job.collectionId;
       res.locals.jobId = job.id;
       res.locals.physicalCollection = job.targetPhysicalCollection;
-      res.json({ job: serializeJob(job) });
+      res.json({ job: serializeJob(job, await loadActiveJobProgress(context, job)) });
     } catch (error) {
       next(error);
     }

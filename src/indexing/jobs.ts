@@ -195,6 +195,7 @@ export async function runIndexJob(input: {
       });
 
       job = await registry.completeIndexJob(jobId, {
+        indexedFileCount: result.indexedFileCount,
         documentCount: result.parsedSourceDocumentCount,
         chunkCount: result.chunkCount,
         activePhysicalCollection: job.targetPhysicalCollection,
@@ -213,6 +214,7 @@ export async function runIndexJob(input: {
         latencyMs: Date.now() - startedAt,
         details: {
           targetVersion,
+          indexedFileCount: result.indexedFileCount,
           documentCount: result.parsedSourceDocumentCount,
           chunkCount: result.chunkCount,
         },

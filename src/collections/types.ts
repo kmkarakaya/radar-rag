@@ -106,6 +106,8 @@ export type RagCollection = {
   activeEmbeddingProvider?: EmbeddingProvider;
   activeEmbeddingModel?: string;
   activeEmbeddingServiceId?: string;
+  /** Files with indexable content in the index (documentCount counts loaded parts: a PDF gives one per page). */
+  indexedFileCount?: number;
   documentCount?: number;
   chunkCount?: number;
   createdBy: string;
@@ -131,6 +133,8 @@ export type IndexJob = {
   startedAt?: string;
   finishedAt?: string;
   error?: string;
+  /** Files with indexable content in the index (documentCount counts loaded parts: a PDF gives one per page). */
+  indexedFileCount?: number;
   documentCount?: number;
   chunkCount?: number;
   lockToken: string;
@@ -261,6 +265,7 @@ export type UpdateCollectionPatch = {
   activeEmbeddingServiceId?: RagCollection["activeEmbeddingServiceId"] | null;
   activePhysicalCollection?: RagCollection["activePhysicalCollection"] | null;
   activeVersion?: RagCollection["activeVersion"] | null;
+  indexedFileCount?: RagCollection["indexedFileCount"] | null;
   documentCount?: RagCollection["documentCount"] | null;
   chunkCount?: RagCollection["chunkCount"] | null;
   lastIndexedAt?: RagCollection["lastIndexedAt"] | null;
@@ -274,6 +279,8 @@ export type BeginIndexJobInput = {
 };
 
 export type CompleteIndexJobResult = {
+  /** Files with indexable content in the index (documentCount counts loaded parts: a PDF gives one per page). */
+  indexedFileCount?: number;
   documentCount?: number;
   chunkCount?: number;
   activePhysicalCollection?: string;
@@ -288,6 +295,8 @@ export type PhysicalCollectionRecord = {
   version: string;
   status: PhysicalCollectionStatus;
   chromaConfiguration: Record<string, unknown>;
+  /** Files with indexable content in the index (documentCount counts loaded parts: a PDF gives one per page). */
+  indexedFileCount?: number;
   documentCount?: number;
   chunkCount?: number;
   createdAt: string;

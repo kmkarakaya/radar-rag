@@ -188,6 +188,7 @@ describe("collection files API", () => {
     await registry.completeIndexJob(running.id, {
       activePhysicalCollection: running.targetPhysicalCollection,
       activeVersion: running.targetVersion,
+      indexedFileCount: 2,
       documentCount: 2,
       chunkCount: 5,
       retentionMs: 1000,
@@ -199,6 +200,7 @@ describe("collection files API", () => {
     const after = await registry.getVisibleCollection(context, id);
     assert.equal(after?.chunkCount, 2);
     assert.equal(after?.documentCount, 1);
+    assert.equal(after?.indexedFileCount, 1);
     // The index matches the documents again: no re-index needed for a delete.
     assert.equal(after?.indexState?.status, "synced");
     assert.equal(after?.documentsChanged, false);
@@ -209,6 +211,14 @@ describe("collection files API", () => {
     assert.equal(failed.status, 503);
     assert.equal((await failed.json() as any).code, "COLLECTION_STORAGE_INCONSISTENT");
     await stat(path.join(folder, "b.md"));
+
+    // An index built before files were counted has no file count: a delete keeps it unknown.
+    failChroma = false;
+    await registry.updateCollection(context, id, { indexedFileCount: null });
+    assert.equal((await fetch(`${baseUrl}/v1/admin/collections/${id}/files/b.md`, { method: "DELETE" })).status, 204);
+    const unknown = await registry.getVisibleCollection(context, id);
+    assert.equal(unknown?.indexedFileCount, undefined);
+    assert.equal(unknown?.chunkCount, 0);
   });
 
   it("rejects unsupported, hidden and path-like names, and files over the size limit", async () => {

@@ -20,6 +20,7 @@ function mapToPublicCollectionDTO(c: RagCollection) {
     displayName: c.displayName,
     description: c.description ?? null,
     status: c.status,
+    indexedFileCount: c.indexedFileCount ?? null,
     chunkCount: c.chunkCount ?? null,
     activeVersion: c.activeVersion ?? null,
     updatedAt: c.updatedAt,

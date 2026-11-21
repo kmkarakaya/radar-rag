@@ -4,7 +4,7 @@ import { API, state } from "./state.js";
 
 /**
  * Follows index jobs started or seen in this session (GET /v1/admin/jobs/:id) and tells the user when
- * one finishes, wherever they are in the panel. Progress comes from the job's events.
+ * one finishes, wherever they are in the panel. Progress (job.progress) is computed by the server.
  */
 
 const TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
@@ -40,8 +40,8 @@ function notifyFinished(job, watched) {
         { label: "View job", onClick: () => { location.hash = jobRoute(job.id); } },
     ];
     if (job.status === "succeeded") {
-        const chunks = Number.isFinite(job.chunkCount) ? ` (${job.chunkCount} chunk${job.chunkCount === 1 ? "" : "s"})` : "";
-        showToast(`Indexing finished: ${watched.collectionName}${chunks}. It is searchable now.`, "success", { actions, durationMs: 8000 });
+        const counts = formatJobCounts(job);
+        showToast(`Indexing finished: ${watched.collectionName}${counts ? ` (${counts})` : ""}. It is searchable now.`, "success", { actions, durationMs: 8000 });
     } else if (job.status === "failed") {
         showToast(`Indexing failed: ${watched.collectionName}. ${job.error || ""}`.trim(), "error", { actions, durationMs: 12000 });
     } else {
@@ -49,30 +49,14 @@ function notifyFinished(job, watched) {
     }
 }
 
-/** The latest progress of a running job: its last event's message and how far it is (0..1), if known. */
-export async function loadJobProgress(jobId) {
-    try {
-        const events = (await apiRequest(`${API.admin}/jobs/${encodeURIComponent(jobId)}/events`))?.events;
-        if (!Array.isArray(events) || events.length === 0) return null;
-        const last = events[events.length - 1];
-        const withProgress = [...events].reverse().find((event) => event.progress?.phase && event.progress?.phaseCount);
-        let fraction = null;
-        if (withProgress) {
-            const { phase, phaseCount, itemsCompleted, itemsTotal } = withProgress.progress;
-            const within = itemsTotal > 0 ? Math.min(1, itemsCompleted / itemsTotal) : 0;
-            fraction = Math.max(0, Math.min(1, (phase - 1 + within) / phaseCount));
-        }
-        const latest = (key) => [...events].reverse().map((event) => event.details?.[key]).find((value) => Number.isFinite(value));
-        const documents = latest("documentCount");
-        const chunks = latest("chunkCount");
-        const counts = [
-            documents !== undefined ? `${documents} document${documents === 1 ? "" : "s"}` : null,
-            chunks !== undefined ? `${chunks} chunk${chunks === 1 ? "" : "s"}` : null,
-        ].filter(Boolean).join(", ");
-        return { message: last.message, counts, fraction, phase: withProgress?.progress?.phase ?? null, phaseCount: withProgress?.progress?.phaseCount ?? null };
-    } catch {
-        return null;
-    }
+/** "2 files, 91 chunks" from the counts the server gives (a job, a job's progress); unknown counts are left out. */
+export function formatJobCounts(counts) {
+    const files = counts?.indexedFileCount;
+    const chunks = counts?.chunkCount;
+    return [
+        Number.isFinite(files) ? `${files} file${files === 1 ? "" : "s"}` : null,
+        Number.isFinite(chunks) ? `${chunks} chunk${chunks === 1 ? "" : "s"}` : null,
+    ].filter(Boolean).join(", ");
 }
 
 /** The address of a job's detail in the jobs view. */

@@ -85,6 +85,7 @@ describe("CLI indexing command contract", () => {
         buildPhysicalCollection: async () => ({
           sourceDocumentCount: 1,
           parsedSourceDocumentCount: 1,
+          indexedFileCount: 1,
           chunkCount: 1,
         })
       }

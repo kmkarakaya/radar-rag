@@ -51,6 +51,8 @@ export async function buildPhysicalCollection(input: {
 }): Promise<{
   sourceDocumentCount: number;
   parsedSourceDocumentCount: number;
+  /** Files with indexable content (parsedSourceDocumentCount counts loaded parts: a PDF gives one per page). */
+  indexedFileCount: number;
   chunkCount: number;
 }> {
   const { collection, targetPhysicalCollection, targetVersion, runtimeConfig, signal } = input;
@@ -137,6 +139,7 @@ export async function buildPhysicalCollection(input: {
       message: "Indexing source analysis completed.",
       details: {
         fileCount: analysis.fileCount,
+        indexedFileCount: analysis.sourceFiles.length,
         parsedSourceDocumentCount: analysis.loadedDocumentCount,
         unsupportedFileCount: analysis.unsupportedFiles.length,
       },
@@ -162,6 +165,7 @@ export async function buildPhysicalCollection(input: {
       code: "CHUNKING_STARTED",
       message: "Splitting parsed documents into chunks.",
       details: {
+        indexedFileCount: analysis.sourceFiles.length,
         documentCount: documents.length,
       },
       progress: {
@@ -194,6 +198,7 @@ export async function buildPhysicalCollection(input: {
       code: "CHUNKING_COMPLETED",
       message: "Chunking completed.",
       details: {
+        indexedFileCount: analysis.sourceFiles.length,
         documentCount: documents.length,
         chunkCount: indexedChunks.length,
         chunkSize: collection.chunkSize,
@@ -294,6 +299,7 @@ export async function buildPhysicalCollection(input: {
     const output = {
       sourceDocumentCount: documents.length,
       parsedSourceDocumentCount: analysis.loadedDocumentCount,
+      indexedFileCount: analysis.sourceFiles.length,
       chunkCount: indexedChunks.length,
     };
 
@@ -309,6 +315,7 @@ export async function buildPhysicalCollection(input: {
         targetVersion,
         sourceDocumentCount: output.sourceDocumentCount,
         parsedSourceDocumentCount: output.parsedSourceDocumentCount,
+        indexedFileCount: output.indexedFileCount,
         chunkCount: output.chunkCount,
       },
     });

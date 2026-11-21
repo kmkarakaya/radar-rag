@@ -2,16 +2,25 @@ import fs from "node:fs";
 import path from "node:path";
 import { Embeddings } from "@langchain/core/embeddings";
 import { getBuiltinEmbeddingModelSpec, type BuiltinEmbeddingModelSpec } from "./models.js";
+import { closeBuiltinWorkers, loadBuiltinModelInWorker } from "./builtinWorkerHost.js";
 
 /**
  * In-process embeddings (transformers.js on CPU). The model is downloaded into cacheDir on first use and
  * reused afterwards. LangChain's HuggingFaceTransformersEmbeddings is not used: it is pinned to
  * transformers.js v3 (EmbeddingGemma 2 needs v4), ignores batchSize and has no query/document prefixes.
+ *
+ * By default the model runs in a worker thread (builtinWorkerHost.ts), so inference never blocks the HTTP server.
  */
 
+/** Query embeddings (searches) go before queued document batches (indexing). */
+export type EmbedPriority = "query" | "document";
+
 export type LoadedBuiltinModel = {
-  /** Returns one normalized vector per input text. */
-  embed(texts: string[]): Promise<number[][]>;
+  /** Returns one vector per input text. */
+  embed(texts: string[], options?: { priority?: EmbedPriority }): Promise<number[][]>;
+  /** Called when the model can no longer be used (its worker stopped), so the next request loads it again. */
+  onStopped?(listener: () => void): void;
+  close?(): Promise<void>;
 };
 
 export type BuiltinModelLoader = (spec: BuiltinEmbeddingModelSpec, cacheDir: string) => Promise<LoadedBuiltinModel>;
@@ -100,8 +109,16 @@ export function normalizeVector(vector: number[]): number[] {
 /** One load per model and cache folder; concurrent requests wait for the same download. */
 const loadedModels = new Map<string, Promise<LoadedBuiltinModel>>();
 
+/** Forgets loaded models and stops their workers (tests). */
 export function clearLoadedBuiltinModels(): void {
   loadedModels.clear();
+  void closeBuiltinWorkers();
+}
+
+/** Stops every built-in model worker (server shutdown). Requests still waiting are rejected. */
+export async function closeBuiltinModels(): Promise<void> {
+  loadedModels.clear();
+  await closeBuiltinWorkers();
 }
 
 function loadOnce(spec: BuiltinEmbeddingModelSpec, cacheDir: string, loader: BuiltinModelLoader): Promise<LoadedBuiltinModel> {
@@ -114,6 +131,11 @@ function loadOnce(spec: BuiltinEmbeddingModelSpec, cacheDir: string, loader: Bui
       throw new BuiltinModelLoadError(`Built-in embedding model ${spec.id} could not be loaded: ${message}`, spec.id);
     });
     loadedModels.set(key, pending);
+    // A model whose worker stopped (crash, out of memory) is loaded again by the next request.
+    const loaded = pending;
+    loaded.then((model) => model.onStopped?.(() => {
+      if (loadedModels.get(key) === loaded) loadedModels.delete(key);
+    }), () => undefined);
   }
   return pending;
 }
@@ -140,9 +162,10 @@ export class BuiltinEmbeddings extends Embeddings {
     }
     this.spec = spec;
     this.cacheDir = fields.cacheDir;
-    this.loader = fields.loader ?? loadBuiltinModelWithTransformers;
-    // Small sequential batches keep memory bounded (padding grows with the longest text in a batch).
-    this.batchSize = fields.batchSize ?? 16;
+    this.loader = fields.loader ?? loadBuiltinModelInWorker;
+    // Small sequential batches keep memory bounded (padding grows with the longest text in a batch) and keep a
+    // search waiting at most for one short batch while a collection is being indexed.
+    this.batchSize = fields.batchSize ?? 8;
   }
 
   async embedDocuments(texts: string[]): Promise<number[][]> {
@@ -150,14 +173,14 @@ export class BuiltinEmbeddings extends Embeddings {
     const vectors: number[][] = [];
     for (let start = 0; start < texts.length; start += this.batchSize) {
       const batch = texts.slice(start, start + this.batchSize).map((text) => `${this.spec.documentPrefix}${text}`);
-      vectors.push(...(await model.embed(batch)).map(normalizeVector));
+      vectors.push(...(await model.embed(batch, { priority: "document" })).map(normalizeVector));
     }
     return vectors;
   }
 
   async embedQuery(text: string): Promise<number[]> {
     const model = await loadOnce(this.spec, this.cacheDir, this.loader);
-    const [vector] = await model.embed([`${this.spec.queryPrefix}${text}`]);
+    const [vector] = await model.embed([`${this.spec.queryPrefix}${text}`], { priority: "query" });
     return normalizeVector(vector);
   }
 }

@@ -8,6 +8,7 @@ import { cleanupRetiredPhysicalCollections } from "./indexing/cleanup.js";
 import { STALE_JOB_THRESHOLD_MS } from "./indexing/jobs.js";
 import { config, type ResolvedConfig } from "./config.js";
 import { ensureSampleCollection } from "./samples/sampleCollection.js";
+import { closeBuiltinModels } from "./embeddings/index.js";
 import {
   createConsoleLogSink,
   createPersistentOperationalLogSink,
@@ -181,6 +182,9 @@ async function main(): Promise<void> {
 
       await jobsStopped;
       console.log("Job runner shut down.");
+
+      // The built-in embedding model runs in a worker thread: stop it once no job uses it.
+      await closeBuiltinModels();
 
       // 3. Close registry
       if (registry) {

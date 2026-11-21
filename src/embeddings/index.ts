@@ -15,7 +15,7 @@ import {
   type EmbeddingProvider,
 } from "./models.js";
 
-export { BuiltinModelLoadError, clearLoadedBuiltinModels, isBuiltinModelCached } from "./builtin.js";
+export { BuiltinModelLoadError, clearLoadedBuiltinModels, closeBuiltinModels, isBuiltinModelCached } from "./builtin.js";
 export * from "./models.js";
 
 /** A resolved connection to an OpenAI-compatible embedding API. */

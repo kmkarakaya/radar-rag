@@ -28,7 +28,12 @@ Running the backend day to day: health checks, limits, logs, index lifecycle and
 - Chat services (`/v1/admin/chat-services`) and each tenant's chat choice (`/v1/admin/chat-settings`) are stored the same way, chat API keys in plain text too. Whoever manages them decides where questions and retrieved document text are sent for answer generation; only the `admin` role can do it when admin auth is on.
 - A service's URL or key change applies to the next request of every collection that uses it (clients are cached per service version); no restart and no re-index are needed.
 
-## Built-in model download
+## Built-in model
+
+- The built-in model runs in a worker thread of the backend, not in the thread that answers HTTP requests, so the API (searches in other collections, the admin panel, `/health`) keeps answering while a collection is being indexed. It is loaded once (one copy in memory) on first use. Searches go before queued indexing batches (8 texts each), so a search waits at most for the batch that is running. If the worker stops unexpectedly (for example out of memory), the requests waiting for it fail with a clear error and the next request starts it again.
+
+### Download
+
 
 - The first job with the `builtin` provider downloads the model once into `embedding.cacheDir` (default `models/`; with Docker `./models`): about 346 MB. Before the download starts, the server checks the free disk space there and needs about 600 MB. With less, the job fails with "Not enough free disk space to download it: about … MB is needed in …, … MB is free" and nothing is downloaded; free up space, then re-index.
 
@@ -46,7 +51,7 @@ Running the backend day to day: health checks, limits, logs, index lifecycle and
 - Retired physical collections are deleted after `cleanup.retentionMs`. Their lifecycle states are `delete_pending`, `cleanup_failed` (retried) and `failed_build`.
 - Storage delete handling is idempotent not-found cleanup behavior: deleting something that is already gone is not an error. Accessing another tenant's collection returns `COLLECTION_FORBIDDEN`.
 - Interrupted jobs never stay "running". When the server stops (restart, update, `docker compose stop`), it marks its running jobs failed with "Interrupted: the server stopped while this job was running. Re-index again." A running job (in the server or in `npm run index`) also records a heartbeat every 30 seconds; a job without one for 3 minutes (its process crashed or was killed) is failed at startup or by a check that runs every minute. The collection keeps serving its previous index; re-index it again.
-- Docker: the compose file gives the backend `stop_grace_period: 30s` so it can stop cleanly; built-in embedding batches can keep it busy for a few seconds.
+- Docker: the compose file gives the backend `stop_grace_period: 30s` so it can stop cleanly; shutdown stops the built-in model's worker thread after the running jobs are marked interrupted.
 - `GET /v1/admin/collections` (with `/v1/admin/jobs/` for job status) is a registry-style discovery endpoint and does not return query/retrieve capability flags. Its items include `readyUrl`, `queryUrl` and `retrieveUrl`; when a collection has no active index yet, the `activeVersion` and `chunkCount` fields stay `null` instead of disappearing from the response shape.
 - The HTTP application is assembled in [src/app.ts](../src/app.ts).
 

@@ -9,6 +9,8 @@ import { emitOperationalLog, type OperationalLogSink } from "../observability/lo
 import type { Document } from "@langchain/core/documents";
 
 const JOB_PHASE_COUNT = 6;
+/** Chunks embedded and written per call in step 5 (progress is reported between slices). */
+export const WRITE_SLICE_SIZE = 64;
 
 export function addMetadataToChunks(
   chunks: Document[],
@@ -241,9 +243,39 @@ export async function buildPhysicalCollection(input: {
       embeddingTarget: input.embeddingTarget,
     });
 
-    await vectorStore.addDocuments(indexedChunks, {
-      ids: indexedChunks.map((chunk) => `${chunk.metadata.documentId}:${chunk.metadata.chunkIndex}`),
-    });
+    // Written in slices: the job reports progress within this (longest) step and stops between slices when
+    // it is cancelled. Same chunks, ids and order as one call.
+    const total = indexedChunks.length;
+    const progressEvery = Math.max(WRITE_SLICE_SIZE, Math.ceil(total * 0.05));
+    let lastReported = 0;
+    for (let start = 0; start < total; start += WRITE_SLICE_SIZE) {
+      if (signal?.aborted) throw new Error("Build aborted");
+      const slice = indexedChunks.slice(start, start + WRITE_SLICE_SIZE);
+      await vectorStore.addDocuments(slice, {
+        ids: slice.map((chunk) => `${chunk.metadata.documentId}:${chunk.metadata.chunkIndex}`),
+      });
+      const written = Math.min(total, start + slice.length);
+      if (written < total && written - lastReported >= progressEvery) {
+        lastReported = written;
+        await onEvent?.({
+          status: "running",
+          stage: "indexing",
+          code: "CHUNKS_WRITTEN",
+          message: `Writing chunks into the vector store (${written} of ${total}).`,
+          details: {
+            chunkCount: total,
+            chunksWritten: written,
+          },
+          progress: {
+            phase: 5,
+            phaseCount: JOB_PHASE_COUNT,
+            itemsCompleted: written,
+            itemsTotal: total,
+            unit: "chunks",
+          },
+        });
+      }
+    }
     await onEvent?.({
       status: "running",
       stage: "indexing",

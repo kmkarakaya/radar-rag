@@ -3818,6 +3818,7 @@ components:
             - CHUNKING_STARTED
             - CHUNKING_COMPLETED
             - VECTOR_INDEXING_STARTED
+            - CHUNKS_WRITTEN
             - VECTOR_INDEXING_COMPLETED
             - READABILITY_CHECK_STARTED
             - READABILITY_CHECK_COMPLETED

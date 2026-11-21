@@ -2,7 +2,7 @@ import { adminCollectionPhysicalCollectionsUrl, adminCollectionUrl, adminMutatio
 import { canAdminAction } from "../auth.js";
 import { switchView } from "../dashboard.js";
 import { confirmDialog } from "../dialog.js";
-import { appendChildren, appendText, clearNode, createBadge, createButton, createEl, createMetaItem, formatCount, formatDateTime, formatValidationFieldLabel, getStatusBadge, getStatusColor, isRecord, renderApiErrorContent, setButtonLoading, shortId, showErrorToast, showToast, stringifyForDisplay } from "../dom.js";
+import { SLOW_SERVER_TEXT, appendChildren, appendText, clearNode, createBadge, createButton, createEl, createMetaItem, formatCount, formatDateTime, formatValidationFieldLabel, getStatusBadge, getStatusColor, isRecord, renderApiErrorContent, setButtonLoading, shortId, showErrorToast, showToast, startSlowNotice, stringifyForDisplay } from "../dom.js";
 import { formatJobCounts, jobRoute, watchJob } from "../jobWatch.js";
 import { recordRoute } from "../router.js";
 import { API, elements, state } from "../state.js";
@@ -686,17 +686,27 @@ export async function loadPhysicalCollections(collectionId) {
     return data.physicalCollections;
 }
 
-/** `quiet` (background refresh): no loading notices, and nothing is redrawn when the data did not change. */
+/**
+ * The readiness request in flight ({ token, collectionId }) and the one to run after it. Tracked per collection:
+ * a slow request for one collection never holds back another collection the user opens meanwhile.
+ */
+let readinessInFlight = null;
 let readinessRerun = null;
+let readinessToken = 0;
 
+/** `quiet` (background refresh): no loading notices, and nothing is redrawn when the data did not change. */
 export async function updateReadinessTab({ quiet = false } = {}) {
     if (!state.selectedCollection) return;
-    // A request while one is running is not dropped: it runs right after (a user request wins over a quiet one).
-    if (state.isLoading.readiness || state.isLoading.physicalCollections) {
-        readinessRerun = { quiet: Boolean(readinessRerun ? readinessRerun.quiet && quiet : quiet) };
+    const collectionId = state.selectedCollection.id;
+    // A request for the same collection while one is running is not dropped: it runs right after
+    // (a user request wins over a quiet one).
+    if (readinessInFlight?.collectionId === collectionId) {
+        const sameCollection = readinessRerun?.collectionId === collectionId;
+        readinessRerun = { collectionId, quiet: Boolean(sameCollection ? readinessRerun.quiet && quiet : quiet) };
         return;
     }
-    const collectionId = state.selectedCollection.id;
+    const token = ++readinessToken;
+    readinessInFlight = { token, collectionId };
     const previousBanner = JSON.stringify([state.selectedCollection, state.selectedReadiness, state.activeJobProgress]);
     const previousActiveJobId = state.selectedReadiness?.activeJob?.id ?? null;
     const hasSnapshot = Boolean(state.selectedReadiness);
@@ -716,6 +726,13 @@ export async function updateReadinessTab({ quiet = false } = {}) {
         renderPhysicalCollectionsPlaceholder("Loading the index versions...");
     }
     if (!quiet || !hasSnapshot) updatePlaygroundCapabilityState(hasSnapshot ? "Refreshing readiness..." : "Readiness is loading.");
+    // A visible load that takes long says so (the server may be busy); nothing is guessed about why.
+    const stopSlowNotice = hasSnapshot ? () => {} : startSlowNotice(() => {
+        if (state.selectedCollection?.id !== collectionId || readinessInFlight?.token !== token) return;
+        clearNode(elements.readinessStatusGrid);
+        elements.readinessStatusGrid.appendChild(createEl("div", "rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500", `Loading readiness... ${SLOW_SERVER_TEXT}`));
+        updatePlaygroundCapabilityState(`Readiness is loading. ${SLOW_SERVER_TEXT}`);
+    });
 
     try {
         const results = await Promise.allSettled([
@@ -775,14 +792,22 @@ export async function updateReadinessTab({ quiet = false } = {}) {
             renderApiErrorContent(elements.physicalCollectionsList, physicalCollectionsResult.reason, "Could not load the index versions");
         }
     } finally {
-        state.isLoading.readiness = false;
-        state.isLoading.physicalCollections = false;
-        const bannerChanged = JSON.stringify([state.selectedCollection, state.selectedReadiness, state.activeJobProgress]) !== previousBanner;
-        if (!quiet || bannerChanged) renderCollectionIndexStateBanner();
-        if (readinessRerun) {
+        stopSlowNotice();
+        const current = readinessInFlight?.token === token;
+        if (current) readinessInFlight = null;
+        const stillOpen = state.selectedCollection?.id === collectionId;
+        if (current && stillOpen) {
+            state.isLoading.readiness = false;
+            state.isLoading.physicalCollections = false;
+            const bannerChanged = JSON.stringify([state.selectedCollection, state.selectedReadiness, state.activeJobProgress]) !== previousBanner;
+            if (!quiet || bannerChanged) renderCollectionIndexStateBanner();
+        }
+        // A rerun asked for this collection runs now, if it is still the open one; others are dropped.
+        if (current && readinessRerun && readinessRerun.collectionId !== collectionId) readinessRerun = null;
+        if (current && readinessRerun?.collectionId === collectionId) {
             const next = readinessRerun;
             readinessRerun = null;
-            void updateReadinessTab(next);
+            if (stillOpen) void updateReadinessTab({ quiet: next.quiet });
         }
     }
 }

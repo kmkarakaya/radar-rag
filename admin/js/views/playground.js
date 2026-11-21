@@ -1,5 +1,5 @@
 import { apiRequest, collectionQueryUrl, collectionRetrieveUrl, normalizeError } from "../api.js";
-import { appendJsonDetails, clearNode, createEl, createMetaItem, formatMetric, renderErrorBox, setButtonLoading, showToast } from "../dom.js";
+import { SLOW_SERVER_TEXT, appendJsonDetails, clearNode, createEl, createMetaItem, formatMetric, renderErrorBox, setButtonLoading, showToast, startSlowNotice } from "../dom.js";
 import { elements, state } from "../state.js";
 import { chatServiceName } from "./chatSettings.js";
 import { providerName } from "./editor.js";
@@ -128,8 +128,10 @@ export async function runPlayground() {
     const retrieveK = kValue ? Number(kValue) : undefined;
 
     clearNode(elements.pgResult);
-    elements.pgResult.appendChild(createEl("span", "text-slate-500 italic", "Processing..."));
+    const processing = createEl("span", "text-slate-500 italic", "Processing...");
+    elements.pgResult.appendChild(processing);
     setButtonLoading(elements.btnPgRun, true, "Running...");
+    const stopSlowNotice = startSlowNotice(() => { processing.textContent = `Processing... ${SLOW_SERVER_TEXT}`; });
 
     try {
         if (state.playgroundMode === "retrieve") {
@@ -149,6 +151,7 @@ export async function runPlayground() {
     } catch (error) {
         renderPlaygroundError(error);
     } finally {
+        stopSlowNotice();
         setButtonLoading(elements.btnPgRun, false);
         updatePlaygroundCapabilityState();
     }

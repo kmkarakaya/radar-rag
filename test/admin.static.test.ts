@@ -414,6 +414,18 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes('{ onRetry: () => loadCollections() }'));
   });
 
+  it("loads each collection independently and says when the server is slow", async () => {
+    const js = await readAdminScripts();
+    // A slow readiness request of one collection never holds back another one: in-flight is per collection.
+    assert.ok(js.includes("if (readinessInFlight?.collectionId === collectionId) {"));
+    assert.ok(!js.includes("if (state.isLoading.readiness || state.isLoading.physicalCollections) {"));
+    // Visible loads that take long say so, without guessing why.
+    assert.ok(js.includes('export const SLOW_SERVER_TEXT = "Still waiting for the server…";'));
+    for (const where of ["Loading readiness... ${SLOW_SERVER_TEXT}", "Loading documents... ${SLOW_SERVER_TEXT}", "Processing... ${SLOW_SERVER_TEXT}"]) {
+      assert.ok(js.includes(where), where);
+    }
+  });
+
   it("works offline: no CDN, the Tailwind CSS is built locally", async () => {
     const html = await readAdminFile("index.html");
     assert.ok(!html.includes("cdn.tailwindcss.com"));

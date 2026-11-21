@@ -1,7 +1,7 @@
 import { adminCollectionFilesUrl, adminMutationRequest, apiRequest, normalizeError } from "../api.js";
 import { canAdminAction } from "../auth.js";
 import { confirmDialog } from "../dialog.js";
-import { appendText, clearNode, createButton, createEl, formatBytes, formatCount, formatDateTime, showErrorToast, showToast } from "../dom.js";
+import { SLOW_SERVER_TEXT, appendText, clearNode, createButton, createEl, formatBytes, formatCount, formatDateTime, showErrorToast, showToast, startSlowNotice } from "../dom.js";
 import { describeUploadLimits } from "../serverInfo.js";
 import { elements, state } from "../state.js";
 import { loadAdminCollectionDetail, mergeCollectionIntoState } from "./collections.js";
@@ -26,8 +26,15 @@ export async function loadCollectionFiles({ quiet = false } = {}) {
     if (!id) return;
     if (!quiet) {
         state.files.loading = true;
+        state.files.slow = false;
         renderCollectionFiles();
     }
+    // A visible load that takes long says so (the server may be busy indexing); nothing is guessed about why.
+    const stopSlowNotice = quiet ? () => {} : startSlowNotice(() => {
+        if (state.selectedCollection?.id !== id || !state.files.loading) return;
+        state.files.slow = true;
+        renderCollectionFiles();
+    });
     const before = JSON.stringify([state.files.data, state.files.error ? normalizeError(state.files.error).message : null]);
     try {
         const data = await apiRequest(adminCollectionFilesUrl(id));
@@ -41,8 +48,10 @@ export async function loadCollectionFiles({ quiet = false } = {}) {
         state.files.error = error;
         if (!quiet) showErrorToast(error, "Failed to load documents");
     } finally {
+        stopSlowNotice();
         if (state.selectedCollection?.id === id) {
             state.files.loading = false;
+            state.files.slow = false;
             const changed = JSON.stringify([state.files.data, state.files.error ? normalizeError(state.files.error).message : null]) !== before;
             if (!quiet || changed) renderCollectionFiles();
             // Kept on screen after a failed refresh: say so, and when the list was loaded.
@@ -65,7 +74,7 @@ export function renderCollectionFiles() {
 
     if (!data) {
         elements.filesIntro.textContent = files.loading
-            ? "Loading documents..."
+            ? (files.slow ? `Loading documents... ${SLOW_SERVER_TEXT}` : "Loading documents...")
             : files.error ? "The documents could not be loaded." : "";
         elements.filesDropZone.classList.add("hidden");
         elements.filesChangedBanner.classList.add("hidden");

@@ -469,7 +469,7 @@ describe("admin panel static contract", () => {
 
     // No native <datalist>: its popup cannot be styled or placed and hides non-matching suggestions.
     assert.ok(!html.includes("<datalist"));
-    assert.ok(!/id="(editEmbeddingModel|csSettingsModel)"[^>]*list=/.test(html));
+    assert.ok(!/id="(editEmbeddingModel|csSettingsModel)"[^>]*\slist=/.test(html));
     for (const id of ["editEmbeddingModel", "csSettingsModel"]) {
       assert.ok(new RegExp(`id="${id}"[^>]*role="combobox"`).test(html), `${id} is a combobox`);
       assert.ok(html.includes(`aria-controls="${id}List"`));

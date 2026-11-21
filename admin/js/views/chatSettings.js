@@ -1,5 +1,6 @@
 import { adminMutationRequest, apiRequest } from "../api.js";
 import { canAdminAction } from "../auth.js";
+import { comboboxFor } from "../combobox.js";
 import { confirmDialog } from "../dialog.js";
 import { clearNode, createEl, setButtonLoading, showErrorToast, showToast } from "../dom.js";
 import { API, state } from "../state.js";
@@ -118,20 +119,25 @@ export function renderChatSettings() {
     else saveButton.removeAttribute("title");
 }
 
+/** The chat service chosen in the chat settings form, as GET /v1/admin/models chatServices lists it. */
+function selectedChatServiceEntry() {
+    const select = document.getElementById("csSettingsService");
+    return (state.modelDiscovery.chatServices || []).find((service) => service.id === select?.value) || null;
+}
+
+/** Suggestions of the chat model field: the models of the selected chat service. */
+export function chatSettingsModelOptions() {
+    return selectedChatServiceEntry()?.models || [];
+}
+
 /** Model suggestions of the selected chat service (GET /v1/admin/models chatServices). */
 export function syncChatSettingsModels() {
     const select = document.getElementById("csSettingsService");
-    const list = document.getElementById("csSettingsModels");
     const hint = document.getElementById("csSettingsModelHint");
-    if (!select || !list) return;
-    clearNode(list);
-    const entry = (state.modelDiscovery.chatServices || []).find((service) => service.id === select.value);
-    const models = entry?.models || [];
-    models.forEach((model) => {
-        const option = document.createElement("option");
-        option.value = model;
-        list.appendChild(option);
-    });
+    if (!select || !hint) return;
+    const entry = selectedChatServiceEntry();
+    const models = chatSettingsModelOptions();
+    comboboxFor(document.getElementById("csSettingsModel"))?.refresh();
     hint.textContent = !entry
         ? "Type the model name."
         : !entry.reachable

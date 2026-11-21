@@ -1,13 +1,15 @@
 import { setUnauthorizedHandler } from "./api.js";
+import { createCombobox } from "./combobox.js";
 import { handleSessionExpired, loadAdminSession, loginAdmin, logoutAdmin, setDashboardVisible, syncAuthChrome } from "./auth.js";
 import { initializeDashboard, runHeaderAction, switchView } from "./dashboard.js";
 import { onWatchedJobFinished } from "./jobWatch.js";
 import { bindRouter } from "./router.js";
 import { elements, state } from "./state.js";
 import { applyAuditLogFilters, auditOperationOptions, clearAuditLogFilters, closeAuditPickers, getAuditVisibleCollections, goToNextAuditLogPage, goToPreviousAuditLogPage, openAuditLogForCollection, refreshAuditLog, renderAuditCollectionPickerList, renderAuditFilterControls, renderAuditOperationPickerList, setAuditCollectionFilterValues, setAuditOperationFilterValues, toggleAuditPicker } from "./views/audit.js";
+import { chatSettingsModelOptions } from "./views/chatSettings.js";
 import { loadCollections } from "./views/collections.js";
 import { bindDocumentsTabEvents } from "./views/documents.js";
-import { loadModelDiscovery, saveCollection, syncEmbeddingReindexNote, syncModelDiscoveryPanel } from "./views/editor.js";
+import { embeddingModelOptions, loadModelDiscovery, reconcileEmbeddingModelField, saveCollection, syncEmbeddingReindexNote, syncModelDiscoveryPanel } from "./views/editor.js";
 import { loadHealth } from "./views/health.js";
 import { activateTab, deleteCollection, handleOverlayClick, reindexCollection, requestCloseInspector, updateReadinessTab } from "./views/inspector.js";
 import { changeJobsStatusFilter, closeJobDetail, getVisibleSelectableJobIds, goToNextJobsPage, goToPreviousJobsPage, loadJobs, refreshJobsList, removeSelectedJobs, renderJobs } from "./views/jobs.js";
@@ -174,7 +176,10 @@ export function bindEvents() {
         elements.editEmbeddingModel.addEventListener("input", () => syncModelDiscoveryPanel());
     }
     if (elements.editEmbeddingProvider) {
-        elements.editEmbeddingProvider.addEventListener("change", () => syncModelDiscoveryPanel());
+        elements.editEmbeddingProvider.addEventListener("change", () => {
+            syncModelDiscoveryPanel();
+            reconcileEmbeddingModelField();
+        });
     }
     elements.btnCreateCollection.addEventListener("click", () => runHeaderAction());
     elements.btnCloseInspector.addEventListener("click", () => void requestCloseInspector());
@@ -270,6 +275,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (state.currentView === "jobs") void loadJobs({ quiet: true });
     });
     bindEvents();
+    // Model fields suggest the models the server lists for the chosen provider or service.
+    createCombobox({
+        input: elements.editEmbeddingModel,
+        getOptions: embeddingModelOptions,
+        emptyText: "No matching model. You can type any model name.",
+    });
+    createCombobox({
+        input: document.getElementById("csSettingsModel"),
+        getOptions: chatSettingsModelOptions,
+        emptyText: "No matching model. You can type any model name.",
+    });
     syncAuthChrome();
     try {
         const canOpenDashboard = await loadAdminSession();

@@ -278,7 +278,6 @@ export const elements = {
     modelDiscoveryPanel: document.getElementById("modelDiscoveryPanel"),
     modelDiscoverySummary: document.getElementById("modelDiscoverySummary"),
     modelDiscoveryStatus: document.getElementById("modelDiscoveryStatus"),
-    embeddingModelSelect: document.getElementById("embeddingModelSelect"),
     btnCancelEdit: document.getElementById("btnCancelEdit"),
     btnSave: document.getElementById("btnSave"),
 

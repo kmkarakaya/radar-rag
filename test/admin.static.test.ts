@@ -197,7 +197,7 @@ describe("admin panel static contract", () => {
     assert.ok(html.includes('id="modelDiscoveryPanel"'));
     assert.ok(html.includes('id="modelDiscoverySummary"'));
     assert.ok(html.includes('id="modelDiscoveryStatus"'));
-    assert.ok(html.includes('id="embeddingModelSelect"'));
+    assert.ok(html.includes('id="editEmbeddingModelList"'));
     // The chat LLM is global and optional: shown read-only, never chosen per collection.
     assert.ok(html.includes('id="chatLlmStatus"'));
     assert.ok(!html.includes('id="chatModelSelect"'));
@@ -213,7 +213,7 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("function renderValidationImpact(parent, impact)"));
     assert.ok(js.includes('async function loadModelDiscovery()'));
     assert.ok(js.includes('function syncModelDiscoveryPanel()'));
-    // Model suggestions are a datalist on the model field, not a separate list.
+    // Model suggestions are the panel's own combobox on the model field, not a separate list.
     assert.ok(js.includes('function syncModelSelect(kind)'));
     assert.ok(js.includes('`${API.admin}/models`'));
     assert.ok(js.includes("Change Impact"));
@@ -459,5 +459,31 @@ describe("admin panel static contract", () => {
     assert.ok(html.includes("Remove selected"));
     assert.ok(js.includes("Remove this finished job from the list"));
     assert.ok(js.includes("Remove"));
+  });
+  it("suggests models with its own combobox and clears a model the new provider or service does not offer", async () => {
+    const [html, js, combobox] = await Promise.all([
+      readAdminFile("index.html"),
+      readAdminScripts(),
+      readAdminFile(path.join("js", "combobox.js")),
+    ]);
+
+    // No native <datalist>: its popup cannot be styled or placed and hides non-matching suggestions.
+    assert.ok(!html.includes("<datalist"));
+    assert.ok(!/id="(editEmbeddingModel|csSettingsModel)"[^>]*\slist=/.test(html));
+    for (const id of ["editEmbeddingModel", "csSettingsModel"]) {
+      assert.ok(new RegExp(`id="${id}"[^>]*role="combobox"`).test(html), `${id} is a combobox`);
+      assert.ok(html.includes(`aria-controls="${id}List"`));
+      assert.ok(new RegExp(`id="${id}List" role="listbox"`).test(html), `${id}List is a listbox`);
+    }
+    assert.ok(combobox.includes('setAttribute("role", "option")'));
+    assert.ok(combobox.includes('"aria-activedescendant"'));
+    assert.ok(combobox.includes("export function filterOptions("));
+    assert.ok(js.includes("createCombobox({"));
+    // Switching provider or service reconciles the model field; filling the form from a saved collection does not.
+    assert.ok(js.includes("export function reconcileEmbeddingModelField()"));
+    assert.ok(/editEmbeddingProvider\.addEventListener\("change", \(\) => \{\s*syncModelDiscoveryPanel\(\);\s*reconcileEmbeddingModelField\(\);/.test(js));
+    assert.ok(/editEmbeddingService\?\.addEventListener\("change", \(\) => \{\s*syncModelDiscoveryPanel\(\);\s*reconcileEmbeddingModelField\(\);/.test(js));
+    const setup = js.slice(js.indexOf("export function setupEditorTab("), js.indexOf("export function setupEditorTab(") + 2500);
+    assert.ok(!setup.includes("reconcileEmbeddingModelField"));
   });
 });

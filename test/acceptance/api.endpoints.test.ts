@@ -2325,11 +2325,15 @@ describe("v1 admin and rag api endpoints", () => {
     };
     const single = await request(`/v1/admin/jobs/${running.id}`);
     assert.equal(single.status, 200);
-    assert.deepEqual((await single.json() as any).job.progress, expected);
+    const singleJob = (await single.json() as any).job;
+    assert.deepEqual(singleJob.progress, expected);
+    // The internal lock token is never part of a job response (and not in the IndexJob schema).
+    assert.equal("lockToken" in singleJob, false);
 
     const list = await request(`/v1/admin/jobs?collectionId=${encodeURIComponent(collection.id)}`);
     const listed = (await list.json() as any).jobs.find((item: any) => item.job.id === running.id);
     assert.deepEqual(listed.job.progress, expected);
+    assert.equal("lockToken" in listed.job, false);
 
     await registry.createPhysicalCollectionRecord({
       name: running.targetPhysicalCollection,

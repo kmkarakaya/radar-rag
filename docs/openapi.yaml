@@ -3675,7 +3675,6 @@ components:
         - targetEmbeddingProvider
         - targetEmbeddingModel
         - targetChromaConfiguration
-        - lockToken
         - createdAt
         - updatedAt
       properties:
@@ -3724,8 +3723,6 @@ components:
           allOf:
             - $ref: "#/components/schemas/IndexJobProgress"
           description: Current progress, computed by the server. Present only while the job is queued or running.
-        lockToken:
-          type: string
         createdAt:
           type: string
           format: date-time

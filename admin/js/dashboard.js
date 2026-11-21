@@ -1,16 +1,19 @@
+import { canAdminAction } from "./auth.js";
 import { clearNode } from "./dom.js";
+import { pollWatchedJobs } from "./jobWatch.js";
+import { applyRoute, leaveLoginAddress, recordRoute } from "./router.js";
 import { loadServerInfo } from "./serverInfo.js";
 import { elements, state } from "./state.js";
 import { closeAuditPickers, loadAuditLog, loadAuditOperations, renderAuditFilterControls } from "./views/audit.js";
 import { emptyChatSettingsState, loadChatServicesView, loadChatSettings } from "./views/chatSettings.js";
 import { loadCollections } from "./views/collections.js";
 import { loadCollectionFiles } from "./views/documents.js";
-import { loadConfigDefaults, loadModelDiscovery } from "./views/editor.js";
+import { emptyModelDiscovery, loadConfigDefaults, loadModelDiscovery } from "./views/editor.js";
 import { loadHealth } from "./views/health.js";
 import { resetReadinessAndPlayground, updateReadinessTab } from "./views/inspector.js";
-import { loadJobs, renderJobs } from "./views/jobs.js";
+import { isTerminalJobStatus, loadJobs, openJobDetail, renderJobs } from "./views/jobs.js";
 import { setPlaygroundMode } from "./views/playground.js";
-import { SERVICE_VIEWS, closeServiceForm, emptyEmbeddingServicesState, emptyServiceViewState, loadServices, serviceEl } from "./views/services.js";
+import { SERVICE_VIEWS, closeServiceForm, emptyEmbeddingServicesState, emptyServiceViewState, loadServices, openServiceForm, serviceEl } from "./views/services.js";
 
 export let dashboardPollingHandles = [];
 
@@ -36,15 +39,42 @@ export function startDashboardPolling() {
             loadCollections({ quiet: true });
         } else if (state.currentView === "jobs") {
             loadJobs({ quiet: true });
+            if (state.jobDetailId && !isTerminalJobStatus(state.jobDetail?.job?.status)) openJobDetail(state.jobDetailId, { quiet: true });
         }
     }, 10000));
 
     dashboardPollingHandles.push(setInterval(() => {
         if (!document.hidden && state.currentView === "health" && !state.inspectorOpen) loadHealth({ quiet: true });
     }, 30000));
+
+    // Followed jobs are checked whatever is on screen, so their end is announced.
+    dashboardPollingHandles.push(setInterval(() => {
+        if (state.watchedJobs.size > 0) void pollWatchedJobs();
+    }, 5000));
 }
 
 export function resetDashboardState() {
+    // The inspector closes for good (no route recorded, no unsaved-changes question).
+    state.inspectorOpen = false;
+    state.inspectorReturnFocus = null;
+    if (elements.inspectorPanel) {
+        elements.inspectorPanel.classList.add("translate-x-full");
+        elements.inspectorPanel.inert = true;
+        elements.inspectorPanel.setAttribute("aria-hidden", "true");
+    }
+    elements.inspectorOverlay?.classList.add("hidden");
+    elements.inspectorOverlay?.classList.remove("opacity-100");
+    state.auditOperations = [];
+    state.jobListStatusFilter = "all";
+    state.files = { collectionId: null, data: null, loading: false, uploading: false, error: null, rejected: [] };
+    state.modelDiscovery = emptyModelDiscovery();
+    state.configDefaults = { loaded: false, collectionDefaults: null, modelDefaults: null, chat: null };
+    state.jobDetailId = null;
+    state.jobDetail = null;
+    elements.jobDetail?.classList.add("hidden");
+    state.watchedJobs.clear();
+    state.activeJobProgress = null;
+    state.dashboardReady = false;
     state.currentView = "collections";
     state.activeTab = "ready";
     state.collections = [];
@@ -113,7 +143,8 @@ export async function initializeDashboard() {
     setPlaygroundMode("retrieve");
     resetReadinessAndPlayground("Select a collection to inspect readiness.");
     renderJobs();
-    loadServerInfo();
+    // Selects get their options from server-info; a deep link (#/jobs?status=failed) needs them first.
+    const serverInfoLoaded = loadServerInfo();
     loadConfigDefaults();
     loadModelDiscovery();
     loadChatSettings();
@@ -121,6 +152,10 @@ export async function initializeDashboard() {
     loadJobs();
     loadHealth();
     startDashboardPolling();
+    state.dashboardReady = true;
+    leaveLoginAddress();
+    await serverInfoLoaded;
+    await applyRoute();
 }
 
 export function switchView(viewId) {
@@ -139,13 +174,15 @@ export function switchView(viewId) {
 
     const titles = {
         collections: "Collections",
-        jobs: "Job Monitor",
+        jobs: "Jobs",
         "embedding-services": "Embedding services",
         "chat-services": "Chat services",
-        audit: "Audit Log",
-        health: "System Health",
+        audit: "Audit log",
+        health: "System health",
     };
     elements.viewTitle.textContent = titles[viewId] || "Dashboard";
+    syncHeaderAction();
+    recordRoute();
 
     if (viewId === "jobs") loadJobs();
     if (viewId === "embedding-services") loadServices(SERVICE_VIEWS.embedding);
@@ -155,4 +192,27 @@ export function switchView(viewId) {
         loadAuditLog({ cursor: state.auditLogCursor, resetHistory: false });
     }
     if (viewId === "health") loadHealth();
+}
+
+/** The header's main action for each view (views without one show none). */
+const HEADER_ACTIONS = {
+    collections: { label: "New collection", capability: "createCollection", run: () => { location.hash = "#/collections/new"; } },
+    "embedding-services": { label: "Add service", capability: "manageEmbeddingServices", run: () => openServiceForm(SERVICE_VIEWS.embedding) },
+    "chat-services": { label: "Add service", capability: "manageChatServices", run: () => openServiceForm(SERVICE_VIEWS.chat) },
+};
+
+/** Shows the current view's action, only when the session may use it (the views say so when it may not). */
+export function syncHeaderAction() {
+    const button = elements.btnCreateCollection;
+    if (!button) return;
+    const action = HEADER_ACTIONS[state.currentView];
+    const allowed = Boolean(action) && canAdminAction(action.capability);
+    button.classList.toggle("hidden", !allowed);
+    button.disabled = !allowed;
+    if (action && elements.headerActionLabel) elements.headerActionLabel.textContent = action.label;
+}
+
+export function runHeaderAction() {
+    const action = HEADER_ACTIONS[state.currentView];
+    if (action && canAdminAction(action.capability)) action.run();
 }

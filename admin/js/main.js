@@ -1,14 +1,16 @@
 import { setUnauthorizedHandler } from "./api.js";
 import { handleSessionExpired, loadAdminSession, loginAdmin, logoutAdmin, setDashboardVisible, syncAuthChrome } from "./auth.js";
-import { initializeDashboard, switchView } from "./dashboard.js";
+import { initializeDashboard, runHeaderAction, switchView } from "./dashboard.js";
+import { onWatchedJobFinished } from "./jobWatch.js";
+import { bindRouter } from "./router.js";
 import { elements, state } from "./state.js";
 import { applyAuditLogFilters, auditOperationOptions, clearAuditLogFilters, closeAuditPickers, getAuditVisibleCollections, goToNextAuditLogPage, goToPreviousAuditLogPage, openAuditLogForCollection, refreshAuditLog, renderAuditCollectionPickerList, renderAuditFilterControls, renderAuditOperationPickerList, setAuditCollectionFilterValues, setAuditOperationFilterValues, toggleAuditPicker } from "./views/audit.js";
 import { loadCollections } from "./views/collections.js";
-import { bindDocumentsTabEvents, loadCollectionFiles } from "./views/documents.js";
-import { loadModelDiscovery, saveCollection, setModelFromSelect, syncModelDiscoveryPanel } from "./views/editor.js";
+import { bindDocumentsTabEvents } from "./views/documents.js";
+import { loadModelDiscovery, saveCollection, syncEmbeddingReindexNote, syncModelDiscoveryPanel } from "./views/editor.js";
 import { loadHealth } from "./views/health.js";
-import { closeInspector, deleteCollection, handleOverlayClick, openInspector, reindexCollection, switchTab, updatePlaygroundCapabilityState, updateReadinessTab } from "./views/inspector.js";
-import { changeJobsStatusFilter, getVisibleSelectableJobIds, goToNextJobsPage, goToPreviousJobsPage, loadJobs, refreshJobsList, removeSelectedJobs, renderJobs } from "./views/jobs.js";
+import { activateTab, deleteCollection, handleOverlayClick, reindexCollection, requestCloseInspector, updateReadinessTab } from "./views/inspector.js";
+import { changeJobsStatusFilter, closeJobDetail, getVisibleSelectableJobIds, goToNextJobsPage, goToPreviousJobsPage, loadJobs, refreshJobsList, removeSelectedJobs, renderJobs } from "./views/jobs.js";
 import { runPlayground, setPlaygroundMode } from "./views/playground.js";
 import { bindEmbeddingServicesEvents } from "./views/services.js";
 
@@ -35,8 +37,9 @@ export function bindEvents() {
             loadJobs();
             loadHealth();
         }
-        if (state.selectedCollection) updateReadinessTab();
+        if (state.inspectorOpen && state.selectedCollection) updateReadinessTab();
     });
+    elements.jobDetailClose?.addEventListener("click", () => closeJobDetail());
     if (elements.jobsRefreshList) {
         elements.jobsRefreshList.addEventListener("click", () => {
             refreshJobsList();
@@ -167,19 +170,19 @@ export function bindEvents() {
             goToNextAuditLogPage();
         });
     }
-    if (elements.embeddingModelSelect) {
-        elements.embeddingModelSelect.addEventListener("change", () => setModelFromSelect("embedding"));
-    }
     if (elements.editEmbeddingModel) {
         elements.editEmbeddingModel.addEventListener("input", () => syncModelDiscoveryPanel());
     }
     if (elements.editEmbeddingProvider) {
         elements.editEmbeddingProvider.addEventListener("change", () => syncModelDiscoveryPanel());
     }
-    elements.btnCreateCollection.addEventListener("click", () => openInspector(null));
-    elements.btnCloseInspector.addEventListener("click", closeInspector);
+    elements.btnCreateCollection.addEventListener("click", () => runHeaderAction());
+    elements.btnCloseInspector.addEventListener("click", () => void requestCloseInspector());
     elements.inspectorOverlay.addEventListener("click", handleOverlayClick);
-    elements.btnCancelEdit.addEventListener("click", closeInspector);
+    elements.btnCancelEdit.addEventListener("click", () => void requestCloseInspector());
+    // Any field change may add or remove a setting that applies only at the next re-index.
+    elements.colEditForm.addEventListener("input", () => syncEmbeddingReindexNote());
+    elements.colEditForm.addEventListener("change", () => syncEmbeddingReindexNote());
     elements.colEditForm.addEventListener("submit", (event) => {
         event.preventDefault();
         saveCollection();
@@ -194,14 +197,25 @@ export function bindEvents() {
     elements.btnPgRun.addEventListener("click", runPlayground);
 
     elements.tabBtns.forEach((button) => {
-        button.addEventListener("click", () => {
-            if (button.disabled) return;
-            switchTab(button.dataset.tab);
-            if (button.dataset.tab === "ready" && state.selectedCollection) updateReadinessTab();
-            if (button.dataset.tab === "files" && state.selectedCollection) loadCollectionFiles();
-            if (button.dataset.tab === "playground") updatePlaygroundCapabilityState();
+        button.addEventListener("click", () => activateTab(button.dataset.tab));
+        button.addEventListener("keydown", (event) => {
+            if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+            const tabs = [...elements.tabBtns].filter((tab) => !tab.disabled && !tab.classList.contains("hidden"));
+            const index = tabs.indexOf(button);
+            const next = tabs[(index + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+            if (!next) return;
+            event.preventDefault();
+            activateTab(next.dataset.tab);
+            next.focus();
         });
     });
+    elements.pgQuestion?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            if (!elements.btnPgRun.disabled) runPlayground();
+        }
+    });
+    bindRouter();
 
     bindDocumentsTabEvents();
     bindEmbeddingServicesEvents();
@@ -214,9 +228,25 @@ export function bindEvents() {
     });
 
     document.addEventListener("keydown", (event) => {
+        if (event.key === "Tab" && state.inspectorOpen && !document.querySelector("[role=alertdialog]")) {
+            const focusable = [...elements.inspectorPanel.querySelectorAll("a[href], button, input, select, textarea, summary, [tabindex]")]
+                .filter((element) => !element.disabled && element.tabIndex >= 0 && element.offsetParent !== null);
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (first && event.shiftKey && (document.activeElement === first || !elements.inspectorPanel.contains(document.activeElement))) {
+                event.preventDefault();
+                last.focus();
+            } else if (last && !event.shiftKey && (document.activeElement === last || !elements.inspectorPanel.contains(document.activeElement))) {
+                event.preventDefault();
+                first.focus();
+            }
+            return;
+        }
         if (event.key !== "Escape") return;
+        // Escape while typing in a form field does not close the inspector (it would ask about unsaved changes).
+        if (event.target instanceof HTMLElement && event.target.closest("#colEditForm")) return;
         if (!elements.inspectorOverlay.classList.contains("hidden")) {
-            closeInspector();
+            void requestCloseInspector();
             return;
         }
         closeAuditPickers();
@@ -234,6 +264,11 @@ export function bindEvents() {
 document.addEventListener("DOMContentLoaded", async () => {
     // Every module is loaded by now: a 401 from any API call returns to the sign-in screen.
     setUnauthorizedHandler(handleSessionExpired);
+    onWatchedJobFinished((job) => {
+        void loadCollections({ quiet: true });
+        if (state.inspectorOpen && state.selectedCollection?.id === job.collectionId) void updateReadinessTab();
+        if (state.currentView === "jobs") void loadJobs({ quiet: true });
+    });
     bindEvents();
     syncAuthChrome();
     try {

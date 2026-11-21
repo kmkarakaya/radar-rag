@@ -39,9 +39,9 @@ export async function resolveReadableCollection(
 
   if (!collection.activePhysicalCollection) {
     if (collection.status === "creating" || collection.status === "indexing") {
-      throw new HttpError(503, "COLLECTION_INDEXING", "Collection has no active indexed version yet and is currently indexing.", { collectionId });
+      throw new HttpError(503, "COLLECTION_INDEXING", "Collection has no active indexed version yet and is currently indexing. Try again when the index job finishes.", { collectionId });
     }
-    throw new HttpError(404, "COLLECTION_NOT_READY", "Collection has no active indexed version yet.", { collectionId });
+    throw new HttpError(404, "COLLECTION_NOT_READY", "Collection has no active indexed version yet. Re-index it to make it searchable.", { collectionId });
   }
 
   try {

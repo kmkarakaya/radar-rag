@@ -1,8 +1,9 @@
 import { adminCollectionUrl, apiRequest, normalizeError } from "../api.js";
+import { canAdminAction } from "../auth.js";
 import { appendChildren, clearNode, createEl, formatCount, formatDateTime, getCollectionCardStatusBadge, getCollectionCardStatusNote, renderApiErrorContent, showErrorToast } from "../dom.js";
 import { API, elements, state } from "../state.js";
 import { normalizeAuditCollectionValues, renderAuditFilterControls } from "./audit.js";
-import { openInspector, renderCollectionIndexStateBanner } from "./inspector.js";
+import { findReadinessIssue, openInspector, renderCollectionIndexStateBanner, syncInspectorStatusBadge } from "./inspector.js";
 
 export function collectionNameById(collectionId) {
     return state.collections.find((collection) => collection.id === collectionId)?.displayName || null;
@@ -36,8 +37,19 @@ export async function loadAdminCollectionDetail(collectionId) {
  * Loads GET /v1/rag/collections. `quiet` (background refresh): no loading state or toast, nothing redrawn when
  * the list did not change, and a failure keeps the last list with a notice saying when it was loaded.
  */
-export async function loadCollections({ quiet = false } = {}) {
-    if (state.isLoading.collections) return;
+let collectionsRequest = null;
+
+/** One request at a time: a call while the list is loading waits for that request instead of returning early. */
+export function loadCollections(options = {}) {
+    if (!collectionsRequest) {
+        collectionsRequest = fetchCollections(options).finally(() => {
+            collectionsRequest = null;
+        });
+    }
+    return collectionsRequest;
+}
+
+async function fetchCollections({ quiet = false } = {}) {
     const previous = JSON.stringify(state.collections);
     const hadError = Boolean(state.collectionError);
     state.isLoading.collections = true;
@@ -51,6 +63,18 @@ export async function loadCollections({ quiet = false } = {}) {
         const data = await apiRequest(`${API.rag}/collections`);
         state.collections = Array.isArray(data?.collections) ? data.collections : [];
         state.collectionError = null;
+        // The open collection keeps its detail fields but takes the list's current status and index state.
+        if (state.selectedCollection) {
+            const fresh = state.collections.find((collection) => collection.id === state.selectedCollection.id);
+            if (fresh) {
+                const before = JSON.stringify(state.selectedCollection);
+                state.selectedCollection = { ...state.selectedCollection, ...fresh };
+                if (state.inspectorOpen && JSON.stringify(state.selectedCollection) !== before) {
+                    syncInspectorStatusBadge();
+                    renderCollectionIndexStateBanner();
+                }
+            }
+        }
         state.collectionsLoadedAt = new Date().toISOString();
         changed = !quiet || hadError || JSON.stringify(state.collections) !== previous;
     } catch (error) {
@@ -86,13 +110,13 @@ export function renderCollections() {
         ));
     } else if (state.collectionError) {
         const errorBox = createEl("div", "col-span-full");
-        renderApiErrorContent(errorBox, state.collectionError, "Failed to load collections");
+        renderApiErrorContent(errorBox, state.collectionError, "Could not load the collections", { onRetry: () => loadCollections() });
         grid.appendChild(errorBox);
         return;
     }
 
     if (state.collections.length === 0) {
-        grid.appendChild(createEl("div", "col-span-full py-12 text-center text-slate-400 italic", 'No collections found. Click "New Collection" to get started.'));
+        grid.appendChild(renderGettingStarted());
         return;
     }
 
@@ -106,7 +130,7 @@ export function renderCollections() {
         const statusNote = getCollectionCardStatusNote(collection.status, collection.indexState);
         const title = createEl("h3", "mt-3 break-all-words font-bold text-slate-800 transition-colors group-hover:text-indigo-600", collection.displayName || "Unnamed Collection");
         const desc = createEl("p", "mt-1 line-clamp-2 min-h-[2rem] text-xs text-slate-500", collection.description || "No description provided.");
-        const footer = createEl("div", "mt-4 grid grid-cols-1 gap-2 border-t border-slate-100 pt-4 text-[10px] font-medium uppercase tracking-wider text-slate-400 sm:grid-cols-3");
+        const footer = createEl("div", "mt-4 grid grid-cols-1 gap-2 border-t border-slate-100 pt-4 text-[10px] font-medium uppercase tracking-wider text-slate-500 sm:grid-cols-3");
         footer.appendChild(createEl("span", "", `Chunks: ${formatCount(collection.chunkCount)}`));
         footer.appendChild(createEl("span", "", `Version: ${formatCount(collection.activeVersion)}`));
         footer.appendChild(createEl("span", "", formatDateTime(collection.updatedAt)));
@@ -114,4 +138,57 @@ export function renderCollections() {
         appendChildren(card, [icon, statusBadge, statusNote, title, desc, footer]);
         grid.appendChild(card);
     });
+}
+
+/** No collections yet: what is ready, what is optional, and the first step (from GET /ready). */
+export function renderGettingStarted() {
+    const box = createEl("section", "col-span-full rounded-xl border border-slate-200 bg-white p-6 shadow-sm");
+    box.appendChild(createEl("h3", "text-lg font-semibold text-slate-800", "Get started"));
+    box.appendChild(createEl("p", "mt-1 text-sm text-slate-600", "A collection is a set of documents you can search (Retrieve) and ask questions about (Query)."));
+
+    const dependencies = state.readiness?.dependencies;
+    const searchReady = dependencies ? Boolean(dependencies.chroma?.ok && dependencies.embedding?.ok) : null;
+    const answersReady = dependencies ? Boolean(dependencies.chat?.ok) : null;
+    const list = createEl("ol", "mt-4 space-y-3");
+    const item = (done, title, text, link) => {
+        const row = createEl("li", "flex items-start gap-3");
+        const mark = createEl("span", `mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${done === true ? "bg-emerald-100 text-emerald-700" : done === false ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`, done === true ? "\u2713" : done === false ? "!" : "\u2026");
+        mark.setAttribute("aria-hidden", "true");
+        const body = createEl("div", "text-sm");
+        body.appendChild(createEl("div", "font-semibold text-slate-800", title));
+        const detail = createEl("div", "text-slate-600", text);
+        if (link) {
+            const anchor = createEl("a", "ml-1 text-indigo-600 underline", link.label);
+            anchor.href = link.href;
+            detail.appendChild(anchor);
+        }
+        body.appendChild(detail);
+        row.append(mark, body);
+        list.appendChild(row);
+    };
+    item(
+        searchReady,
+        "Search is ready",
+        searchReady === null ? "Checking the vector store and the embedding..." : searchReady ? "The vector store and the embedding model are available." : "The vector store or the embedding is not available.",
+        searchReady === false ? { label: "See System health", href: "#/health" } : null,
+    );
+    item(
+        answersReady,
+        "Language model (optional)",
+        answersReady ? "A chat LLM writes answers for Query." : "Without a chat LLM, Retrieve works and Query is off.",
+        answersReady ? null : { label: "Choose one under Chat services", href: "#/services/chat" },
+    );
+    const download = findReadinessIssue("EMBEDDING_MODEL_NOT_DOWNLOADED");
+    item(null, "Create your first collection", `Then upload documents and re-index it.${download ? ` ${download.message}` : ""}`);
+    box.appendChild(list);
+
+    if (canAdminAction("createCollection")) {
+        const create = createEl("button", "mt-5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700", "New collection");
+        create.type = "button";
+        create.addEventListener("click", () => { location.hash = "#/collections/new"; });
+        box.appendChild(create);
+    } else {
+        box.appendChild(createEl("p", "mt-5 text-xs text-slate-500", "Your role can view collections but not create them."));
+    }
+    return box;
 }

@@ -1,11 +1,10 @@
 import { adminCollectionUrl, adminCollectionValidateUrl, adminMutationRequest, apiRequest, normalizeError } from "../api.js";
 import { canAdminAction } from "../auth.js";
-import { clearNode, createEl, getStatusBadge, setButtonLoading, showErrorToast, showToast } from "../dom.js";
+import { clearNode, createEl, formatValidationFieldLabel, getStatusBadge, setButtonLoading, showErrorToast, showToast } from "../dom.js";
 import { API, EDIT_FIELD_IDS, elements, loadTokens, state } from "../state.js";
 import { describeChatSettings, syncChatSettingsModels } from "./chatSettings.js";
 import { loadAdminCollectionDetail, loadCollections, mergeCollectionIntoState } from "./collections.js";
-import { loadCollectionFiles } from "./documents.js";
-import { closeInspector, renderCollectionValidation, setCollectionTabsEnabled, setInspectorActionsEnabled, switchTab, syncSaveButtonAccess } from "./inspector.js";
+import { closeInspector, openInspector, renderCollectionValidation, setCollectionTabsEnabled, setInspectorActionsEnabled, syncSaveButtonAccess } from "./inspector.js";
 
 export function normalizeModelList(models) {
     return [...new Set(
@@ -41,7 +40,7 @@ export function selectedEmbeddingServiceEntry() {
 
 /** The provider the editor is about to use: the selected one, else the backend default. */
 export function selectedEmbeddingProvider() {
-    return elements.editEmbeddingProvider?.value || state.modelDiscovery.defaultProvider || "builtin";
+    return elements.editEmbeddingProvider?.value || state.modelDiscovery.defaultProvider || "";
 }
 
 // Embedding provider and model are chosen per collection; the chat LLM is global (see renderChatLlmStatus).
@@ -54,35 +53,16 @@ export function getModelDiscoveryFieldConfig(_kind) {
     };
 }
 
+/** Fills the model field's suggestions (a datalist) with the models of the chosen provider or service. */
 export function syncModelSelect(kind) {
     const config = getModelDiscoveryFieldConfig(kind);
-    if (!config.select || !config.input) return;
-
-    const currentValue = config.input.value.trim();
-    const models = normalizeModelList(config.models);
-
+    if (!config.select) return;
     clearNode(config.select);
-
-    const placeholder = createEl("option");
-    placeholder.value = "";
-    placeholder.textContent = currentValue ? `Current: ${currentValue}` : "Select a model or type manually";
-    config.select.appendChild(placeholder);
-
-    models.forEach((model) => {
+    normalizeModelList(config.models).forEach((model) => {
         const option = createEl("option");
         option.value = model;
-        option.textContent = model;
         config.select.appendChild(option);
     });
-
-    config.select.value = models.includes(currentValue) ? currentValue : "";
-}
-
-export function setModelFromSelect(kind) {
-    const config = getModelDiscoveryFieldConfig(kind);
-    if (!config.input || !config.select) return;
-    config.input.value = config.select.value;
-    syncModelDiscoveryPanel();
 }
 
 export function syncModelDiscoveryPanel() {
@@ -105,33 +85,50 @@ export function syncModelDiscoveryPanel() {
 
     if (elements.modelDiscoverySummary) {
         const defaultText = discovery.defaultProvider
-            ? `Default for new collections: ${discovery.defaultProvider} / ${discovery.defaultModel}.`
+            ? `Default for new collections: ${providerName(discovery.defaultProvider)}, ${discovery.defaultModel}.`
             : "";
         let providerText;
         if (discovery.error) {
             providerText = `Model suggestions could not be loaded (${discovery.error}). You can still type a model name.`;
         } else if (provider === "builtin") {
-            providerText = `builtin: ${discovery.builtinModels.length} built-in model(s), run inside the backend and downloaded on first use.`;
+            providerText = `Built-in: ${discovery.builtinModels.length} model${discovery.builtinModels.length === 1 ? "" : "s"}, run inside the backend and downloaded on first use.`;
         } else if (discovery.services.length === 0) {
             providerText = EXTERNAL_EMBEDDING_SETUP_HINT;
         } else if (!service) {
-            providerText = "openai-compatible: pick an embedding service.";
+            providerText = "External service: pick an embedding service.";
         } else if (!online) {
-            providerText = `openai-compatible: ${service.name} is not reachable${service.error ? ` (${service.error})` : ""}.`;
+            providerText = `${service.name} is not reachable${service.error ? ` (${service.error})` : ""}.`;
         } else {
-            providerText = `openai-compatible: ${service.models.length} model(s) at ${service.name}. Pick an embedding model (chat models fail at indexing).`;
+            providerText = `${service.models.length} model${service.models.length === 1 ? "" : "s"} at ${service.name}. Pick an embedding model (chat models fail at indexing).`;
         }
         elements.modelDiscoverySummary.textContent = `${providerText} ${defaultText}`.trim();
     }
 
     syncExternalProviderOption();
     syncModelSelect("embedding");
+    syncEmbeddingReindexNote();
+}
+
+/** Settings that apply only at the next re-index (shown in the note when an existing collection changes them). */
+const REINDEX_FIELDS = ["sourcePath", "chunkSize", "chunkOverlap", "distanceMetric", "embeddingProvider", "embeddingServiceId", "embeddingModel"];
+
+/** Editing an existing collection: once a setting that applies at the next re-index changes, say which. */
+export function syncEmbeddingReindexNote() {
+    const note = elements.embeddingReindexNote;
+    if (!note) return;
+    const saved = state.editorInitialSnapshot;
+    const current = saved ? readEditorValues() : null;
+    const changed = saved ? REINDEX_FIELDS.filter((key) => current[key] !== saved[key]) : [];
+    note.classList.toggle("hidden", changed.length === 0);
+    note.textContent = changed.length === 0
+        ? ""
+        : `${changed.map(formatValidationFieldLabel).join(", ")}: applies after a re-index; until then searches use the current index.`;
 }
 
 // External embedding services are managed in the "Embedding services" view (or set in .env / config as "server").
-export const EXTERNAL_EMBEDDING_SETUP_HINT = "openai-compatible: no embedding service yet. "
-    + "Add one under Embedding services in the left menu (for example Ollama on this computer at http://host.docker.internal:11434/v1), "
-    + "or set RAG_EMBEDDING_BASE_URL on the server. Then pick it and its model here.";
+export const EXTERNAL_EMBEDDING_SETUP_HINT = "No external embedding service yet. "
+    + "Add one under Embedding services in the left menu, "
+    + "or set an embedding URL in the server settings. Then pick it and its model here.";
 
 /** Disable "openai-compatible" while there is no embedding service, unless the collection already uses it. */
 export function syncExternalProviderOption() {
@@ -208,7 +205,7 @@ export function renderChatLlmStatus() {
     if (!elements.chatLlmStatus) return;
     elements.chatLlmStatus.textContent = state.chatSettings.loaded
         ? describeChatSettings(state.chatSettings.data)
-        : state.chatSettings.error ? "Chat LLM status unavailable." : "Loading GET /v1/admin/chat-settings...";
+        : state.chatSettings.error ? "Chat LLM status unavailable." : "Loading the chat choice...";
 }
 
 export function formatConfigDefault(value) {
@@ -223,7 +220,7 @@ export function setCreateFieldDefault(field, value) {
 
 /**
  * The empty option of the provider and metric selects means "let the server pick its default" and only
- * exists when creating: name the default ("Server default (builtin)"). A saved collection always has a
+ * exists when creating: name the default ("Server default (built-in)"). A saved collection always has a
  * concrete value, so in edit mode the option is hidden.
  */
 export function syncDefaultSelectOptions(isCreateMode, collectionDefaults, modelDefaults) {
@@ -281,7 +278,7 @@ export function syncConfigDefaultsPanel() {
             elements.configDefaultsStatus.className = "rounded-full bg-slate-200 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600";
         }
         if (elements.configDefaultsSummary) {
-            elements.configDefaultsSummary.textContent = "Loading GET /v1/admin/config/defaults...";
+            elements.configDefaultsSummary.textContent = "Loading the server defaults...";
         }
         clearHelpers("Loading server default...");
         return;
@@ -293,7 +290,7 @@ export function syncConfigDefaultsPanel() {
             elements.configDefaultsStatus.className = "rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-700";
         }
         if (elements.configDefaultsSummary) {
-            elements.configDefaultsSummary.textContent = "GET /v1/admin/config/defaults is unavailable right now.";
+            elements.configDefaultsSummary.textContent = "The server defaults could not be loaded right now.";
         }
         clearHelpers();
         return;
@@ -420,9 +417,13 @@ export function normalizeServiceModels(list) {
 export function clearEditorForm() {
     Object.values(EDIT_FIELD_IDS).forEach((id) => {
         const element = document.getElementById(id);
-        if (element) element.value = "";
+        if (element) {
+            element.value = "";
+            delete element.dataset.value;
+        }
     });
     elements.editId.value = "";
+
     const uploadsRadio = document.querySelector('input[name="sourceKind"][value="uploads"]');
     if (uploadsRadio) uploadsRadio.checked = true;
     syncSourceKindFields(null);
@@ -447,11 +448,15 @@ export function setupEditorTab(collection) {
     elements.editDescription.value = fieldValueFromCollection(collection, "description");
     elements.editSourcePath.value = fieldValueFromCollection(collection, "sourcePath");
     elements.editDistanceMetric.value = collection.distanceMetric || "";
+    elements.editDistanceMetric.dataset.value = collection.distanceMetric || "";
     elements.editChunkSize.value = collection.chunkSize ?? "";
     elements.editChunkOverlap.value = collection.chunkOverlap ?? "";
     elements.editRetrievalK.value = collection.retrievalK ?? "";
     elements.editRetrievalDistanceThreshold.value = collection.retrievalDistanceThreshold ?? "";
-    if (elements.editEmbeddingProvider) elements.editEmbeddingProvider.value = collection.embeddingProvider || "";
+    if (elements.editEmbeddingProvider) {
+        elements.editEmbeddingProvider.value = collection.embeddingProvider || "";
+        elements.editEmbeddingProvider.dataset.value = collection.embeddingProvider || "";
+    }
     if (elements.editEmbeddingService) elements.editEmbeddingService.dataset.savedProvider = collection.embeddingProvider || "";
     // An openai-compatible collection without a service id uses "server" (.env / config).
     syncEmbeddingServiceField(collection.embeddingProvider === "openai-compatible" ? collection.embeddingServiceId || "server" : "");
@@ -471,7 +476,8 @@ export function readOptionalInteger(id) {
     const value = document.getElementById(id)?.value.trim() || "";
     if (value === "") return undefined;
     const number = Number(value);
-    return Number.isInteger(number) ? number : NaN;
+    // Not a number: NaN (reported by the form). Whether it must be a whole number is the server's rule.
+    return Number.isFinite(number) ? number : NaN;
 }
 
 export function readOptionalNumber(id) {
@@ -497,30 +503,20 @@ export function readEditorValues() {
     };
 }
 
+/**
+ * Only what the panel must know to build the request: a number field that is not a number, and a folder
+ * path when "Use a folder" is chosen. Every rule (ranges, overlap < chunk size, allowed metrics...) is the
+ * server's: it checks the request (POST /v1/admin/collections/validate) and its issues are shown.
+ */
 export function validateCollectionForm(mode) {
     const values = readEditorValues();
     const errors = [];
-    if (mode === "create" && !values.displayName) errors.push("displayName is required for new collections.");
     if (mode === "create" && getSelectedSourceKind() === "folder" && !values.sourcePath) {
         errors.push("Enter the server folder path (for example data/my-docs), or choose Upload files.");
     }
-    if (mode === "update" && !values.displayName) errors.push("displayName cannot be empty.");
-    if (values.chunkSize !== undefined && (!Number.isInteger(values.chunkSize) || values.chunkSize <= 0)) errors.push("chunkSize must be a positive integer.");
-    if (values.chunkOverlap !== undefined && (!Number.isInteger(values.chunkOverlap) || values.chunkOverlap < 0)) errors.push("chunkOverlap must be a nonnegative integer.");
-    if (
-        values.chunkSize !== undefined &&
-        values.chunkOverlap !== undefined &&
-        !Number.isNaN(values.chunkSize) &&
-        !Number.isNaN(values.chunkOverlap) &&
-        values.chunkOverlap >= values.chunkSize
-    ) {
-        errors.push("chunkOverlap must be less than chunkSize.");
+    for (const field of ["chunkSize", "chunkOverlap", "retrievalK", "retrievalDistanceThreshold"]) {
+        if (Number.isNaN(values[field])) errors.push(`${formatValidationFieldLabel(field)} must be a number.`);
     }
-    if (values.retrievalK !== undefined && (!Number.isInteger(values.retrievalK) || values.retrievalK <= 0)) errors.push("retrievalK must be a positive integer.");
-    if (values.retrievalDistanceThreshold !== undefined && (!Number.isFinite(values.retrievalDistanceThreshold) || values.retrievalDistanceThreshold < 0)) {
-        errors.push("retrievalDistanceThreshold must be a nonnegative number.");
-    }
-    if (values.distanceMetric && !["l2", "cosine", "ip"].includes(values.distanceMetric)) errors.push("distanceMetric must be l2, cosine, or ip.");
     return errors;
 }
 
@@ -601,11 +597,11 @@ export async function saveCollection() {
     const id = elements.editId.value;
     const mode = id ? "update" : "create";
     if (mode === "create" && !canAdminAction("createCollection")) {
-        showToast("Create collection requires operator access.", "error");
+        showToast("Your role cannot create collections.", "error");
         return;
     }
     if (mode === "update" && !canAdminAction("updateCollection")) {
-        showToast("Update collection requires operator access.", "error");
+        showToast("Your role cannot change collections.", "error");
         return;
     }
     const errors = validateCollectionForm(mode);
@@ -637,36 +633,18 @@ export async function saveCollection() {
         const shouldKeepOpen = hasWarnings || hasImpact;
         if (mode === "create") {
             const data = await adminMutationRequest(`${API.admin}/collections`, { method: "POST", body: JSON.stringify(payload) });
-            showToast(`Collection created: ${data?.collection?.id || payload.displayName}`, "success");
+            const createdId = data?.collection?.id;
             await loadCollections();
-            if (shouldKeepOpen) {
-                const createdId = data?.collection?.id;
-                if (createdId) {
-                    const refreshed = await loadAdminCollectionDetail(createdId);
-                    state.selectedCollection = mergeCollectionIntoState(refreshed);
-                    elements.inspectorTitle.textContent = refreshed.displayName || refreshed.id;
-                    clearNode(elements.inspectorStatusBadge);
-                    elements.inspectorStatusBadge.classList.remove("hidden");
-                    elements.inspectorStatusBadge.appendChild(getStatusBadge(refreshed.status));
-                    setInspectorActionsEnabled(true);
-                    setCollectionTabsEnabled(true);
-                    setupEditorTab(refreshed);
-                }
-                renderCollectionValidation(validation, getValidationTitle(mode));
-                if (!payload.sourcePath && createdId) {
-                    switchTab("files");
-                    await loadCollectionFiles();
-                    showToast("Collection created. Add documents in the Documents tab, then re-index.", "info");
-                    return;
-                }
-                showToast(
-                    validation.impact?.reindexRequired
-                        ? "Collection saved. Initial re-index is required before it can be used."
-                        : "Collection saved. Review the validation warnings.",
-                    "info",
-                );
+            if (createdId) {
+                // Open the new collection on its next step: uploading documents, or indexing its folder.
+                await openInspector(createdId, { tab: payload.sourcePath ? "ready" : "files" });
+                if (hasWarnings) renderCollectionValidation(validation, getValidationTitle(mode));
+                showToast(payload.sourcePath
+                    ? "Collection created. Re-index it to make its folder searchable."
+                    : "Collection created. Add documents here, then re-index.", "success");
                 return;
             }
+            showToast("Collection created.", "success");
         } else {
             await adminMutationRequest(adminCollectionUrl(id), { method: "PATCH", body: JSON.stringify(payload) });
             showToast("Collection updated.", "success");
@@ -719,4 +697,11 @@ export function syncSourceKindFields(collection) {
             ? `Documents: uploaded files, stored in ${collection.sourcePath}. Manage them in the Documents tab.`
             : "";
     }
+}
+
+/** A provider value from the API in words ("builtin" -> "Built-in"). */
+export function providerName(provider) {
+    if (provider === "builtin") return "Built-in";
+    if (provider === "openai-compatible") return "External service";
+    return provider || "-";
 }

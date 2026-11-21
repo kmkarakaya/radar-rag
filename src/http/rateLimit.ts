@@ -170,7 +170,7 @@ export function createRateLimitMiddleware(input: {
       statusCode: 429,
       error: "Rate limit exceeded",
       code: "RATE_LIMIT_EXCEEDED",
-      message: `Rate limit exceeded for ${target.operation} on collection ${target.collectionId}.`,
+      message: `Rate limit exceeded for ${target.operation} on collection ${target.collectionId}. Wait and try again (see Retry-After).`,
       context,
       details: {
         operation: target.operation,

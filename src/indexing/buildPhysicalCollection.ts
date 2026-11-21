@@ -87,7 +87,7 @@ export async function buildPhysicalCollection(input: {
       status: "running",
       stage: "preparing_target",
       code: "PHYSICAL_COLLECTION_CREATING",
-      message: "Creating target physical collection in Chroma.",
+      message: "Creating the new index version in the vector store.",
       details: {
         targetPhysicalCollection,
         targetVersion,
@@ -214,7 +214,7 @@ export async function buildPhysicalCollection(input: {
       status: "running",
       stage: "indexing",
       code: "VECTOR_INDEXING_STARTED",
-      message: "Writing chunks into Chroma.",
+      message: "Writing chunks into the vector store.",
       details: {
         chunkCount: indexedChunks.length,
         targetPhysicalCollection,
@@ -262,7 +262,7 @@ export async function buildPhysicalCollection(input: {
       status: "running",
       stage: "verifying",
       code: "READABILITY_CHECK_STARTED",
-      message: "Verifying target physical collection readability.",
+      message: "Checking that the new index version can be read.",
       details: {
         targetPhysicalCollection,
       },
@@ -281,7 +281,7 @@ export async function buildPhysicalCollection(input: {
       status: "running",
       stage: "verifying",
       code: "READABILITY_CHECK_COMPLETED",
-      message: "Target physical collection verified as readable.",
+      message: "The new index version can be read.",
       details: {
         targetPhysicalCollection,
       },

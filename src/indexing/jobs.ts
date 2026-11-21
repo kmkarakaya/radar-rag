@@ -150,7 +150,7 @@ export async function runIndexJob(input: {
         status: "running",
         stage: "preparing_target",
         code: "TARGET_RECORD_CREATED",
-        message: "Target physical collection record created.",
+        message: "New index version registered.",
         details: {
           targetPhysicalCollection: job.targetPhysicalCollection,
           targetVersion,

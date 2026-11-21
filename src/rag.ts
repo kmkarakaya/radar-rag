@@ -396,7 +396,7 @@ export function toChatGenerationError(
 
   switch (classified.kind) {
     case "timeout":
-      return new RagQueryError("MODEL_BACKPRESSURE", "Chat generation timed out or the request was aborted.", 503, details);
+      return new RagQueryError("MODEL_BACKPRESSURE", "Chat generation timed out or the request was aborted. Try again in a moment.", 503, details);
     case "unreachable":
       return new RagQueryError(
         "CHAT_PROVIDER_UNREACHABLE",
@@ -500,7 +500,7 @@ function toEmbeddingError(
   const classified = classifyProviderError(error, apiKey);
   switch (classified.kind) {
     case "timeout":
-      return new RagQueryError("MODEL_BACKPRESSURE", "Query embedding timed out or the request was aborted.", 503, details);
+      return new RagQueryError("MODEL_BACKPRESSURE", "Query embedding timed out or the request was aborted. Try again in a moment.", 503, details);
     case "unreachable":
       return new RagQueryError(
         "EMBEDDING_PROVIDER_UNREACHABLE",
@@ -600,7 +600,7 @@ export async function retrieveSources(
       if (isTimeoutOrAbortError(error)) {
         throw new RagQueryError(
           "MODEL_BACKPRESSURE",
-          "RAG retrieval timed out or the request was aborted.",
+          "RAG retrieval timed out or the request was aborted. Try again in a moment.",
           503,
           embeddingDetails,
         );
@@ -838,7 +838,7 @@ export async function answerQuestion(question: string, options: {
       if (isTimeoutOrAbortError(error)) {
         throw new RagQueryError(
           "MODEL_BACKPRESSURE",
-          "Could not acquire generation lock in time or request aborted.",
+          "Could not acquire generation lock in time or request aborted. Try again in a moment.",
           503,
           {
             embeddingModel: settings.embeddingModel,

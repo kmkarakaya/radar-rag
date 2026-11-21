@@ -1,32 +1,17 @@
 import { adminCollectionPhysicalCollectionsUrl, adminCollectionUrl, adminMutationRequest, apiRequest, collectionReadyUrl, normalizeError } from "../api.js";
 import { canAdminAction } from "../auth.js";
 import { switchView } from "../dashboard.js";
-import { appendChildren, appendText, clearNode, createBadge, createButton, createEl, createMetaItem, formatCount, formatDateTime, getStatusBadge, getStatusColor, isRecord, renderApiErrorContent, setButtonLoading, shortId, showErrorToast, showToast, stringifyForDisplay } from "../dom.js";
+import { confirmDialog } from "../dialog.js";
+import { appendChildren, appendText, clearNode, createBadge, createButton, createEl, createMetaItem, formatCount, formatDateTime, formatValidationFieldLabel, getStatusBadge, getStatusColor, isRecord, renderApiErrorContent, setButtonLoading, shortId, showErrorToast, showToast, stringifyForDisplay } from "../dom.js";
+import { jobRoute, loadJobProgress, watchJob } from "../jobWatch.js";
+import { recordRoute } from "../router.js";
 import { API, elements, state } from "../state.js";
 import { chatServiceName, loadChatSettings } from "./chatSettings.js";
 import { loadAdminCollectionDetail, loadCollections, mergeCollectionIntoState } from "./collections.js";
-import { resetFilesTab } from "./documents.js";
-import { clearEditorForm, embeddingServiceName, hasUnsavedCollectionChanges, hasValidationBlockers, hasValidationWarnings, loadConfigDefaults, loadModelDiscovery, setupEditorTab, validateCollectionOnServer, viaEmbeddingService } from "./editor.js";
+import { loadCollectionFiles, resetFilesTab } from "./documents.js";
+import { clearEditorForm, embeddingServiceName, hasUnsavedCollectionChanges, hasValidationBlockers, hasValidationWarnings, loadConfigDefaults, loadModelDiscovery, providerName, setupEditorTab, validateCollectionOnServer } from "./editor.js";
 import { appendIssueSection } from "./health.js";
 import { loadJobs } from "./jobs.js";
-
-export const VALIDATION_FIELD_LABELS = {
-    displayName: "Display name",
-    description: "Description",
-    sourcePath: "Source path",
-    distanceMetric: "Distance metric",
-    chunkSize: "Chunk size",
-    chunkOverlap: "Chunk overlap",
-    retrievalK: "Retrieval k",
-    retrievalDistanceThreshold: "Retrieval distance threshold",
-    embeddingProvider: "Embedding provider",
-    embeddingModel: "Embedding model",
-    embeddingServiceId: "Embedding service",
-};
-
-export function formatValidationFieldLabel(field) {
-    return VALIDATION_FIELD_LABELS[field] || field;
-}
 
 export const VALIDATION_DEPENDENCY_BLOCKERS = new Set([
     "CHROMA_UNREACHABLE",
@@ -106,7 +91,6 @@ export function clearCollectionIndexStateBanner() {
     }
     clearNode(elements.collectionIndexStateTitle);
     clearNode(elements.collectionIndexStateSummary);
-    clearNode(elements.collectionIndexStateBadge);
     clearNode(elements.collectionIndexStateContent);
 }
 
@@ -126,109 +110,96 @@ export function renderCollectionIndexStateBanner() {
     const isIndexing = hasActiveJob || collection.status === "indexing";
     const changedFields = Array.isArray(indexState?.changedFields) ? indexState.changedFields : [];
 
-    let title = "Immediate effect / synced";
-    let badgeLabel = "SYNCED";
-    let badgeTone = "ok";
-    let summary = indexState?.note || "Saved settings are aligned with the active indexed snapshot.";
-
+    // The box only shows when something needs attention; an up-to-date collection says so in its status badge.
+    let title = null;
+    let tone = "warn";
+    let summary = "";
     if (dependencyDown) {
-        title = "Backend dependency down";
-        badgeLabel = "DEPENDENCY DOWN";
-        badgeTone = "fail";
-        summary = "Chroma or the embedding service is unavailable. Re-index and playground actions should wait until the dependency is healthy.";
+        title = "A service is not available";
+        tone = "fail";
+        summary = "The vector store or the embedding service cannot be reached. Searching and re-indexing wait until it is back.";
     } else if (isIndexing) {
-        title = "Indexing in progress";
-        badgeLabel = "INDEXING";
-        badgeTone = "info";
+        title = "Indexing";
+        tone = "info";
         summary = activeJob
-            ? `Active job ${shortId(activeJob.id)} is ${activeJob.status}.`
-            : "The collection is currently indexing.";
+            ? `Indexing is ${activeJob.status === "queued" ? "queued" : "running"}. Searches use the previous index until it finishes.`
+            : "Indexing is running. Searches use the previous index until it finishes.";
     } else if (!indexState) {
-        title = "Index state unavailable";
-        badgeLabel = "UNKNOWN";
-        badgeTone = "warn";
-        summary = "Backend did not return a persisted index snapshot. Restart the backend after deploying the schema change.";
+        title = "Index state unknown";
+        summary = "The server did not return the index state of this collection.";
     } else if (indexState.status === "no_active_index") {
-        title = "Indexing required";
-        badgeLabel = "INDEXING REQUIRED";
-        badgeTone = "warn";
-        summary = indexState.note || "No active index exists yet. Open details to re-index.";
-    } else if (indexState?.reindexRequired) {
-        title = "Re-index required";
-        badgeLabel = "RE-INDEX REQUIRED";
-        badgeTone = "warn";
-        summary = indexState.note || "Saved settings differ from the active indexed snapshot.";
-    } else if (indexState?.status === "synced") {
-        title = "Immediate effect / synced";
-        badgeLabel = "SYNCED";
-        badgeTone = "ok";
-        summary = indexState.note || "Saved settings are aligned with the active indexed snapshot.";
+        title = "Not indexed yet";
+        summary = indexState.note || "Nothing can be searched until the collection is indexed. Add documents, then re-index.";
+    } else if (indexState.reindexRequired) {
+        title = "Re-index needed";
+        summary = indexState.note || "The saved settings or documents changed since the last index. Searches use the previous index until you re-index.";
     }
 
-    elements.collectionIndexState.classList.remove("hidden");
     clearNode(elements.collectionIndexStateTitle);
-    elements.collectionIndexStateTitle.appendChild(createEl("span", "", title));
     clearNode(elements.collectionIndexStateSummary);
-    elements.collectionIndexStateSummary.appendChild(createEl("span", "", summary));
-    clearNode(elements.collectionIndexStateBadge);
-    elements.collectionIndexStateBadge.appendChild(createBadge(badgeLabel, getStatusColor(badgeTone)));
-
     clearNode(elements.collectionIndexStateContent);
-    const detail = createEl("div", "rounded-lg border border-slate-100 bg-white p-3 text-xs text-slate-700");
-    detail.appendChild(createEl("div", "font-semibold text-slate-800", "Index snapshot"));
-    detail.appendChild(createEl("div", "mt-1 break-all-words text-slate-500", indexState?.note || "Ground truth is provided by the backend index state."));
+    if (!title) {
+        elements.collectionIndexState.classList.add("hidden");
+        return;
+    }
+    const toneClasses = {
+        fail: "border-rose-200 bg-rose-50 text-rose-900",
+        info: "border-sky-200 bg-sky-50 text-sky-900",
+        warn: "border-amber-200 bg-amber-50 text-amber-900",
+    };
+    elements.collectionIndexState.className = `mb-6 rounded-lg border p-4 ${toneClasses[tone]}`;
+    elements.collectionIndexStateTitle.textContent = title;
+    elements.collectionIndexStateSummary.textContent = summary;
 
-    const snapshotGrid = createEl("div", "mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2");
-    snapshotGrid.appendChild(createMetaItem("Saved source path", indexState?.desiredSnapshot?.sourcePath ?? collection.sourcePath));
-    snapshotGrid.appendChild(createMetaItem("Saved chunk size", indexState?.desiredSnapshot?.chunkSize ?? collection.chunkSize));
-    snapshotGrid.appendChild(createMetaItem("Saved chunk overlap", indexState?.desiredSnapshot?.chunkOverlap ?? collection.chunkOverlap));
-    snapshotGrid.appendChild(createMetaItem(
-        "Saved embedding",
-        `${indexState?.desiredSnapshot?.embeddingProvider ?? collection.embeddingProvider ?? "-"} / ${indexState?.desiredSnapshot?.embeddingModel ?? collection.embeddingModel}`
-            + viaEmbeddingService(indexState?.desiredSnapshot?.embeddingServiceId),
-    ));
-    snapshotGrid.appendChild(createMetaItem("Saved distance metric", indexState?.desiredSnapshot?.distanceMetric ?? collection.distanceMetric));
-
-    detail.appendChild(snapshotGrid);
-
-    if (indexState?.activeSnapshot) {
-        const activeSection = createEl("div", "mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs text-slate-700");
-        activeSection.appendChild(createEl("div", "font-semibold text-slate-800", "Active indexed snapshot"));
-        const activeGrid = createEl("div", "mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2");
-        activeGrid.appendChild(createMetaItem("Active source path", indexState.activeSnapshot.sourcePath));
-        activeGrid.appendChild(createMetaItem("Active chunk size", indexState.activeSnapshot.chunkSize));
-        activeGrid.appendChild(createMetaItem("Active chunk overlap", indexState.activeSnapshot.chunkOverlap));
-        activeGrid.appendChild(createMetaItem("Active embedding", `${indexState.activeSnapshot.embeddingProvider} / ${indexState.activeSnapshot.embeddingModel}`
-            + viaEmbeddingService(indexState.activeSnapshot.embeddingServiceId)));
-        activeGrid.appendChild(createMetaItem("Active distance metric", indexState.activeSnapshot.distanceMetric));
-        activeSection.appendChild(activeGrid);
-        detail.appendChild(activeSection);
+    if (isIndexing) {
+        elements.collectionIndexStateContent.appendChild(createJobProgress(state.activeJobProgress));
     }
 
-    if (changedFields.length > 0) {
-        const fieldSection = createEl("div", "mt-3 rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800");
-        fieldSection.appendChild(createEl("div", "font-semibold", indexState?.status === "no_active_index" ? "Pending index fields" : "Fields requiring re-index"));
-        const fieldWrap = createEl("div", "mt-2 flex flex-wrap gap-2");
+    // Before the first index every field is "pending"; listing them all says nothing, so only after one.
+    if (changedFields.length > 0 && indexState?.status === "reindex_required") {
+        const list = createEl("ul", "space-y-1 text-xs");
         changedFields.forEach((field) => {
-            fieldWrap.appendChild(createBadge(formatValidationFieldLabel(field), getStatusColor("warn")));
+            const from = describeIndexedValue(field, indexState.activeSnapshot?.[field]);
+            const to = describeIndexedValue(field, indexState.desiredSnapshot?.[field] ?? collection[field]);
+            const item = createEl("li", "");
+            item.appendChild(createEl("span", "font-semibold", `${formatValidationFieldLabel(field)}: `));
+            item.appendChild(createEl("span", "", `${from} \u2192 ${to}`));
+            list.appendChild(item);
         });
-        fieldSection.appendChild(fieldWrap);
-        detail.appendChild(fieldSection);
+        elements.collectionIndexStateContent.appendChild(list);
     }
 
     if (dependencyDown && blockers.length > 0) {
-        const blockerSection = createEl("div", "mt-3 rounded-lg border border-rose-100 bg-rose-50 p-3 text-xs text-rose-800");
-        blockerSection.appendChild(createEl("div", "font-semibold", "Dependency blockers"));
-        const list = createEl("ul", "mt-2 list-disc space-y-1 pl-4");
+        const list = createEl("ul", "list-disc space-y-1 pl-4 text-xs");
         blockers.forEach((issue) => {
-            const row = createEl("li", "", isRecord(issue) ? `${issue.code || "BLOCKER"}: ${issue.message || stringifyForDisplay(issue)}` : stringifyForDisplay(issue));
-            list.appendChild(row);
+            list.appendChild(createEl("li", "", isRecord(issue) ? issue.message || stringifyForDisplay(issue) : stringifyForDisplay(issue)));
         });
-        blockerSection.appendChild(list);
-        detail.appendChild(blockerSection);
+        elements.collectionIndexStateContent.appendChild(list);
     }
+}
 
-    elements.collectionIndexStateContent.appendChild(detail);
+/** A progress bar for the running job (phase of the build and the last step it reported). */
+export function createJobProgress(progress) {
+    const box = createEl("div", "rounded-lg border border-sky-100 bg-sky-50 p-3 text-xs text-sky-900");
+    const percent = progress?.fraction === null || progress?.fraction === undefined ? null : Math.round(progress.fraction * 100);
+    const bar = createEl("div", "h-2 w-full overflow-hidden rounded-full bg-sky-100");
+    bar.setAttribute("role", "progressbar");
+    bar.setAttribute("aria-label", "Indexing progress");
+    bar.setAttribute("aria-valuemin", "0");
+    bar.setAttribute("aria-valuemax", "100");
+    const fill = createEl("div", `h-full rounded-full bg-sky-500 transition-all ${percent === null ? "w-1/4 animate-pulse" : ""}`);
+    if (percent !== null) {
+        bar.setAttribute("aria-valuenow", String(percent));
+        fill.style.width = `${Math.max(percent, 3)}%`;
+    }
+    bar.appendChild(fill);
+    box.appendChild(bar);
+    const step = progress?.phase && progress?.phaseCount ? `Step ${progress.phase} of ${progress.phaseCount}: ` : "";
+    box.appendChild(createEl("div", "mt-2", `${step}${progress?.message || "Starting..."}${progress?.counts ? ` (${progress.counts})` : ""}`));
+    // The first index with the built-in model downloads it: say so, from the server's readiness warning.
+    const download = findReadinessIssue("EMBEDDING_MODEL_NOT_DOWNLOADED");
+    if (download) box.appendChild(createEl("div", "mt-1 text-sky-800", download.message));
+    return box;
 }
 
 export function renderCollectionValidation(validation, title) {
@@ -262,7 +233,7 @@ export function renderCollectionValidation(validation, title) {
     const hasWarnings = warnings.length > 0;
     const badgeState = dependencyDown ? "fail" : hasBlockers ? "fail" : hasWarnings ? "warn" : hasImpact && impact?.reindexRequired ? "warn" : hasImpact ? "info" : "ok";
     const badgeLabel = dependencyDown
-        ? "DEPENDENCY DOWN"
+        ? "UNAVAILABLE"
         : hasBlockers
             ? "BLOCKED"
             : hasWarnings
@@ -275,7 +246,7 @@ export function renderCollectionValidation(validation, title) {
     elements.collectionValidationBadge.appendChild(createBadge(badgeLabel, getStatusColor(badgeState)));
 
     const summaryText = dependencyDown
-        ? "A backend dependency is unavailable. Fix it before saving or re-indexing."
+        ? "A service the server needs is not available. Saving and re-indexing wait until it is back."
         : hasBlockers
             ? "Blocking issues were found. Fix them before saving or re-indexing."
         : hasWarnings
@@ -287,8 +258,8 @@ export function renderCollectionValidation(validation, title) {
 
     if (dependencyDown) {
         const banner = createEl("div", "mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800");
-        banner.appendChild(createEl("div", "font-semibold", "Backend dependency down"));
-        banner.appendChild(createEl("div", "mt-1 break-all-words", "Chroma or the embedding service is not reachable. Validation can still report local issues, but backend-dependent actions should wait until the dependency is healthy."));
+        banner.appendChild(createEl("div", "font-semibold", "A service is not available"));
+        banner.appendChild(createEl("div", "mt-1 break-all-words", "The vector store or the embedding service cannot be reached. Checks that need them wait until they are back."));
         elements.collectionValidationContent.appendChild(banner);
     }
     if (recommendedActions.length > 0) {
@@ -306,13 +277,21 @@ export function renderCollectionValidation(validation, title) {
 }
 
 export function openPanel() {
+    if (!state.inspectorOpen) state.inspectorReturnFocus = document.activeElement;
     state.inspectorOpen = true;
+    recordRoute();
+    elements.inspectorPanel.inert = false;
+    elements.inspectorPanel.removeAttribute("aria-hidden");
+    // Focus moves into the panel unless something in it already has it (the create form focuses its name).
+    requestAnimationFrame(() => {
+        if (!elements.inspectorPanel.contains(document.activeElement)) elements.btnCloseInspector?.focus();
+    });
     elements.inspectorOverlay.classList.remove("hidden");
     requestAnimationFrame(() => elements.inspectorOverlay.classList.add("opacity-100"));
     elements.inspectorPanel.classList.remove("translate-x-full");
 }
 
-export async function openInspector(id) {
+export async function openInspector(id, options = {}) {
     if (id === null) {
         state.selectedCollection = null;
         state.editorInitialSnapshot = null;
@@ -322,16 +301,22 @@ export async function openInspector(id) {
         clearCollectionValidation();
         clearEditorForm();
         resetFilesTab();
-        elements.inspectorTitle.textContent = "Create Collection";
+        elements.inspectorTitle.textContent = "New collection";
         clearNode(elements.inspectorStatusBadge);
         elements.inspectorStatusBadge.classList.add("hidden");
         elements.btnViewHistory?.classList.add("hidden");
         setInspectorActionsEnabled(false, "Save the collection before using this action.");
         setCollectionTabsEnabled(false);
+        // Creating: only the form, no tabs or collection actions yet.
+        elements.inspectorTabs?.classList.add("hidden");
+        elements.inspectorFooter?.classList.add("hidden");
+        elements.btnSave.textContent = "Create collection";
         switchTab("editor");
-        await Promise.all([loadConfigDefaults(), loadModelDiscovery(), loadChatSettings()]);
-        syncSaveButtonAccess();
         openPanel();
+        syncSaveButtonAccess();
+        elements.editDisplayName?.focus();
+        // The form is usable at once; defaults and model suggestions fill in when they arrive.
+        Promise.all([loadConfigDefaults(), loadModelDiscovery(), loadChatSettings()]).then(() => syncSaveButtonAccess());
         return;
     }
 
@@ -343,9 +328,12 @@ export async function openInspector(id) {
 
     state.selectedCollection = collection;
     state.editorInitialSnapshot = null;
+    elements.inspectorTabs?.classList.remove("hidden");
+    elements.inspectorFooter?.classList.remove("hidden");
+    elements.btnSave.textContent = "Save changes";
     resetFilesTab();
     resetReadinessAndPlayground("Readiness has not been loaded yet.");
-    resetPhysicalCollectionsSection({ message: "Loading physical collection lifecycle..." });
+    resetPhysicalCollectionsSection({ message: "Loading the index versions..." });
     renderCollectionIndexStateBanner();
     clearCollectionValidation();
     elements.inspectorTitle.textContent = collection.displayName || collection.id;
@@ -356,8 +344,11 @@ export async function openInspector(id) {
     setInspectorActionsEnabled(true);
     setCollectionTabsEnabled(true);
     setupEditorTab(collection);
-    switchTab("ready");
+    // Switch before opening, so the panel records one history entry for the tab it opens on.
+    const initialTab = options.tab && options.tab !== "ready" ? options.tab : "ready";
+    switchTab(initialTab);
     openPanel();
+    if (initialTab !== "ready") activateTab(initialTab);
     state.isLoading.collectionDetail = true;
     setButtonLoading(elements.btnSave, true, "Loading...");
     try {
@@ -381,6 +372,13 @@ export async function openInspector(id) {
 
 export function closeInspector() {
     state.inspectorOpen = false;
+    recordRoute();
+    // Closed: out of the tab order and hidden from assistive tech; focus goes back where it was.
+    elements.inspectorPanel.inert = true;
+    elements.inspectorPanel.setAttribute("aria-hidden", "true");
+    const returnTo = state.inspectorReturnFocus;
+    state.inspectorReturnFocus = null;
+    if (returnTo instanceof HTMLElement && document.contains(returnTo)) returnTo.focus();
     elements.inspectorPanel.classList.add("translate-x-full");
     elements.inspectorOverlay.classList.remove("opacity-100");
     clearCollectionIndexStateBanner();
@@ -391,11 +389,40 @@ export function closeInspector() {
 }
 
 export function handleOverlayClick(event) {
-    if (event.target === elements.inspectorOverlay) closeInspector();
+    if (event.target === elements.inspectorOverlay) void requestCloseInspector();
+}
+
+/** Closes the inspector the user asked to close; asks first when the settings form has unsaved changes. */
+export async function requestCloseInspector() {
+    if (!state.inspectorOpen) return true;
+    const dirty = state.selectedCollection ? hasUnsavedCollectionChanges() : Boolean(elements.editDisplayName?.value.trim());
+    if (dirty) {
+        const discard = await confirmDialog({
+            title: "Discard your changes?",
+            message: "The settings you changed have not been saved.",
+            confirmLabel: "Discard changes",
+            cancelLabel: "Keep editing",
+            danger: true,
+        });
+        if (!discard) return false;
+    }
+    closeInspector();
+    return true;
+}
+
+/** Switches to a tab and loads what it shows. */
+export function activateTab(tabName) {
+    const button = [...elements.tabBtns].find((item) => item.dataset.tab === tabName);
+    if (!button || button.disabled) return;
+    switchTab(tabName);
+    if (tabName === "ready" && state.selectedCollection) updateReadinessTab();
+    if (tabName === "files" && state.selectedCollection) loadCollectionFiles();
+    if (tabName === "playground") updatePlaygroundCapabilityState();
 }
 
 export function switchTab(tabName) {
     state.activeTab = tabName;
+    if (state.inspectorOpen) recordRoute();
     elements.tabBtns.forEach((button) => {
         const active = button.dataset.tab === tabName;
         button.classList.toggle("active", active);
@@ -403,6 +430,8 @@ export function switchTab(tabName) {
         button.classList.toggle("text-indigo-600", active);
         button.classList.toggle("border-transparent", !active);
         button.classList.toggle("text-slate-500", !active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+        button.tabIndex = active ? 0 : -1;
     });
 
     elements.tabContents.forEach((content) => {
@@ -422,10 +451,18 @@ export function setCollectionTabsEnabled(enabled) {
 
 export function setInspectorActionsEnabled(enabled, reason = "") {
     const actionStates = [
-        [elements.btnReindex, enabled && canAdminAction("reindexCollection"), "Re-index requires operator access."],
-        [elements.btnDeleteCol, enabled && canAdminAction("deleteCollection"), "Delete requires admin access."],
+        [elements.btnReindex, enabled && canAdminAction("reindexCollection"), "Your role cannot re-index collections."],
+        [elements.btnDeleteCol, enabled && canAdminAction("deleteCollection"), "Your role cannot delete collections."],
         [elements.btnViewHistory, enabled, reason],
     ];
+    // Say in words why actions are off for this role (a tooltip alone is not seen on keyboard or touch).
+    const roleLimits = [];
+    if (enabled && !canAdminAction("reindexCollection")) roleLimits.push("re-index");
+    if (enabled && !canAdminAction("deleteCollection")) roleLimits.push("delete");
+    if (elements.inspectorRoleNote) {
+        elements.inspectorRoleNote.textContent = roleLimits.length > 0 ? `Your role cannot ${roleLimits.join(" or ")} this collection.` : "";
+        elements.inspectorRoleNote.classList.toggle("hidden", roleLimits.length === 0);
+    }
     actionStates.forEach(([button, isEnabled, fallbackReason]) => {
         if (!button) return;
         button.disabled = !isEnabled;
@@ -443,10 +480,14 @@ export function syncSaveButtonAccess() {
     const mode = elements.editId?.value ? "update" : "create";
     const capability = mode === "create" ? "createCollection" : "updateCollection";
     const allowed = canAdminAction(capability);
+    // A role that cannot change the settings sees them read-only.
+    if (elements.editFieldset) elements.editFieldset.disabled = !allowed;
+    elements.editReadonlyNote?.classList.toggle("hidden", allowed);
+    elements.btnSave.classList.toggle("hidden", !allowed);
     elements.btnSave.disabled = !allowed;
     if (!allowed) {
         elements.btnSave.title = state.auth.enabled
-            ? `${mode === "create" ? "Create" : "Update"} collection requires operator access.`
+            ? `Your role cannot ${mode === "create" ? "create" : "change"} collections.`
             : "";
     } else {
         elements.btnSave.removeAttribute("title");
@@ -455,7 +496,7 @@ export function syncSaveButtonAccess() {
 
 export function resetPlaygroundResult(message = "Results will appear here...") {
     clearNode(elements.pgResult);
-    elements.pgResult.appendChild(createEl("span", "text-slate-400 italic", message));
+    elements.pgResult.appendChild(createEl("span", "text-slate-500 italic", message));
 }
 
 export function clearReadinessRefreshNotice() {
@@ -482,7 +523,7 @@ export function renderPhysicalCollectionsPlaceholder(message) {
     elements.physicalCollectionsList.appendChild(createEl("div", "rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500", message));
 }
 
-export function resetPhysicalCollectionsSection({ hide = false, message = "Physical collection lifecycle has not been loaded yet." } = {}) {
+export function resetPhysicalCollectionsSection({ hide = false, message = "The index versions have not been loaded yet." } = {}) {
     state.selectedPhysicalCollections = null;
     state.selectedPhysicalCollectionsError = null;
     clearNode(elements.physicalCollectionsSummary);
@@ -558,7 +599,7 @@ export function createPhysicalCollectionCard(record) {
 
     const hnswSpace = record?.chromaConfiguration?.hnsw?.space;
     if (hnswSpace !== undefined) {
-        meta.appendChild(createMetaItem("HNSW Space", hnswSpace));
+        meta.appendChild(createMetaItem("Distance metric", hnswSpace));
     }
 
     card.appendChild(meta);
@@ -597,7 +638,7 @@ export function renderPhysicalCollectionsData(records) {
     elements.physicalCollectionsActions.appendChild(createEl("span", "text-xs text-slate-500", "Health view shows aggregate cleanup backlog and oldest due delete time."));
 
     if (records.length === 0) {
-        renderPhysicalCollectionsPlaceholder("No physical collection lifecycle records found for this collection.");
+        renderPhysicalCollectionsPlaceholder("No index versions yet.");
         return;
     }
 
@@ -611,8 +652,8 @@ export function renderReadinessIssueList(listElement, items) {
     items.forEach((item) => {
         const row = createEl("li", "list-none rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700");
         if (isRecord(item)) {
-            row.appendChild(createEl("div", "font-semibold text-slate-800", item.code || item.name || "Issue"));
-            row.appendChild(createEl("div", "mt-1 break-all-words", item.message || stringifyForDisplay(item)));
+            if (item.code) row.title = item.code;
+            row.appendChild(createEl("div", "font-semibold break-all-words text-slate-800", item.message || item.name || stringifyForDisplay(item)));
             if (item.recommendedAction) {
                 row.appendChild(createEl("div", "mt-1 break-all-words text-slate-500", item.recommendedAction));
             }
@@ -636,9 +677,18 @@ export async function loadPhysicalCollections(collectionId) {
 }
 
 /** `quiet` (background refresh): no loading notices, and nothing is redrawn when the data did not change. */
+let readinessRerun = null;
+
 export async function updateReadinessTab({ quiet = false } = {}) {
-    if (!state.selectedCollection || state.isLoading.readiness || state.isLoading.physicalCollections) return;
+    if (!state.selectedCollection) return;
+    // A request while one is running is not dropped: it runs right after (a user request wins over a quiet one).
+    if (state.isLoading.readiness || state.isLoading.physicalCollections) {
+        readinessRerun = { quiet: Boolean(readinessRerun ? readinessRerun.quiet && quiet : quiet) };
+        return;
+    }
     const collectionId = state.selectedCollection.id;
+    const previousBanner = JSON.stringify([state.selectedCollection, state.selectedReadiness, state.activeJobProgress]);
+    const previousActiveJobId = state.selectedReadiness?.activeJob?.id ?? null;
     const hasSnapshot = Boolean(state.selectedReadiness);
     const hasPhysicalSnapshot = Array.isArray(state.selectedPhysicalCollections);
     const previousReadiness = JSON.stringify(state.selectedReadiness);
@@ -653,7 +703,7 @@ export async function updateReadinessTab({ quiet = false } = {}) {
         elements.readinessStatusGrid.appendChild(createEl("div", "rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500", "Loading readiness..."));
     }
     if (!hasPhysicalSnapshot) {
-        renderPhysicalCollectionsPlaceholder("Loading physical collection lifecycle...");
+        renderPhysicalCollectionsPlaceholder("Loading the index versions...");
     }
     if (!quiet || !hasSnapshot) updatePlaygroundCapabilityState(hasSnapshot ? "Refreshing readiness..." : "Readiness is loading.");
 
@@ -669,14 +719,26 @@ export async function updateReadinessTab({ quiet = false } = {}) {
 
         if (readinessResult.status === "fulfilled") {
             state.selectedReadiness = readinessResult.value;
+            const activeJob = readinessResult.value?.activeJob;
+            if (activeJob && (activeJob.status === "queued" || activeJob.status === "running")) {
+                watchJob({ ...activeJob, collectionId }, state.selectedCollection?.displayName);
+                state.activeJobProgress = await loadJobProgress(activeJob.id);
+            } else {
+                state.activeJobProgress = null;
+            }
             if (!quiet || JSON.stringify(readinessResult.value) !== previousReadiness) renderReadinessData(readinessResult.value);
             else updatePlaygroundCapabilityState();
             clearReadinessRefreshNotice();
+            // Readiness has the status and the running job but not the index state: when those change
+            // (a job finished, a status moved), reload the collection so its status box and badge are current.
+            const statusChanged = readinessResult.value?.status && readinessResult.value.status !== state.selectedCollection.status;
+            const jobEnded = previousActiveJobId && readinessResult.value?.activeJob?.id !== previousActiveJobId;
+            if (statusChanged || jobEnded) await refreshSelectedCollection(collectionId);
         } else {
             const error = readinessResult.reason;
             if (!hasSnapshot) {
                 state.selectedReadiness = null;
-                renderApiErrorContent(elements.readinessStatusGrid, error, "Failed to load readiness");
+                renderApiErrorContent(elements.readinessStatusGrid, error, "Could not load readiness", { onRetry: () => updateReadinessTab() });
                 clearNode(elements.blockerList);
                 elements.readinessBlockers.classList.add("hidden");
                 clearNode(elements.warningList);
@@ -700,13 +762,38 @@ export async function updateReadinessTab({ quiet = false } = {}) {
                 elements.physicalCollectionsSection.classList.remove("hidden");
             }
             clearNode(elements.physicalCollectionsSummary);
-            renderApiErrorContent(elements.physicalCollectionsList, physicalCollectionsResult.reason, "Failed to load physical collection lifecycle");
+            renderApiErrorContent(elements.physicalCollectionsList, physicalCollectionsResult.reason, "Could not load the index versions");
         }
     } finally {
         state.isLoading.readiness = false;
         state.isLoading.physicalCollections = false;
-        renderCollectionIndexStateBanner();
+        const bannerChanged = JSON.stringify([state.selectedCollection, state.selectedReadiness, state.activeJobProgress]) !== previousBanner;
+        if (!quiet || bannerChanged) renderCollectionIndexStateBanner();
+        if (readinessRerun) {
+            const next = readinessRerun;
+            readinessRerun = null;
+            void updateReadinessTab(next);
+        }
     }
+}
+
+/** Reloads the open collection (GET /v1/admin/collections/:id) and redraws its badge and status box. */
+export async function refreshSelectedCollection(collectionId) {
+    try {
+        const detail = await loadAdminCollectionDetail(collectionId);
+        if (state.selectedCollection?.id !== collectionId) return;
+        mergeCollectionIntoState(detail);
+        syncInspectorStatusBadge();
+    } catch (error) {
+        console.warn("Could not reload the collection", error);
+    }
+}
+
+/** The status badge next to the open collection's name. */
+export function syncInspectorStatusBadge() {
+    if (!state.selectedCollection || !elements.inspectorStatusBadge) return;
+    clearNode(elements.inspectorStatusBadge);
+    elements.inspectorStatusBadge.appendChild(getStatusBadge(state.selectedCollection.status));
 }
 
 export function createReadinessRow(label, value, ok) {
@@ -723,12 +810,12 @@ export function renderReadinessData(readiness) {
     const capabilities = readiness.capabilities || {};
     const rows = [
         createReadinessRow("Collection status", readiness.status),
-        createReadinessRow("Active physical collection", readiness.hasActivePhysicalCollection, Boolean(readiness.hasActivePhysicalCollection)),
+        createReadinessRow("Active index", readiness.hasActivePhysicalCollection, Boolean(readiness.hasActivePhysicalCollection)),
         createReadinessRow("Active version", readiness.activeVersion || "-"),
-        createReadinessRow("Chroma readable", readiness.chromaReadable, Boolean(readiness.chromaReadable)),
-        createReadinessRow("Chroma count", formatCount(readiness.chromaCount)),
+        createReadinessRow("Vector store readable", readiness.chromaReadable, Boolean(readiness.chromaReadable)),
+        createReadinessRow("Chunks in the vector store", formatCount(readiness.chromaCount)),
         createReadinessRow(
-            `Embedding: ${availability.embeddingProvider || "-"} / ${availability.embeddingModel || "-"}`
+            `Embedding: ${providerName(availability.embeddingProvider)}, ${availability.embeddingModel || "-"}`
                 + (availability.embeddingServiceId ? ` via ${embeddingServiceName(availability.embeddingServiceId)}` : ""),
             availability.embeddingModelAvailable,
             Boolean(availability.embeddingModelAvailable),
@@ -749,7 +836,7 @@ export function renderReadinessData(readiness) {
 
     if (readiness.activeJob) {
         const active = createEl("div", "rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800");
-        appendText(active, `Active job: ${readiness.activeJob.id} (${readiness.activeJob.status})`);
+        appendText(active, `Indexing: job ${shortId(readiness.activeJob.id)} is ${readiness.activeJob.status}.`);
         elements.readinessStatusGrid.appendChild(active);
     }
 
@@ -784,13 +871,15 @@ export function getCapabilityState(mode) {
         const issues = [...(state.selectedReadiness.blockers || []), ...(state.selectedReadiness.warnings || [])];
         const chatIssue = issues.find((issue) => typeof issue?.code === "string" && issue.code.startsWith("CHAT_"));
         if (chatIssue?.code === "CHAT_NOT_CONFIGURED") {
-            return { enabled, reason: "Query is disabled: no chat LLM is configured (retrieve-only). Use Retrieve, or set one with npm run onboard." };
+            return { enabled, reason: "Query is off: no chat LLM is chosen. Use Retrieve, or choose one under Chat services." };
         }
         if (chatIssue?.message) return { enabled, reason: chatIssue.message };
     }
+    // The server's own reason (first blocker), else a general one.
+    const blocker = (state.selectedReadiness.blockers || []).find((issue) => typeof issue?.message === "string" && issue.message);
     return {
         enabled,
-        reason: `${mode === "query" ? "Query" : "Retrieve"} is not available for this collection.`,
+        reason: blocker?.message || `${mode === "query" ? "Query" : "Retrieve"} is not available for this collection.`,
     };
 }
 
@@ -804,6 +893,16 @@ export function updatePlaygroundCapabilityState(fallbackReason) {
         else button.title = fallbackReason || capability.reason;
     });
 
+    // Why a mode is off, in words under the mode buttons.
+    if (elements.pgModeNote) {
+        const reasons = elements.pgModeBtns.length
+            ? [...elements.pgModeBtns].map((button) => getCapabilityState(button.dataset.mode)).filter((capability) => !capability.enabled).map((capability) => fallbackReason || capability.reason)
+            : [];
+        const unique = [...new Set(reasons.filter(Boolean))];
+        elements.pgModeNote.textContent = unique.join(" ");
+        elements.pgModeNote.classList.toggle("hidden", unique.length === 0);
+    }
+
     const current = getCapabilityState(state.playgroundMode);
     elements.btnPgRun.disabled = !current.enabled;
     elements.btnPgRun.classList.toggle("opacity-50", !current.enabled);
@@ -815,7 +914,7 @@ export function updatePlaygroundCapabilityState(fallbackReason) {
 export async function reindexCollection() {
     if (!state.selectedCollection) return;
     if (!canAdminAction("reindexCollection")) {
-        showToast("Re-index requires operator access.", "error");
+        showToast("Your role cannot re-index collections.", "error");
         return;
     }
     if (hasUnsavedCollectionChanges()) {
@@ -839,12 +938,19 @@ export async function reindexCollection() {
         }
 
         const data = await adminMutationRequest(`${API.admin}/collections/${state.selectedCollection.id}/reindex`, { method: "POST" });
-        showToast(`Re-indexing started: ${shortId(data?.job?.id || "")}`, "success");
+        watchJob(data?.job, state.selectedCollection.displayName);
+        showToast("Re-indexing started. You can keep working; a message appears when it finishes.", "success", data?.job?.id
+            ? { action: { label: "View progress", onClick: () => { location.hash = jobRoute(data.job.id); } } }
+            : {});
         await Promise.all([loadCollections(), loadJobs(), updateReadinessTab()]);
     } catch (error) {
         const normalized = normalizeError(error);
         if (normalized.code === "COLLECTION_INDEX_ALREADY_RUNNING") {
-            showToast("A re-index job is already running for this collection. Refreshing readiness and jobs.", "error", { code: normalized.code });
+            const runningJobId = normalized.details?.jobId;
+            if (runningJobId) watchJob({ id: runningJobId, status: normalized.details?.status, collectionId: state.selectedCollection?.id }, state.selectedCollection?.displayName);
+            showToast(normalized.message, "info", runningJobId
+                ? { action: { label: "View job", onClick: () => { location.hash = jobRoute(runningJobId); } } }
+                : {});
             await Promise.allSettled([updateReadinessTab(), loadJobs()]);
         } else {
             showErrorToast(error, "Re-index failed");
@@ -857,13 +963,21 @@ export async function reindexCollection() {
 export async function deleteCollection() {
     if (!state.selectedCollection) return;
     if (!canAdminAction("deleteCollection")) {
-        showToast("Delete collection requires admin access.", "error");
+        showToast("Your role cannot delete collections.", "error");
         return;
     }
     const deleteNote = state.selectedCollection.sourceKind === "uploads"
         ? "Its uploaded documents are deleted too."
         : "This is a soft delete; the files in its folder are not touched.";
-    if (!confirm(`Delete collection "${state.selectedCollection.displayName || state.selectedCollection.id}"? ${deleteNote}`)) return;
+    const name = state.selectedCollection.displayName || state.selectedCollection.id;
+    const confirmed = await confirmDialog({
+        title: `Delete "${name}"?`,
+        message: `${deleteNote} This cannot be undone from the panel.`,
+        confirmLabel: "Delete collection",
+        danger: true,
+        requireText: name,
+    });
+    if (!confirmed) return;
 
     try {
         setButtonLoading(elements.btnDeleteCol, true, "Deleting...");
@@ -876,4 +990,25 @@ export async function deleteCollection() {
     } finally {
         setButtonLoading(elements.btnDeleteCol, false);
     }
+}
+
+/** A readiness issue with this code from the open collection or the system readiness, if the server reported one. */
+export function findReadinessIssue(code) {
+    const lists = [
+        state.selectedReadiness?.warnings, state.selectedReadiness?.blockers,
+        state.readinessDetails?.warnings, state.readiness?.warnings,
+    ];
+    for (const list of lists) {
+        const issue = Array.isArray(list) ? list.find((item) => item?.code === code) : null;
+        if (issue) return issue;
+    }
+    return null;
+}
+
+/** A setting's value in words, for "Chunk size: 500 -> 300" (providers and services by name). */
+export function describeIndexedValue(field, value) {
+    if (value === undefined || value === null || value === "") return field === "embeddingServiceId" ? "server default" : "-";
+    if (field === "embeddingProvider") return providerName(value);
+    if (field === "embeddingServiceId") return embeddingServiceName(value);
+    return String(value);
 }

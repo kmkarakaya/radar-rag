@@ -221,7 +221,7 @@ Public collection list and detail responses use a sanitized DTO:
       "embeddingModel": "onnx-community/embeddinggemma-2-ONNX"
     },
     "changedFields": [],
-    "note": "Saved settings are aligned with the active indexed snapshot."
+    "note": "The index matches the saved settings."
   },
   "readyUrl": "/v1/rag/collections/col_123/ready",
   "queryUrl": "/v1/rag/collections/col_123/query",
@@ -277,7 +277,7 @@ Example response:
           "embeddingModel": "onnx-community/embeddinggemma-2-ONNX"
         },
         "changedFields": [],
-        "note": "Saved settings are aligned with the active indexed snapshot."
+        "note": "The index matches the saved settings."
       },
       "readyUrl": "/v1/rag/collections/col_123/ready",
       "queryUrl": "/v1/rag/collections/col_123/query",

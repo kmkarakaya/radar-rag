@@ -137,7 +137,7 @@ describe("admin panel static contract", () => {
     assert.ok(html.includes('id="authLoginButton"'));
     assert.ok(html.includes('id="authLogoutButton"'));
     assert.ok(html.includes('id="authSessionSummary"'));
-    assert.ok(html.includes('id="authSessionRole"'));
+    assert.ok(html.includes('id="authBadge"'), "the role shows in the header badge");
     assert.ok(html.includes('id="authSessionTenant"'));
     assert.ok(html.includes('id="authSessionExpiry"'));
     assert.ok(js.includes("function adminAuthSessionUrl()"));
@@ -161,10 +161,11 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("function getCollectionCardStatusPresentation(status, indexState = null)"));
     assert.ok(js.includes("function getCollectionCardStatusBadge(status, indexState = null)"));
     assert.ok(js.includes("function getCollectionCardStatusNote(status, indexState = null)"));
-    assert.ok(js.includes("Indexing required"));
-    assert.ok(js.includes("Indexing in progress"));
-    assert.ok(js.includes("No active index yet. Open details to re-index."));
-    assert.ok(js.includes("Open details to inspect the latest error."));
+    // Card statuses in plain words.
+    assert.ok(js.includes('label: "Not indexed yet"'));
+    assert.ok(js.includes('label: "Re-index needed"'));
+    assert.ok(js.includes("Add documents, then re-index to make it searchable."));
+    assert.ok(js.includes("Open it to see the error."));
     assert.ok(js.includes("getCollectionCardStatusBadge(collection.status, collection.indexState)"));
     assert.ok(js.includes("getCollectionCardStatusNote(collection.status, collection.indexState)"));
     assert.ok(html.includes('id="collectionIndexState"'));
@@ -212,15 +213,20 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("function renderValidationImpact(parent, impact)"));
     assert.ok(js.includes('async function loadModelDiscovery()'));
     assert.ok(js.includes('function syncModelDiscoveryPanel()'));
-    assert.ok(js.includes('function setModelFromSelect(kind)'));
+    // Model suggestions are a datalist on the model field, not a separate list.
+    assert.ok(js.includes('function syncModelSelect(kind)'));
     assert.ok(js.includes('`${API.admin}/models`'));
     assert.ok(js.includes("Change Impact"));
     assert.ok(js.includes("Re-index required"));
     assert.ok(js.includes("Takes effect immediately"));
     assert.ok(js.includes("function isDependencyBlocker(issue)"));
-    assert.ok(js.includes("DEPENDENCY DOWN"));
-    assert.ok(js.includes("Backend dependency down"));
+    assert.ok(js.includes('"A service is not available"'));
     assert.ok(js.includes("function renderCollectionIndexStateBanner()"));
+    // The status box shows only when something needs attention; saved vs indexed settings live in Settings.
+    assert.ok(js.includes('elements.collectionIndexState.classList.add("hidden");'));
+    // Re-index needed lists each changed setting with the value in the index and the saved one.
+    assert.ok(js.includes("export function describeIndexedValue(field, value)"));
+    assert.ok(!html.includes('id="indexedSettings"'));
     assert.ok(js.includes("collectionIndexState"));
     assert.ok(js.includes("return apiRequest(url, {"));
     assert.ok(!js.includes("return adminMutationRequest(url, {"));
@@ -254,7 +260,7 @@ describe("admin panel static contract", () => {
     const editFieldIds = [...editFieldBlock[1].matchAll(/:\s*"([^"]+)"/g)].map((match) => match[1]);
 
     for (const id of [...directIds, ...editFieldIds]) {
-      assert.ok(htmlIds.has(id), `admin/index.html is missing id="${id}" referenced by admin.js`);
+      assert.ok(htmlIds.has(id), `admin/index.html is missing id="${id}" referenced by admin/js`);
     }
   });
 
@@ -293,7 +299,11 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("healthCleanupSummary"));
     assert.ok(js.includes("function adminCollectionPhysicalCollectionsUrl(id)"));
     assert.ok(js.includes("data?.physicalCollections"), "Physical collection lifecycle should read the data.physicalCollections wrapper");
-    assert.ok(js.includes("Failed to load physical collection lifecycle"));
+    assert.ok(js.includes("Could not load the index versions"));
+    // User-facing text names no API paths, environment variables or CLI commands.
+    for (const jargon of ["Loading GET /v1/", "npm run onboard", "Physical Collection Lifecycle", "Seeded from", "HNSW Space"]) {
+      assert.ok(!js.includes(jargon) && !html.includes(jargon), `no "${jargon}" in the panel`);
+    }
     assert.ok(js.includes("View cleanup backlog"));
     assert.ok(html.includes('data-view="audit"'));
     assert.ok(html.includes('id="view-audit"'));
@@ -321,7 +331,7 @@ describe("admin panel static contract", () => {
     assert.ok(html.includes('id="auditLogTableBody"'));
     assert.ok(html.includes('id="btnViewHistory"'));
     assert.ok(html.includes("View history"));
-    assert.ok(html.includes("Audit Log"));
+    assert.ok(html.includes("Audit log"));
     assert.ok(js.includes("function adminAuditLogUrl(options = {})"));
     assert.ok(js.includes("data?.auditLog"), "Audit log history should read the data.auditLog wrapper");
     assert.ok(js.includes("openAuditLogForCollection"));
@@ -346,13 +356,56 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("createAuditLogRow"));
     assert.ok(js.includes("renderAuditLogTable"));
     assert.ok(js.includes("renderAuditFilterControls"));
-    assert.ok(js.includes("renderApiErrorContent(cell, state.auditLogError, \"Failed to load audit log\")"));
-    assert.ok(js.includes("renderApiErrorContent(cell, state.auditLogError, \"Audit log refresh failed\")"));
+    assert.ok(js.includes('renderApiErrorContent(cell, state.auditLogError, "Could not load the audit log", { onRetry: () => refreshAuditLog() });'));
+    assert.ok(js.includes('renderApiErrorContent(cell, state.auditLogError, "Could not refresh the audit log", { onRetry: () => refreshAuditLog() });'));
     assert.ok(js.includes("function getAuditLogEmptyMessage()"));
     assert.ok(js.includes("No audit log entries have been recorded since this deployment."));
     assert.ok(js.includes("No audit log entries found for the current filters."));
     assert.ok(js.includes("createAuditDetailsBlock"));
     assert.ok(!js.includes(".innerHTML"));
+  });
+
+  it("asks with its own accessible dialog, never window.confirm", async () => {
+    const js = await readAdminScripts();
+    assert.ok(!/[^.\w]confirm\(/.test(js), "no native confirm() calls");
+    assert.ok(js.includes('dialog.setAttribute("aria-modal", "true");'));
+    assert.ok(js.includes("requireText: name,"), "deleting a collection asks for its name");
+    assert.ok(js.includes("export async function requestCloseInspector()"), "closing with unsaved settings asks first");
+  });
+
+  it("is usable with a keyboard and a screen reader", async () => {
+    const [html, js] = await Promise.all([readAdminFile("index.html"), readAdminScripts()]);
+    assert.ok(html.includes('id="inspectorPanel" role="dialog" aria-modal="true" aria-labelledby="inspectorTitle" inert'));
+    assert.ok(js.includes("elements.inspectorPanel.inert = true;"), "a closed inspector leaves the tab order");
+    assert.ok(html.includes('role="tablist"') && html.includes('role="tab"') && html.includes('role="tabpanel"'));
+    assert.ok(js.includes('button.setAttribute("aria-selected", active ? "true" : "false");'));
+    assert.ok(html.includes('<input id="filesInput" type="file" multiple class="sr-only">'), "file upload is reachable with the keyboard");
+    assert.ok(html.includes('id="toastContainer" role="status" aria-live="polite"'));
+    assert.ok(html.includes('<label for="pgQuestion" class="sr-only">Question</label>'));
+    // Every visible field label is tied to its field.
+    const labels = [...html.matchAll(/<label class="block[^"]*"(?: for="([^"]+)")?>/g)];
+    // (A label with class "block" only wraps its input, which ties them too.)
+    assert.ok(labels.length > 0 && labels.every((match) => match[1] || match[0] === '<label class="block">'), "every block label has a for= attribute");
+  });
+
+  it("keeps no copies of server rules or lists and links jobs to their details", async () => {
+    const [html, js] = await Promise.all([readAdminFile("index.html"), readAdminScripts()]);
+    // Collection rules are the server's (POST .../validate); the form only reports fields that are not numbers.
+    assert.ok(!js.includes('["l2", "cosine", "ip"]'));
+    assert.ok(!js.includes("chunkOverlap must be less than chunkSize."));
+    // The dependencies are whatever the server reports.
+    assert.ok(!js.includes('["registry", "chroma", "embedding", "chat"]'));
+    // A job's steps come from its events; the address names the job and the status filter.
+    assert.ok(js.includes("`${API.admin}/jobs/${encodeURIComponent(jobId)}/events`"));
+    assert.ok(js.includes('if (parts[0] === "jobs") return { view: "jobs", jobId: parts[1] || null, status: query.get("status") || "all" };'));
+    assert.ok(html.includes('id="jobDetail"'));
+    // One header action per view, shown only when the session may use it.
+    assert.ok(js.includes("const HEADER_ACTIONS = {"));
+    assert.ok(html.includes('id="esRoleNote"') && html.includes('id="csRoleNote"'));
+    // The server's note about the one-time model download is shown.
+    assert.ok(js.includes('findReadinessIssue("EMBEDDING_MODEL_NOT_DOWNLOADED")'));
+    // Load errors offer to try again.
+    assert.ok(js.includes('{ onRetry: () => loadCollections() }'));
   });
 
   it("works offline: no CDN, the Tailwind CSS is built locally", async () => {
@@ -386,7 +439,7 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("async function deleteJob(jobId)"));
     assert.ok(js.includes("async function removeSelectedJobs()"));
     assert.ok(html.includes("Remove selected"));
-    assert.ok(js.includes("Delete terminal job from the server"));
+    assert.ok(js.includes("Remove this finished job from the list"));
     assert.ok(js.includes("Remove"));
   });
 });

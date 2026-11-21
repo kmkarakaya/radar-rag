@@ -1,12 +1,13 @@
 import { adminMutationRequest, apiRequest } from "../api.js";
 import { canAdminAction } from "../auth.js";
 import { switchView } from "../dashboard.js";
+import { confirmDialog } from "../dialog.js";
 import { clearNode, createButton, createEl, formatCount, setButtonLoading, showErrorToast, showToast } from "../dom.js";
 import { findServicePreset } from "../serverInfo.js";
 import { API, elements, state } from "../state.js";
 import { bindChatSettingsEvents, loadChatSettings } from "./chatSettings.js";
 import { loadModelDiscovery, syncModelDiscoveryPanel } from "./editor.js";
-import { closeInspector } from "./inspector.js";
+import { requestCloseInspector } from "./inspector.js";
 
 // ---- Service views (clients of /v1/admin/embedding-services and /v1/admin/chat-services) ----
 // Both views show the same table and form over the same API contract; the server decides everything
@@ -39,7 +40,6 @@ export const SERVICE_VIEWS = {
         prefix: "es",
         buttonPrefix: "Es",
         addButtonId: "btnAddEmbeddingService",
-        serverEnv: "RAG_EMBEDDING_BASE_URL",
         usageText: (service) => formatCount(service.collectionCount ?? 0),
         modelHint: "Pick an embedding model (such as bge-m3 or nomic-embed-text) for a collection; chat models fail at indexing.",
         afterChange: () => loadModelDiscovery(),
@@ -58,7 +58,6 @@ export const SERVICE_VIEWS = {
         prefix: "cs",
         buttonPrefix: "Cs",
         addButtonId: "btnAddChatService",
-        serverEnv: "RAG_CHAT_BASE_URL",
         usageText: (service) => (service.inUse ? "Answers Query" : "-"),
         modelHint: "Choose a chat model (such as gemma3:4b or gpt-4o-mini) under Answer generation; embedding models cannot answer.",
         afterChange: () => Promise.all([loadModelDiscovery(), loadChatSettings()]),
@@ -112,18 +111,13 @@ export function renderServices(view) {
     clearNode(warningsBox);
     services.warnings.forEach((warning) => warningsBox.appendChild(createEl("p", "", warning)));
 
-    const addButton = document.getElementById(view.addButtonId);
-    if (addButton) {
-        addButton.disabled = !canManage;
-        addButton.classList.toggle("opacity-50", !canManage);
-        if (!canManage) addButton.title = `Managing ${view.noun}s requires admin access.`;
-        else addButton.removeAttribute("title");
-    }
+    // Adding is the header's action; without the capability, say so here in words.
+    serviceEl(view, "RoleNote")?.classList.toggle("hidden", canManage);
 
     clearNode(tableBody);
     if (services.loading && services.items.length === 0) {
         const row = createEl("tr");
-        const cell = createEl("td", "px-4 py-6 text-center text-slate-400 italic", `Loading ${view.noun}s...`);
+        const cell = createEl("td", "px-4 py-6 text-center text-slate-500 italic", `Loading ${view.noun}s...`);
         cell.colSpan = 6;
         row.appendChild(cell);
         tableBody.appendChild(row);
@@ -137,7 +131,7 @@ export function renderServices(view) {
         const builtinModels = Array.isArray(service.models) ? service.models : [];
         const urlText = isBuiltin
             ? `No URL: runs inside the backend. Model${builtinModels.length === 1 ? "" : "s"}: ${builtinModels.join(", ") || "-"}`
-            : service.configured === false ? `Not configured (${view.serverEnv})` : service.baseUrl || "-";
+            : service.configured === false ? "Not configured in the server settings" : service.baseUrl || "-";
         row.appendChild(createEl("td", "px-4 py-3 text-slate-600 break-all", urlText));
         row.appendChild(createEl("td", "px-4 py-3 text-slate-600", isBuiltin ? "Not needed" : service.apiKeyConfigured ? "Set" : "Not set"));
         const sourceText = { builtin: "Built-in (read-only)", server: ".env / config (read-only)" }[service.source] || "Admin panel / API";
@@ -159,7 +153,7 @@ export function renderServices(view) {
 
 export function openServiceForm(view, service = null) {
     if (!canAdminAction(view.capability)) {
-        showToast(`Managing ${view.noun}s requires admin access.`, "error");
+        showToast(`Your role cannot manage ${view.noun}s.`, "error");
         return;
     }
     serviceEl(view, "Form").classList.remove("hidden");
@@ -276,7 +270,13 @@ export async function saveService(view) {
 }
 
 export async function deleteServiceAction(view, service) {
-    if (!confirm(`Delete the ${view.noun} "${service.name}"?`)) return;
+    const confirmed = await confirmDialog({
+        title: `Delete the ${view.noun} "${service.name}"?`,
+        message: "Its stored API key is deleted too.",
+        confirmLabel: "Delete",
+        danger: true,
+    });
+    if (!confirmed) return;
     try {
         await adminMutationRequest(view.url(service.id), { method: "DELETE" });
         showToast(`Deleted ${service.name}.`, "success");
@@ -316,12 +316,14 @@ export function bindEmbeddingServicesEvents() {
     elements.editEmbeddingService?.addEventListener("change", () => syncModelDiscoveryPanel());
     elements.linkEmbeddingServices?.addEventListener("click", (event) => {
         event.preventDefault();
-        closeInspector();
-        switchView("embedding-services");
+        requestCloseInspector().then((closed) => {
+            if (closed) switchView("embedding-services");
+        });
     });
     document.getElementById("linkChatServices")?.addEventListener("click", (event) => {
         event.preventDefault();
-        closeInspector();
-        switchView("chat-services");
+        requestCloseInspector().then((closed) => {
+            if (closed) switchView("chat-services");
+        });
     });
 }

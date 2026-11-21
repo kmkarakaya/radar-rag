@@ -35,6 +35,8 @@ export const EDIT_FIELD_IDS = {
 };
 
 export let state = {
+    // True once the dashboard is set up after sign-in; routes are recorded and applied only then.
+    dashboardReady: false,
     currentView: "collections",
     activeTab: "ready",
     files: { collectionId: null, data: null, loading: false, uploading: false, error: null, rejected: [] },
@@ -56,6 +58,12 @@ export let state = {
     auditOperations: [],
     collections: [],
     selectedCollection: null,
+    // Where focus was before the inspector opened (it returns there on close).
+    inspectorReturnFocus: null,
+    // Index jobs followed until they finish (id -> { collectionId, collectionName }), for the "finished" message.
+    watchedJobs: new Map(),
+    // Progress of the open collection's running job, from its events ({ message, fraction, phase, phaseCount }).
+    activeJobProgress: null,
     // Whether the collection inspector is open (its data is polled only then).
     inspectorOpen: false,
     selectedReadiness: null,
@@ -71,6 +79,9 @@ export let state = {
     },
     playgroundMode: "retrieve",
     jobList: [],
+    // The job shown in the detail panel (#/jobs/<id>) and what the server returned for it.
+    jobDetailId: null,
+    jobDetail: null,
     // When the job list was last loaded from the server (null: not yet).
     jobListLoadedAt: null,
     jobListNextCursor: null,
@@ -122,7 +133,6 @@ export const elements = {
     authLoginButton: document.getElementById("authLoginButton"),
     authLogoutButton: document.getElementById("authLogoutButton"),
     authSessionSummary: document.getElementById("authSessionSummary"),
-    authSessionRole: document.getElementById("authSessionRole"),
     authSessionTenant: document.getElementById("authSessionTenant"),
     authSessionExpiry: document.getElementById("authSessionExpiry"),
     dashboardShell: document.getElementById("dashboardShell"),
@@ -136,6 +146,21 @@ export const elements = {
     jobsStatusFilter: document.getElementById("jobsStatusFilter"),
     jobsRefreshList: document.getElementById("jobsRefreshList"),
     jobsListNotice: document.getElementById("jobsListNotice"),
+    jobDetail: document.getElementById("jobDetail"),
+    jobDetailClose: document.getElementById("jobDetailClose"),
+    jobDetailTitle: document.getElementById("jobDetailTitle"),
+    jobDetailSummary: document.getElementById("jobDetailSummary"),
+    jobDetailBody: document.getElementById("jobDetailBody"),
+    headerActionLabel: document.getElementById("headerActionLabel"),
+    pgKField: document.getElementById("pgKField"),
+    pgModeNote: document.getElementById("pgModeNote"),
+    inspectorRoleNote: document.getElementById("inspectorRoleNote"),
+    editFieldset: document.getElementById("editFieldset"),
+    editReadonlyNote: document.getElementById("editReadonlyNote"),
+    embeddingReindexNote: document.getElementById("embeddingReindexNote"),
+    inspectorTabs: document.getElementById("inspectorTabs"),
+    inspectorFooter: document.getElementById("inspectorFooter"),
+    authSessionBlock: document.getElementById("authSessionBlock"),
     appVersion: document.getElementById("appVersion"),
     esPresets: document.getElementById("esPresets"),
     csPresets: document.getElementById("csPresets"),
@@ -179,7 +204,6 @@ export const elements = {
     collectionIndexState: document.getElementById("collectionIndexState"),
     collectionIndexStateTitle: document.getElementById("collectionIndexStateTitle"),
     collectionIndexStateSummary: document.getElementById("collectionIndexStateSummary"),
-    collectionIndexStateBadge: document.getElementById("collectionIndexStateBadge"),
     collectionIndexStateContent: document.getElementById("collectionIndexStateContent"),
     collectionValidation: document.getElementById("collectionValidation"),
     collectionValidationTitle: document.getElementById("collectionValidationTitle"),

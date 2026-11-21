@@ -1,5 +1,6 @@
 import { adminMutationRequest, apiRequest } from "../api.js";
 import { canAdminAction } from "../auth.js";
+import { confirmDialog } from "../dialog.js";
 import { clearNode, createEl, setButtonLoading, showErrorToast, showToast } from "../dom.js";
 import { API, state } from "../state.js";
 import { loadModelDiscovery, renderChatLlmStatus } from "./editor.js";
@@ -63,9 +64,9 @@ export function renderChatSettings() {
     }[data.source] || "";
 
     if (settings.error && !data) {
-        summary.textContent = "Could not load the chat choice (GET /v1/admin/chat-settings).";
+        summary.textContent = "Could not load the chat choice.";
     } else if (!data) {
-        summary.textContent = "Loading GET /v1/admin/chat-settings...";
+        summary.textContent = "Loading the chat choice...";
     } else {
         summary.textContent = data.source === "none"
             ? "No chat LLM: Query is disabled (retrieve-only). Choose a chat service and a model below to enable it."
@@ -113,7 +114,7 @@ export function renderChatSettings() {
     resetButton.classList.toggle("opacity-50", resetButton.disabled);
     const saveButton = document.getElementById("btnCsSettingsSave");
     saveButton.classList.toggle("opacity-50", saveButton.disabled);
-    if (!canManage) saveButton.title = "Choosing the chat LLM requires admin access.";
+    if (!canManage) saveButton.title = "Your role cannot choose the chat LLM.";
     else saveButton.removeAttribute("title");
 }
 
@@ -175,7 +176,12 @@ export async function saveChatSettings() {
 }
 
 export async function resetChatSettings() {
-    if (!confirm("Stop using your chat choice? Query then uses the chat LLM from .env / config, or is disabled when there is none.")) return;
+    const confirmed = await confirmDialog({
+        title: "Use the server default?",
+        message: "Query then uses the chat LLM set in the server settings, or answers are disabled when there is none.",
+        confirmLabel: "Use server default",
+    });
+    if (!confirmed) return;
     try {
         const data = await adminMutationRequest(chatSettingsUrl(), { method: "DELETE" });
         state.chatSettings.data = data?.settings ?? null;

@@ -442,7 +442,7 @@ Example response:
         "embeddingModel"
       ],
       "documentsChanged": false,
-      "note": "Saved indexing settings differ from the active indexed snapshot. Re-index required to apply them."
+      "note": "Some saved settings differ from the ones the current index was built with. Re-index to apply them; until then searches use the current index."
     }
   }
 }

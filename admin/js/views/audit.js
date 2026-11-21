@@ -4,7 +4,7 @@ import { appendChildren, clearNode, createBadge, createEl, formatDateTime, getSt
 import { capitalizeWord } from "../serverInfo.js";
 import { API, AUDIT_LOG_LIMIT, elements, loadTokens, state } from "../state.js";
 import { collectionNameById } from "./collections.js";
-import { closeInspector } from "./inspector.js";
+import { requestCloseInspector } from "./inspector.js";
 
 export function normalizeAuditSelectionValues(values = [], allowedValues = []) {
     const allowedSet = new Set(allowedValues);
@@ -284,10 +284,10 @@ export function formatAuditCollection(record) {
 
 export function formatAuditCorrelation(record) {
     const parts = [];
-    if (record?.requestId) parts.push(`req ${shortId(record.requestId)}`);
-    if (record?.jobId) parts.push(`job ${shortId(record.jobId)}`);
-    if (record?.physicalCollection) parts.push(`pc ${shortId(record.physicalCollection)}`);
-    return parts.length > 0 ? parts.join(" / ") : "-";
+    if (record?.requestId) parts.push(`Request ${shortId(record.requestId)}`);
+    if (record?.jobId) parts.push(`Job ${shortId(record.jobId)}`);
+    if (record?.physicalCollection) parts.push(`Index ${shortId(record.physicalCollection)}`);
+    return parts.length > 0 ? parts.join(", ") : "-";
 }
 
 export function createAuditDetailsBlock(details) {
@@ -310,13 +310,13 @@ export function createAuditLogRow(record) {
 
     const timeCell = createEl("td", "px-4 py-4 align-top");
     timeCell.appendChild(createEl("div", "font-medium text-slate-700", formatDateTime(record?.timestamp)));
-    timeCell.appendChild(createEl("div", "mt-1 text-xs text-slate-400", record?.timestamp || "-"));
+    timeCell.appendChild(createEl("div", "mt-1 text-xs text-slate-500", record?.timestamp || "-"));
     cells.push(timeCell);
 
     const collectionCell = createEl("td", "px-4 py-4 align-top");
     collectionCell.appendChild(createEl("div", "break-all-words font-medium text-slate-700", formatAuditCollection(record)));
     if (record?.collectionId) {
-        collectionCell.appendChild(createEl("div", "mt-1 text-xs text-slate-400 break-all-words", record.collectionId));
+        collectionCell.appendChild(createEl("div", "mt-1 text-xs text-slate-500 break-all-words", record.collectionId));
     }
     cells.push(collectionCell);
 
@@ -344,7 +344,7 @@ export function createAuditLogRow(record) {
     if (record?.details && isRecord(record.details)) {
         detailsCell.appendChild(createAuditDetailsBlock(record.details));
     } else {
-        detailsCell.appendChild(createEl("span", "text-xs text-slate-400", "-"));
+        detailsCell.appendChild(createEl("span", "text-xs text-slate-500", "-"));
     }
     cells.push(detailsCell);
 
@@ -404,7 +404,7 @@ export function renderAuditLogTable() {
         const row = createEl("tr");
         const cell = createEl("td", "px-4 py-4");
         cell.colSpan = 8;
-        renderApiErrorContent(cell, state.auditLogError, "Failed to load audit log");
+        renderApiErrorContent(cell, state.auditLogError, "Could not load the audit log", { onRetry: () => refreshAuditLog() });
         row.appendChild(cell);
         elements.auditLogTableBody.appendChild(row);
         return;
@@ -414,7 +414,7 @@ export function renderAuditLogTable() {
         const row = createEl("tr");
         const cell = createEl("td", "px-4 py-4");
         cell.colSpan = 8;
-        renderApiErrorContent(cell, state.auditLogError, "Audit log refresh failed");
+        renderApiErrorContent(cell, state.auditLogError, "Could not refresh the audit log", { onRetry: () => refreshAuditLog() });
         row.appendChild(cell);
         elements.auditLogTableBody.appendChild(row);
     }
@@ -499,12 +499,12 @@ export async function goToPreviousAuditLogPage() {
 
 export async function openAuditLogForCollection(collectionId) {
     if (!collectionId) return;
+    if (!(await requestCloseInspector())) return;
     setAuditCollectionFilterValues([collectionId]);
     setAuditOperationFilterValues([]);
     state.auditLogCursor = null;
     state.auditLogCursorStack = [];
     syncAuditLogFilterInputs();
     closeAuditPickers();
-    closeInspector();
     switchView("audit");
 }

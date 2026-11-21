@@ -7,11 +7,20 @@ async function readAdminFile(fileName: string): Promise<string> {
   return fs.readFile(path.resolve(process.cwd(), "admin", fileName), "utf8");
 }
 
+/** Every panel script (admin/js/**), joined, so the contract checks see the whole client. */
+async function readAdminScripts(): Promise<string> {
+  const root = path.resolve(process.cwd(), "admin", "js");
+  const entries = await fs.readdir(root, { recursive: true });
+  const files = entries.filter((entry) => entry.endsWith(".js")).sort();
+  const sources = await Promise.all(files.map((file) => fs.readFile(path.join(root, file), "utf8")));
+  return sources.join("\n");
+}
+
 describe("admin panel static contract", () => {
   it("uses only the versioned collection endpoints and no unsafe HTML injection", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(!html.includes("/rag/query"));
@@ -26,7 +35,7 @@ describe("admin panel static contract", () => {
   it("manages documents through the files API in a Documents tab", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     // The panel is a client of the files API, like any other API client.
@@ -39,8 +48,13 @@ describe("admin panel static contract", () => {
     // Uploads collections are created without a sourcePath; a server folder is the advanced option.
     assert.ok(html.includes('name="sourceKind" value="uploads"'));
     assert.ok(js.includes('if (getSelectedSourceKind() === "folder") addIfText(payload, "sourcePath", values.sourcePath);'));
-    // The client role table mirrors the server's manageDocuments capability.
-    assert.ok(js.includes('"cancelJob", "manageDocuments"'));
+    // What the session may do comes from the server; the panel keeps no role table.
+    assert.ok(js.includes("return state.auth.capabilities.includes(capability);"));
+    assert.ok(!js.includes('"cancelJob", "manageDocuments"'));
+    // Upload limits and file types come from GET /v1/admin/server-info.
+    assert.ok(js.includes("const batchSize = state.serverInfo?.uploads?.maxFilesPerRequest || files.length;"));
+    assert.ok(!js.includes("MAX_FILES_PER_UPLOAD"));
+    assert.ok(!html.includes('accept=".txt'));
     // The external embedding provider is only selectable once the server has a service configured.
     assert.ok(js.includes("function syncExternalProviderOption()"));
     assert.ok(js.includes("Add one under Embedding services in the left menu"));
@@ -49,7 +63,7 @@ describe("admin panel static contract", () => {
   it("manages embedding services through the embedding services API in their own view", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(html.includes('data-view="embedding-services"'));
@@ -63,8 +77,11 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes('apiRequest(`${view.url()}/test`, { method: "POST", body: JSON.stringify(body) })'));
     assert.ok(js.includes('await adminMutationRequest(id ? view.url(id) : view.url(), {'));
     assert.ok(js.includes('await adminMutationRequest(view.url(service.id), { method: "DELETE" });'));
-    // Only admins manage services (mirrors src/http/adminAuth.ts); the warning comes from the API response.
-    assert.ok(js.includes('"bulkDeleteJobs", "manageEmbeddingServices", "manageChatServices"]'));
+    // Only admins manage services: the capability comes with the session; the warning comes from the API response.
+    assert.ok(js.includes('capability: "manageEmbeddingServices",'));
+    // Service presets come from GET /v1/admin/server-info.
+    assert.ok(js.includes("findServicePreset("));
+    assert.ok(!js.includes("SERVICE_PRESETS"));
     assert.ok(js.includes("services.warnings = Array.isArray(data?.warnings) ? data.warnings : [];"));
     // Collections send the chosen service; the model list comes from that service.
     assert.ok(js.includes('addIfText(payload, "embeddingServiceId", values.embeddingServiceId)'));
@@ -78,7 +95,7 @@ describe("admin panel static contract", () => {
   it("manages chat services and the tenant's chat choice through the API in their own view", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(html.includes('data-view="chat-services"'));
@@ -99,7 +116,7 @@ describe("admin panel static contract", () => {
   });
 
   it("loads full editable settings through the admin collection detail endpoint", async () => {
-    const js = await readAdminFile("admin.js");
+    const js = await readAdminScripts();
 
     assert.ok(js.includes("function loadAdminCollectionDetail(collectionId)"));
     assert.ok(js.includes("apiRequest(adminCollectionUrl(collectionId))"));
@@ -110,7 +127,7 @@ describe("admin panel static contract", () => {
   it("includes the admin auth shell, session bootstrap, and protected mutation helpers", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(html.includes('id="authShell"'));
@@ -138,7 +155,7 @@ describe("admin panel static contract", () => {
   it("shows clearer indexing language on collection cards while keeping reindex actions in the inspector", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(js.includes("function getCollectionCardStatusPresentation(status, indexState = null)"));
@@ -160,7 +177,7 @@ describe("admin panel static contract", () => {
   it("uses backend validation endpoints before save and re-index actions", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(html.includes('id="configDefaultsPanel"'));
@@ -210,7 +227,7 @@ describe("admin panel static contract", () => {
   });
 
   it("uses session-derived rag headers and keeps validation requests token-free", async () => {
-    const js = await readAdminFile("admin.js");
+    const js = await readAdminScripts();
 
     assert.ok(js.includes("function isRagRequest(url)"));
     assert.ok(js.includes("function getSessionHeadersForRequest(url)"));
@@ -227,7 +244,7 @@ describe("admin panel static contract", () => {
   it("keeps admin DOM id references aligned with index.html", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     const htmlIds = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
@@ -244,7 +261,7 @@ describe("admin panel static contract", () => {
   it("keeps job, readiness and health contracts aligned with backend response shapes", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(js.includes("data?.job"), "Job polling should read the data.job wrapper");
@@ -264,7 +281,8 @@ describe("admin panel static contract", () => {
     assert.ok(js.includes("Refreshing system health..."), "Health dashboard should keep the last snapshot visible during refresh");
     assert.ok(js.includes("Loading system health details..."), "Health detail panel should show loading feedback");
     assert.ok(js.includes("const hasSnapshot = Boolean(state.selectedReadiness);"), "Readiness refresh should preserve the last known snapshot during refresh");
-    assert.ok(js.includes("setReadinessRefreshNotice(\"Refreshing readiness snapshot...\""), "Readiness refresh should show a non-blocking notice");
+    assert.ok(js.includes("if (!quiet) setReadinessRefreshNotice(\"Refreshing readiness...\""), "A refresh the user asked for shows a non-blocking notice; background refreshes show none");
+    assert.ok(js.includes("if (!quiet || JSON.stringify(readinessResult.value) !== previousReadiness) renderReadinessData"), "Background refreshes redraw readiness only when it changed");
     assert.ok(!js.includes("if (state.isLoading.readiness) return { enabled: false, reason: \"Readiness is loading.\" };"), "Playground capability should not be disabled just because readiness is refreshing");
     assert.ok(!js.includes("strict=true"), "Health dashboard should not use ready?strict=true");
     assert.ok(js.includes("Promise.allSettled"), "Health dashboard should preserve summaries if details fail");
@@ -320,7 +338,7 @@ describe("admin panel static contract", () => {
   it("renders audit log and history shortcuts without unsafe html usage", async () => {
     const [html, js] = await Promise.all([
       readAdminFile("index.html"),
-      readAdminFile("admin.js"),
+      readAdminScripts(),
     ]);
 
     assert.ok(html.includes('id="view-audit"'));
@@ -337,12 +355,24 @@ describe("admin panel static contract", () => {
     assert.ok(!js.includes(".innerHTML"));
   });
 
+  it("works offline: no CDN, the Tailwind CSS is built locally", async () => {
+    const html = await readAdminFile("index.html");
+    assert.ok(!html.includes("cdn.tailwindcss.com"));
+    assert.ok(html.includes('<link rel="stylesheet" href="/admin/tailwind.css">'));
+    // Tailwind must load after admin.css (as the CDN injected it), or admin.css rules beat utilities like .hidden.
+    assert.ok(html.indexOf('href="/admin/tailwind.css"') > html.indexOf('href="/admin/admin.css"'));
+    assert.ok(html.includes('<script type="module" src="/admin/js/main.js"></script>'));
+    const css = await readAdminFile("tailwind.css");
+    assert.ok(css.includes(".translate-x-full"), "admin/tailwind.css is built (npm run build:admin-css)");
+  });
+
   it("contains the planned playground and job monitor controls", async () => {
     const html = await readAdminFile("index.html");
-    const js = await readAdminFile("admin.js");
+    const js = await readAdminScripts();
 
     assert.ok(html.includes('id="pgK"'), "Retrieve K input should exist");
-    assert.ok(html.includes("This monitor tracks jobs observed by this browser/admin session.") || js.includes("This monitor tracks jobs observed by this browser/admin session."));
+    assert.ok(js.includes("No jobs yet. Re-indexing a collection creates one."));
+    assert.ok(!js.includes("localStorage"), "jobs come from the server only, never from a browser cache");
     assert.ok(html.includes('id="jobsBulkActionBar"'));
     assert.ok(html.includes('id="jobsBulkSelectionCount"'));
     assert.ok(html.includes('id="jobsBulkRemove"'));

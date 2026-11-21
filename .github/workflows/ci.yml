@@ -29,6 +29,9 @@ jobs:
       - run: npm run typecheck
       - run: npm run typecheck:test
       - run: npm test
+      - name: Admin panel CSS is up to date
+        # admin/tailwind.css is built from the classes in admin/ and committed; rebuild it after changing them.
+        run: npm run build:admin-css && git diff --exit-code admin/tailwind.css
 
   publish:
     needs: test

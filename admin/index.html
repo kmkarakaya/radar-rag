@@ -6,7 +6,6 @@
     <title>RAGStation Admin</title>
     <link rel="icon" type="image/png" sizes="32x32" href="/admin/brand/icon-app-32.png">
     <link rel="apple-touch-icon" href="/admin/brand/icon-app-128.png">
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/admin/admin.css">
     <style>
         .nav-item.active {
@@ -14,6 +13,8 @@
             border-left: 4px solid white;
         }
     </style>
+    <!-- Last, like the Tailwind CDN script injected it before: utilities such as .hidden win over admin.css. -->
+    <link rel="stylesheet" href="/admin/tailwind.css">
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans min-h-screen overflow-hidden">
     <section id="authShell" class="auth-shell">
@@ -91,7 +92,7 @@
         </nav>
 
         <div class="p-4 border-t border-slate-800 text-xs text-slate-500">
-            v1.0.0-stable
+            <span id="appVersion"></span>
         </div>
     </aside>
 
@@ -145,11 +146,6 @@
                                 Status
                                 <select id="jobsStatusFilter" class="min-w-40 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-500 focus:outline-none">
                                     <option value="all">All statuses</option>
-                                    <option value="queued">Queued</option>
-                                    <option value="running">Running</option>
-                                    <option value="succeeded">Succeeded</option>
-                                    <option value="failed">Failed</option>
-                                    <option value="cancelled">Cancelled</option>
                                 </select>
                             </label>
                             <button id="jobsRefreshList" type="button" class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-800">
@@ -166,7 +162,7 @@
                             </button>
                         </div>
                     </div>
-                    <p class="mt-3 text-xs text-slate-500">Seeded from <code>/v1/admin/jobs</code>. Local browser cache is only used as a fallback.</p>
+                    <p id="jobsListNotice" class="hidden mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" role="status"></p>
                     <div id="jobsBulkActionBar" class="hidden mt-3 flex flex-col gap-3 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900 lg:flex-row lg:items-center lg:justify-between">
                         <div class="font-medium">
                             <span id="jobsBulkSelectionCount">0 jobs selected</span>
@@ -212,12 +208,7 @@
                     <input type="hidden" id="esFormId">
                     <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <h3 id="esFormTitle" class="text-sm font-semibold text-slate-800">Add embedding service</h3>
-                        <div class="flex flex-wrap gap-2 text-xs">
-                            <span class="text-slate-400">Examples:</span>
-                            <button type="button" data-es-preset="ollama" class="rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50">Ollama on this computer</button>
-                            <button type="button" data-es-preset="openai" class="rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50">OpenAI</button>
-                            <button type="button" data-es-preset="lmstudio" class="rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50">LM Studio</button>
-                        </div>
+                        <div id="esPresets" class="hidden flex flex-wrap gap-2 text-xs"></div>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -298,13 +289,7 @@
                     <input type="hidden" id="csFormId">
                     <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <h3 id="csFormTitle" class="text-sm font-semibold text-slate-800">Add chat service</h3>
-                        <div class="flex flex-wrap gap-2 text-xs">
-                            <span class="text-slate-400">Examples:</span>
-                            <button type="button" data-cs-preset="ollama" class="rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50">Ollama on this computer</button>
-                            <button type="button" data-cs-preset="openai" class="rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50">OpenAI</button>
-                            <button type="button" data-cs-preset="openrouter" class="rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50">OpenRouter</button>
-                            <button type="button" data-cs-preset="lmstudio" class="rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50">LM Studio</button>
-                        </div>
+                        <div id="csPresets" class="hidden flex flex-wrap gap-2 text-xs"></div>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -542,8 +527,8 @@
                 <label id="filesDropZone" for="filesInput" class="hidden flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/40 transition-colors">
                     <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
                     <span class="text-sm font-semibold text-slate-700">Drop files here or click to choose</span>
-                    <span id="filesDropHint" class="text-xs text-slate-500">.txt, .md, .pdf, .doc, .docx</span>
-                    <input id="filesInput" type="file" multiple accept=".txt,.md,.pdf,.doc,.docx" class="hidden">
+                    <span id="filesDropHint" class="text-xs text-slate-500"></span>
+                    <input id="filesInput" type="file" multiple class="hidden">
                 </label>
                 <p id="filesUploadStatus" class="hidden text-xs text-slate-500"></p>
                 <div id="filesRejected" class="hidden rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-red-700"></div>
@@ -633,9 +618,6 @@
                             <label class="block text-xs font-medium text-slate-500 mb-1">Distance Metric</label>
                             <select id="editDistanceMetric" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
                                 <option value="">Server default</option>
-                                <option value="l2">L2 (Euclidean)</option>
-                                <option value="cosine">Cosine</option>
-                                <option value="ip">Inner Product</option>
                             </select>
                             <p class="mt-1 text-xs text-slate-400" data-default-for="distanceMetric"></p>
                         </div>
@@ -673,8 +655,6 @@
                                 <label class="block text-xs font-medium text-slate-500 mb-1">Embedding Provider</label>
                                 <select id="editEmbeddingProvider" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
                                     <option value="">Server default</option>
-                                    <option value="builtin">builtin (in-process, downloaded on first use)</option>
-                                    <option value="openai-compatible">openai-compatible (external service)</option>
                                 </select>
                                 <p class="mt-1 text-xs text-slate-400" data-default-for="embeddingProvider"></p>
                             </div>
@@ -723,6 +703,6 @@
     <!-- Toasts -->
     <div id="toastContainer" class="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none"></div>
 
-    <script src="/admin/admin.js"></script>
+    <script type="module" src="/admin/js/main.js"></script>
 </body>
 </html>

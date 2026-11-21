@@ -134,7 +134,7 @@ Returns embedding model suggestions per embedding provider, for the collection `
 
 There are two embedding providers:
 
-- `builtin` (default): an ONNX model that runs inside the backend process on CPU (transformers.js). Models come from a fixed built-in catalog (currently `onnx-community/embeddinggemma-2-ONNX`, q8, about 346 MB) and are downloaded once on first use into `embedding.cacheDir` (default `models/`). No external service is needed.
+- `builtin` (default): an ONNX model that runs inside the backend process on CPU (transformers.js), in a worker thread so indexing does not block the API. Models come from a fixed built-in catalog (currently `onnx-community/embeddinggemma-2-ONNX`, q8, about 346 MB) and are downloaded once on first use into `embedding.cacheDir` (default `models/`). No external service is needed.
 - `openai-compatible`: any OpenAI-compatible `/v1/embeddings` API (Ollama `http://localhost:11434/v1`, OpenAI, LM Studio, vLLM, ...), reached through an **embedding service**: one managed with the [embedding services endpoints](#embedding-services), or the read-only `server` service from `.env` / config (`embedding.baseUrl`; its API key comes from `RAG_EMBEDDING_API_KEY` or `.local/rag_embedding_api_key.secret`). Keys are never returned.
 
 Example response:
@@ -1050,6 +1050,7 @@ Notes:
 - Events are returned in ascending `sequence` order.
 - `status` remains one of `queued`, `running`, `succeeded`, `failed`, `cancelled`; use `stage` and `code` for the finer-grained timeline.
 - `progress.phase` / `progress.phaseCount` describe stage progress, not a fake byte-level percentage.
+- Step 5 (writing chunks) is done in slices of 64 chunks: between `VECTOR_INDEXING_STARTED` and `VECTOR_INDEXING_COMPLETED`, `CHUNKS_WRITTEN` events (about every 5%) report `progress.itemsCompleted` of `progress.itemsTotal` chunks and `details.chunksWritten`. A cancel takes effect between slices.
 - `details` contains stage-specific metrics such as parsed document count, chunk count, unsupported file count, and the target physical collection name.
 - Response includes `Cache-Control: no-store`.
 

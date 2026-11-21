@@ -354,6 +354,16 @@ export function showErrorToast(error, fallback = "Request failed") {
     });
 }
 
+/** Shown when a visible load takes long. Only what the panel sees: the server has not answered yet. */
+export const SLOW_SERVER_TEXT = "Still waiting for the server…";
+export const SLOW_NOTICE_DELAY_MS = 4000;
+
+/** Calls onSlow once if the load is still running after the delay; returns a function that stops the timer. */
+export function startSlowNotice(onSlow, delayMs = SLOW_NOTICE_DELAY_MS) {
+    const timer = setTimeout(onSlow, delayMs);
+    return () => clearTimeout(timer);
+}
+
 export function formatBytes(bytes) {
     if (!Number.isFinite(bytes)) return "-";
     if (bytes < 1024) return `${bytes} B`;

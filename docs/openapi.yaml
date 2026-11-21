@@ -342,8 +342,10 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [session]
+                required: [session, capabilities]
                 properties:
+                  capabilities:
+                    $ref: "#/components/schemas/AdminCapabilities"
                   session:
                     type: object
                     required: [username, role, tenantId, expiresAt]
@@ -389,8 +391,10 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [enabled, authenticated, session]
+                required: [enabled, authenticated, session, capabilities]
                 properties:
+                  capabilities:
+                    $ref: "#/components/schemas/AdminCapabilities"
                   enabled:
                     type: boolean
                   authenticated:
@@ -564,6 +568,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminConfigDefaultsResponse"
+        "401":
+          $ref: "#/components/responses/ApiError"
+  /v1/admin/server-info:
+    get:
+      tags: [Admin Collections]
+      operationId: getAdminServerInfo
+      summary: Server facts for building a client UI (version, upload limits, allowed values, service presets)
+      security:
+        - AdminSessionCookie: []
+      responses:
+        "200":
+          description: Server facts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminServerInfoResponse"
         "401":
           $ref: "#/components/responses/ApiError"
   /v1/admin/models:
@@ -1362,6 +1382,33 @@ paths:
                     $ref: "#/components/schemas/ChatSettings"
         "403":
           $ref: "#/components/responses/ApiError"
+  /v1/admin/audit-log/operations:
+    get:
+      tags: [Admin Audit]
+      operationId: listAuditLogOperations
+      summary: List the distinct operation names in the tenant's audit log (sorted)
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+      responses:
+        "200":
+          description: Operation names
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControlNoStore"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [operations]
+                properties:
+                  operations:
+                    type: array
+                    items:
+                      type: string
+        "401":
+          $ref: "#/components/responses/ApiError"
   /v1/admin/audit-log:
     get:
       tags: [Admin Audit]
@@ -1747,12 +1794,72 @@ components:
         details:
           type: object
           additionalProperties: true
+    AdminCapabilities:
+      type: array
+      description: What the session may do (every capability when admin auth is disabled). For display; the server checks each request.
+      items:
+        type: string
+        enum: [read, createCollection, validateCollection, updateCollection, reindexCollection, cancelJob, deleteCollection, deleteJob, bulkDeleteJobs, manageDocuments, manageEmbeddingServices, manageChatServices]
+    AdminServerInfoResponse:
+      type: object
+      required: [version, uploads, jobStatuses, embeddingProviders, distanceMetrics, servicePresets]
+      properties:
+        version:
+          type: string
+        uploads:
+          type: object
+          required: [extensions, maxFileSizeBytes, maxFilesPerRequest]
+          properties:
+            extensions:
+              type: array
+              items:
+                type: string
+            maxFileSizeBytes:
+              type: integer
+            maxFilesPerRequest:
+              type: integer
+        jobStatuses:
+          type: array
+          items:
+            type: string
+        embeddingProviders:
+          type: array
+          items:
+            type: string
+        distanceMetrics:
+          type: array
+          items:
+            type: string
+        servicePresets:
+          type: array
+          items:
+            type: object
+            required: [id, label, name, baseUrl, apiKeyRequired, kinds]
+            properties:
+              id:
+                type: string
+              label:
+                type: string
+              name:
+                type: string
+              baseUrl:
+                type: string
+              apiKeyRequired:
+                type: boolean
+              kinds:
+                type: array
+                items:
+                  type: string
+                  enum: [embedding, chat]
     RootResponse:
       type: object
-      required: [name, status, message, endpoints]
+      required: [name, version, status, message, endpoints]
       properties:
         name:
           type: string
+        version:
+          type: string
+          description: Running RAGStation version (package.json).
         status:
           type: string
           const: ok
@@ -1778,13 +1885,16 @@ components:
               type: string
     HealthResponse:
       type: object
-      required: [status, alive, port, uptimeSec, timestamp]
+      required: [status, alive, version, port, uptimeSec, timestamp]
       properties:
         status:
           type: string
           const: ok
         alive:
           type: boolean
+        version:
+          type: string
+          description: Running RAGStation version (package.json).
         port:
           type: integer
         uptimeSec:

@@ -7,7 +7,7 @@ import multer from "multer";
 import { z } from "zod";
 import type { AppDependencies } from "../app.js";
 import { HttpError } from "./errors.js";
-import { config, type ResolvedConfig } from "../config.js";
+import { DISTANCE_METRICS, config, type ResolvedConfig } from "../config.js";
 import { startReindexJob } from "../indexing/jobs.js";
 import type { RequestContext } from "./requestContext.js";
 import type {
@@ -26,7 +26,7 @@ import {
   buildUpdateValidationDraft,
   validateCollectionDraft,
 } from "./collectionValidation.js";
-import { createAdminAuthService, type AdminAuthService } from "./adminAuth.js";
+import { allAdminCapabilities, capabilitiesForRole, createAdminAuthService, type AdminAuthService } from "./adminAuth.js";
 import {
   BUILTIN_EMBEDDING_SERVICE_ID,
   BUILTIN_EMBEDDING_SERVICE_NAME,
@@ -57,10 +57,14 @@ import {
   resolveUploadsFolder,
   type RejectedUpload,
 } from "../documents/collectionFiles.js";
+import { SUPPORTED_EXTENSIONS } from "../ingestion/pipeline.js";
+import { EMBEDDING_PROVIDERS } from "../embeddings/models.js";
+import { SERVICE_PRESETS } from "../providers/presets.js";
+import { appVersion } from "../version.js";
 
 type UploadRequest = Request & { uploadFolder?: string; rejectedUploads?: RejectedUpload[] };
 
-const JOB_STATUS_VALUES = ["queued", "running", "succeeded", "failed", "cancelled"] as const satisfies readonly IndexJobStatus[];
+export const JOB_STATUS_VALUES = ["queued", "running", "succeeded", "failed", "cancelled"] as const satisfies readonly IndexJobStatus[];
 
 // Strip the internal concurrency lock token before serializing a job to any API response.
 function serializeJob({ lockToken, ...job }: IndexJob): Omit<IndexJob, "lockToken"> {
@@ -252,6 +256,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
           tenantId: session.tenantId,
           expiresAt: session.expiresAt,
         },
+        capabilities: capabilitiesForRole(session.role),
       });
     } catch (error) {
       next(error);
@@ -274,6 +279,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
           enabled: false,
           authenticated: false,
           session: null,
+          capabilities: allAdminCapabilities(),
         });
         return;
       }
@@ -288,6 +294,7 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
         enabled: true,
         authenticated: true,
         session,
+        capabilities: capabilitiesForRole(session.role),
       });
     } catch (error) {
       next(error);
@@ -628,6 +635,26 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
     }
   });
 
+  // Server facts a client needs to build its UI (limits, allowed values, presets), so it never keeps its own copy.
+  router.get("/server-info", async (_req, res, next) => {
+    try {
+      res.json({
+        version: appVersion,
+        uploads: {
+          extensions: [...SUPPORTED_EXTENSIONS],
+          maxFileSizeBytes: runtimeConfig.uploadMaxFileSizeBytes,
+          maxFilesPerRequest: MAX_FILES_PER_UPLOAD,
+        },
+        jobStatuses: [...JOB_STATUS_VALUES],
+        embeddingProviders: [...EMBEDDING_PROVIDERS],
+        distanceMetrics: [...DISTANCE_METRICS],
+        servicePresets: SERVICE_PRESETS,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.get("/config/defaults", async (_req, res, next) => {
     try {
       res.json(getConfigDefaults());
@@ -682,6 +709,21 @@ export function createAdminRouter(deps: AppDependencies, runtimeConfig: Resolved
         collectionId,
         physicalCollections,
       });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/audit-log/operations", requireRegistry, async (_req, res, next) => {
+    try {
+      const context = res.locals.requestContext as RequestContext;
+      const listAuditOperations = deps.registry!.listAuditOperations;
+      if (!listAuditOperations) {
+        throw new HttpError(500, "INTERNAL_ERROR", "Audit log persistence is not available");
+      }
+      const operations = await listAuditOperations.call(deps.registry, context);
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ operations });
     } catch (error) {
       next(error);
     }

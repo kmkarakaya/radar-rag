@@ -104,6 +104,30 @@ Notes:
 - This endpoint is intended for create-form visibility only; it does not expose the full config file.
 - Use this together with `GET /v1/admin/models` so the create form can show both backend defaults and runtime model suggestions.
 
+### `GET /v1/admin/server-info`
+
+Server facts a client needs to build its UI, so it never keeps its own copy of them. Capability: `read`.
+
+```json
+{
+  "version": "0.1.0",
+  "uploads": {
+    "extensions": [".txt", ".md", ".pdf", ".doc", ".docx"],
+    "maxFileSizeBytes": 52428800,
+    "maxFilesPerRequest": 20
+  },
+  "jobStatuses": ["queued", "running", "succeeded", "failed", "cancelled"],
+  "embeddingProviders": ["builtin", "openai-compatible"],
+  "distanceMetrics": ["l2", "cosine", "ip"],
+  "servicePresets": [
+    { "id": "ollama", "label": "Ollama on this computer", "name": "Ollama", "baseUrl": "http://host.docker.internal:11434/v1", "apiKeyRequired": false, "kinds": ["embedding", "chat"] }
+  ]
+}
+```
+
+- `uploads.maxFileSizeBytes` comes from `uploads.maxFileSizeMb`.
+- `servicePresets` are starting points for `POST /v1/admin/embedding-services` and `POST /v1/admin/chat-services` (`kinds` says which fit). Their URLs assume the backend runs in Docker and the service on the same computer; outside Docker use `localhost`.
+
 ### `GET /v1/admin/models`
 
 Returns embedding model suggestions per embedding provider, for the collection `embeddingProvider` / `embeddingModel` fields, and the models of every chat service (`chatServices`), for choosing the chat model with `PUT /v1/admin/chat-settings`.
@@ -161,15 +185,25 @@ Notes:
 
 ### `GET /v1/admin/auth/session`
 
-Always returns `{ enabled, authenticated, session }`:
+Always returns `{ enabled, authenticated, session, capabilities }`:
 
-- Auth disabled: `200` with `{ "enabled": false, "authenticated": false, "session": null }`.
-- Auth enabled with a valid cookie: `200` with `{ "enabled": true, "authenticated": true, "session": { "username", "role", "tenantId", "expiresAt" } }`.
+- Auth disabled: `200` with `{ "enabled": false, "authenticated": false, "session": null, "capabilities": [every capability] }`.
+- Auth enabled with a valid cookie: `200` with `{ "enabled": true, "authenticated": true, "session": { "username", "role", "tenantId", "expiresAt" }, "capabilities": [...] }`.
 - Auth enabled with no/invalid cookie: `401 UNAUTHORIZED`.
+
+`capabilities` lists what the session may do, so a client can hide or disable actions without its own role table:
+
+| Role | Capabilities |
+|---|---|
+| `viewer` | `read` |
+| `operator` | `viewer` + `createCollection`, `validateCollection`, `updateCollection`, `reindexCollection`, `cancelJob`, `manageDocuments` |
+| `admin` | `operator` + `deleteCollection`, `deleteJob`, `bulkDeleteJobs`, `manageEmbeddingServices`, `manageChatServices` |
+
+The server still checks every request; the list is for display only.
 
 ### `POST /v1/admin/auth/login`
 
-Authenticates a configured admin user and sets the session cookie.
+Authenticates a configured admin user and sets the session cookie. Returns `{ session, capabilities }` (same fields as `GET /v1/admin/auth/session`).
 
 Request body:
 
@@ -531,12 +565,16 @@ Example response:
 Notes:
 
 - `collectionId` and `operation` are optional filters; both can be supplied multiple times for an OR filter over exact matches.
-- Recorded operations include `query`, `retrieve`, `reindex`, `delete` (collection), `document_upload`, `document_delete`, `job`, `job_events`, `job_delete` and `job_delete_batch`, plus index job events.
+- Recorded operations include `query`, `retrieve`, `reindex`, `delete` (collection), `document_upload`, `document_delete`, `job`, `job_events`, `job_delete` and `job_delete_batch`, plus index job events. `GET /v1/admin/audit-log/operations` lists the ones in the tenant's log.
 - When `collectionId` is provided, the route applies the same tenant visibility checks as other collection-scoped admin endpoints, one collection at a time.
 - Another tenant's collection returns `403 COLLECTION_FORBIDDEN`; an unknown collection returns `404 COLLECTION_NOT_FOUND`.
 - `limit` is capped by the backend, and `nextCursor` is opaque.
 - The endpoint is tenant-scoped and returns `Cache-Control: no-store`.
 - `details` is safe JSON metadata for operator troubleshooting; render it with escaped text, not raw HTML.
+
+### `GET /v1/admin/audit-log/operations`
+
+The distinct operation names in the tenant's audit log, sorted, for an operation filter: `{ "operations": ["document_upload", "query", "reindex"] }`. Capability: `read`. Returns `Cache-Control: no-store`.
 
 ### `POST /v1/admin/collections/validate`
 

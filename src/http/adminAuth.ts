@@ -89,6 +89,7 @@ const ADMIN_ROUTE_PATTERNS: Array<{
   actionTokenRequired: boolean;
 }> = [
   { method: "GET", pattern: /^\/v1\/admin\/config\/defaults\/?$/, capability: "read", actionTokenRequired: false },
+  { method: "GET", pattern: /^\/v1\/admin\/server-info\/?$/, capability: "read", actionTokenRequired: false },
   { method: "GET", pattern: /^\/v1\/admin\/models\/?$/, capability: "read", actionTokenRequired: false },
   { method: "POST", pattern: /^\/v1\/admin\/collections\/?$/, capability: "createCollection", actionTokenRequired: true },
   { method: "GET", pattern: /^\/v1\/admin\/collections\/[^/]+\/?$/, capability: "read", actionTokenRequired: false },
@@ -116,6 +117,7 @@ const ADMIN_ROUTE_PATTERNS: Array<{
   { method: "PUT", pattern: /^\/v1\/admin\/chat-settings\/?$/, capability: "manageChatServices", actionTokenRequired: true },
   { method: "DELETE", pattern: /^\/v1\/admin\/chat-settings\/?$/, capability: "manageChatServices", actionTokenRequired: true },
   { method: "GET", pattern: /^\/v1\/admin\/audit-log\/?$/, capability: "read", actionTokenRequired: false },
+  { method: "GET", pattern: /^\/v1\/admin\/audit-log\/operations\/?$/, capability: "read", actionTokenRequired: false },
   { method: "GET", pattern: /^\/v1\/admin\/jobs\/?$/, capability: "read", actionTokenRequired: false },
   { method: "GET", pattern: /^\/v1\/admin\/jobs\/[^/]+\/?$/, capability: "read", actionTokenRequired: false },
   { method: "GET", pattern: /^\/v1\/admin\/jobs\/[^/]+\/events\/?$/, capability: "read", actionTokenRequired: false },
@@ -205,18 +207,24 @@ export function validateAdminAuthConfig(input: {
   };
 }
 
-function pickCapabilities(role: AdminRole): AdminCapability[] {
+/** What a role may do. The API returns it with the session so clients never keep their own copy. */
+export function capabilitiesForRole(role: AdminRole): AdminCapability[] {
   if (role === "admin") {
-    return ADMIN_CAPABILITIES;
+    return [...ADMIN_CAPABILITIES];
   }
   if (role === "operator") {
-    return OPERATOR_CAPABILITIES;
+    return [...OPERATOR_CAPABILITIES];
   }
-  return READ_ONLY_CAPABILITIES;
+  return [...READ_ONLY_CAPABILITIES];
+}
+
+/** Every capability: what a request may do when admin auth is disabled. */
+export function allAdminCapabilities(): AdminCapability[] {
+  return [...ADMIN_CAPABILITIES];
 }
 
 export function hasAdminCapability(role: AdminRole, capability: AdminCapability): boolean {
-  return pickCapabilities(role).includes(capability);
+  return capabilitiesForRole(role).includes(capability);
 }
 
 export function matchAdminRoute(method: string, path: string): AdminRouteMatch | null {

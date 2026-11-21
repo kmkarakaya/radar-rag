@@ -11,6 +11,7 @@ import { checkIndexingSourceHealth, type IndexingSourceHealthDetails } from "./i
 import { createAdminRouter } from "./http/adminRouter.js";
 import type { deleteSourceChunks } from "./collections/chromaCollections.js";
 import { createRagRouter } from "./http/ragRouter.js";
+import { appVersion } from "./version.js";
 import {
   createConsoleLogSink,
   createOperationalHttpLogger,
@@ -324,6 +325,7 @@ function configureApp(app: Express): void {
   app.get("/", (_req, res) => {
     res.json({
       name: "RAGStation",
+      version: appVersion,
       status: "ok",
       message: "Use the versioned multi-collection API under /v1/rag/collections.",
       endpoints: {
@@ -650,6 +652,7 @@ app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
     alive: true,
+    version: appVersion,
     port: runtimeConfig.port,
     uptimeSec: process.uptime(),
     timestamp: new Date().toISOString(),

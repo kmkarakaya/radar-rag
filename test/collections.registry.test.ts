@@ -254,6 +254,10 @@ describe("sqlite collection registry", () => {
         assert.ok(!columns.some((column) => column.name === "chat_model"));
         assert.ok(columns.some((column) => column.name === "source_kind"));
         assert.ok(columns.some((column) => column.name === "documents_changed"));
+        for (const table of ["collections", "index_jobs", "physical_collections"]) {
+          const tableColumns = migratedDb.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+          assert.ok(tableColumns.some((column) => column.name === "indexed_file_count"), `${table}.indexed_file_count`);
+        }
       } finally {
         migratedDb.close();
       }
@@ -262,6 +266,8 @@ describe("sqlite collection registry", () => {
       const legacy = await migratedRegistry.getVisibleCollection(context, "legacy-collection");
       assert.equal(legacy?.sourceKind, "folder");
       assert.equal(legacy?.documentsChanged, false);
+      // Older indexes have no file count: it stays unknown, never guessed.
+      assert.equal(legacy?.indexedFileCount, undefined);
 
       const queued = await migratedRegistry.beginIndexJob(context, "legacy-collection", {
         targetVersion: "legacy-v2",
@@ -276,6 +282,7 @@ describe("sqlite collection registry", () => {
       });
 
       await migratedRegistry.completeIndexJob(running.id, {
+        indexedFileCount: 1,
         documentCount: 1,
         chunkCount: 2,
         retentionMs: 0,
@@ -284,6 +291,7 @@ describe("sqlite collection registry", () => {
       const ready = await migratedRegistry.getVisibleCollection(context, "legacy-collection");
       assert.equal(ready?.status, "ready");
       assert.equal(ready?.activeEmbeddingModel, collectionInput.embeddingModel);
+      assert.equal(ready?.indexedFileCount, 1);
     } finally {
       migratedRegistry.close?.();
     }

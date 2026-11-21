@@ -79,6 +79,7 @@ type CollectionRow = {
   active_embedding_model: string | null;
   embedding_service_id: string | null;
   active_embedding_service_id: string | null;
+  indexed_file_count: number | null;
   document_count: number | null;
   chunk_count: number | null;
   created_by: string;
@@ -103,6 +104,7 @@ type IndexJobRow = {
   started_at: string | null;
   finished_at: string | null;
   error: string | null;
+  indexed_file_count: number | null;
   document_count: number | null;
   chunk_count: number | null;
   lock_token: string;
@@ -165,6 +167,7 @@ type PhysicalCollectionRow = {
   version: string;
   status: PhysicalCollectionStatus;
   chroma_configuration_json: string;
+  indexed_file_count: number | null;
   document_count: number | null;
   chunk_count: number | null;
   created_at: string;
@@ -235,6 +238,7 @@ function initializeSchema(db: SqliteDatabase): void {
       retrieval_distance_threshold REAL NOT NULL,
       active_embedding_provider TEXT,
       active_embedding_model TEXT,
+      indexed_file_count INTEGER,
       document_count INTEGER,
       chunk_count INTEGER,
       created_by TEXT NOT NULL,
@@ -257,6 +261,7 @@ function initializeSchema(db: SqliteDatabase): void {
       started_at TEXT,
       finished_at TEXT,
       error TEXT,
+      indexed_file_count INTEGER,
       document_count INTEGER,
       chunk_count INTEGER,
       lock_token TEXT NOT NULL,
@@ -272,6 +277,7 @@ function initializeSchema(db: SqliteDatabase): void {
       version TEXT NOT NULL,
       status TEXT NOT NULL,
       chroma_configuration_json TEXT NOT NULL,
+      indexed_file_count INTEGER,
       document_count INTEGER,
       chunk_count INTEGER,
       created_at TEXT NOT NULL,
@@ -393,6 +399,10 @@ function migrateSchema(db: SqliteDatabase): void {
   ensureColumn(db, "index_jobs", "target_embedding_service_id", "TEXT");
   // Interrupted jobs: a running job marks itself alive; failStaleJobs fails jobs whose mark stopped.
   ensureColumn(db, "index_jobs", "heartbeat_at", "TEXT");
+  // Files with indexable content (documentCount counts loaded parts, e.g. one per PDF page).
+  ensureColumn(db, "collections", "indexed_file_count", "INTEGER");
+  ensureColumn(db, "index_jobs", "indexed_file_count", "INTEGER");
+  ensureColumn(db, "physical_collections", "indexed_file_count", "INTEGER");
   // Ozelge JSON support was removed; older registries still have this NOT NULL column, which would break inserts.
   dropColumnIfExists(db, "collections", "ozelge_data_path");
   // The chat LLM is now global and optional (config `chat` section); older registries have a NOT NULL chat_model column.
@@ -1240,6 +1250,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       values,
     );
     addNullablePatch("activeVersion", "active_version", patch.activeVersion, updates, values);
+    addNullablePatch("indexedFileCount", "indexed_file_count", patch.indexedFileCount, updates, values);
     addNullablePatch("documentCount", "document_count", patch.documentCount, updates, values);
     addNullablePatch("chunkCount", "chunk_count", patch.chunkCount, updates, values);
     addNullablePatch("lastIndexedAt", "last_indexed_at", patch.lastIndexedAt, updates, values);
@@ -1599,6 +1610,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         SET
           status = 'active',
           activated_at = @now,
+          indexed_file_count = @indexedFileCount,
           document_count = @documentCount,
           chunk_count = @chunkCount,
           cleanup_error = NULL
@@ -1613,6 +1625,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         collectionId: existing.collection_id,
         version: existing.target_version,
         now,
+        indexedFileCount: result.indexedFileCount ?? existing.indexed_file_count,
         documentCount: result.documentCount ?? existing.document_count,
         chunkCount: result.chunkCount ?? existing.chunk_count,
       });
@@ -1657,6 +1670,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           active_embedding_provider = @activeEmbeddingProvider,
           active_embedding_model = @activeEmbeddingModel,
           active_embedding_service_id = @activeEmbeddingServiceId,
+          indexed_file_count = @indexedFileCount,
           document_count = @documentCount,
           chunk_count = @chunkCount,
           last_indexed_at = @lastIndexedAt,
@@ -1673,6 +1687,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         activeEmbeddingProvider: existing.target_embedding_provider,
         activeEmbeddingModel: existing.target_embedding_model,
         activeEmbeddingServiceId: existing.target_embedding_service_id ?? null,
+        indexedFileCount: result.indexedFileCount ?? existing.indexed_file_count,
         documentCount: result.documentCount ?? existing.document_count,
         chunkCount: result.chunkCount ?? existing.chunk_count,
         lastIndexedAt: now,
@@ -1695,6 +1710,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
           status = 'succeeded',
           finished_at = @finishedAt,
           error = NULL,
+          indexed_file_count = @indexedFileCount,
           document_count = @documentCount,
           chunk_count = @chunkCount,
           updated_at = @updatedAt
@@ -1702,6 +1718,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
       `).run({
         id: jobId,
         finishedAt: now,
+        indexedFileCount: result.indexedFileCount ?? existing.indexed_file_count,
         documentCount: result.documentCount ?? existing.document_count,
         chunkCount: result.chunkCount ?? existing.chunk_count,
         updatedAt: now,
@@ -1712,6 +1729,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         status: "succeeded",
         finished_at: now,
         updated_at: now,
+        indexed_file_count: result.indexedFileCount ?? existing.indexed_file_count,
         document_count: result.documentCount ?? existing.document_count,
         chunk_count: result.chunkCount ?? existing.chunk_count,
       }, {
@@ -1722,6 +1740,7 @@ class SqliteCollectionRegistry implements CollectionRegistry {
         details: {
           activePhysicalCollection,
           activeVersion,
+          indexedFileCount: result.indexedFileCount ?? existing.indexed_file_count ?? undefined,
           documentCount: result.documentCount ?? existing.document_count ?? undefined,
           chunkCount: result.chunkCount ?? existing.chunk_count ?? undefined,
         },
@@ -2255,6 +2274,7 @@ function mapCollectionRow(row: CollectionRow): RagCollection {
     activeEmbeddingModel: row.active_embedding_model ?? undefined,
     embeddingServiceId: row.embedding_service_id ?? undefined,
     activeEmbeddingServiceId: row.active_embedding_service_id ?? undefined,
+    indexedFileCount: row.indexed_file_count ?? undefined,
     documentCount: row.document_count ?? undefined,
     chunkCount: row.chunk_count ?? undefined,
     createdBy: row.created_by,
@@ -2317,6 +2337,7 @@ function mapIndexJobRow(row: IndexJobRow): IndexJob {
     startedAt: row.started_at ?? undefined,
     finishedAt: row.finished_at ?? undefined,
     error: row.error ?? undefined,
+    indexedFileCount: row.indexed_file_count ?? undefined,
     documentCount: row.document_count ?? undefined,
     chunkCount: row.chunk_count ?? undefined,
     lockToken: row.lock_token,
@@ -2364,6 +2385,7 @@ function mapPhysicalCollectionRow(row: PhysicalCollectionRow): PhysicalCollectio
     version: row.version,
     status: row.status,
     chromaConfiguration: JSON.parse(row.chroma_configuration_json) as Record<string, unknown>,
+    indexedFileCount: row.indexed_file_count ?? undefined,
     documentCount: row.document_count ?? undefined,
     chunkCount: row.chunk_count ?? undefined,
     createdAt: row.created_at,

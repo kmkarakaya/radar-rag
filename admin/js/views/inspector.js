@@ -3,7 +3,7 @@ import { canAdminAction } from "../auth.js";
 import { switchView } from "../dashboard.js";
 import { confirmDialog } from "../dialog.js";
 import { appendChildren, appendText, clearNode, createBadge, createButton, createEl, createMetaItem, formatCount, formatDateTime, formatValidationFieldLabel, getStatusBadge, getStatusColor, isRecord, renderApiErrorContent, setButtonLoading, shortId, showErrorToast, showToast, stringifyForDisplay } from "../dom.js";
-import { jobRoute, loadJobProgress, watchJob } from "../jobWatch.js";
+import { formatJobCounts, jobRoute, watchJob } from "../jobWatch.js";
 import { recordRoute } from "../router.js";
 import { API, elements, state } from "../state.js";
 import { chatServiceName, loadChatSettings } from "./chatSettings.js";
@@ -178,10 +178,19 @@ export function renderCollectionIndexStateBanner() {
     }
 }
 
-/** A progress bar for the running job (phase of the build and the last step it reported). */
+/** The progress the server reports for a running job (GET /jobs/:id); null when it cannot be loaded. */
+async function loadActiveJobProgress(jobId) {
+    try {
+        return (await apiRequest(`${API.admin}/jobs/${encodeURIComponent(jobId)}`))?.job?.progress ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/** A progress bar for the running job, from the progress the server reports (GET /jobs/:id `progress`). */
 export function createJobProgress(progress) {
     const box = createEl("div", "rounded-lg border border-sky-100 bg-sky-50 p-3 text-xs text-sky-900");
-    const percent = progress?.fraction === null || progress?.fraction === undefined ? null : Math.round(progress.fraction * 100);
+    const percent = Number.isFinite(progress?.percent) ? progress.percent : null;
     const bar = createEl("div", "h-2 w-full overflow-hidden rounded-full bg-sky-100");
     bar.setAttribute("role", "progressbar");
     bar.setAttribute("aria-label", "Indexing progress");
@@ -194,8 +203,9 @@ export function createJobProgress(progress) {
     }
     bar.appendChild(fill);
     box.appendChild(bar);
-    const step = progress?.phase && progress?.phaseCount ? `Step ${progress.phase} of ${progress.phaseCount}: ` : "";
-    box.appendChild(createEl("div", "mt-2", `${step}${progress?.message || "Starting..."}${progress?.counts ? ` (${progress.counts})` : ""}`));
+    const step = progress?.step && progress?.stepCount ? `Step ${progress.step} of ${progress.stepCount}: ` : "";
+    const counts = formatJobCounts(progress);
+    box.appendChild(createEl("div", "mt-2", `${step}${progress?.message || "Starting..."}${counts ? ` (${counts})` : ""}`));
     // The first index with the built-in model downloads it: say so, from the server's readiness warning.
     const download = findReadinessIssue("EMBEDDING_MODEL_NOT_DOWNLOADED");
     if (download) box.appendChild(createEl("div", "mt-1 text-sky-800", download.message));
@@ -589,7 +599,7 @@ export function createPhysicalCollectionCard(record) {
     card.appendChild(header);
 
     const meta = createEl("div", "mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3");
-    meta.appendChild(createMetaItem("Documents", formatCount(record.documentCount)));
+    meta.appendChild(createMetaItem("Files", formatCount(record.indexedFileCount)));
     meta.appendChild(createMetaItem("Chunks", formatCount(record.chunkCount)));
     meta.appendChild(createMetaItem("Created", formatDateTime(record.createdAt)));
     meta.appendChild(createMetaItem("Activated", formatDateTime(record.activatedAt)));
@@ -722,7 +732,7 @@ export async function updateReadinessTab({ quiet = false } = {}) {
             const activeJob = readinessResult.value?.activeJob;
             if (activeJob && (activeJob.status === "queued" || activeJob.status === "running")) {
                 watchJob({ ...activeJob, collectionId }, state.selectedCollection?.displayName);
-                state.activeJobProgress = await loadJobProgress(activeJob.id);
+                state.activeJobProgress = await loadActiveJobProgress(activeJob.id);
             } else {
                 state.activeJobProgress = null;
             }

@@ -2557,6 +2557,7 @@ components:
         - displayName
         - description
         - status
+        - indexedFileCount
         - chunkCount
         - activeVersion
         - updatedAt
@@ -2573,6 +2574,9 @@ components:
           type: [string, "null"]
         status:
           $ref: "#/components/schemas/CollectionStatus"
+        indexedFileCount:
+          type: [integer, "null"]
+          description: Number of files whose content is searchable; null before the first index or for indexes built before this field existed.
         chunkCount:
           type: [integer, "null"]
         activeVersion:
@@ -3065,8 +3069,12 @@ components:
         activeEmbeddingModel:
           type: string
           description: Embedding model the active index was built with; reads use it. Absent before the first successful reindex.
+        indexedFileCount:
+          type: integer
+          description: Number of files whose content is in the active index (unsupported and unreadable files are not counted). Lowered by one when an indexed document is deleted. Absent for indexes built before this field existed; filled by the next reindex.
         documentCount:
           type: integer
+          description: Number of loaded document parts in the active index (a PDF gives one per page); not the number of files, see indexedFileCount.
         chunkCount:
           type: integer
         createdBy:
@@ -3106,8 +3114,12 @@ components:
         chromaConfiguration:
           type: object
           additionalProperties: true
+        indexedFileCount:
+          type: integer
+          description: Number of files whose content is in this index version. Absent for versions built before this field existed.
         documentCount:
           type: integer
+          description: Number of loaded document parts (a PDF gives one per page); not the number of files.
         chunkCount:
           type: integer
         createdAt:
@@ -3663,7 +3675,6 @@ components:
         - targetEmbeddingProvider
         - targetEmbeddingModel
         - targetChromaConfiguration
-        - lockToken
         - createdAt
         - updatedAt
       properties:
@@ -3700,18 +3711,51 @@ components:
           format: date-time
         error:
           type: string
+        indexedFileCount:
+          type: integer
+          description: Number of files indexed by the job; set when it succeeds.
         documentCount:
           type: integer
+          description: Number of loaded document parts (a PDF gives one per page); set when the job succeeds. Not the number of files.
         chunkCount:
           type: integer
-        lockToken:
-          type: string
+        progress:
+          allOf:
+            - $ref: "#/components/schemas/IndexJobProgress"
+          description: Current progress, computed by the server. Present only while the job is queued or running.
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+    IndexJobProgress:
+      type: object
+      description: Progress of a queued or running job, summarized by the server from the job's events. Clients show it as is.
+      required: [step, stepCount, percent, message, indexedFileCount, chunkCount]
+      properties:
+        step:
+          type: [integer, "null"]
+          minimum: 1
+          description: Current build step (1-based); null before the first step is reported.
+        stepCount:
+          type: [integer, "null"]
+          minimum: 1
+          description: Number of build steps; null before the first step is reported.
+        percent:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 100
+          description: How far the job is, 0-100; null when not known yet.
+        message:
+          type: [string, "null"]
+          description: The last step the job reported, in plain words; null before the first event.
+        indexedFileCount:
+          type: [integer, "null"]
+          description: Files with indexable content found so far; null until the source has been read.
+        chunkCount:
+          type: [integer, "null"]
+          description: Chunks produced so far; null until chunking has finished.
     IndexJobEventProgress:
       type: object
       required: [phase, phaseCount]

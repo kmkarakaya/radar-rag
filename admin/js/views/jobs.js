@@ -2,7 +2,7 @@ import { adminJobDeleteUrl, adminJobUrl, adminJobsBulkDeleteUrl, adminJobsListUr
 import { canAdminAction } from "../auth.js";
 import { confirmDialog } from "../dialog.js";
 import { appendText, clearNode, createBadge, createButton, createEl, formatCount, formatDateTime, getStatusColor, renderErrorBox, setButtonLoading, shortId, showErrorToast, showToast } from "../dom.js";
-import { watchJob } from "../jobWatch.js";
+import { formatJobCounts, watchJob } from "../jobWatch.js";
 import { recordRoute } from "../router.js";
 import { API, JOB_LIST_LIMIT, elements, state } from "../state.js";
 import { collectionNameById, loadCollections } from "./collections.js";
@@ -399,8 +399,8 @@ export function renderJobs() {
         appendCell(row, "", target);
 
         const counts = createEl("div", "space-y-1 text-slate-600");
-        counts.appendChild(createEl("div", "", `Docs: ${formatCount(job.documentCount)}`));
-        counts.appendChild(createEl("div", "", `Chunks: ${formatCount(job.chunkCount)}`));
+        counts.appendChild(createEl("div", "", `Files: ${formatCount(job.indexedFileCount ?? job.progress?.indexedFileCount)}`));
+        counts.appendChild(createEl("div", "", `Chunks: ${formatCount(job.chunkCount ?? job.progress?.chunkCount)}`));
         appendCell(row, "", counts);
 
         const times = createEl("div", "space-y-1 text-slate-600");
@@ -488,10 +488,7 @@ export function renderJobDetail() {
     const name = collectionNameById(job.collectionId) || job.collectionId;
     elements.jobDetailTitle.textContent = `Job ${shortId(job.id)} \u00b7 ${name}`;
     elements.jobDetailTitle.appendChild(createBadge(job.status, `ml-2 ${getStatusColor(job.status)}`));
-    const counts = [
-        Number.isFinite(job.documentCount) ? `${job.documentCount} document${job.documentCount === 1 ? "" : "s"}` : null,
-        Number.isFinite(job.chunkCount) ? `${job.chunkCount} chunk${job.chunkCount === 1 ? "" : "s"}` : null,
-    ].filter(Boolean).join(", ");
+    const counts = formatJobCounts(job.progress ?? job);
     elements.jobDetailSummary.textContent = [
         job.startedAt ? `Started ${formatDateTime(job.startedAt)}` : `Created ${formatDateTime(job.createdAt)}`,
         job.finishedAt ? `finished ${formatDateTime(job.finishedAt)}` : null,

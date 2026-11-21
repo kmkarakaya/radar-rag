@@ -17,6 +17,8 @@ import {
 export type IndexingSourceHealthDetails = {
   sourcePath: string;
   fileCount?: number;
+  /** Files with indexable content (loadedDocumentCount counts loaded parts: a PDF gives one per page). */
+  indexedFileCount?: number;
   loadedDocumentCount?: number;
   documentCount?: number;
   unsupportedFiles?: UnsupportedSourceFile[];
@@ -25,6 +27,7 @@ export type IndexingSourceHealthDetails = {
 export type IndexingRunResult = {
   sourceDocumentCount: number;
   parsedSourceDocumentCount: number;
+  indexedFileCount: number;
   chunkCount: number;
 };
 
@@ -52,6 +55,7 @@ export async function checkIndexingSourceHealth(runtimeConfig = config): Promise
       details: {
         sourcePath: runtimeConfig.sourcePath,
         fileCount: analysis.fileCount,
+        indexedFileCount: analysis.sourceFiles.length,
         loadedDocumentCount: analysis.loadedDocumentCount,
         documentCount: analysis.documents.length,
         unsupportedFiles: analysis.unsupportedFiles,

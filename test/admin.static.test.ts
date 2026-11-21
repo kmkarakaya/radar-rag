@@ -275,6 +275,12 @@ describe("admin panel static contract", () => {
     assert.ok(!js.includes("data.updatedAt"), "Job polling should not read bare data.updatedAt");
     assert.ok(!js.includes("data.chunkCount"), "Job polling should not read bare data.chunkCount");
     assert.ok(!js.includes("data.documentCount"), "Job polling should not read bare data.documentCount");
+    // Job progress and counts come from the server (job.progress, indexedFileCount), not from the panel.
+    assert.ok(js.includes("?.job?.progress"), "Running job progress should come from GET /jobs/:id progress");
+    assert.ok(!js.includes("loadJobProgress"), "The panel should not summarize job events itself");
+    assert.ok(!js.includes("/ phaseCount") && !js.includes("fraction"), "The panel should not compute progress percent from steps");
+    assert.ok(!js.includes("documentCount"), "Counts shown to people are files (indexedFileCount), not loaded document parts");
+    assert.ok(js.includes("indexedFileCount"), "The panel should show the indexed file count");
     assert.ok(!js.includes("completed"), "Admin UI should not expect a completed job status");
     assert.ok(!js.includes("deriveReadinessBlockers"), "Collection readiness blockers should come from backend issues");
     assert.ok(js.includes("readiness.blockers"), "Collection readiness should render backend blockers");

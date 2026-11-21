@@ -385,6 +385,36 @@ describe("app foundation", () => {
     assert.ok(Array.isArray(body.operationalAlerts));
   });
 
+  it("counts the indexing source in files, not in loaded document parts", async () => {
+    const started = await startServer(createHealthyRegistryStub(), {
+      ...createHealthyHealthChecks(),
+      // Two files, one of them a 21-page PDF: 22 loaded parts.
+      checkIndexingSourceHealth: async () => ({
+        ok: true,
+        latencyMs: 1,
+        details: {
+          sourcePath: "data",
+          fileCount: 2,
+          indexedFileCount: 2,
+          loadedDocumentCount: 22,
+          documentCount: 22,
+          unsupportedFiles: [],
+        },
+      }),
+    });
+
+    try {
+      const body = await (await fetch(`${started.baseUrl}/ready?details=true`)).json() as any;
+      const check = body.checks.find((item: any) => item.code === "INDEXABLE_DOCUMENTS_PRESENT");
+      assert.ok(check);
+      assert.equal(check.message, "Indexing source contains 2 files with indexable content.");
+      assert.equal(check.details.indexedFileCount, 2);
+      assert.equal(check.details.documentCount, 22);
+    } finally {
+      await stopServer(started.server);
+    }
+  });
+
   it("GET /ready?strict=true returns 503 and REGISTRY_UNREACHABLE when registry health fails", async () => {
     const failingRegistry = {
       ...createHealthyRegistryStub(),

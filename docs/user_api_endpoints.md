@@ -198,6 +198,7 @@ Public collection list and detail responses use a sanitized DTO:
   "displayName": "Tax Rulings 2026",
   "description": "Indexed rulings for user-facing search",
   "status": "ready",
+  "indexedFileCount": 40,
   "chunkCount": 1200,
   "activeVersion": "v-2026-06-27",
   "updatedAt": "2026-06-27T20:00:00.000Z",
@@ -234,7 +235,8 @@ Notes:
 - Public DTOs do not expose top-level `tenantId`, `sourcePath`, `embeddingProvider`, `embeddingModel`, `activePhysicalCollection`, `activeEmbeddingProvider`, or `activeEmbeddingModel`.
 - `indexState` snapshots include `embeddingProvider` and `embeddingModel`: changing either one in the admin configuration makes `indexState.status` `reindex_required` until a reindex completes.
 - Collections have no chat model of their own: the optional chat LLM used by `/query` is chosen per tenant (see `GET /ready` and the admin chat settings).
-- `description`, `chunkCount`, `activeVersion`, and `indexState` may be `null`.
+- `description`, `indexedFileCount`, `chunkCount`, `activeVersion`, and `indexState` may be `null`.
+- `indexedFileCount` is the number of files whose content is searchable (unsupported or unreadable files are not counted); it is `null` before the first index and for indexes built before the field existed, until the next reindex.
 - `status` can be `creating`, `indexing`, `ready`, `failed`, or `archived`.
 - If a collection has a real active indexed snapshot, `indexState.activeSnapshot` is typically present and should not be assumed to be `null`.
 
@@ -254,6 +256,7 @@ Example response:
       "displayName": "Tax Rulings 2026",
       "description": "Indexed rulings for user-facing search",
       "status": "ready",
+      "indexedFileCount": 40,
       "chunkCount": 1200,
       "activeVersion": "v-2026-06-27",
       "updatedAt": "2026-06-27T20:00:00.000Z",

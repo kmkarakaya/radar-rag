@@ -352,9 +352,11 @@ describe("indexing jobs", () => {
         logEvents.push(event);
       },
       deps: {
+        // Two files, one of them a two-page PDF: three loaded parts.
         buildPhysicalCollection: async () => ({
-          sourceDocumentCount: 2,
-          parsedSourceDocumentCount: 2,
+          sourceDocumentCount: 3,
+          parsedSourceDocumentCount: 3,
+          indexedFileCount: 2,
           chunkCount: 5,
         }),
       },
@@ -368,8 +370,13 @@ describe("indexing jobs", () => {
     assert.equal(updatedCollection?.status, "ready");
     assert.equal(updatedCollection?.activePhysicalCollection, job.targetPhysicalCollection);
     assert.equal(updatedCollection?.activeVersion, job.targetVersion);
-    assert.equal(updatedCollection?.documentCount, 2);
+    assert.equal(updatedCollection?.indexedFileCount, 2);
+    assert.equal(updatedCollection?.documentCount, 3);
     assert.equal(updatedCollection?.chunkCount, 5);
+    assert.equal(finishedJob?.indexedFileCount, 2);
+    assert.equal(finishedJob?.documentCount, 3);
+    assert.equal(physical?.indexedFileCount, 2);
+    assert.equal(physical?.documentCount, 3);
     assert.equal(physical?.status, "active");
     assert.equal(physical?.version, job.targetVersion);
     const startedEvent = logEvents.find((event) => event.operation === "index_job" && event.status === "started");
@@ -382,6 +389,7 @@ describe("indexing jobs", () => {
     assert.ok(succeededEvent);
     assert.equal(succeededEvent.jobId, job.id);
     assert.equal(succeededEvent.details?.chunkCount, 5);
+    assert.equal(succeededEvent.details?.indexedFileCount, 2);
     assert.equal(typeof succeededEvent.latencyMs, "number");
   });
 
@@ -433,6 +441,7 @@ describe("indexing jobs", () => {
           return {
             sourceDocumentCount: 3,
             parsedSourceDocumentCount: 3,
+            indexedFileCount: 2,
             chunkCount: 5,
           };
         },
@@ -450,6 +459,7 @@ describe("indexing jobs", () => {
     ]);
     assert.deepEqual(events.map((event) => event.sequence), [1, 2, 3, 4, 5, 6]);
     assert.equal(events[events.length - 1]?.details?.chunkCount, 5);
+    assert.equal(events[events.length - 1]?.details?.indexedFileCount, 2);
     assert.equal(events[events.length - 1]?.status, "succeeded");
   });
 
